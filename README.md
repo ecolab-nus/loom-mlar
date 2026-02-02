@@ -93,8 +93,7 @@ loom-mlar/
 ├── lib/mlar-dialect/IR/     # Dialect definitions
 │   ├── MlarDialect.td       # Dialect TableGen
 │   ├── MlarTypes.td         # Type definitions
-│   ├── MlarOps.td           # Op entry point
-│   ├── MlarHwDeclOps.td     # Hardware ops
+│   ├── MlarOps.td           # Operation definitions
 │   └── MlarDialect.cpp      # Implementation
 ├── tool/loom-mlar-opt/      # Parser/printer tool
 └── test/mlar-dialect/       # Test files
