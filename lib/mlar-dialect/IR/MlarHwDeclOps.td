@@ -92,50 +92,36 @@ def InterconnectsOp : MLAR_Op<"interconnects", [Symbol]> {
   }];
 }
 
-// mlar.mat : declare a matrix functional unit with a name and shape
+// mlar.fu : declare a functional unit by referencing a func.func definition
 // Example:
-//   %mat_unit = mlar.mat "FPU" {shape = [32, 32, 32]}
-def MatOp : MLAR_Op<"mat"> {
-  let summary = "Declare a matrix functional unit with a name and shape";
+//   func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>) -> tensor<32x32xf32> { ... }
+//   %mat_unit = mlar.fu @matmul_32x32 {throughput = 128}
+def FuOp : MLAR_Op<"fu"> {
+  let summary = "Declare a functional unit by referencing a function definition";
   let description = [{
-    `mlar.mat` declares a matrix functional unit (e.g., a matrix multiplication
-    unit) with a user-facing name and a shape attribute that describes the
-    dimensions of the functional unit. The result is an opaque
-    `!mlar.functional_unit` handle that can be referenced in core declarations
-    to describe the compute components available within each core.
+    `mlar.fu` declares a functional unit by referencing a `func.func` that
+    describes what the unit does. The function should use linalg, tensor,
+    and arith dialects to describe the computation. The shape of the
+    functional unit is inferred from the function signature.
+
+    The optional `throughput` attribute specifies how many operations per
+    cycle the functional unit can perform.
 
     Example:
-      `%mat_unit = mlar.mat "FPU" {shape = [32, 32, 32]}`
+      ```mlir
+      func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>) -> tensor<32x32xf32> {
+        %c = linalg.matmul ins(%a, %b : ...) outs(...) -> tensor<32x32xf32>
+        return %c : tensor<32x32xf32>
+      }
+      %mat_unit = mlar.fu @matmul_32x32 {throughput = 128}
+      ```
   }];
 
-  let arguments = (ins StrAttr:$name, DenseI64ArrayAttr:$shape,
+  let arguments = (ins FlatSymbolRefAttr:$func_ref,
                        OptionalAttr<I64Attr>:$throughput);
   let results = (outs FunctionalUnitHandleType:$handle);
 
-  let hasCustomAssemblyFormat = 1;
-}
-
-// mlar.vec : declare a vector functional unit with a name and shape
-// Example:
-//   %vec_unit = mlar.vec "SFPU" {shape = [32]}
-def VecOp : MLAR_Op<"vec"> {
-  let summary = "Declare a vector functional unit with a name and shape";
-  let description = [{
-    `mlar.vec` declares a vector functional unit (e.g., a vector ALU) with a
-    user-facing name and a shape attribute that describes the dimensions of
-    the functional unit. The result is an opaque `!mlar.functional_unit` handle
-    that can be referenced in core declarations to describe the compute
-    components available within each core.
-
-    Example:
-      `%vec_unit = mlar.vec "SFPU" {shape = [32]}`
-  }];
-
-  let arguments = (ins StrAttr:$name, DenseI64ArrayAttr:$shape,
-                       OptionalAttr<I64Attr>:$throughput);
-  let results = (outs FunctionalUnitHandleType:$handle);
-
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "$func_ref attr-dict";
 }
 
 def CoreOp : MLAR_Op<"core", [AttrSizedOperandSegments]> {

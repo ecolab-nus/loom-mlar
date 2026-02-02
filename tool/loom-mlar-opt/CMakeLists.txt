@@ -18,6 +18,8 @@ target_link_libraries(loom-mlar-opt PRIVATE
   MLIRAffineDialect
   MLIRMemRefDialect
   MLIRArithDialect
+  MLIRLinalgDialect
+  MLIRTensorDialect
 )
 mlir_check_all_link_libraries(loom-mlar-opt)
 

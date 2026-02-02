@@ -9,7 +9,9 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -32,6 +34,8 @@ int main(int argc, char **argv) {
   context.loadDialect<mlir::memref::MemRefDialect>();
   context.loadDialect<mlir::affine::AffineDialect>();
   context.loadDialect<mlir::arith::ArithDialect>();
+  context.loadDialect<mlir::linalg::LinalgDialect>();
+  context.loadDialect<mlir::tensor::TensorDialect>();
   context.loadDialect<loom::mlar::MlarDialect>();
 
   const char *filename = nullptr;

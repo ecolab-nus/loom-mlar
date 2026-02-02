@@ -2,9 +2,31 @@
 // This example is adapted from the TensTorrent Wormhole architecture
 
 module {
-    // Functional units description
-    %mat_unit = mlar.mat "FPU" {shape = [32, 32, 32], throughput = 128}
-    %vec_unit = mlar.vec "SFPU" {shape = [32]}
+    // ============================================================
+    // Functional unit definitions using func.func with linalg/tensor/arith
+    // ============================================================
+    
+    // Matrix multiplication functional unit (32x32 tiles)
+    func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>, %c: tensor<32x32xf32>) -> tensor<32x32xf32> {
+        %result = linalg.matmul ins(%a, %b : tensor<32x32xf32>, tensor<32x32xf32>)
+                                outs(%c : tensor<32x32xf32>) -> tensor<32x32xf32>
+        return %result : tensor<32x32xf32>
+    }
+    
+    // Vector elementwise functional unit (32-wide vectors)
+    func.func @vec_add_32(%a: tensor<32xf32>, %b: tensor<32xf32>) -> tensor<32xf32> {
+        %result = linalg.add ins(%a, %b : tensor<32xf32>, tensor<32xf32>)
+                             outs(%a : tensor<32xf32>) -> tensor<32xf32>
+        return %result : tensor<32xf32>
+    }
+    
+    // ============================================================
+    // Hardware architecture description
+    // ============================================================
+    
+    // Functional units referencing the func.func definitions above
+    %mat_unit = mlar.fu @matmul_32x32 {throughput = 128 : i64}
+    %vec_unit = mlar.fu @vec_add_32
     
     // Scale-out description (spatial dimensions)
     %x = mlar.spatial_dim "x", 8
