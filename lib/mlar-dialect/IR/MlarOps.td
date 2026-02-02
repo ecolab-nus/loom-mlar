@@ -134,6 +134,56 @@ def FuOp : MLAR_Op<"fu"> {
   let assemblyFormat = "$func_ref attr-dict";
 }
 
+// mlar.lane : declare a streaming lane processor with dynamic shapes
+// The function takes dimension sizes as index parameters to compute latency dynamically.
+// Example:
+//   func.func @matmul_lane(%M: index, %N: index, %K: index,
+//                          %a: memref<?x?xf32>, %b: memref<?x?xf32>, %c: memref<?x?xf32>) -> index {
+//     linalg.matmul ins(%a, %b : ...) outs(%c : ...)
+//     %c64 = arith.constant 64 : index
+//     %mnk = arith.muli %M, %N : index
+//     %mnk2 = arith.muli %mnk, %K : index
+//     %latency = arith.divui %mnk2, %c64 : index  // M*N*K/64 cycles
+//     return %latency : index
+//   }
+//   %mat_lane = mlar.lane @matmul_lane
+def LaneOp : MLAR_Op<"lane"> {
+  let summary = "Declare a streaming lane processor with dynamic shapes";
+  let description = [{
+    `mlar.lane` declares a streaming lane processor that can handle variable-sized
+    data chunks. Unlike `mlar.fu` which has fixed dimensions, a lane processor
+    accepts dynamic shapes and computes latency based on those dimensions.
+
+    The function should:
+    - Accept dimension sizes as leading `index` parameters (e.g., M, N, K)
+    - Use memref with dynamic dimensions (e.g., `memref<?x?xf32>`)
+    - Use linalg dialect for the computation description
+    - Use arith dialect to compute the latency from the dimension parameters
+    - Return an `index` representing the latency (cycles)
+
+    Example (matrix lane that computes MxNxK matmul in M*N*K/64 cycles):
+      ```mlir
+      func.func @matmul_lane(%M: index, %N: index, %K: index,
+                             %a: memref<?x?xf32>, %b: memref<?x?xf32>, 
+                             %c: memref<?x?xf32>) -> index {
+        linalg.matmul ins(%a, %b : memref<?x?xf32>, memref<?x?xf32>)
+                      outs(%c : memref<?x?xf32>)
+        %c64 = arith.constant 64 : index
+        %mn = arith.muli %M, %N : index
+        %mnk = arith.muli %mn, %K : index
+        %latency = arith.divui %mnk, %c64 : index
+        return %latency : index
+      }
+      %mat_lane = mlar.lane @matmul_lane
+      ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$func_ref);
+  let results = (outs FunctionalUnitHandleType:$handle);
+
+  let assemblyFormat = "$func_ref attr-dict";
+}
+
 def CoreOp : MLAR_Op<"core", [AttrSizedOperandSegments]> {
   let summary = "Declare core resources with scaleout and scalein";
   let description = [{

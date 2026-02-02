@@ -3,7 +3,7 @@
 
 module {
     // ============================================================
-    // Functional unit definitions using func.func with linalg on memref
+    // Functional unit definitions (mlar.fu) - fixed shapes, synchronous
     // Each function returns an index representing the latency (cycles)
     // ============================================================
     
@@ -26,18 +26,53 @@ module {
     }
     
     // ============================================================
+    // Lane definitions (mlar.lane) - dynamic shapes, streaming
+    // Dimension sizes are passed as index parameters to compute latency
+    // ============================================================
+    
+    // Matrix lane processor for arbitrary MxNxK matmul
+    // Latency: M*N*K / 64 cycles (streaming at 64 MACs/cycle)
+    func.func @matmul_lane(%M: index, %N: index, %K: index,
+                           %a: memref<?x?xf32>, %b: memref<?x?xf32>, %c: memref<?x?xf32>) -> index {
+        linalg.matmul ins(%a, %b : memref<?x?xf32>, memref<?x?xf32>)
+                      outs(%c : memref<?x?xf32>)
+        // Compute latency: M * N * K / 64
+        %c64 = arith.constant 64 : index
+        %mn = arith.muli %M, %N : index
+        %mnk = arith.muli %mn, %K : index
+        %latency = arith.divui %mnk, %c64 : index
+        return %latency : index
+    }
+    
+    // Vector lane processor for arbitrary-length vectors
+    // Latency: N / 32 cycles (streaming at 32 elements/cycle)
+    func.func @vec_lane(%N: index,
+                        %a: memref<?xf32>, %b: memref<?xf32>, %c: memref<?xf32>) -> index {
+        linalg.add ins(%a, %b : memref<?xf32>, memref<?xf32>)
+                   outs(%c : memref<?xf32>)
+        // Compute latency: N / 32
+        %c32 = arith.constant 32 : index
+        %latency = arith.divui %N, %c32 : index
+        return %latency : index
+    }
+    
+    // ============================================================
     // Hardware architecture description
     // ============================================================
     
-    // Functional units referencing the func.func definitions above
+    // Fixed functional units (synchronous, small tiles)
     %mat_unit = mlar.fu @matmul_32x32
     %vec_unit = mlar.fu @vec_add_32
+    
+    // Streaming lane processors (dynamic shapes)
+    %mat_lane = mlar.lane @matmul_lane
+    %vec_lane = mlar.lane @vec_lane
     
     // Scale-out description (spatial dimensions)
     %x = mlar.spatial_dim "x", 8
     %y = mlar.spatial_dim "y", 8
     
-    // Core declaration with scaleout and scalein
+    // Core declaration with scaleout and scalein (using fixed FUs)
     %cores = mlar.core "core" {scaleout=(%x, %y) , scalein=(%mat_unit, %vec_unit, [8,1])}
     
     // L1 memory per core

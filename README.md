@@ -4,19 +4,13 @@ Loom Multi-Level Architecture Representation (MLAR) - an MLIR dialect for declar
 
 ## Overview
 
-The `mlar` dialect models hardware architecture descriptions including spatial dimensions, compute cores, memory resources, interconnects, and functional units. It provides a declarative way to describe the topology and capabilities of hardware accelerators.
+The `mlar` dialect models hardware architecture descriptions including spatial dimensions, compute cores, memory resources, interconnects, and functional units.
 
-Functional units are defined via `func.func` using linalg on memref. Each function returns an `index` representing the latency (cycles) to complete the operation.
+Two types of compute units are supported:
+- **`mlar.fu`** - Synchronous functional units with fixed shapes (latency is constant)
+- **`mlar.lane`** - Streaming lane processors with dynamic shapes (latency computed from dimensions)
 
 ## Building
-
-### Prerequisites
-
-- CMake ≥ 3.20
-- LLVM/MLIR (built with MLIR enabled)
-- C++17 compiler
-
-### Build
 
 ```bash
 mkdir build && cd build
@@ -24,53 +18,45 @@ cmake .. -DMLIR_DIR=/path/to/llvm-mlir/lib/cmake/mlir
 make -j$(nproc)
 ```
 
-## Usage
-
-Parse and print an MLAR file:
-
-```bash
-./build/bin/loom-mlar-opt test/mlar-dialect/2d_mesh.mlir
-```
-
 ## Dialect Operations
 
 | Operation | Description |
 |-----------|-------------|
 | `mlar.spatial_dim` | Declare a spatial dimension with name and size |
-| `mlar.fu` | Declare a synchronous functional unit by referencing a `func.func` |
+| `mlar.fu` | Synchronous functional unit with fixed shapes |
+| `mlar.lane` | Streaming lane processor with dynamic shapes |
 | `mlar.core` | Declare compute cores with scaleout/scalein |
 | `mlar.memory` | Declare memory resources |
 | `mlar.mux` | Declare compute-to-memory multiplexing |
 | `mlar.interconnects` | Declare interconnects with affine topology |
 
-## Example
+## Compute Unit Examples
 
+### Synchronous FU (fixed shapes)
 ```mlir
-module {
-    // Define functional unit: uses linalg on memref, returns latency as index
-    func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, 
-                            %c: memref<32x32xf32>) -> index {
-        linalg.matmul ins(%a, %b : memref<32x32xf32>, memref<32x32xf32>)
-                      outs(%c : memref<32x32xf32>)
-        %latency = arith.constant 8 : index  // 8 cycles
-        return %latency : index
-    }
-    
-    // Reference function in FU declaration (synchronous, latency defined in func)
-    %mat_unit = mlar.fu @matmul_32x32
-    
-    // Spatial dimensions
-    %x = mlar.spatial_dim "x", 8
-    %y = mlar.spatial_dim "y", 8
-    
-    // Core and memory
-    %cores = mlar.core "core" {scaleout=(%x, %y), scalein=(%mat_unit, [8])}
-    %L1 = mlar.memory "L1" {scaleout=(%x, %y), size = 1499136, bandwidth = 15}
-    
-    // Connectivity
-    %noc = mlar.interconnects "NoC" %L1 : !mlar.memory, %L1 : !mlar.memory,
-           {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>} : !mlar.interconnect
+func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, 
+                        %c: memref<32x32xf32>) -> index {
+    linalg.matmul ins(%a, %b) outs(%c)
+    %latency = arith.constant 8 : index
+    return %latency : index
 }
+%mat_unit = mlar.fu @matmul_32x32
+```
+
+### Streaming Lane (dynamic shapes)
+```mlir
+func.func @matmul_lane(%M: index, %N: index, %K: index,
+                       %a: memref<?x?xf32>, %b: memref<?x?xf32>, 
+                       %c: memref<?x?xf32>) -> index {
+    linalg.matmul ins(%a, %b) outs(%c)
+    // Latency = M*N*K / 64 (streaming at 64 MACs/cycle)
+    %c64 = arith.constant 64 : index
+    %mn = arith.muli %M, %N : index
+    %mnk = arith.muli %mn, %K : index
+    %latency = arith.divui %mnk, %c64 : index
+    return %latency : index
+}
+%mat_lane = mlar.lane @matmul_lane
 ```
 
 ## Types
@@ -79,7 +65,7 @@ module {
 |------|-------------|
 | `!mlar.compute` | Handle to compute resources |
 | `!mlar.memory` | Handle to memory resources |
-| `!mlar.functional_unit` | Handle to functional units |
+| `!mlar.functional_unit` | Handle to FUs or lanes |
 | `!mlar.mux` | Handle to mux connections |
 | `!mlar.interconnect` | Handle to interconnect topology |
 
@@ -88,10 +74,6 @@ module {
 ```
 loom-mlar/
 ├── lib/mlar-dialect/IR/     # Dialect definitions
-│   ├── MlarDialect.td       # Dialect TableGen
-│   ├── MlarTypes.td         # Type definitions
-│   ├── MlarOps.td           # Operation definitions
-│   └── MlarDialect.cpp      # Implementation
 ├── tool/loom-mlar-opt/      # Parser/printer tool
 └── test/mlar-dialect/       # Test files
 ```
