@@ -94,33 +94,41 @@ def InterconnectsOp : MLAR_Op<"interconnects", [Symbol]> {
   }];
 }
 
-// mlar.fu : declare a functional unit by referencing a func.func definition
+// mlar.fu : declare a synchronous functional unit by referencing a func.func definition
+// The function uses linalg on memref and returns an index representing the latency.
 // Example:
-//   func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>) -> tensor<32x32xf32> { ... }
-//   %mat_unit = mlar.fu @matmul_32x32 {throughput = 128}
+//   func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, %c: memref<32x32xf32>) -> index {
+//     linalg.matmul ins(%a, %b : ...) outs(%c : ...)
+//     %latency = arith.constant 8 : index
+//     return %latency : index
+//   }
+//   %mat_unit = mlar.fu @matmul_32x32
 def FuOp : MLAR_Op<"fu"> {
-  let summary = "Declare a functional unit by referencing a function definition";
+  let summary = "Declare a synchronous functional unit by referencing a function definition";
   let description = [{
-    `mlar.fu` declares a functional unit by referencing a `func.func` that
-    describes what the unit does. The function should use linalg, tensor,
-    and arith dialects to describe the computation. The shape of the
-    functional unit is inferred from the function signature.
+    `mlar.fu` declares a synchronous functional unit by referencing a `func.func`
+    that describes what the unit does. The functional unit is "synchronous" meaning
+    one must wait for its completion before starting the next operation.
 
-    The optional `throughput` attribute specifies how many operations per
-    cycle the functional unit can perform.
+    The function should:
+    - Use linalg dialect on memref types (in-place semantics)
+    - Use arith dialect for any arithmetic operations
+    - Return an `index` representing the latency (cycles) to complete the operation
 
     Example:
       ```mlir
-      func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>) -> tensor<32x32xf32> {
-        %c = linalg.matmul ins(%a, %b : ...) outs(...) -> tensor<32x32xf32>
-        return %c : tensor<32x32xf32>
+      func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, 
+                              %c: memref<32x32xf32>) -> index {
+        linalg.matmul ins(%a, %b : memref<32x32xf32>, memref<32x32xf32>)
+                      outs(%c : memref<32x32xf32>)
+        %latency = arith.constant 8 : index
+        return %latency : index
       }
-      %mat_unit = mlar.fu @matmul_32x32 {throughput = 128}
+      %mat_unit = mlar.fu @matmul_32x32
       ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$func_ref,
-                       OptionalAttr<I64Attr>:$throughput);
+  let arguments = (ins FlatSymbolRefAttr:$func_ref);
   let results = (outs FunctionalUnitHandleType:$handle);
 
   let assemblyFormat = "$func_ref attr-dict";

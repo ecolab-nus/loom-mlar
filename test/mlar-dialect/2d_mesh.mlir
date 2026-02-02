@@ -3,21 +3,26 @@
 
 module {
     // ============================================================
-    // Functional unit definitions using func.func with linalg/tensor/arith
+    // Functional unit definitions using func.func with linalg on memref
+    // Each function returns an index representing the latency (cycles)
     // ============================================================
     
     // Matrix multiplication functional unit (32x32 tiles)
-    func.func @matmul_32x32(%a: tensor<32x32xf32>, %b: tensor<32x32xf32>, %c: tensor<32x32xf32>) -> tensor<32x32xf32> {
-        %result = linalg.matmul ins(%a, %b : tensor<32x32xf32>, tensor<32x32xf32>)
-                                outs(%c : tensor<32x32xf32>) -> tensor<32x32xf32>
-        return %result : tensor<32x32xf32>
+    // Latency: 8 cycles for a 32x32 matmul
+    func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, %c: memref<32x32xf32>) -> index {
+        linalg.matmul ins(%a, %b : memref<32x32xf32>, memref<32x32xf32>)
+                      outs(%c : memref<32x32xf32>)
+        %latency = arith.constant 8 : index
+        return %latency : index
     }
     
-    // Vector elementwise functional unit (32-wide vectors)
-    func.func @vec_add_32(%a: tensor<32xf32>, %b: tensor<32xf32>) -> tensor<32xf32> {
-        %result = linalg.add ins(%a, %b : tensor<32xf32>, tensor<32xf32>)
-                             outs(%a : tensor<32xf32>) -> tensor<32xf32>
-        return %result : tensor<32xf32>
+    // Vector elementwise add functional unit (32-wide vectors)
+    // Latency: 1 cycle for a 32-element add
+    func.func @vec_add_32(%a: memref<32xf32>, %b: memref<32xf32>, %c: memref<32xf32>) -> index {
+        linalg.add ins(%a, %b : memref<32xf32>, memref<32xf32>)
+                   outs(%c : memref<32xf32>)
+        %latency = arith.constant 1 : index
+        return %latency : index
     }
     
     // ============================================================
@@ -25,7 +30,7 @@ module {
     // ============================================================
     
     // Functional units referencing the func.func definitions above
-    %mat_unit = mlar.fu @matmul_32x32 {throughput = 128 : i64}
+    %mat_unit = mlar.fu @matmul_32x32
     %vec_unit = mlar.fu @vec_add_32
     
     // Scale-out description (spatial dimensions)
