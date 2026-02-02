@@ -28,14 +28,25 @@ module {
     // ============================================================
     // Lane definitions (mlar.lane) - dynamic shapes, streaming
     // Dimension sizes are passed as index parameters to compute latency
+    // cf.assert is used to validate preconditions for the performance model
     // ============================================================
     
-    // Matrix lane processor for arbitrary MxNxK matmul
+    // Matrix lane processor for large MxNxK matmul
+    // Performance model valid only when M >= 256 and N >= 256
     // Latency: M*N*K / 64 cycles (streaming at 64 MACs/cycle)
     func.func @matmul_lane(%M: index, %N: index, %K: index,
                            %a: memref<?x?xf32>, %b: memref<?x?xf32>, %c: memref<?x?xf32>) -> index {
+        // Preconditions: performance model valid for large matrices
+        %c256 = arith.constant 256 : index
+        %m_ok = arith.cmpi sge, %M, %c256 : index
+        cf.assert %m_ok, "matmul_lane requires M >= 256"
+        %n_ok = arith.cmpi sge, %N, %c256 : index
+        cf.assert %n_ok, "matmul_lane requires N >= 256"
+        
+        // Computation description
         linalg.matmul ins(%a, %b : memref<?x?xf32>, memref<?x?xf32>)
                       outs(%c : memref<?x?xf32>)
+        
         // Compute latency: M * N * K / 64
         %c64 = arith.constant 64 : index
         %mn = arith.muli %M, %N : index
@@ -45,11 +56,19 @@ module {
     }
     
     // Vector lane processor for arbitrary-length vectors
+    // Performance model valid only when N >= 1024
     // Latency: N / 32 cycles (streaming at 32 elements/cycle)
     func.func @vec_lane(%N: index,
                         %a: memref<?xf32>, %b: memref<?xf32>, %c: memref<?xf32>) -> index {
+        // Precondition: performance model valid for long vectors
+        %c1024 = arith.constant 1024 : index
+        %n_ok = arith.cmpi sge, %N, %c1024 : index
+        cf.assert %n_ok, "vec_lane requires N >= 1024"
+        
+        // Computation description
         linalg.add ins(%a, %b : memref<?xf32>, memref<?xf32>)
                    outs(%c : memref<?xf32>)
+        
         // Compute latency: N / 32
         %c32 = arith.constant 32 : index
         %latency = arith.divui %N, %c32 : index
@@ -64,7 +83,7 @@ module {
     %mat_unit = mlar.fu @matmul_32x32
     %vec_unit = mlar.fu @vec_add_32
     
-    // Streaming lane processors (dynamic shapes)
+    // Streaming lane processors (dynamic shapes, with preconditions)
     %mat_lane = mlar.lane @matmul_lane
     %vec_lane = mlar.lane @vec_lane
     

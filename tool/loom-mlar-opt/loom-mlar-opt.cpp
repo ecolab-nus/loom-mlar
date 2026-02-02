@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -34,6 +35,7 @@ int main(int argc, char **argv) {
   context.loadDialect<mlir::memref::MemRefDialect>();
   context.loadDialect<mlir::affine::AffineDialect>();
   context.loadDialect<mlir::arith::ArithDialect>();
+  context.loadDialect<mlir::cf::ControlFlowDialect>();
   context.loadDialect<mlir::linalg::LinalgDialect>();
   context.loadDialect<mlir::tensor::TensorDialect>();
   context.loadDialect<loom::mlar::MlarDialect>();
