@@ -47,52 +47,46 @@ def DimOp : MLAR_Op<"dim", [Symbol]> {
   }];
 }
 
-// mlar.interconnects : declare chain interconnects between handles using an affine
-// expression over declared spatial dimensions. This produces an opaque handle
-// representing the chain configuration.
-// Example (matches current custom assembly):
-//   %cores_to_cores = mlar.interconnects "horizontal_links" %cores : !mlar.compute, %cores: !mlar.compute, %x, %y
-//       {map = affine_map<(d0, d1) -> (d0 + 1, d1)>} : !mlar.interconnect
-//   %mems_to_mems = mlar.interconnects "ring" %memories : !mlar.memory, %memories: !mlar.memory, %x
-//       {map = affine_map<(d0) -> (d0 + 1)>} : !mlar.interconnect
-def InterconnectsOp : MLAR_Op<"interconnects", [Symbol]> {
-  let summary = "Declare interconnects via an affine expression";
+// mlar.interconnects : declare interconnects by referencing a function that describes data movement
+// The function takes memrefs and returns latency. Repeated over spatial dimensions.
+// Example:
+//   %noc_h = mlar.interconnects @horizontal_spec <%x, %y> {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>}
+def InterconnectsOp : MLAR_Op<"interconnects"> {
+  let summary = "Declare interconnects via a function reference describing data movement";
   let description = [{
-    `mlar.interconnects` declares chain-like interconnects among the spatial
-    dimensions using an affine expression over SSA ids (typically produced by
-    `mlar.spatial_dim`). The operation requires explicit compute or memory
-    handles describing the entities that participate in the interconnect. The
-    affine expression is provided via the `map` attribute (same textual form as
-    other affine maps) alongside the SSA operands used to materialize the
-    expression.
-
-    The operation is a symbol and can be referenced via SymbolRefAttr.
-    The `sym_name` attribute is used as both the display name and the symbol name.
-
-    Examples (compute-to-compute and memory-to-memory):
-      `%cores_to_cores = mlar.interconnects "horizontal_links" %cores : !mlar.compute, %cores: !mlar.compute, %x, %y
-          {map = affine_map<(d0, d1) -> (d0 + 1, d1)>} : !mlar.interconnect`
-      `%mems_to_mems = mlar.interconnects "ring" %memories : !mlar.memory, %memories: !mlar.memory, %x
-          {map = affine_map<(d0) -> (d0 + 1)>} : !mlar.interconnect`
+    `mlar.interconnects` declares data movement interconnects by referencing a
+    function that describes how data moves between memrefs. The interconnect is
+    repeated over spatial dimensions, similar to `mlar.lane`.
+    
+    The referenced function should:
+    - Take source memref(s) as input (e.g., `memref<65536x16xf32>`)
+    - Take destination memref(s) as input (e.g., `memref<65536x16xf32>`)
+    - Return an `index` representing the transfer latency
+    
+    The `map` attribute specifies the connectivity pattern using an affine map
+    over the spatial dimensions.
+    
+    Example:
+      ```mlir
+      func.func @horizontal_spec(%src: memref<65536x16xf32>, 
+                                 %dst: memref<65536x16xf32>) -> index {
+        // Data movement specification
+        %latency = arith.constant 10 : index
+        return %latency : index
+      }
+      %x = mlar.dim "x", 8
+      %y = mlar.dim "y", 8
+      %noc_h = mlar.interconnects @horizontal_spec <%x, %y> 
+                 {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>}
+      ```
   }];
 
-  let arguments = (ins StrAttr:$sym_name,
-                       HandleLike:$source,
-                       HandleLike:$target,
-                       Variadic<Index>:$indices,
-                       AffineMapAttr:$map,
-                       OptionalAttr<I64Attr>:$bandwidth,
-                       OptionalAttr<ArrayAttr>:$spatial_dims);
+  let arguments = (ins FlatSymbolRefAttr:$func_ref,
+                       Variadic<Index>:$dims,
+                       AffineMapAttr:$map);
   let results = (outs InterconnectHandleType:$handle);
 
   let hasCustomAssemblyFormat = 1;
-  
-  // Provide a getter for 'label' to maintain backward compatibility
-  let extraClassDeclaration = [{
-    // Alias for sym_name to maintain backward compatibility
-    ::mlir::StringAttr getLabelAttr() { return getSymNameAttr(); }
-    ::llvm::StringRef getLabel() { return getSymName(); }
-  }];
 }
 
 // mlar.fu : declare a synchronous functional unit by referencing a func.func definition

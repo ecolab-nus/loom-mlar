@@ -93,15 +93,15 @@ module {
     %L1 = mlar.memory "L1" 65536 16 <%x, %y> : memref<8x8x65536x16xf32>
     
     // Horizontal NoC links (ring in x dimension)
-    %noc_h = mlar.interconnects "horizontal_links" %L1, %L1, {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>, bandwidth = 128, spatial_dims = [@y]}
+    %noc_h = mlar.interconnects @horizontal_spec <%x, %y> {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>}
     
     // Vertical NoC links (ring in y dimension)
-    %noc_v = mlar.interconnects "vertical_links" %L1, %L1, {map = affine_map<(d0, d1) -> (d0, (d1 + 1) mod 8)>, bandwidth = 128, spatial_dims = [@x]}
+    %noc_v = mlar.interconnects @vertical_spec <%x, %y> {map = affine_map<(d0, d1) -> (d0, (d1 + 1) mod 8)>}
     
     // DRAM resources
     %dram_idx = mlar.dim "d", 4
     %drams = mlar.memory "DRAM" 34359738368 288 <%dram_idx> : memref<4x34359738368x288xf32>
     
     // L1 to DRAM interconnect
-    %to_dram = mlar.interconnects "NoC" %L1, %drams, {map = affine_map<(d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))>}
+    %to_dram = mlar.interconnects @dram_spec <%x, %y> {map = affine_map<(d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))>}
 }

@@ -256,182 +256,54 @@ void MemoryOp::print(OpAsmPrinter &p) {
 // InterconnectsOp Custom Assembly Format
 //===----------------------------------------------------------------------===//
 
-/// Parse InterconnectsOp with custom syntax:
-///   mlar.interconnects "horizontal_links" %memories, %memories, {map = ..., bandwidth = 128}
-///   or: mlar.interconnects %memories: !mlar.memory, %drams : !mlar.memory, {map = ...}
-/// 
-/// This parser uses a flexible function-object based approach to handle various
-/// format combinations (with/without sym_name, type annotations, indices, etc.)
+/// Parse InterconnectsOp with new syntax:
+///   mlar.interconnects @func_ref <%x, %y> {map = affine_map<...>}
 ParseResult InterconnectsOp::parse(OpAsmParser &parser, OperationState &result) {
   Builder &builder = parser.getBuilder();
   MLIRContext *context = builder.getContext();
 
-  // Parse symbol name (required for Symbol trait, but allow optional for backward compatibility)
-  StringAttr symName;
-  std::string symNameStr;
-  if (succeeded(parser.parseOptionalString(&symNameStr))) {
-    symName = builder.getStringAttr(symNameStr);
-  } else {
-    // Generate a default name if not provided (for backward compatibility)
-    // Use a simple default name - if there are conflicts, MLIR's Symbol system will report an error
-    // In practice, users should provide explicit names for interconnects
-    symName = builder.getStringAttr("interconnect");
-  }
-  result.addAttribute("sym_name", symName);
-
-  // Helper function to parse an operand with optional type annotation
-  // Returns the operand and whether a type was provided
-  auto parseOperandWithType = [&](OpAsmParser::UnresolvedOperand &operand,
-                                  Type &type, bool &hasType) -> ParseResult {
-    if (parser.parseOperand(operand))
-      return failure();
-    
-    hasType = false;
-    if (succeeded(parser.parseOptionalColon())) {
-      if (parser.parseType(type).failed())
-        return failure();
-      hasType = true;
-    }
-    return success();
-  };
-
-  // Helper function to validate that a type is a valid mlar handle type
-  auto isValidHandleType = [](Type type) -> bool {
-    return llvm::isa<MemoryHandleType>(type);
-  };
-
-  // Parse source operand with optional type
-  OpAsmParser::UnresolvedOperand source;
-  Type sourceType;
-  bool hasSourceType = false;
-  if (parseOperandWithType(source, sourceType, hasSourceType).failed())
+  // Parse function reference (@func_name)
+  FlatSymbolRefAttr funcRef;
+  if (parser.parseAttribute(funcRef, "func_ref", result.attributes))
     return failure();
 
-  // Validate source type if provided
-  if (hasSourceType && !isValidHandleType(sourceType)) {
-    return parser.emitError(parser.getNameLoc(),
-                           "source type must be a mlar handle type (!mlar.compute, "
-                           "!mlar.memory, etc.)");
-  }
-
-  // Parse comma separator
-  if (parser.parseComma())
+  // Parse spatial dimensions in angle brackets: <%x, %y>
+  SmallVector<OpAsmParser::UnresolvedOperand> dims;
+  if (parser.parseLess() || 
+      parser.parseOperandList(dims) || 
+      parser.parseGreater())
     return failure();
 
-  // Parse target operand with optional type
-  OpAsmParser::UnresolvedOperand target;
-  Type targetType;
-  bool hasTargetType = false;
-  if (parseOperandWithType(target, targetType, hasTargetType).failed())
-    return failure();
-
-  // Validate target type if provided
-  if (hasTargetType && !isValidHandleType(targetType)) {
-    return parser.emitError(parser.getNameLoc(),
-                           "target type must be a mlar handle type (!mlar.compute, "
-                           "!mlar.memory, etc.)");
-  }
-
-  // Parse optional indices (comma-separated list after target)
-  SmallVector<OpAsmParser::UnresolvedOperand> indices;
-  if (parser.parseOptionalComma().succeeded()) {
-    // Try to parse indices - if next token is '{', parseOperandList will fail
-    // gracefully and we'll continue to parse attributes
-    (void)parser.parseOperandList(indices);
-  }
-
-  // Parse attributes dictionary (map, bandwidth, etc.)
+  // Parse attributes dictionary (must contain 'map')
   if (parser.parseOptionalAttrDict(result.attributes).failed())
     return failure();
 
-  // Parse optional result type annotation
-  Type resultType;
-  if (succeeded(parser.parseOptionalColon())) {
-    if (parser.parseType(resultType).failed())
-      return failure();
-  } else {
-    // No result type provided, use default
-    resultType = InterconnectHandleType::get(context);
-  }
-
-  // Resolve operand types - infer from operands if not explicitly provided
-  // Build type list and resolve operands
-  // For typed operands, add a type; for untyped ones, this will cause MLI to infer
-  // First build all types
-  SmallVector<Type> allTypes;
-  if (hasSourceType) {
-    allTypes.push_back(sourceType);
-  }
-  if (hasTargetType) {
-    allTypes.push_back(targetType);
-  }
-  
-  // Resolve source and target together if both have types, or individually if only one does
- if (hasSourceType && hasTargetType) {
-    // Both have types
-    SmallVector<Type> types = {sourceType, targetType};
-    SmallVector<OpAsmParser::UnresolvedOperand> operands = {source, target};
-    if (parser.resolveOperands(operands, types, parser.getNameLoc(), result.operands))
-      return failure();
-  } else if (hasSourceType) {
-    // Only source has type
-    if (parser.resolveOperands({source}, {sourceType}, parser.getNameLoc(), result.operands))
-      return failure();
-    if (parser.resolveOperands({target}, {}, parser.getNameLoc(), result.operands))
-      return failure();
-  } else if (hasTargetType) {
-    // Only target has type
-    if (parser.resolveOperands({source}, {}, parser.getNameLoc(), result.operands))
-      return failure();
-    if (parser.resolveOperands({target}, {targetType}, parser.getNameLoc(), result.operands))
-      return failure();
-  } else {
-    // Neither has type - infer from SSA defs
-    if (parser.resolveOperands({source, target}, {}, parser.getNameLoc(), result.operands))
-      return failure();
-  }
-
-  // Resolve indices (all should be index type)
-  if (!indices.empty()) {
-    SmallVector<Type> indexTypes(indices.size(), builder.getIndexType());
-    if (parser.resolveOperands(indices, indexTypes, parser.getNameLoc(), result.operands))
-      return failure();
-  }
+  // Resolve dimension operands (all should be index type)
+  SmallVector<Type> dimTypes(dims.size(), builder.getIndexType());
+  if (parser.resolveOperands(dims, dimTypes, parser.getNameLoc(), result.operands))
+    return failure();
 
   // Set result type
-  result.addTypes(resultType);
+  result.addTypes(InterconnectHandleType::get(context));
 
   return success();
 }
 
-/// Print InterconnectsOp with custom syntax
+/// Print InterconnectsOp with new syntax:
+///   %result = mlar.interconnects @func_ref <%x, %y> {map = affine_map<...>}
 void InterconnectsOp::print(OpAsmPrinter &p) {
   p << " ";
   
-  // Print symbol name
-  p << "\"";
-  p << getSymName();
-  p << "\" ";
+  // Print function reference
+  p.printAttributeWithoutType(getFuncRefAttr());
   
-  p.printOperand(getSource());
-  p << " : ";
-  p.printType(getSource().getType());
-  p << ", ";
-  p.printOperand(getTarget());
-  p << " : ";
-  p.printType(getTarget().getType());
+  // Print spatial dimensions in angle brackets
+  p << " <";
+  p.printOperands(getDims());
+  p << ">";
   
-  if (!getIndices().empty()) {
-    p << ", ";
-    p.printOperands(getIndices());
-  }
-  
+  // Print attributes (map, etc.)
   p << " ";
-  // Elide sym_name from attribute dict since it's printed separately
-  // spatial_dims will be printed in the attribute dict automatically
-  SmallVector<StringRef> elidedAttrs = {"sym_name"};
-  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
-  
-  p << " : ";
-  p.printType(getHandle().getType());
+  p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"func_ref"});
 }
+
