@@ -89,27 +89,19 @@ module {
     %mat_lane = mlar.lane @matmul_lane <%x, %y>
     %vec_lane = mlar.lane @vec_lane <%x, %y>
     
-    // Scale-out description (now using dims on fu/lane ops above)
-    
-    // Core declaration with scaleout and scalein (using fixed FUs)
-    %cores = mlar.core "core" {scaleout=(%x, %y) , scalein=(%mat_unit, %vec_unit, [8,1])}
-    
     // L1 memory per core
-    %L1 = mlar.memory "L1" {scaleout=(%x, %y) , size = 1499136, bandwidth = 15}
-    
-    // Core to memory mapping (1:1)
-    %core_to_mem = mlar.mux %cores, %L1, {map = affine_map<(d0, d1) -> (d0, d1)>}
+    %L1 = mlar.memory "L1" 65536 16 <%x, %y> : memref<8x8x65536x16xf32>
     
     // Horizontal NoC links (ring in x dimension)
-    %noc_h = mlar.interconnects "horizontal_links" %L1 : !mlar.memory, %L1 : !mlar.memory, {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>, bandwidth = 128, spatial_dims = [@y]} : !mlar.interconnect
+    %noc_h = mlar.interconnects "horizontal_links" %L1, %L1, {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>, bandwidth = 128, spatial_dims = [@y]}
     
     // Vertical NoC links (ring in y dimension)
-    %noc_v = mlar.interconnects "vertical_links" %L1 : !mlar.memory, %L1 : !mlar.memory, {map = affine_map<(d0, d1) -> (d0, (d1 + 1) mod 8)>, bandwidth = 128, spatial_dims = [@x]} : !mlar.interconnect
+    %noc_v = mlar.interconnects "vertical_links" %L1, %L1, {map = affine_map<(d0, d1) -> (d0, (d1 + 1) mod 8)>, bandwidth = 128, spatial_dims = [@x]}
     
     // DRAM resources
     %dram_idx = mlar.dim "d", 4
-    %drams = mlar.memory "DRAM" {scaleout=(%dram_idx) , size = 34359738368, bandwidth = 288}
+    %drams = mlar.memory "DRAM" 34359738368 288 <%dram_idx> : memref<4x34359738368x288xf32>
     
     // L1 to DRAM interconnect
-    %to_dram = mlar.interconnects "NoC" %L1: !mlar.memory, %drams : !mlar.memory, {map = affine_map<(d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))>}
+    %to_dram = mlar.interconnects "NoC" %L1, %drams, {map = affine_map<(d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))>}
 }

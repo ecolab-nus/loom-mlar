@@ -19,18 +19,6 @@ def InterconnectHandleType : TypeDef<Mlar_Dialect, "InterconnectHandle"> {
   }];
 }
 
-def ComputeHandleType : TypeDef<Mlar_Dialect, "ComputeHandle"> {
-  let mnemonic = "compute";
-  let summary = "Opaque compute tile handle type";
-  let description = [{
-    An opaque handle representing a set of compute tiles declared by `mlar.core`.
-    The handle can be passed to other operations, such as `mlar.mux`, to describe
-    relationships involving compute resources.
-
-    Syntax: `!mlar.compute`
-  }];
-}
-
 def MemoryHandleType : TypeDef<Mlar_Dialect, "MemoryHandle"> {
   let mnemonic = "memory";
   let summary = "Opaque memory tile handle type";
@@ -40,19 +28,6 @@ def MemoryHandleType : TypeDef<Mlar_Dialect, "MemoryHandle"> {
     spatial fabric.
 
     Syntax: `!mlar.memory`
-  }];
-}
-
-def MuxHandleType : TypeDef<Mlar_Dialect, "MuxHandle"> {
-  let mnemonic = "mux";
-  let summary = "Opaque mux connectivity handle type";
-  let description = [{
-    An opaque handle representing a multiplexing relationship between compute
-    and memory resources declared via `mlar.mux`. The handle can be referenced by
-    downstream passes to reason about how compute tiles share memories or other
-    control endpoints.
-
-    Syntax: `!mlar.mux`
   }];
 }
 

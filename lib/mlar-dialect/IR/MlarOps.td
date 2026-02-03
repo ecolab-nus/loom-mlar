@@ -12,9 +12,10 @@ include "MlarTypes.td"
 class MLAR_Op<string mnemonic, list<Trait> traits = []>
   : Op<Mlar_Dialect, mnemonic, traits> {}
 
-def HandleLike : TypeConstraint<CPred<
-  "::llvm::isa<::loom::mlar::ComputeHandleType>($_self) || " #
-  "::llvm::isa<::loom::mlar::MemoryHandleType>($_self)">> ;
+def HandleLike : TypeConstraint<Or<[
+  CPred<"::llvm::isa<::loom::mlar::MemoryHandleType>($_self)">,
+  CPred<"::llvm::isa<::mlir::MemRefType>($_self)">
+]>>;
 
 // mlar.dim : declare a dimension with a name and a given size
 // Example:
@@ -204,67 +205,39 @@ def LaneOp : MLAR_Op<"lane"> {
   let hasCustomAssemblyFormat = 1;
 }
 
-def CoreOp : MLAR_Op<"core", [AttrSizedOperandSegments]> {
-  let summary = "Declare core resources with scaleout and scalein";
-  let description = [{
-    `mlar.core` declares core tiles derived from previously defined spatial
-    dimensions. A core tile is a group of compute components. The operation
-    specifies scaleout dimensions (spatial dimensions that tile the cores) and
-    scalein components (functional units within each core and their counts).
-
-    The result is an opaque `!mlar.compute` handle that can be consumed by other
-    operations such as `mlar.mux` when describing connectivity.
-
-    Example:
-      `%cores = mlar.core "core" {scaleout=(%x, %y), scalein=(mat_unit, vec_unit, [8,1])}`
-      
-    The `scalein` syntax combines functional unit handles and their counts:
-    - Functional unit handles (e.g., `mat_unit, vec_unit`) are parsed as operands
-    - Count array (e.g., `[8,1]`) is parsed as an attribute, where each count
-      corresponds to the unit at the same position in the handles list
-    This operation uses a custom parser/printer to handle the mixed syntax.
-  }];
-
-  // Syntax: scalein=(mat_unit, vec_unit, [8,1])
-  // Internally stored as two separate parameters:
-  // - scalein_units: variadic list of functional unit handles (mat_unit, vec_unit)
-  // - scalein_counts: optional array of counts corresponding to each unit ([8,1])
-  let arguments = (ins StrAttr:$label,
-                       Variadic<Index>:$scaleout,
-                       Variadic<FunctionalUnitHandleType>:$scalein_units,
-                       OptionalAttr<DenseI64ArrayAttr>:$scalein_counts);
-  let results = (outs ComputeHandleType:$handle);
-
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
-}
-
-// mlar.memory : declare memory resources derived from spatial dimensions.
-// Example (matches current custom assembly):
-//   %memories = mlar.memory "cluster_mem", %x
-//       {map = affine_map<(d0) -> (d0)>}
+// mlar.memory : declare memory resources with spatial dimension indexing
+// Example:
+//   %x = mlar.dim "x", 8
+//   %y = mlar.dim "y", 8
+//   %L1 = mlar.memory "L1" 1499136 15 <%x, %y>
+// Returns: memref<8x8x1499136x15xf32, #mlar.memory_space<@x, @y>>
 def MemoryOp : MLAR_Op<"memory", [Symbol]> {
-  let summary = "Declare memory resources via an affine map";
+  let summary = "Declare memory resources with spatial dimension indexing";
   let description = [{
-    `mlar.memory` declares memory tiles associated with spatial dimensions and
-    records their layout via an affine map. In addition, each memory tile
-    carries a required `size` (in bytes) and `bandwidth` (in bits, i.e. port
-    width). The resulting `!mlar.memory` handle is an opaque reference to those
-    resources.
-
-    The operation is a symbol and can be referenced via SymbolRefAttr.
-    The `sym_name` attribute is used as both the display name and the symbol name.
-
+    `mlar.memory` declares memory resources indexed by spatial dimensions.
+    The syntax is: `mlar.memory "name" nb_blocks block_size <dims...>`
+    
+    The operation returns a memref with shape:
+    `memref<d0_size x d1_size x ... x nb_blocks x block_size x f32, memory_space>`
+    
+    Where d0_size, d1_size, etc. are the sizes of the spatial dimensions,
+    and the memory space attribute encodes the dimension symbols.
+    
     Example:
-      `%memories = mlar.memory "cluster_mem", %x
-          {map = affine_map<(d0) -> (d0)>, size = 65536 : i64, bandwidth = 64 : i64}`
+      ```mlir
+      %x = mlar.dim "x", 8
+      %y = mlar.dim "y", 8
+      %L1 = mlar.memory "L1" 1499136 15 <%x, %y>
+      ```
+    
+    This creates a memref<8x8x1499136x15xf32, #mlar.memory_space<@x, @y>>
   }];
 
   let arguments = (ins StrAttr:$sym_name,
-                       Variadic<Index>:$scaleout,
-                       I64Attr:$size,
-                       I64Attr:$bandwidth);
-  let results = (outs MemoryHandleType:$handle);
+                       I64Attr:$nb_blocks,
+                       I64Attr:$port_width,
+                       Variadic<Index>:$dims);
+  let results = (outs AnyMemRef:$memref);
 
   let hasCustomAssemblyFormat = 1;
 
@@ -274,33 +247,4 @@ def MemoryOp : MLAR_Op<"memory", [Symbol]> {
     ::mlir::StringAttr getLabelAttr() { return getSymNameAttr(); }
     ::llvm::StringRef getLabel() { return getSymName(); }
   }];
-}
-
-// mlar.mux : declare multiplexing between computes and memories (or other
-// resources) using an affine expression over compute indices.
-// Example (matches current custom assembly):
-//   %core_to_mem = mlar.mux %cores: !mlar.compute, %memories: !mlar.memory, %x, %y
-//       {map = affine_map<(d0, d1) -> (d0)>}
-def MuxOp : MLAR_Op<"mux"> {
-  let summary = "Declare multiplexing between compute and memory resources";
-  let description = [{
-    `mlar.mux` expresses how compute resources share memory or control
-    endpoints. The affine map consumes indices associated with the compute
-    fabric and produces coordinates into the target resource space. Missing
-    target dimensions imply sharing (multiplexing) across the omitted axes.
-
-    The operation returns an opaque `!mlar.mux` handle for downstream analyses.
-
-    Example:
-      `%core_to_mem = mlar.mux %cores: !mlar.compute, %memories: !mlar.memory, %x, %y
-          {map = affine_map<(d0, d1) -> (d0)>}`
-  }];
-
-  let arguments = (ins HandleLike:$source,
-                       HandleLike:$target,
-                       Variadic<Index>:$indices,
-                       AffineMapAttr:$map);
-  let results = (outs MuxHandleType:$handle);
-
-  let hasCustomAssemblyFormat = 1;
 }

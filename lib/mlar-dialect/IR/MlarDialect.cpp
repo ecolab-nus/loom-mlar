@@ -161,295 +161,62 @@ void LaneOp::print(OpAsmPrinter &p) {
 
 /// Parse CoreOp with custom syntax:
 ///   mlar.core "label" {scaleout=(%x, %y), scalein=(%mat_unit, %vec_unit, [8,1])}
-ParseResult CoreOp::parse(OpAsmParser &parser, OperationState &result) {
-  // Parse label attribute
-  StringAttr label;
-  if (parser.parseAttribute(label, "label", result.attributes))
-    return failure();
-
-  // Parse attributes dictionary which may contain scaleout and scalein
-  SmallVector<OpAsmParser::UnresolvedOperand> scaleoutOperands;
-  SmallVector<OpAsmParser::UnresolvedOperand> scaleinOperands;
-  DenseI64ArrayAttr scaleinCounts;
-  
-  if (succeeded(parser.parseOptionalLBrace())) {
-    // Parse scaleout=(%x, %y, ...)
-    if (succeeded(parser.parseOptionalKeyword("scaleout"))) {
-      if (parser.parseEqual() || parser.parseLParen())
-        return failure();
-      
-      if (parser.parseOperandList(scaleoutOperands))
-        return failure();
-      
-      if (parser.parseRParen())
-        return failure();
-    }
-
-    // Parse optional comma before scalein (only if scaleout exists)
-    if (!scaleoutOperands.empty()) {
-      if (parser.parseOptionalComma().succeeded()) {
-        // Comma was found, continue
-      }
-      // If comma not found, it's okay - might be directly followed by scalein or closing brace
-    }
-
-    // Parse scalein=(%mat_unit, %vec_unit, [8,1])
-    if (succeeded(parser.parseOptionalKeyword("scalein"))) {
-      if (parser.parseEqual() || parser.parseLParen())
-        return failure();
-      
-      // Parse functional unit operands - need to handle mixed syntax with array literal
-      // We parse until we see a '[' which indicates the start of counts array
-      while (true) {
-        // Check if next token is '[' (start of counts array)
-        if (succeeded(parser.parseOptionalLSquare())) {
-          // Parse counts array
-          SmallVector<int64_t> counts;
-          if (parser.parseCommaSeparatedList([&]() -> ParseResult {
-                int64_t count;
-                if (parser.parseInteger(count))
-                  return failure();
-                counts.push_back(count);
-                return success();
-              }) || parser.parseRSquare()) {
-            return failure();
-          }
-          scaleinCounts = parser.getBuilder().getDenseI64ArrayAttr(counts);
-          break;
-        }
-        
-        // Try to parse an operand (with or without % prefix)
-        OpAsmParser::UnresolvedOperand operand;
-        if (parser.parseOperand(operand).failed()) {
-          // If parsing operand failed, we might have reached the end
-          // Check if we can parse ')' or if there's an error
-          break;
-        }
-        scaleinOperands.push_back(operand);
-        
-        // Check if there's a comma (more operands or counts array coming)
-        if (parser.parseOptionalComma().failed()) {
-          // No comma, we're done with operands
-          break;
-        }
-      }
-      
-      if (parser.parseRParen())
-        return failure();
-    }
-
-    // Parse other attributes if any
-    if (parser.parseOptionalComma().succeeded()) {
-      if (parser.parseOptionalAttrDict(result.attributes).failed())
-        return failure();
-    }
-
-    if (parser.parseRBrace())
-      return failure();
-  } else {
-    // No braces, just parse optional attributes
-    if (parser.parseOptionalAttrDict(result.attributes).failed())
-      return failure();
-  }
-
-  // Track the starting size before adding operands
-  unsigned numOperandsBefore = result.operands.size();
-
-  // Resolve types for scaleout operands (all should be index type)
-  SmallVector<Type> scaleoutTypes(scaleoutOperands.size(),
-                                  parser.getBuilder().getIndexType());
-  if (!scaleoutOperands.empty() &&
-      parser.resolveOperands(scaleoutOperands, scaleoutTypes, parser.getNameLoc(),
-                             result.operands))
-    return failure();
-  unsigned scaleoutSize = result.operands.size() - numOperandsBefore;
-
-  // Resolve types for scalein operands (all should be functional_unit type)
-  auto funcUnitType = FunctionalUnitHandleType::get(parser.getBuilder().getContext());
-  SmallVector<Type> scaleinTypes(scaleinOperands.size(), funcUnitType);
-  if (!scaleinOperands.empty() &&
-      parser.resolveOperands(scaleinOperands, scaleinTypes, parser.getNameLoc(),
-                             result.operands))
-    return failure();
-  unsigned scaleinSize = result.operands.size() - numOperandsBefore - scaleoutSize;
-
-  // Set operand segment sizes attribute (required for multiple variadic operands)
-  Builder &builder = parser.getBuilder();
-  auto segmentSizes = builder.getDenseI32ArrayAttr({
-      static_cast<int32_t>(scaleoutSize),
-      static_cast<int32_t>(scaleinSize)
-  });
-  result.addAttribute("operand_segment_sizes", segmentSizes);
-
-  // Set scalein_counts attribute if we parsed it
-  if (scaleinCounts)
-    result.addAttribute("scalein_counts", scaleinCounts);
-
-  // Set result type
-  result.addTypes(ComputeHandleType::get(parser.getBuilder().getContext()));
-
-  return success();
-}
-
-/// Print CoreOp with custom syntax
-void CoreOp::print(OpAsmPrinter &p) {
-  p << " ";
-  p.printAttributeWithoutType(getLabelAttr());
-  
-  bool hasScaleout = !getScaleout().empty();
-  bool hasScalein = !getScaleinUnits().empty();
-  
-  if (hasScaleout || hasScalein) {
-    p << " {";
-    
-    // Print scaleout if present
-    if (hasScaleout) {
-      p << "scaleout=(";
-      p.printOperands(getScaleout());
-      p << ")";
-    }
-    
-    // Print scalein if present
-    if (hasScalein) {
-      if (hasScaleout)
-        p << " ,";
-      p << " scalein=(";
-      p.printOperands(getScaleinUnits());
-      
-      // Print counts array if present
-      if (auto countsAttr = getScaleinCounts()) {
-        p << ", [";
-        // DenseI64ArrayAttr can be converted to ArrayRef, access values directly
-        ArrayRef<int64_t> counts = *countsAttr;
-        for (size_t i = 0, e = counts.size(); i < e; ++i) {
-          if (i > 0)
-            p << ", ";
-          p << counts[i];
-        }
-        p << "]";
-      }
-      p << ")";
-    }
-    
-    p << "}";
-  }
-  
-}
-
-/// Verify CoreOp invariants
-LogicalResult CoreOp::verify() {
-  // Verify that if scalein_counts is provided, its size matches scalein_units count
-  if (auto counts = getScaleinCounts()) {
-    size_t unitsCount = getScaleinUnits().size();
-    size_t countsSize = counts->size();
-    
-    if (unitsCount != countsSize) {
-      return emitOpError() << "scalein_counts array size (" << countsSize
-                           << ") must match the number of scalein_units (" 
-                           << unitsCount << ")";
-    }
-  }
-  
-  // Verify operand types are correct (this is typically checked by TableGen,
-  // but we can add additional checks if needed)
-  
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // MemoryOp Custom Assembly Format
 //===----------------------------------------------------------------------===//
 
 /// Parse MemoryOp with custom syntax:
-///   mlar.memory "L1" {scaleout=(%x, %y), size = 32768, bandwidth = 64}
+///   mlar.memory "L1" nb_blocks block_size <%x, %y>
 ParseResult MemoryOp::parse(OpAsmParser &parser, OperationState &result) {
+  Builder &builder = parser.getBuilder();
+  MLIRContext *context = builder.getContext();
+  
   // Parse sym_name attribute
   StringAttr symName;
   if (parser.parseAttribute(symName, "sym_name", result.attributes))
     return failure();
 
-  // Parse attributes dictionary which may contain scaleout, size, and bandwidth
-  SmallVector<OpAsmParser::UnresolvedOperand> scaleoutOperands;
+  // Parse nb_blocks (integer literal)
+  int64_t nbBlocks;
+  if (parser.parseInteger(nbBlocks))
+    return failure();
+  result.addAttribute("nb_blocks", builder.getI64IntegerAttr(nbBlocks));
+
+  // Parse port_width (integer literal)
+  int64_t portWidth;
+  if (parser.parseInteger(portWidth))
+    return failure();
+  result.addAttribute("port_width", builder.getI64IntegerAttr(portWidth));
+
+  // Parse <dims...> clause
+  SmallVector<OpAsmParser::UnresolvedOperand> dimsOperands;
+  if (parser.parseLess())
+    return failure();
   
-  if (succeeded(parser.parseOptionalLBrace())) {
-    // Parse scaleout=(%x, %y, ...) if present
-    if (succeeded(parser.parseOptionalKeyword("scaleout"))) {
-      if (parser.parseEqual() || parser.parseLParen())
-        return failure();
-      
-      if (parser.parseOperandList(scaleoutOperands))
-        return failure();
-      
-      if (parser.parseRParen())
-        return failure();
-    }
+  if (parser.parseOperandList(dimsOperands))
+    return failure();
+  
+  if (parser.parseGreater())
+    return failure();
 
-    // Parse optional comma after scaleout before other attributes
-    bool hasCommaAfterScaleout = false;
-    if (!scaleoutOperands.empty()) {
-      hasCommaAfterScaleout = parser.parseOptionalComma().succeeded();
-    }
+  // Parse result type annotation
+  Type resultType;
+  if (parser.parseColon() || parser.parseType(resultType))
+    return failure();
 
-    // Manually parse size and bandwidth attributes
-    // Parse size = <value> if present
-    if (succeeded(parser.parseOptionalKeyword("size"))) {
-      if (parser.parseEqual())
-        return failure();
-      
-      int64_t sizeValue;
-      if (parser.parseInteger(sizeValue))
-        return failure();
-      
-      result.addAttribute("size", 
-                         parser.getBuilder().getI64IntegerAttr(sizeValue));
-      
-      // Parse optional comma before bandwidth
-      (void)parser.parseOptionalComma();
-    } else if (hasCommaAfterScaleout) {
-      // If we had a comma after scaleout but no size keyword, 
-      // we need to consume it or it will cause parsing issues
-      // Actually, the comma was already consumed, so we're fine
-    }
+  // Parse optional attribute dictionary
+  if (parser.parseOptionalAttrDict(result.attributes).failed())
+    return failure();
 
-    // Parse bandwidth = <value> if present
-    if (succeeded(parser.parseOptionalKeyword("bandwidth"))) {
-      if (parser.parseEqual())
-        return failure();
-      
-      int64_t bandwidthValue;
-      if (parser.parseInteger(bandwidthValue))
-        return failure();
-      
-      result.addAttribute("bandwidth", 
-                         parser.getBuilder().getI64IntegerAttr(bandwidthValue));
-      
-      // Parse optional comma before other attributes
-      (void)parser.parseOptionalComma();
-    }
-
-    // Parse any remaining attributes (for backward compatibility)
-    // Only parse if we haven't already consumed all attributes
-    // parseOptionalAttrDict will handle the case where there are no more attributes
-    (void)parser.parseOptionalAttrDict(result.attributes);
-
-    if (parser.parseRBrace())
-      return failure();
-  } else {
-    // No braces, just parse optional attributes
-    if (parser.parseOptionalAttrDict(result.attributes).failed())
-      return failure();
-  }
-
-  // Resolve types for scaleout operands (all should be index type)
-  SmallVector<Type> scaleoutTypes(scaleoutOperands.size(),
-                                  parser.getBuilder().getIndexType());
-  if (!scaleoutOperands.empty() &&
-      parser.resolveOperands(scaleoutOperands, scaleoutTypes, parser.getNameLoc(),
+  // Resolve dims operands (all should be index type)
+  SmallVector<Type> dimsTypes(dimsOperands.size(), builder.getIndexType());
+  if (parser.resolveOperands(dimsOperands, dimsTypes, parser.getNameLoc(),
                              result.operands))
     return failure();
 
-  // Set result type
-  result.addTypes(MemoryHandleType::get(parser.getBuilder().getContext()));
+  // Set result type from parsed type
+  result.addTypes(resultType);
 
   return success();
 }
@@ -459,46 +226,22 @@ void MemoryOp::print(OpAsmPrinter &p) {
   p << " ";
   p.printAttributeWithoutType(getLabelAttr());
   
-  bool hasScaleout = !getScaleout().empty();
-  bool hasSize = static_cast<bool>(getSizeAttr());
-  bool hasBandwidth = static_cast<bool>(getBandwidthAttr());
+  p << " " << getNbBlocks();
+  p << " " << getPortWidth();
   
-  // Only print braces if there are attributes to print
-  if (hasScaleout || hasSize || hasBandwidth) {
-    p << " {";
-    
-    // Print scaleout if present
-    if (hasScaleout) {
-      p << "scaleout=(";
-      p.printOperands(getScaleout());
-      p << ")";
-    }
-    
-    // Print size if present
-    if (hasSize) {
-      if (hasScaleout)
-        p << " ,";
-      p << " size = ";
-      p << getSize();
-    }
-    
-    // Print bandwidth if present
-    if (hasBandwidth) {
-      if (hasScaleout || hasSize)
-        p << ", ";
-      p << "bandwidth = ";
-      p << getBandwidth();
-    }
-    
-    // Print any other attributes (excluding sym_name, size, bandwidth)
-    SmallVector<StringRef> elidedAttrs = {"sym_name", "size", "bandwidth"};
-    p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
-    
-    p << "}";
-  } else {
-    // No attributes, just print empty dict or other attributes
-    p.printOptionalAttrDict((*this)->getAttrs(), {"sym_name"});
+  if (!getDims().empty()) {
+    p << " <";
+    p.printOperands(getDims());
+    p << ">";
   }
+  
+  // Print result type
+  p << " : ";
+  p.printType(getMemref().getType());
+  
+  // Elide sym_name, nb_blocks, port_width from attribute dict since they're printed separately
+  SmallVector<StringRef> elidedAttrs = {"sym_name", "nb_blocks", "port_width"};
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 }
 
 //===----------------------------------------------------------------------===//
@@ -508,100 +251,6 @@ void MemoryOp::print(OpAsmPrinter &p) {
 /// Parse MuxOp with custom syntax:
 ///   mlar.mux %cores, %memories, {map = affine_map<(d0, d1) -> (d0, d1)>}
 ///   or: mlar.mux %cores: !mlar.compute, %memories: !mlar.memory, %x, %y {map = ...}
-ParseResult MuxOp::parse(OpAsmParser &parser, OperationState &result) {
-  // Parse source operand
-  OpAsmParser::UnresolvedOperand source;
-  if (parser.parseOperand(source))
-    return failure();
-
-  // Parse optional type annotation
-  Type sourceType;
-  bool hasSourceType = false;
-  if (succeeded(parser.parseOptionalColon())) {
-    if (parser.parseType(sourceType).failed())
-      return failure();
-    hasSourceType = true;
-  }
-
-  // Parse comma
-  if (parser.parseComma())
-    return failure();
-
-  // Parse target operand
-  OpAsmParser::UnresolvedOperand target;
-  if (parser.parseOperand(target))
-    return failure();
-
-  // Parse optional type annotation
-  Type targetType;
-  bool hasTargetType = false;
-  if (succeeded(parser.parseOptionalColon())) {
-    if (parser.parseType(targetType).failed())
-      return failure();
-    hasTargetType = true;
-  }
-
-  // Parse optional indices and comma
-  SmallVector<OpAsmParser::UnresolvedOperand> indices;
-  if (parser.parseOptionalComma().succeeded()) {
-    // Try to parse indices - if next token is '{', parseOperandList will fail
-    // and we'll just continue to parse attributes
-    (void)parser.parseOperandList(indices);
-  }
-
-  // Parse attributes dictionary
-  if (parser.parseOptionalAttrDict(result.attributes).failed())
-    return failure();
-
-  // Resolve operand types
-  // If types were not provided, we need to use placeholder types
-  // The actual types will be inferred from the operands during resolution
-  if (!hasSourceType) {
-    // Use a placeholder - we'll infer from context
-    // In practice, we can try to get the type from the SSA value if it's already defined
-    sourceType = ComputeHandleType::get(parser.getBuilder().getContext());
-  }
-  if (!hasTargetType) {
-    targetType = MemoryHandleType::get(parser.getBuilder().getContext());
-  }
-
-  SmallVector<Type> operandTypes = {sourceType, targetType};
-  SmallVector<OpAsmParser::UnresolvedOperand> allOperands = {source, target};
-  allOperands.append(indices.begin(), indices.end());
-
-  // Resolve types for indices (all should be index type)
-  SmallVector<Type> indexTypes(indices.size(), parser.getBuilder().getIndexType());
-  operandTypes.append(indexTypes.begin(), indexTypes.end());
-
-  if (parser.resolveOperands(allOperands, operandTypes, parser.getNameLoc(),
-                             result.operands))
-    return failure();
-
-  // Set result type
-  result.addTypes(MuxHandleType::get(parser.getBuilder().getContext()));
-
-  return success();
-}
-
-/// Print MuxOp with custom syntax
-void MuxOp::print(OpAsmPrinter &p) {
-  p << " ";
-  p.printOperand(getSource());
-  p << " : ";
-  p.printType(getSource().getType());
-  p << ", ";
-  p.printOperand(getTarget());
-  p << " : ";
-  p.printType(getTarget().getType());
-  
-  if (!getIndices().empty()) {
-    p << ", ";
-    p.printOperands(getIndices());
-  }
-  
-  p << " ";
-  p.printOptionalAttrDict((*this)->getAttrs());
-}
 
 //===----------------------------------------------------------------------===//
 // InterconnectsOp Custom Assembly Format
@@ -648,8 +297,7 @@ ParseResult InterconnectsOp::parse(OpAsmParser &parser, OperationState &result) 
 
   // Helper function to validate that a type is a valid mlar handle type
   auto isValidHandleType = [](Type type) -> bool {
-    return llvm::isa<ComputeHandleType>(type) ||
-           llvm::isa<MemoryHandleType>(type);
+    return llvm::isa<MemoryHandleType>(type);
   };
 
   // Parse source operand with optional type
@@ -706,28 +354,49 @@ ParseResult InterconnectsOp::parse(OpAsmParser &parser, OperationState &result) 
     resultType = InterconnectHandleType::get(context);
   }
 
-  // Resolve operand types
-  // If types were not provided, use default placeholder types
-  if (!hasSourceType) {
-    sourceType = MemoryHandleType::get(context);
+  // Resolve operand types - infer from operands if not explicitly provided
+  // Build type list and resolve operands
+  // For typed operands, add a type; for untyped ones, this will cause MLI to infer
+  // First build all types
+  SmallVector<Type> allTypes;
+  if (hasSourceType) {
+    allTypes.push_back(sourceType);
   }
-  if (!hasTargetType) {
-    targetType = MemoryHandleType::get(context);
+  if (hasTargetType) {
+    allTypes.push_back(targetType);
+  }
+  
+  // Resolve source and target together if both have types, or individually if only one does
+ if (hasSourceType && hasTargetType) {
+    // Both have types
+    SmallVector<Type> types = {sourceType, targetType};
+    SmallVector<OpAsmParser::UnresolvedOperand> operands = {source, target};
+    if (parser.resolveOperands(operands, types, parser.getNameLoc(), result.operands))
+      return failure();
+  } else if (hasSourceType) {
+    // Only source has type
+    if (parser.resolveOperands({source}, {sourceType}, parser.getNameLoc(), result.operands))
+      return failure();
+    if (parser.resolveOperands({target}, {}, parser.getNameLoc(), result.operands))
+      return failure();
+  } else if (hasTargetType) {
+    // Only target has type
+    if (parser.resolveOperands({source}, {}, parser.getNameLoc(), result.operands))
+      return failure();
+    if (parser.resolveOperands({target}, {targetType}, parser.getNameLoc(), result.operands))
+      return failure();
+  } else {
+    // Neither has type - infer from SSA defs
+    if (parser.resolveOperands({source, target}, {}, parser.getNameLoc(), result.operands))
+      return failure();
   }
 
-  // Build operand types list: source, target, then indices
-  SmallVector<Type> operandTypes = {sourceType, targetType};
-  SmallVector<OpAsmParser::UnresolvedOperand> allOperands = {source, target};
-  allOperands.append(indices.begin(), indices.end());
-
-  // Resolve types for indices (all should be index type)
-  SmallVector<Type> indexTypes(indices.size(), builder.getIndexType());
-  operandTypes.append(indexTypes.begin(), indexTypes.end());
-
-  // Resolve all operands
-  if (parser.resolveOperands(allOperands, operandTypes, parser.getNameLoc(),
-                             result.operands))
-    return failure();
+  // Resolve indices (all should be index type)
+  if (!indices.empty()) {
+    SmallVector<Type> indexTypes(indices.size(), builder.getIndexType());
+    if (parser.resolveOperands(indices, indexTypes, parser.getNameLoc(), result.operands))
+      return failure();
+  }
 
   // Set result type
   result.addTypes(resultType);
