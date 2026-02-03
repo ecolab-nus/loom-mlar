@@ -11,7 +11,9 @@ func.func @matmul_32x32(%a: memref<32x32xf32>, ...) -> index {
     %latency = arith.constant 8 : index
     return %latency : index
 }
-%mat_unit = mlar.fu @matmul_32x32
+%x = mlar.dim "x", 8
+%y = mlar.dim "y", 8
+%mat_unit = mlar.fu @matmul_32x32 <%x, %y>  // Creates 8x8=64 instances
 ```
 
 ### `mlar.lane` - Streaming Lane (dynamic shapes with preconditions)
@@ -31,7 +33,7 @@ func.func @matmul_lane(%M: index, %N: index, %K: index,
     %latency = arith.divui %mnk, %c64 : index
     return %latency : index
 }
-%mat_lane = mlar.lane @matmul_lane
+%mat_lane = mlar.lane @matmul_lane <%x, %y>
 ```
 
 ## Building
@@ -40,17 +42,18 @@ func.func @matmul_lane(%M: index, %N: index, %K: index,
 mkdir build && cd build
 cmake .. -DMLIR_DIR=/path/to/llvm-mlir/lib/cmake/mlir
 make -j$(nproc)
-./bin/loom-mlar-opt test/mlar-dialect/2d_mesh.mlir
+./bin/loom-mlar-opt ../test/mlar-dialect/2d_mesh.mlir
 ```
 
 ## Operations
 
 | Operation | Description |
 |-----------|-------------|
-| `mlar.fu` | Synchronous FU with fixed shapes |
-| `mlar.lane` | Streaming lane with dynamic shapes |
-| `mlar.spatial_dim` | Spatial dimension with name/size |
+| `mlar.fu` | Synchronous FU with fixed shapes, optional `<...>` |
+| `mlar.lane` | Streaming lane with dynamic shapes, optional `<...>` |
+| `mlar.dim` | Dimension with name/size |
 | `mlar.core` | Cores with scaleout/scalein |
 | `mlar.memory` | Memory resources |
 | `mlar.mux` | Compute-to-memory mux |
 | `mlar.interconnects` | Interconnects with affine topology |
+

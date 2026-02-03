@@ -80,16 +80,16 @@ module {
     // ============================================================
     
     // Fixed functional units (synchronous, small tiles)
-    %mat_unit = mlar.fu @matmul_32x32
-    %vec_unit = mlar.fu @vec_add_32
+    %x = mlar.dim "x", 8
+    %y = mlar.dim "y", 8
+    %mat_unit = mlar.fu @matmul_32x32 <%x, %y>
+    %vec_unit = mlar.fu @vec_add_32 <%x, %y>
     
     // Streaming lane processors (dynamic shapes, with preconditions)
-    %mat_lane = mlar.lane @matmul_lane
-    %vec_lane = mlar.lane @vec_lane
+    %mat_lane = mlar.lane @matmul_lane <%x, %y>
+    %vec_lane = mlar.lane @vec_lane <%x, %y>
     
-    // Scale-out description (spatial dimensions)
-    %x = mlar.spatial_dim "x", 8
-    %y = mlar.spatial_dim "y", 8
+    // Scale-out description (now using dims on fu/lane ops above)
     
     // Core declaration with scaleout and scalein (using fixed FUs)
     %cores = mlar.core "core" {scaleout=(%x, %y) , scalein=(%mat_unit, %vec_unit, [8,1])}
@@ -107,7 +107,7 @@ module {
     %noc_v = mlar.interconnects "vertical_links" %L1 : !mlar.memory, %L1 : !mlar.memory, {map = affine_map<(d0, d1) -> (d0, (d1 + 1) mod 8)>, bandwidth = 128, spatial_dims = [@x]} : !mlar.interconnect
     
     // DRAM resources
-    %dram_idx = mlar.spatial_dim "d", 4
+    %dram_idx = mlar.dim "d", 4
     %drams = mlar.memory "DRAM" {scaleout=(%dram_idx) , size = 34359738368, bandwidth = 288}
     
     // L1 to DRAM interconnect

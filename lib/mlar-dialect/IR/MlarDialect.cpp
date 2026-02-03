@@ -40,6 +40,122 @@ void MlarDialect::initialize() {
 #include "MlarOps.cpp.inc"
 
 //===----------------------------------------------------------------------===//
+// FuOp Custom Assembly Format
+//===----------------------------------------------------------------------===//
+
+/// Parse FuOp with custom syntax:
+///   mlar.fu @func_name <%x, %y>
+///   or: mlar.fu @func_name  (no dims = single instance)
+ParseResult FuOp::parse(OpAsmParser &parser, OperationState &result) {
+  Builder &builder = parser.getBuilder();
+  
+  // Parse function reference
+  FlatSymbolRefAttr funcRef;
+  if (parser.parseAttribute(funcRef, "func_ref", result.attributes))
+    return failure();
+
+  // Parse optional <...> clause for dimensions
+  SmallVector<OpAsmParser::UnresolvedOperand> dimsOperands;
+  if (succeeded(parser.parseOptionalLess())) {
+    if (parser.parseOperandList(dimsOperands))
+      return failure();
+    
+    if (parser.parseGreater())
+      return failure();
+  }
+
+  // Parse optional attribute dictionary
+  if (parser.parseOptionalAttrDict(result.attributes).failed())
+    return failure();
+
+  // Resolve dims operands (all should be index type)
+  SmallVector<Type> dimsTypes(dimsOperands.size(), builder.getIndexType());
+  if (!dimsOperands.empty() &&
+      parser.resolveOperands(dimsOperands, dimsTypes, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+
+  // Set result type
+  result.addTypes(FunctionalUnitHandleType::get(builder.getContext()));
+
+  return success();
+}
+
+/// Print FuOp with custom syntax
+void FuOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getFuncRefAttr());
+  
+  if (!getDims().empty()) {
+    p << " <";
+    p.printOperands(getDims());
+    p << ">";
+  }
+  
+  // Elide func_ref from attribute dict since it's printed separately
+  SmallVector<StringRef> elidedAttrs = {"func_ref"};
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
+//===----------------------------------------------------------------------===//
+// LaneOp Custom Assembly Format
+//===----------------------------------------------------------------------===//
+
+/// Parse LaneOp with custom syntax:
+///   mlar.lane @func_name <%x, %y>
+///   or: mlar.lane @func_name  (no dims = single instance)
+ParseResult LaneOp::parse(OpAsmParser &parser, OperationState &result) {
+  Builder &builder = parser.getBuilder();
+  
+  // Parse function reference
+  FlatSymbolRefAttr funcRef;
+  if (parser.parseAttribute(funcRef, "func_ref", result.attributes))
+    return failure();
+
+  // Parse optional <...> clause for dimensions
+  SmallVector<OpAsmParser::UnresolvedOperand> dimsOperands;
+  if (succeeded(parser.parseOptionalLess())) {
+    if (parser.parseOperandList(dimsOperands))
+      return failure();
+    
+    if (parser.parseGreater())
+      return failure();
+  }
+
+  // Parse optional attribute dictionary
+  if (parser.parseOptionalAttrDict(result.attributes).failed())
+    return failure();
+
+  // Resolve dims operands (all should be index type)
+  SmallVector<Type> dimsTypes(dimsOperands.size(), builder.getIndexType());
+  if (!dimsOperands.empty() &&
+      parser.resolveOperands(dimsOperands, dimsTypes, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+
+  // Set result type
+  result.addTypes(FunctionalUnitHandleType::get(builder.getContext()));
+
+  return success();
+}
+
+/// Print LaneOp with custom syntax
+void LaneOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getFuncRefAttr());
+  
+  if (!getDims().empty()) {
+    p << " <";
+    p.printOperands(getDims());
+    p << ">";
+  }
+  
+  // Elide func_ref from attribute dict since it's printed separately
+  SmallVector<StringRef> elidedAttrs = {"func_ref"};
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
+//===----------------------------------------------------------------------===//
 // CoreOp Custom Assembly Format
 //===----------------------------------------------------------------------===//
 

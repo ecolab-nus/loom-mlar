@@ -16,21 +16,21 @@ def HandleLike : TypeConstraint<CPred<
   "::llvm::isa<::loom::mlar::ComputeHandleType>($_self) || " #
   "::llvm::isa<::loom::mlar::MemoryHandleType>($_self)">> ;
 
-// mlar.spatial_dim : declare a spatial dimension with a name and a given size
+// mlar.dim : declare a dimension with a name and a given size
 // Example:
-//   %x = mlar.spatial_dim "x", 8
+//   %x = mlar.dim "x", 8
 // The result is an index-typed SSA value that can participate in affine maps.
-def SpatialDimOp : MLAR_Op<"spatial_dim", [Symbol]> {
-  let summary = "Declare a spatial dimension with a name and a fixed size";
+def DimOp : MLAR_Op<"dim", [Symbol]> {
+  let summary = "Declare a dimension with a name and a fixed size";
   let description = [{
-    `mlar.spatial_dim` declares a hardware spatial dimension with a user-facing
+    `mlar.dim` declares a hardware dimension with a user-facing
     name and a constant size. The result is an index-typed SSA value intended
     to be referenced in affine expressions (e.g., in `mlar.interconnects`).
     The operation is a symbol and can be referenced via SymbolRefAttr.
     The `name` attribute is used as both the display name and the symbol name.
 
     Example:
-      `%x = mlar.spatial_dim "x", 8`
+      `%x = mlar.dim "x", 8`
   }];
 
   let arguments = (ins StrAttr:$sym_name, I64Attr:$size);
@@ -96,19 +96,26 @@ def InterconnectsOp : MLAR_Op<"interconnects", [Symbol]> {
 
 // mlar.fu : declare a synchronous functional unit by referencing a func.func definition
 // The function uses linalg on memref and returns an index representing the latency.
+// Optionally, dimension indices can be provided to create multiple instances.
 // Example:
 //   func.func @matmul_32x32(%a: memref<32x32xf32>, %b: memref<32x32xf32>, %c: memref<32x32xf32>) -> index {
 //     linalg.matmul ins(%a, %b : ...) outs(%c : ...)
 //     %latency = arith.constant 8 : index
 //     return %latency : index
 //   }
-//   %mat_unit = mlar.fu @matmul_32x32
+//   %x = mlar.dim "x", 8
+//   %y = mlar.dim "y", 8
+//   %mat_unit = mlar.fu @matmul_32x32 <%x, %y>  // Creates 8x8=64 instances
 def FuOp : MLAR_Op<"fu"> {
   let summary = "Declare a synchronous functional unit by referencing a function definition";
   let description = [{
     `mlar.fu` declares a synchronous functional unit by referencing a `func.func`
     that describes what the unit does. The functional unit is "synchronous" meaning
     one must wait for its completion before starting the next operation.
+
+    Optionally, dimension indices can be provided via `dims(...)` to create
+    multiple instances of the functional unit, one per coordinate in the
+    multi-dimensional space defined by the dimensions.
 
     The function should:
     - Use linalg dialect on memref types (in-place semantics)
@@ -124,18 +131,22 @@ def FuOp : MLAR_Op<"fu"> {
         %latency = arith.constant 8 : index
         return %latency : index
       }
-      %mat_unit = mlar.fu @matmul_32x32
+      %x = mlar.dim "x", 8
+      %y = mlar.dim "y", 8
+      %mat_unit = mlar.fu @matmul_32x32 <%x, %y>
       ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$func_ref);
+  let arguments = (ins FlatSymbolRefAttr:$func_ref,
+                       Variadic<Index>:$dims);
   let results = (outs FunctionalUnitHandleType:$handle);
 
-  let assemblyFormat = "$func_ref attr-dict";
+  let hasCustomAssemblyFormat = 1;
 }
 
 // mlar.lane : declare a streaming lane processor with dynamic shapes
 // The function takes dimension sizes as index parameters to compute latency dynamically.
+// Optionally, dimension indices can be provided to create multiple instances.
 // Example:
 //   func.func @matmul_lane(%M: index, %N: index, %K: index,
 //                          %a: memref<?x?xf32>, %b: memref<?x?xf32>, %c: memref<?x?xf32>) -> index {
@@ -146,13 +157,19 @@ def FuOp : MLAR_Op<"fu"> {
 //     %latency = arith.divui %mnk2, %c64 : index  // M*N*K/64 cycles
 //     return %latency : index
 //   }
-//   %mat_lane = mlar.lane @matmul_lane
+//   %x = mlar.dim "x", 8
+//   %y = mlar.dim "y", 8
+//   %mat_lane = mlar.lane @matmul_lane <%x, %y>  // Creates 8x8=64 instances
 def LaneOp : MLAR_Op<"lane"> {
   let summary = "Declare a streaming lane processor with dynamic shapes";
   let description = [{
     `mlar.lane` declares a streaming lane processor that can handle variable-sized
     data chunks. Unlike `mlar.fu` which has fixed dimensions, a lane processor
     accepts dynamic shapes and computes latency based on those dimensions.
+
+    Optionally, dimension indices can be provided via `dims(...)` to create
+    multiple instances of the lane processor, one per coordinate in the
+    multi-dimensional space defined by the dimensions.
 
     The function should:
     - Accept dimension sizes as leading `index` parameters (e.g., M, N, K)
@@ -174,14 +191,17 @@ def LaneOp : MLAR_Op<"lane"> {
         %latency = arith.divui %mnk, %c64 : index
         return %latency : index
       }
-      %mat_lane = mlar.lane @matmul_lane
+      %x = mlar.dim "x", 8
+      %y = mlar.dim "y", 8
+      %mat_lane = mlar.lane @matmul_lane <%x, %y>
       ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$func_ref);
+  let arguments = (ins FlatSymbolRefAttr:$func_ref,
+                       Variadic<Index>:$dims);
   let results = (outs FunctionalUnitHandleType:$handle);
 
-  let assemblyFormat = "$func_ref attr-dict";
+  let hasCustomAssemblyFormat = 1;
 }
 
 def CoreOp : MLAR_Op<"core", [AttrSizedOperandSegments]> {
