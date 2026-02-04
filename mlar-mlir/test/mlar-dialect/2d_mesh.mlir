@@ -74,6 +74,18 @@ module {
         %latency = arith.divui %N, %c32 : index
         return %latency : index
     }
+
+    // Horizontal NoC links (ring in x dimension)
+    func.func @horizontal_links(%x: index, %y: index,
+                               %src: memref<?x?xf32>, %dst: memref<?x?xf32>) -> index {
+        // the latency is simply total size divided by bandwidth (assumed 32)
+        %shape1 = memref.dim %src,0 : memref<?x?xf32>
+        %shape2 = memref.dim %src,1 : memref<?x?xf32>
+        %total_size = arith.muli %shape1, %shape2 : index
+        %c32 = arith.constant 32 : index
+        %latency = arith.divui %total_size, %c32 : index
+        return %latency : index
+    }
     
     // ============================================================
     // Hardware architecture description
@@ -93,6 +105,7 @@ module {
     %L1 = mlar.memory "L1" 65536 16 <%x, %y> : memref<8x8x65536x16xf32>
     
     // Horizontal NoC links (ring in x dimension)
+    // The affine maps means automatical indexing of the first two dimensions
     %noc_h = mlar.interconnects @horizontal_spec <%x, %y> {map = affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>}
     
     // Vertical NoC links (ring in y dimension)
