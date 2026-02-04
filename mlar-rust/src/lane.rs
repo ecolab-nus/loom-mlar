@@ -1,29 +1,26 @@
-use crate::core::{Dimension, Index, MemRegion, Processor};
+use crate::core::{Index, MemRegion, Processor};
 
 /// Represents a lane processor (mlar.lane) - dynamic shapes, streaming operations
 #[derive(Debug)]
-pub struct Lane {
+pub struct FunctionalLane {
     pub name: String,
     pub input_regions: Vec<MemRegion>,
     pub output_regions: Vec<MemRegion>,
     pub model: Box<dyn LaneModel>,
-    pub grid: Vec<Dimension>,
 }
 
-impl Lane {
+impl FunctionalLane {
     pub fn new(
         name: impl Into<String>,
         input_regions: Vec<MemRegion>,
         output_regions: Vec<MemRegion>,
         model: Box<dyn LaneModel>,
-        grid: Vec<Dimension>,
     ) -> Self {
         Self {
             name: name.into(),
             input_regions,
             output_regions,
             model,
-            grid,
         }
     }
 
@@ -34,7 +31,7 @@ impl Lane {
     }
 }
 
-impl Processor for Lane {
+impl Processor for FunctionalLane {
     fn name(&self) -> &str {
         &self.name
     }
@@ -45,10 +42,6 @@ impl Processor for Lane {
 
     fn output_memories(&self) -> &[MemRegion] {
         &self.output_regions
-    }
-
-    fn grid(&self) -> &[Dimension] {
-        &self.grid
     }
 }
 

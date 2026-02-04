@@ -1,6 +1,5 @@
 use crate::core::{Dimension, MemoryAggregation};
-use crate::functional_unit::FunctionalUnit;
-use crate::lane::Lane;
+use crate::processor_aggregation::ProcessorAggregation;
 use crate::interconnect::Interconnect;
 
 /// Represents the complete hardware architecture (like the MLIR module)
@@ -8,8 +7,7 @@ use crate::interconnect::Interconnect;
 pub struct Architecture {
     pub name: String,
     pub dimensions: Vec<Dimension>,
-    pub functional_units: Vec<FunctionalUnit>,
-    pub lanes: Vec<Lane>,
+    pub processor_aggregations: Vec<ProcessorAggregation>,
     pub memory_aggregations: Vec<MemoryAggregation>,
     pub interconnects: Vec<Interconnect>,
 }
@@ -19,8 +17,7 @@ impl Architecture {
         ArchitectureBuilder {
             name: name.into(),
             dimensions: Vec::new(),
-            functional_units: Vec::new(),
-            lanes: Vec::new(),
+            processor_aggregations: Vec::new(),
             memory_aggregations: Vec::new(),
             interconnects: Vec::new(),
         }
@@ -31,21 +28,21 @@ impl Architecture {
         self.dimensions.iter().find(|d| d.name == name)
     }
 
-    /// Get total number of processing elements (only works if all dimensions are concrete)
+    /// Get total number of processing elements across all aggregations
+    /// Returns None if any dimension is symbolic
     pub fn total_processing_elements(&self) -> Option<usize> {
-        self.dimensions
+        self.processor_aggregations
             .iter()
-            .map(|d| d.size.as_concrete())
+            .map(|agg| agg.total_instances())
             .collect::<Option<Vec<_>>>()
-            .map(|sizes| sizes.into_iter().product())
+            .map(|counts| counts.into_iter().sum())
     }
 }
 
 pub struct ArchitectureBuilder {
     name: String,
     dimensions: Vec<Dimension>,
-    functional_units: Vec<FunctionalUnit>,
-    lanes: Vec<Lane>,
+    processor_aggregations: Vec<ProcessorAggregation>,
     memory_aggregations: Vec<MemoryAggregation>,
     interconnects: Vec<Interconnect>,
 }
@@ -56,13 +53,8 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn functional_unit(mut self, fu: FunctionalUnit) -> Self {
-        self.functional_units.push(fu);
-        self
-    }
-
-    pub fn lane(mut self, lane: Lane) -> Self {
-        self.lanes.push(lane);
+    pub fn processor_aggregation(mut self, agg: ProcessorAggregation) -> Self {
+        self.processor_aggregations.push(agg);
         self
     }
 
@@ -80,8 +72,7 @@ impl ArchitectureBuilder {
         Architecture {
             name: self.name,
             dimensions: self.dimensions,
-            functional_units: self.functional_units,
-            lanes: self.lanes,
+            processor_aggregations: self.processor_aggregations,
             memory_aggregations: self.memory_aggregations,
             interconnects: self.interconnects,
         }

@@ -1,4 +1,4 @@
-use crate::core::{Dimension, Index, MemRegion, Processor, PerformanceModel};
+use crate::core::{Index, MemRegion, Processor, PerformanceModel};
 
 /// Represents a functional unit (mlar.fu) - fixed shapes, synchronous operations
 #[derive(Debug, Clone)]
@@ -7,7 +7,6 @@ pub struct FunctionalUnit {
     pub input_regions: Vec<MemRegion>,
     pub output_regions: Vec<MemRegion>,
     pub latency: Index,
-    pub grid: Vec<Dimension>,
 }
 
 impl FunctionalUnit {
@@ -17,7 +16,6 @@ impl FunctionalUnit {
             input_regions: Vec::new(),
             output_regions: Vec::new(),
             latency: 0,
-            grid: Vec::new(),
         }
     }
 }
@@ -34,10 +32,6 @@ impl Processor for FunctionalUnit {
     fn output_memories(&self) -> &[MemRegion] {
         &self.output_regions
     }
-
-    fn grid(&self) -> &[Dimension] {
-        &self.grid
-    }
 }
 
 pub struct FunctionalUnitBuilder {
@@ -45,7 +39,6 @@ pub struct FunctionalUnitBuilder {
     input_regions: Vec<MemRegion>,
     output_regions: Vec<MemRegion>,
     latency: Index,
-    grid: Vec<Dimension>,
 }
 
 impl FunctionalUnitBuilder {
@@ -64,18 +57,12 @@ impl FunctionalUnitBuilder {
         self
     }
 
-    pub fn grid(mut self, dims: Vec<Dimension>) -> Self {
-        self.grid = dims;
-        self
-    }
-
     pub fn build(self) -> FunctionalUnit {
         FunctionalUnit {
             name: self.name,
             input_regions: self.input_regions,
             output_regions: self.output_regions,
             latency: self.latency,
-            grid: self.grid,
         }
     }
 }

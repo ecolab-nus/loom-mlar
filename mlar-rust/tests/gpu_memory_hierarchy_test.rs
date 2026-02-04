@@ -1,7 +1,16 @@
-use mlar_rust::*;
+use mlar_rust::{lane::MatMulLane, *};
 
 #[test]
 fn test_gpu_memory_hierarchy() {
+    // DRAM: 2 banks, large capacity
+    let dram_banks = MemRegion::indexed(
+        vec![Dimension::new("dram_banks", 2)],
+        MemRegion::bank(Bank::builder()
+            .block_size(256) // 256 bytes per block transfer
+            .num_blocks(Size::symbolic("DRAM_SIZE"))
+            .build()),
+    );
+
     // L2: 4 banks, each with many small blocks totaling 1MB
     let l2_banks = MemRegion::indexed(
         vec![Dimension::new("l2_banks", 4)],
@@ -10,7 +19,7 @@ fn test_gpu_memory_hierarchy() {
             .num_blocks(4096)  // 4096 blocks = 1MB total per bank
             .build()),
     );
-    
+
     // L1: 8 banks, each with many small blocks totaling 64KB
     let l1_banks = MemRegion::indexed(
         vec![Dimension::new("l1_banks", 8)],
@@ -19,55 +28,107 @@ fn test_gpu_memory_hierarchy() {
             .num_blocks(1024) // 1024 blocks = 64KB total per bank
             .build()),
     );
+
+    // --- DRAM <-> L2 Connection ---
     
-    // Shared buffer - single block for transferring data between L2 and L1
-    // L2 outputs to it, L1 inputs from it
-    let shared_buffer = MemRegion::bank(Bank::builder()
-        .block_size(256)  // Match L2 block size for efficient transfers
-        .num_blocks(1)    // Single block buffer
+    // DRAM -> L2 Shared Buffer
+    let dram_l2_buffer = MemRegion::bank(Bank::builder()
+        .block_size(256)
+        .num_blocks(1)
         .build());
-    
-    // L2 output aggregation (for reading)
-    // L2 banks output data to the shared buffer
+
+    // DRAM Output Aggregation (DRAM -> Buffer)
+    let dram_bus_output = MemoryAggregation::builder("DRAM_bus_output")
+        .source(dram_banks.clone())
+        .target(dram_l2_buffer.clone())
+        .bandwidth(256)
+        .build();
+
+    // L2 Input Aggregation (Buffer -> L2)
+    let l2_bus_input = MemoryAggregation::builder("L2_bus_input")
+        .source(dram_l2_buffer.clone())
+        .target(l2_banks.clone())
+        .bandwidth(128)
+        .build();
+
+    // --- L2 <-> L1 Connection ---
+
+    // L2 -> L1 Shared Buffer
+    let l2_l1_buffer = MemRegion::bank(Bank::builder()
+        .block_size(256)  // Match L2 block size
+        .num_blocks(1)
+        .build());
+
+    // L2 Output Aggregation (L2 -> Buffer)
     let l2_bus_output = MemoryAggregation::builder("L2_bus_output")
         .source(l2_banks.clone())
-        .target(shared_buffer.clone())
-        .bandwidth(128)  // bytes/cycle
+        .target(l2_l1_buffer.clone())
+        .bandwidth(128)
         .build();
-    
-    // L1 input aggregation (for writing)
-    // L1 banks input data from the shared buffer
+
+    // L1 Input Aggregation (Buffer -> L1)
     let l1_bus_input = MemoryAggregation::builder("L1_bus_input")
-        .source(shared_buffer.clone())
+        .source(l2_l1_buffer.clone())
         .target(l1_banks.clone())
-        .bandwidth(64)  // bytes/cycle
+        .bandwidth(64)
         .build();
+
+    // Create the input register file for the matrix lane
+    let mat_input_reg = MemRegion::bank(Bank::builder()
+        .block_size(1024)
+        .num_blocks(16)
+        .build());
+
+    // create the output register file for the matrix lane
+    let mat_output_reg = MemRegion::bank(Bank::builder()
+        .block_size(1024)
+        .num_blocks(16)
+        .build());
+
+    // The matrix lane
+    let _mat_lane = FunctionalLane::new(
+        "matmul_lane",
+        vec![mat_input_reg.clone(), mat_output_reg.clone()],
+        vec![mat_output_reg.clone()],
+        Box::new(MatMulLane),
+    );
     
     // Build architecture
     let arch = Architecture::builder("GPU")
-        .dimension(Dimension::new("l1_banks", 8))
+        .dimension(Dimension::new("dram_banks", 2))
         .dimension(Dimension::new("l2_banks", 4))
+        .dimension(Dimension::new("l1_banks", 8))
+        .memory_aggregation(dram_bus_output)
+        .memory_aggregation(l2_bus_input)
         .memory_aggregation(l2_bus_output)
         .memory_aggregation(l1_bus_input)
         .build();
         
     // Verify
     assert_eq!(arch.name, "GPU");
-    assert_eq!(arch.memory_aggregations.len(), 2);
+    assert_eq!(arch.memory_aggregations.len(), 4);
     
-    // The L2 output aggregation allows reading from L2
-    assert_eq!(arch.memory_aggregations[0].name, "L2_bus_output");
-    assert_eq!(arch.memory_aggregations[0].sources.len(), 1);
-    assert_eq!(arch.memory_aggregations[0].bandwidth, 128);
+    // 1. DRAM Output Aggregation
+    assert_eq!(arch.memory_aggregations[0].name, "DRAM_bus_output");
+    assert_eq!(arch.memory_aggregations[0].bandwidth, 256);
+
+    // 2. L2 Input Aggregation
+    assert_eq!(arch.memory_aggregations[1].name, "L2_bus_input");
+    assert_eq!(arch.memory_aggregations[1].bandwidth, 128);
+
+    // 3. L2 Output Aggregation
+    assert_eq!(arch.memory_aggregations[2].name, "L2_bus_output");
+    assert_eq!(arch.memory_aggregations[2].sources.len(), 1);
+    assert_eq!(arch.memory_aggregations[2].bandwidth, 128);
     
-    // The L1 input aggregation allows writing to L1
-    assert_eq!(arch.memory_aggregations[1].name, "L1_bus_input");
-    assert_eq!(arch.memory_aggregations[1].sources.len(), 1);
-    assert_eq!(arch.memory_aggregations[1].bandwidth, 64);
+    // 4. L1 Input Aggregation
+    assert_eq!(arch.memory_aggregations[3].name, "L1_bus_input");
+    assert_eq!(arch.memory_aggregations[3].sources.len(), 1);
+    assert_eq!(arch.memory_aggregations[3].bandwidth, 64);
     
     // In this architecture:
-    // - L2 banks (4 x 1MB) output data to shared buffer (256 bytes)
-    // - L1 banks (8 x 64KB) input data from shared buffer
-    // - The shared buffer acts as the connection point between L2 and L1
-    // - Any L1 bank can read from any L2 bank via the shared buffer
+    // - DRAM banks (2 x Large) -> DRAM_bus_output -> dram_l2_buffer
+    // - dram_l2_buffer -> L2_bus_input -> L2 banks
+    // - L2 banks (4 x 1MB) -> L2_bus_output -> l2_l1_buffer
+    // - l2_l1_buffer -> L1_bus_input -> L1 banks
 }

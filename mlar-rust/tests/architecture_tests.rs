@@ -29,7 +29,6 @@ fn test_2d_mesh_architecture() {
         .input_region(l1_region.clone())
         .output_region(l1_region.clone())
         .latency(8)
-        .grid(vec![dim_x.clone(), dim_y.clone()])
         .build();
 
     let vec_fu = FunctionalUnit::builder("vec_add_32")
@@ -37,25 +36,28 @@ fn test_2d_mesh_architecture() {
         .input_region(l1_region.clone())
         .output_region(l1_region.clone())
         .latency(1)
-        .grid(vec![dim_x.clone(), dim_y.clone()])
         .build();
 
     // Create lanes with performance models
-    let mat_lane = Lane::new(
+    let mat_lane = FunctionalLane::new(
         "matmul_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
         Box::new(MatMulLane),
-        vec![dim_x.clone(), dim_y.clone()],
     );
 
-    let vec_lane = Lane::new(
+    let vec_lane = FunctionalLane::new(
         "vec_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
         Box::new(VecLane),
-        vec![dim_x.clone(), dim_y.clone()],
     );
+
+    // Create processor aggregations - specifying grid dimensions separately
+    let mat_fu_agg = ProcessorAggregation::from_unit(mat_fu, vec![dim_x.clone(), dim_y.clone()]);
+    let vec_fu_agg = ProcessorAggregation::from_unit(vec_fu, vec![dim_x.clone(), dim_y.clone()]);
+    let mat_lane_agg = ProcessorAggregation::from_lane(mat_lane, vec![dim_x.clone(), dim_y.clone()]);
+    let vec_lane_agg = ProcessorAggregation::from_lane(vec_lane, vec![dim_x.clone(), dim_y.clone()]);
 
     // Create interconnects with affine maps
     let noc_h_map = AffineMap::new(
@@ -109,15 +111,15 @@ fn test_2d_mesh_architecture() {
         .bandwidth(64)
         .build();
 
-    // Build the architecture
+    // Build the architecture using ProcessorAggregation
     let arch = Architecture::builder("2D Mesh")
         .dimension(dim_x.clone())
         .dimension(dim_y.clone())
         .dimension(dim_d.clone())
-        .functional_unit(mat_fu)
-        .functional_unit(vec_fu)
-        .lane(mat_lane)
-        .lane(vec_lane)
+        .processor_aggregation(mat_fu_agg)
+        .processor_aggregation(vec_fu_agg)
+        .processor_aggregation(mat_lane_agg)
+        .processor_aggregation(vec_lane_agg)
         .interconnect(noc_h)
         .interconnect(noc_v)
         .interconnect(to_dram)
@@ -126,9 +128,9 @@ fn test_2d_mesh_architecture() {
     // Verify architecture properties
     assert_eq!(arch.name, "2D Mesh");
     assert_eq!(arch.dimensions.len(), 3);
-    assert_eq!(arch.functional_units.len(), 2);
-    assert_eq!(arch.lanes.len(), 2);
+    assert_eq!(arch.processor_aggregations.len(), 4);
     assert_eq!(arch.interconnects.len(), 3);
+    // 4 processor aggregations, each with 8x8=64 instances = 256 total
     assert_eq!(arch.total_processing_elements(), Some(256));
 }
 
@@ -169,12 +171,11 @@ fn test_lane_preconditions() {
         MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()),
     );
     
-    let mat_lane = Lane::new(
+    let mat_lane = FunctionalLane::new(
         "matmul_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
         Box::new(MatMulLane),
-        vec![dim_x.clone(), dim_y.clone()],
     );
     
     // Test preconditions for MatMulLane (requires M,N >= 256)
