@@ -133,6 +133,15 @@ impl MemRegion {
                 .build(),
         )
     }
+
+    /// Scale this memory region across the given dimensions.
+    /// Creates a new indexed region wrapping this one.
+    pub fn scale(self, indices: Vec<Dimension>) -> Self {
+        MemRegion::Indexed {
+            indices,
+            sub_region: Box::new(self),
+        }
+    }
 }
 
 #[cfg(test)]

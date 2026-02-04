@@ -27,7 +27,26 @@ src/
 
 ## Core Concepts
 
-### ProcessorSet and Scalable
+### Scaling with `scale()`
+
+Both memory regions and processors support the `scale()` method to replicate them across dimensions.
+
+#### Scaling Memory Regions
+
+Memory regions can be scaled to create indexed regions:
+
+```rust
+// Create a bank and scale it across dimensions
+let l1_region = MemRegion::bank(Bank::builder()
+        .block_size(65536)
+        .num_blocks(1)
+        .build())
+    .scale(vec![dim_x.clone(), dim_y.clone()]);  // 64KB per [x,y] location
+```
+
+This is equivalent to calling `MemRegion::indexed(dims, region)` but provides a more fluent API.
+
+#### Scaling Processors
 
 Processors (FunctionalUnit, FunctionalLane) can be scaled across dimensions using the `scale()` method to create a `ProcessorSet`:
 
@@ -222,15 +241,13 @@ pub enum MemRegion {
 }
 ```
 
-Example: L1 memory indexed by processor coordinates:
+Example: L1 memory indexed by processor coordinates using `scale()`:
 ```rust
-let l1_region = MemRegion::indexed(
-    vec![Dimension::new("x", 8), Dimension::new("y", 8)],
-    MemRegion::bank(Bank::builder()
+let l1_region = MemRegion::bank(Bank::builder()
         .block_size(65536)
         .num_blocks(1)
-        .build()),
-);
+        .build())
+    .scale(vec![Dimension::new("x", 8), Dimension::new("y", 8)]);
 ```
 
 #### 6. **Interconnects** (`interconnect.rs`)
@@ -293,11 +310,9 @@ use mlar_rust::lane::MatMulLane;
 let dim_x = Dimension::new("x", 8);
 let dim_y = Dimension::new("y", 8);
 
-// Define L1 memory region
-let l1_region = MemRegion::indexed(
-    vec![dim_x.clone(), dim_y.clone()],
-    MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()),
-);
+// Define L1 memory region (scale a bank across dimensions)
+let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
+    .scale(vec![dim_x.clone(), dim_y.clone()]);
 
 // Create functional unit
 let mat_fu = FunctionalUnit::builder("matmul_32x32")

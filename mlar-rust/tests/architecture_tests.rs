@@ -10,18 +10,12 @@ fn test_2d_mesh_architecture() {
     let dim_d = Dimension::new("d", 4);
 
     // Define L1 memory region: indexed by [x, y], each has 64KB blocks
-    // Using bus aggregation (single shared port)
-    let l1_region = MemRegion::indexed(
-        vec![dim_x.clone(), dim_y.clone()],
-        MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()), // 64KB per location
-    );
+    let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
+        .scale(vec![dim_x.clone(), dim_y.clone()]); // 64KB per location
 
     // Define DRAM memory region: indexed by [d], each has 8GB
-    // Using separate ports (each DRAM independently accessible)
-    let _dram_region = MemRegion::indexed(
-        vec![dim_d.clone()],
-        MemRegion::bank(Bank::builder().block_size(8589934592usize).num_blocks(1).build()), // 8GB per DRAM
-    );
+    let _dram_region = MemRegion::bank(Bank::builder().block_size(8589934592usize).num_blocks(1).build())
+        .scale(vec![dim_d.clone()]); // 8GB per DRAM
 
     // Create functional units that operate on L1 regions
     let mat_fu = FunctionalUnit::builder("matmul_32x32")
@@ -167,10 +161,8 @@ fn test_lane_preconditions() {
     let dim_x = Dimension::new("x", 8);
     let dim_y = Dimension::new("y", 8);
     
-    let l1_region = MemRegion::indexed(
-        vec![dim_x.clone(), dim_y.clone()],
-        MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()),
-    );
+    let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
+        .scale(vec![dim_x.clone(), dim_y.clone()]);
     
     let mat_lane = FunctionalLane::new(
         "matmul_lane",

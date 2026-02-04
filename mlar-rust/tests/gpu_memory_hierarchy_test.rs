@@ -3,31 +3,25 @@ use mlar_rust::{lane::MatMulLane, *};
 #[test]
 fn test_gpu_memory_hierarchy() {
     // DRAM: 2 banks, large capacity
-    let dram_banks = MemRegion::indexed(
-        vec![Dimension::new("dram_banks", 2)],
-        MemRegion::bank(Bank::builder()
+    let dram_banks = MemRegion::bank(Bank::builder()
             .block_size(256) // 256 bytes per block transfer
             .num_blocks(Size::symbolic("DRAM_SIZE"))
-            .build()),
-    );
+            .build())
+        .scale(vec![Dimension::new("dram_banks", 2)]);
 
     // L2: 4 banks, each with many small blocks totaling 1MB
-    let l2_banks = MemRegion::indexed(
-        vec![Dimension::new("l2_banks", 4)],
-        MemRegion::bank(Bank::builder()
+    let l2_banks = MemRegion::bank(Bank::builder()
             .block_size(256)  // 256 bytes per block
             .num_blocks(4096)  // 4096 blocks = 1MB total per bank
-            .build()),
-    );
+            .build())
+        .scale(vec![Dimension::new("l2_banks", 4)]);
 
     // L1: 8 banks, each with many small blocks totaling 64KB
-    let l1_banks = MemRegion::indexed(
-        vec![Dimension::new("l1_banks", 8)],
-        MemRegion::bank(Bank::builder()
+    let l1_banks = MemRegion::bank(Bank::builder()
             .block_size(64)   // 64 bytes per block
             .num_blocks(1024) // 1024 blocks = 64KB total per bank
-            .build()),
-    );
+            .build())
+        .scale(vec![Dimension::new("l1_banks", 8)]);
 
     // --- DRAM <-> L2 Connection ---
     
