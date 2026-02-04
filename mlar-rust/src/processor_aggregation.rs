@@ -3,7 +3,7 @@ use crate::functional_unit::FunctionalUnit;
 use crate::lane::FunctionalLane;
 
 /// Enum to hold either a FunctionalUnit or FunctionalLane
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProcessorKind {
     FunctionalUnit(FunctionalUnit),
     FunctionalLane(FunctionalLane),
@@ -18,111 +18,121 @@ impl ProcessorKind {
     }
 }
 
-/// Represents the aggregation of a processor across dimensions
-/// This separates the concept of "what the processor does" from "where it's replicated"
-#[derive(Debug)]
-pub struct ProcessorAggregation {
-    pub name: String,
-    pub processor: ProcessorKind,
-    /// The dimensions across which this processor is replicated
-    pub grid: Vec<Dimension>,
+/// Represents a set of processors, potentially scaled across dimensions
+/// Analogous to MemRegion for memory
+#[derive(Debug, Clone)]
+pub enum ProcessorSet {
+    /// A set of processors indexed by dimensions (scaled)
+    Indexed {
+        indices: Vec<Dimension>,
+        processor: ProcessorKind,
+    },
+    /// A single processor (not scaled)
+    Single(ProcessorKind),
 }
 
-impl ProcessorAggregation {
-    /// Create a new ProcessorAggregation from a FunctionalUnit
-    pub fn from_unit(unit: FunctionalUnit, grid: Vec<Dimension>) -> Self {
-        Self {
-            name: unit.name.clone(),
+impl ProcessorSet {
+    /// Create an indexed (scaled) processor set from a FunctionalUnit
+    pub fn from_unit_indexed(unit: FunctionalUnit, indices: Vec<Dimension>) -> Self {
+        ProcessorSet::Indexed {
+            indices,
             processor: ProcessorKind::FunctionalUnit(unit),
-            grid,
         }
     }
 
-    /// Create a new ProcessorAggregation from a FunctionalLane
-    pub fn from_lane(lane: FunctionalLane, grid: Vec<Dimension>) -> Self {
-        Self {
-            name: lane.name.clone(),
+    /// Create an indexed (scaled) processor set from a FunctionalLane
+    pub fn from_lane_indexed(lane: FunctionalLane, indices: Vec<Dimension>) -> Self {
+        ProcessorSet::Indexed {
+            indices,
             processor: ProcessorKind::FunctionalLane(lane),
-            grid,
         }
+    }
+
+    /// Create a single (non-scaled) processor set from a FunctionalUnit
+    pub fn from_unit(unit: FunctionalUnit) -> Self {
+        ProcessorSet::Single(ProcessorKind::FunctionalUnit(unit))
+    }
+
+    /// Create a single (non-scaled) processor set from a FunctionalLane
+    pub fn from_lane(lane: FunctionalLane) -> Self {
+        ProcessorSet::Single(ProcessorKind::FunctionalLane(lane))
     }
 
     /// Get the processor name
     pub fn processor_name(&self) -> &str {
-        self.processor.name()
+        match self {
+            ProcessorSet::Indexed { processor, .. } => processor.name(),
+            ProcessorSet::Single(processor) => processor.name(),
+        }
     }
 
-    /// Get the grid dimensions
-    pub fn grid(&self) -> &[Dimension] {
-        &self.grid
+    /// Get the indices (dimensions) this processor set is scaled across
+    pub fn indices(&self) -> &[Dimension] {
+        match self {
+            ProcessorSet::Indexed { indices, .. } => indices,
+            ProcessorSet::Single(_) => &[],
+        }
     }
 
-    /// Get the total number of replicated instances (if all dimensions are concrete)
+    /// Get the total number of processor instances (if all dimensions are concrete)
     pub fn total_instances(&self) -> Option<usize> {
-        self.grid
-            .iter()
-            .map(|d| d.size.as_concrete())
-            .collect::<Option<Vec<_>>>()
-            .map(|sizes| sizes.into_iter().product())
+        match self {
+            ProcessorSet::Indexed { indices, .. } => {
+                indices
+                    .iter()
+                    .map(|d| d.size.as_concrete())
+                    .collect::<Option<Vec<_>>>()
+                    .map(|sizes| sizes.into_iter().product())
+            }
+            ProcessorSet::Single(_) => Some(1),
+        }
     }
 }
 
-/// Builder for ProcessorAggregation
+/// Trait to allow processors to be scaled into ProcessorSets
+pub trait Scalable {
+    /// Scale this processor across the given dimensions to create a ProcessorSet
+    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet;
+}
+
+/// Processor aggregation - describes how to use a set of processors
+/// Analogous to MemoryAggregation for memory
+#[derive(Debug, Clone)]
+pub struct ProcessorAggregation {
+    pub name: String,
+    pub processor_set: ProcessorSet,
+    // Future: could add scheduling hints, access patterns, etc.
+}
+
+impl ProcessorAggregation {
+    pub fn builder(name: impl Into<String>) -> ProcessorAggregationBuilder {
+        ProcessorAggregationBuilder {
+            name: name.into(),
+            processor_set: None,
+        }
+    }
+
+    /// Get the total number of processor instances
+    pub fn total_instances(&self) -> Option<usize> {
+        self.processor_set.total_instances()
+    }
+}
+
 pub struct ProcessorAggregationBuilder {
-    name: Option<String>,
-    processor: Option<ProcessorKind>,
-    grid: Vec<Dimension>,
+    name: String,
+    processor_set: Option<ProcessorSet>,
 }
 
 impl ProcessorAggregationBuilder {
-    pub fn new() -> Self {
-        Self {
-            name: None,
-            processor: None,
-            grid: Vec::new(),
-        }
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    pub fn functional_unit(mut self, unit: FunctionalUnit) -> Self {
-        if self.name.is_none() {
-            self.name = Some(unit.name.clone());
-        }
-        self.processor = Some(ProcessorKind::FunctionalUnit(unit));
-        self
-    }
-
-    pub fn functional_lane(mut self, lane: FunctionalLane) -> Self {
-        if self.name.is_none() {
-            self.name = Some(lane.name.clone());
-        }
-        self.processor = Some(ProcessorKind::FunctionalLane(lane));
-        self
-    }
-
-    pub fn grid(mut self, dims: Vec<Dimension>) -> Self {
-        self.grid = dims;
+    pub fn processor_set(mut self, set: ProcessorSet) -> Self {
+        self.processor_set = Some(set);
         self
     }
 
     pub fn build(self) -> ProcessorAggregation {
-        let processor = self.processor.expect("ProcessorAggregation requires a processor");
-        let name = self.name.unwrap_or_else(|| processor.name().to_string());
-        
         ProcessorAggregation {
-            name,
-            processor,
-            grid: self.grid,
+            name: self.name,
+            processor_set: self.processor_set.expect("processor_set must be set"),
         }
-    }
-}
-
-impl Default for ProcessorAggregationBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -90,7 +90,7 @@ fn test_gpu_memory_hierarchy() {
         "matmul_lane",
         vec![mat_input_reg.clone(), mat_output_reg.clone()],
         vec![mat_output_reg.clone()],
-        Box::new(MatMulLane),
+        MatMulLane,
     );
     
     // Build architecture

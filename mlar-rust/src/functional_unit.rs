@@ -1,4 +1,5 @@
-use crate::core::{Index, MemRegion, Processor, PerformanceModel};
+use crate::core::{Dimension, Index, MemRegion, Processor, PerformanceModel};
+use crate::processor_aggregation::{ProcessorSet, Scalable};
 
 /// Represents a functional unit (mlar.fu) - fixed shapes, synchronous operations
 #[derive(Debug, Clone)]
@@ -17,6 +18,12 @@ impl FunctionalUnit {
             output_regions: Vec::new(),
             latency: 0,
         }
+    }
+}
+
+impl Scalable for FunctionalUnit {
+    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet {
+        ProcessorSet::from_unit_indexed(self, indices)
     }
 }
 

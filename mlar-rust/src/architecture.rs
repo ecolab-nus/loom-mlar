@@ -1,5 +1,5 @@
 use crate::core::{Dimension, MemoryAggregation};
-use crate::processor_aggregation::ProcessorAggregation;
+use crate::processor_aggregation::{ProcessorAggregation, ProcessorSet};
 use crate::interconnect::Interconnect;
 
 /// Represents the complete hardware architecture (like the MLIR module)
@@ -7,6 +7,9 @@ use crate::interconnect::Interconnect;
 pub struct Architecture {
     pub name: String,
     pub dimensions: Vec<Dimension>,
+    /// Processor sets without contention/interference
+    pub processor_sets: Vec<ProcessorSet>,
+    /// Processor aggregations for modeling contention/interference between processors
     pub processor_aggregations: Vec<ProcessorAggregation>,
     pub memory_aggregations: Vec<MemoryAggregation>,
     pub interconnects: Vec<Interconnect>,
@@ -17,6 +20,7 @@ impl Architecture {
         ArchitectureBuilder {
             name: name.into(),
             dimensions: Vec::new(),
+            processor_sets: Vec::new(),
             processor_aggregations: Vec::new(),
             memory_aggregations: Vec::new(),
             interconnects: Vec::new(),
@@ -28,20 +32,32 @@ impl Architecture {
         self.dimensions.iter().find(|d| d.name == name)
     }
 
-    /// Get total number of processing elements across all aggregations
+    /// Get total number of processing elements across all sets and aggregations
     /// Returns None if any dimension is symbolic
     pub fn total_processing_elements(&self) -> Option<usize> {
-        self.processor_aggregations
+        let sets_count: Option<usize> = self.processor_sets
+            .iter()
+            .map(|set| set.total_instances())
+            .collect::<Option<Vec<_>>>()
+            .map(|counts| counts.into_iter().sum());
+        
+        let aggs_count: Option<usize> = self.processor_aggregations
             .iter()
             .map(|agg| agg.total_instances())
             .collect::<Option<Vec<_>>>()
-            .map(|counts| counts.into_iter().sum())
+            .map(|counts| counts.into_iter().sum());
+        
+        match (sets_count, aggs_count) {
+            (Some(s), Some(a)) => Some(s + a),
+            _ => None,
+        }
     }
 }
 
 pub struct ArchitectureBuilder {
     name: String,
     dimensions: Vec<Dimension>,
+    processor_sets: Vec<ProcessorSet>,
     processor_aggregations: Vec<ProcessorAggregation>,
     memory_aggregations: Vec<MemoryAggregation>,
     interconnects: Vec<Interconnect>,
@@ -53,6 +69,13 @@ impl ArchitectureBuilder {
         self
     }
 
+    /// Add a processor set (no contention modeling)
+    pub fn processor_set(mut self, set: ProcessorSet) -> Self {
+        self.processor_sets.push(set);
+        self
+    }
+
+    /// Add a processor aggregation (for modeling contention/interference)
     pub fn processor_aggregation(mut self, agg: ProcessorAggregation) -> Self {
         self.processor_aggregations.push(agg);
         self
@@ -72,6 +95,7 @@ impl ArchitectureBuilder {
         Architecture {
             name: self.name,
             dimensions: self.dimensions,
+            processor_sets: self.processor_sets,
             processor_aggregations: self.processor_aggregations,
             memory_aggregations: self.memory_aggregations,
             interconnects: self.interconnects,

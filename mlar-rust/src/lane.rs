@@ -1,12 +1,14 @@
-use crate::core::{Index, MemRegion, Processor};
+use std::sync::Arc;
+use crate::core::{Dimension, Index, MemRegion, Processor};
+use crate::processor_aggregation::{ProcessorSet, Scalable};
 
 /// Represents a lane processor (mlar.lane) - dynamic shapes, streaming operations
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionalLane {
     pub name: String,
     pub input_regions: Vec<MemRegion>,
     pub output_regions: Vec<MemRegion>,
-    pub model: Box<dyn LaneModel>,
+    pub model: Arc<dyn LaneModel>,
 }
 
 impl FunctionalLane {
@@ -14,13 +16,13 @@ impl FunctionalLane {
         name: impl Into<String>,
         input_regions: Vec<MemRegion>,
         output_regions: Vec<MemRegion>,
-        model: Box<dyn LaneModel>,
+        model: impl LaneModel + 'static,
     ) -> Self {
         Self {
             name: name.into(),
             input_regions,
             output_regions,
-            model,
+            model: Arc::new(model),
         }
     }
 
@@ -28,6 +30,12 @@ impl FunctionalLane {
         // Validate preconditions before computing latency
         self.model.validate_preconditions(dims)?;
         Ok(self.model.compute_latency(dims, inputs))
+    }
+}
+
+impl Scalable for FunctionalLane {
+    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet {
+        ProcessorSet::from_lane_indexed(self, indices)
     }
 }
 
@@ -46,7 +54,7 @@ impl Processor for FunctionalLane {
 }
 
 /// Trait for lane models with precondition validation
-pub trait LaneModel: std::fmt::Debug {
+pub trait LaneModel: std::fmt::Debug + Send + Sync {
     /// Validate that the preconditions for the performance model are met
     fn validate_preconditions(&self, dims: &[Index]) -> Result<(), String>;
     

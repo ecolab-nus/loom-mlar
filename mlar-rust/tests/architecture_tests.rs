@@ -43,21 +43,22 @@ fn test_2d_mesh_architecture() {
         "matmul_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
-        Box::new(MatMulLane),
+        MatMulLane,
     );
 
     let vec_lane = FunctionalLane::new(
         "vec_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
-        Box::new(VecLane),
+        VecLane,
     );
 
-    // Create processor aggregations - specifying grid dimensions separately
-    let mat_fu_agg = ProcessorAggregation::from_unit(mat_fu, vec![dim_x.clone(), dim_y.clone()]);
-    let vec_fu_agg = ProcessorAggregation::from_unit(vec_fu, vec![dim_x.clone(), dim_y.clone()]);
-    let mat_lane_agg = ProcessorAggregation::from_lane(mat_lane, vec![dim_x.clone(), dim_y.clone()]);
-    let vec_lane_agg = ProcessorAggregation::from_lane(vec_lane, vec![dim_x.clone(), dim_y.clone()]);
+    // Create ProcessorSets by scaling processors across dimensions
+    // No contention in this example, so we use ProcessorSets directly
+    let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
+    let vec_fu_set = vec_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
+    let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
+    let vec_lane_set = vec_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
 
     // Create interconnects with affine maps
     let noc_h_map = AffineMap::new(
@@ -111,15 +112,15 @@ fn test_2d_mesh_architecture() {
         .bandwidth(64)
         .build();
 
-    // Build the architecture using ProcessorAggregation
+    // Build the architecture using ProcessorSets directly (no contention)
     let arch = Architecture::builder("2D Mesh")
         .dimension(dim_x.clone())
         .dimension(dim_y.clone())
         .dimension(dim_d.clone())
-        .processor_aggregation(mat_fu_agg)
-        .processor_aggregation(vec_fu_agg)
-        .processor_aggregation(mat_lane_agg)
-        .processor_aggregation(vec_lane_agg)
+        .processor_set(mat_fu_set)
+        .processor_set(vec_fu_set)
+        .processor_set(mat_lane_set)
+        .processor_set(vec_lane_set)
         .interconnect(noc_h)
         .interconnect(noc_v)
         .interconnect(to_dram)
@@ -128,9 +129,9 @@ fn test_2d_mesh_architecture() {
     // Verify architecture properties
     assert_eq!(arch.name, "2D Mesh");
     assert_eq!(arch.dimensions.len(), 3);
-    assert_eq!(arch.processor_aggregations.len(), 4);
+    assert_eq!(arch.processor_sets.len(), 4);
     assert_eq!(arch.interconnects.len(), 3);
-    // 4 processor aggregations, each with 8x8=64 instances = 256 total
+    // 4 processor sets, each with 8x8=64 instances = 256 total
     assert_eq!(arch.total_processing_elements(), Some(256));
 }
 
@@ -175,7 +176,7 @@ fn test_lane_preconditions() {
         "matmul_lane",
         vec![l1_region.clone(), l1_region.clone()],
         vec![l1_region.clone()],
-        Box::new(MatMulLane),
+        MatMulLane,
     );
     
     // Test preconditions for MatMulLane (requires M,N >= 256)
