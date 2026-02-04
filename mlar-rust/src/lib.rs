@@ -5,7 +5,7 @@ pub mod interconnect;
 pub mod architecture;
 
 // Re-export commonly used types from core
-pub use core::{Dimension, Index, MemRegion, Bank, Size, Processor, PerformanceModel, AggregationType};
+pub use core::{Dimension, Index, MemRegion, Bank, Size, Processor, PerformanceModel, MemoryAggregation};
 
 // Re-export commonly used types from modules
 pub use functional_unit::FunctionalUnit;

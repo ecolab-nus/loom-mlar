@@ -1,4 +1,4 @@
-use crate::core::Dimension;
+use crate::core::{Dimension, MemoryAggregation};
 use crate::functional_unit::FunctionalUnit;
 use crate::lane::Lane;
 use crate::interconnect::Interconnect;
@@ -10,6 +10,7 @@ pub struct Architecture {
     pub dimensions: Vec<Dimension>,
     pub functional_units: Vec<FunctionalUnit>,
     pub lanes: Vec<Lane>,
+    pub memory_aggregations: Vec<MemoryAggregation>,
     pub interconnects: Vec<Interconnect>,
 }
 
@@ -20,6 +21,7 @@ impl Architecture {
             dimensions: Vec::new(),
             functional_units: Vec::new(),
             lanes: Vec::new(),
+            memory_aggregations: Vec::new(),
             interconnects: Vec::new(),
         }
     }
@@ -44,6 +46,7 @@ pub struct ArchitectureBuilder {
     dimensions: Vec<Dimension>,
     functional_units: Vec<FunctionalUnit>,
     lanes: Vec<Lane>,
+    memory_aggregations: Vec<MemoryAggregation>,
     interconnects: Vec<Interconnect>,
 }
 
@@ -63,6 +66,11 @@ impl ArchitectureBuilder {
         self
     }
 
+    pub fn memory_aggregation(mut self, agg: MemoryAggregation) -> Self {
+        self.memory_aggregations.push(agg);
+        self
+    }
+
     pub fn interconnect(mut self, ic: Interconnect) -> Self {
         self.interconnects.push(ic);
         self
@@ -74,6 +82,7 @@ impl ArchitectureBuilder {
             dimensions: self.dimensions,
             functional_units: self.functional_units,
             lanes: self.lanes,
+            memory_aggregations: self.memory_aggregations,
             interconnects: self.interconnects,
         }
     }

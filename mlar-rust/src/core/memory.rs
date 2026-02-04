@@ -45,13 +45,57 @@ impl BankBuilder {
     }
 }
 
-/// Defines how memory regions are aggregated and exposed
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AggregationType {
-    /// All sub-regions connected via a bus, single port exposed
-    Bus,
-    /// Each sub-region exposed as separate port
-    Separate,
+/// Memory aggregation - acts as a processor moving data between regions
+#[derive(Debug, Clone)]
+pub struct MemoryAggregation {
+    pub name: String,
+    pub sources: Vec<MemRegion>,
+    pub target: MemRegion,
+    pub bandwidth: usize,  // bytes/cycle
+}
+
+impl MemoryAggregation {
+    pub fn builder(name: impl Into<String>) -> MemoryAggregationBuilder {
+        MemoryAggregationBuilder {
+            name: name.into(),
+            sources: Vec::new(),
+            target: None,
+            bandwidth: None,
+        }
+    }
+}
+
+pub struct MemoryAggregationBuilder {
+    name: String,
+    sources: Vec<MemRegion>,
+    target: Option<MemRegion>,
+    bandwidth: Option<usize>,
+}
+
+impl MemoryAggregationBuilder {
+    pub fn source(mut self, region: MemRegion) -> Self {
+        self.sources.push(region);
+        self
+    }
+
+    pub fn target(mut self, region: MemRegion) -> Self {
+        self.target = Some(region);
+        self
+    }
+
+    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
+        self.bandwidth = Some(bandwidth);
+        self
+    }
+
+    pub fn build(self) -> MemoryAggregation {
+        MemoryAggregation {
+            name: self.name,
+            sources: self.sources,
+            target: self.target.expect("target must be set"),
+            bandwidth: self.bandwidth.expect("bandwidth must be set"),
+        }
+    }
 }
 
 /// Represents a hierarchical memory region
@@ -61,34 +105,18 @@ pub enum MemRegion {
     Indexed {
         indices: Vec<Dimension>,
         sub_region: Box<MemRegion>,
-        aggregation: AggregationType,
     },
-    /// Leaf: concrete memory block
+    /// Leaf: concrete memory bank
     Bank(Bank),
 }
 
 impl MemRegion {
-    /// Create an indexed memory region with specified aggregation type
-    pub fn indexed(
-        indices: Vec<Dimension>,
-        sub_region: MemRegion,
-        aggregation: AggregationType,
-    ) -> Self {
+    /// Create an indexed memory region
+    pub fn indexed(indices: Vec<Dimension>, sub_region: MemRegion) -> Self {
         MemRegion::Indexed {
             indices,
             sub_region: Box::new(sub_region),
-            aggregation,
         }
-    }
-
-    /// Create an indexed memory region with bus aggregation (single port exposed)
-    pub fn indexed_bus(indices: Vec<Dimension>, sub_region: MemRegion) -> Self {
-        Self::indexed(indices, sub_region, AggregationType::Bus)
-    }
-
-    /// Create an indexed memory region with separate ports (each sub-region exposed)
-    pub fn indexed_separate(indices: Vec<Dimension>, sub_region: MemRegion) -> Self {
-        Self::indexed(indices, sub_region, AggregationType::Separate)
     }
 
     /// Create a leaf memory region
