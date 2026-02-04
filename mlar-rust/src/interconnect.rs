@@ -1,4 +1,4 @@
-use crate::primitives::{Dimension, Index};
+use crate::core::{Dimension, Index};
 
 /// Represents the affine mapping function for interconnects
 /// e.g., affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>

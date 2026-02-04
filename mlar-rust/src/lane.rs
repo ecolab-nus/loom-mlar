@@ -1,26 +1,57 @@
-use crate::primitives::{Dimension, Index, MemRef};
+use crate::memory::Memory;
+use crate::core::{Dimension, Index, MemRegion, Processor};
 
 /// Represents a lane processor (mlar.lane) - dynamic shapes, streaming operations
 #[derive(Debug)]
 pub struct Lane {
     pub name: String,
+    pub input_regions: Vec<MemRegion>,
+    pub output_regions: Vec<MemRegion>,
     pub model: Box<dyn LaneModel>,
     pub grid: Vec<Dimension>,
 }
 
 impl Lane {
-    pub fn new(name: impl Into<String>, model: Box<dyn LaneModel>, grid: Vec<Dimension>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        input_regions: Vec<MemRegion>,
+        output_regions: Vec<MemRegion>,
+        model: Box<dyn LaneModel>,
+        grid: Vec<Dimension>,
+    ) -> Self {
         Self {
             name: name.into(),
+            input_regions,
+            output_regions,
             model,
             grid,
         }
     }
 
-    pub fn compute_latency(&self, dims: &[Index], inputs: &[MemRef]) -> Result<Index, String> {
+    pub fn compute_latency(&self, dims: &[Index], inputs: &[MemRegion]) -> Result<Index, String> {
         // Validate preconditions before computing latency
         self.model.validate_preconditions(dims)?;
         Ok(self.model.compute_latency(dims, inputs))
+    }
+}
+
+impl Processor for Lane {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn input_memories(&self) -> &[Memory] {
+        // TODO: Extract Memory from MemRegion
+        &[]
+    }
+
+    fn output_memories(&self) -> &[Memory] {
+        // TODO: Extract Memory from MemRegion
+        &[]
+    }
+
+    fn grid(&self) -> &[Dimension] {
+        &self.grid
     }
 }
 
@@ -30,7 +61,7 @@ pub trait LaneModel: std::fmt::Debug {
     fn validate_preconditions(&self, dims: &[Index]) -> Result<(), String>;
     
     /// Compute the latency for this lane given dimensions and inputs
-    fn compute_latency(&self, dims: &[Index], inputs: &[MemRef]) -> Index;
+    fn compute_latency(&self, dims: &[Index], inputs: &[MemRegion]) -> Index;
 }
 
 // Example: Matrix lane processor for large MxNxK matmul
@@ -56,7 +87,7 @@ impl LaneModel for MatMulLane {
         Ok(())
     }
 
-    fn compute_latency(&self, dims: &[Index], _inputs: &[MemRef]) -> Index {
+    fn compute_latency(&self, dims: &[Index], _inputs: &[MemRegion]) -> Index {
         // Latency: M * N * K / 64 cycles (streaming at 64 MACs/cycle)
         let m = dims[0];
         let n = dims[1];
@@ -84,7 +115,7 @@ impl LaneModel for VecLane {
         Ok(())
     }
 
-    fn compute_latency(&self, dims: &[Index], _inputs: &[MemRef]) -> Index {
+    fn compute_latency(&self, dims: &[Index], _inputs: &[MemRegion]) -> Index {
         // Latency: N / 32 cycles (streaming at 32 elements/cycle)
         let n = dims[0];
         n / 32

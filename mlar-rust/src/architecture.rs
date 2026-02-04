@@ -1,8 +1,8 @@
+use crate::core::Dimension;
 use crate::functional_unit::FunctionalUnit;
-use crate::interconnect::Interconnect;
 use crate::lane::Lane;
 use crate::memory::Memory;
-use crate::primitives::Dimension;
+use crate::interconnect::Interconnect;
 
 /// Represents the complete hardware architecture (like the MLIR module)
 #[derive(Debug)]

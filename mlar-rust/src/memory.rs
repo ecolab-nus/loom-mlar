@@ -1,21 +1,20 @@
-use crate::primitives::{Dimension, Index};
+use crate::core::{Index, MemRegion};
 
 /// Represents a memory resource (mlar.memory)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Memory {
     pub name: String,
-    pub capacity: usize,      // Total capacity in bytes
-    pub bandwidth: usize,      // Bandwidth in bytes/cycle
-    pub grid: Vec<Dimension>,  // Grid dimensions (e.g., <x, y>)
+    pub region: MemRegion,        // Hierarchical memory region
+    pub bandwidth: usize,          // Bandwidth in bytes/cycle
+    pub capacity: usize,           // Computed total capacity
 }
 
 impl Memory {
     pub fn builder(name: impl Into<String>) -> MemoryBuilder {
         MemoryBuilder {
             name: name.into(),
-            capacity: 0,
+            region: None,
             bandwidth: 0,
-            grid: Vec::new(),
         }
     }
 
@@ -30,14 +29,13 @@ impl Memory {
 
 pub struct MemoryBuilder {
     name: String,
-    capacity: usize,
+    region: Option<MemRegion>,
     bandwidth: usize,
-    grid: Vec<Dimension>,
 }
 
 impl MemoryBuilder {
-    pub fn capacity(mut self, bytes: usize) -> Self {
-        self.capacity = bytes;
+    pub fn region(mut self, region: MemRegion) -> Self {
+        self.region = Some(region);
         self
     }
 
@@ -46,17 +44,36 @@ impl MemoryBuilder {
         self
     }
 
-    pub fn grid(mut self, dims: Vec<Dimension>) -> Self {
-        self.grid = dims;
-        self
-    }
-
     pub fn build(self) -> Memory {
+        let region = self.region.expect("Memory must have a region");
+        let capacity = compute_region_capacity(&region);
+        
         Memory {
             name: self.name,
-            capacity: self.capacity,
+            region,
             bandwidth: self.bandwidth,
-            grid: self.grid,
+            capacity,
+        }
+    }
+}
+
+/// Compute the total capacity of a memory region
+fn compute_region_capacity(region: &MemRegion) -> usize {
+    match region {
+        MemRegion::Leaf(block) => {
+            // Multiply block_size * num_blocks (only if both are concrete)
+            match (block.block_size.as_concrete(), block.num_blocks.as_concrete()) {
+                (Some(size), Some(count)) => size * count,
+                _ => 0, // Symbolic capacity is unknown, return 0
+            }
+        }
+        MemRegion::Indexed { indices, sub_region } => {
+            // Multiply index counts by sub-region capacity
+            let index_count: usize = indices.iter()
+                .filter_map(|d| d.size.as_concrete())
+                .product();
+            
+            index_count * compute_region_capacity(sub_region)
         }
     }
 }

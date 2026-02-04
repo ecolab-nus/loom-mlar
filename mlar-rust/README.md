@@ -22,6 +22,29 @@ src/
 └── main.rs             # Example usage and demonstrations
 ```
 
+## Architecture
+
+The prototype uses a builder pattern for constructing architectures:
+
+```rust
+Architecture::builder("2D Mesh")
+    .dimension(dim_x)
+    .dimension(dim_y)
+    .functional_unit(mat_fu)
+    .lane(mat_lane)
+    .memory(l1)
+    .memory(dram)
+    .interconnect(noc_h)
+    .build()
+```
+
+## Next Steps
+
+- **Memory Region Extraction**: Implement methods to extract `Memory` from `MemRegion` for `Processor` trait
+- **MLIR Code Generation**: Generate MLIR dialect code from architecture
+- **Dataflow Analysis**: Use memory dependencies for optimization
+- **Validation**: Add compile-time checks for memory region compatibility
+
 ### Core Modules
 
 #### 1. **Primitives** (`primitives.rs`)
@@ -82,6 +105,15 @@ Represents dynamic-shape, streaming operations with runtime-computed latencies.
 
 **MLIR equivalent**: `mlar.lane @function_name <dims>` with `cf.assert` for preconditions
 
+## Features
+
+- **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Leaf structure)
+- **Memory Blocks**: Specify memory using `block_size` and `num_blocks` (both can be symbolic)
+- **Processor Abstraction**: Common `Processor` trait for functional units and lanes
+- **Symbolic Sizes**: Dimensions and memory sizes can be symbolic for parameterized architectures
+- **Affine Interconnects**: Express NoC routing with affine maps (dimension permutations, modulo, ceildiv)
+- **Performance Models**: Lane latency computed with precondition validation
+
 #### 4. **Memory** (`memory.rs`)
 
 Describes memory resources with capacity and bandwidth constraints.
@@ -106,45 +138,102 @@ Models network-on-chip (NoC) topology using affine maps.
 - **`AffineMap`**: Maps source coordinates to destination coordinates
 - **`Interconnect`**: NoC links with bandwidth and routing
 
-**Example affine maps**:
-```rust
-// Horizontal ring: (d0, d1) -> ((d0 + 1) mod 8, d1)
-affine_map<(d0, d1) -> ((d0 + 1) mod 8, d1)>
+## Core Concepts
 
-// DRAM mapping: (d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))
-affine_map<(d0, d1) -> (d0 ceildiv 4 + 2 * (d1 ceildiv 4))>
+### Hierarchical Memory Regions
+
+Memory in MLAR is organized as hierarchical regions using `MemRegion`:
+
+```rust
+pub enum MemRegion {
+    // Non-leaf: indexed region containing sub-regions
+    Indexed {
+        indices: Vec<Dimension>,     // e.g., [x:8, y:8]
+        sub_region: Box<MemRegion>,
+    },
+    // Leaf: concrete memory block
+    Leaf(MemoryBlock),
+}
+
+pub struct MemoryBlock {
+    pub block_size: Size,   // Size of each block
+    pub num_blocks: Size,   // Number of blocks
+}
 ```
 
-**MLIR equivalent**: `mlar.interconnects @spec <dims> {map = affine_map<...>}`
+Example: L1 memory indexed by processor coordinates:
+```rust
+// L1 memory: indexed by [x:8, y:8], each location has 64KB
+let l1_region = MemRegion::indexed(
+    vec![Dimension::new("x", 8), Dimension::new("y", 8)],
+    MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)),
+);
 
-#### 6. **Architecture** (`architecture.rs`)
+let l1 = Memory::builder("L1")
+    .region(l1_region)
+    .bandwidth(16)
+    .build();
+```
 
-Top-level composition of all hardware components.
+### Processors with Memory Dependencies
 
-**Aggregates**:
-- Dimensions
-- Functional units
-- Lanes
-- Memories
-- Interconnects
-
-**Provides**:
-- Component lookup by name
-- Total processing element count
-- Builder pattern for construction
-
-### Design Patterns
-
-#### Builder Pattern
-
-All major types use the builder pattern for ergonomic construction:
+Processors (functional units and lanes) reference memory regions they operate on:
 
 ```rust
-let l1 = Memory::builder("L1")
-    .capacity(65536)
-    .bandwidth(16)
+pub struct FunctionalUnit {
+    pub name: String,
+    pub input_regions: Vec<MemRegion>,   // Input memory regions
+    pub output_regions: Vec<MemRegion>,  // Output memory regions
+    pub latency: Index,
+    pub grid: Vec<Dimension>,
+}
+
+pub struct Lane {
+    pub name: String,
+    pub input_regions: Vec<MemRegion>,
+    pub output_regions: Vec<MemRegion>,
+    pub model: Box<dyn LaneModel>,
+    pub grid: Vec<Dimension>,
+}
+```
+
+Example:
+```rust
+// Define memory region first
+let l1_region = MemRegion::indexed(
+    vec![dim_x.clone(), dim_y.clone()],
+    MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)),
+);
+
+// Create functional unit that operates on L1
+let mat_fu = FunctionalUnit::builder("matmul_32x32")
+    .input_region(l1_region.clone())
+    .input_region(l1_region.clone())
+    .output_region(l1_region.clone())
+    .latency(8)
     .grid(vec![dim_x, dim_y])
     .build();
+```
+
+### Symbolic Sizes
+
+Dimensions and memory sizes can be symbolic:
+
+```rust
+pub enum Size {
+    Int(usize),      // Concrete size
+    Sym(String),     // Symbolic size (e.g., "N", "TILE_SIZE")
+}
+
+// Create symbolic dimensions
+let dim_x = Dimension::new_symbolic("x", "N");
+let dim_y = Dimension::new_symbolic("y", "M");
+
+// Create memory with symbolic block size
+let symbolic_block = MemoryBlock::new(
+    Size::symbolic("BLOCK_SIZE"),
+    Size::symbolic("NUM_BLOCKS")
+);
 ```
 
 **Benefits**:
@@ -166,9 +255,54 @@ pub trait LaneModel {
 **Benefits**:
 - Easy to add new hardware models
 - Type-safe polymorphism
-- Clear separation of interface and implementation
+- Clear separation of interface### Interconnects
 
-#### Affine Expression Evaluation
+Interconnects define communication patterns using affine maps:
+
+```rust
+// Horizontal NoC: (x, y) -> ((x + 1) mod 8, y)
+let noc_h_map = AffineMap::new(
+    2,
+    vec![
+        AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ),
+        AffineExpr::dim(1),
+    ],
+);
+
+let noc_h = Interconnect::builder("horizontal_noc")
+    .grid(vec![dim_x.clone(), dim_y.clone()])
+    .affine_map(noc_h_map)
+    .bandwidth(32)
+    .build();
+```
+
+## Example Output
+
+```
+Architecture: 2D Mesh
+Grid dimensions:
+  x: 8 units
+  y: 8 units
+  d: 4 units
+Total processing elements: 256
+
+Functional Units: 2
+  matmul_32x32 - Latency: 8 cycles
+  vec_add_32 - Latency: 1 cycles
+
+Lanes: 2
+  matmul_lane
+  vec_lane
+
+Memories: 2
+  L1 - Capacity: 4194304 bytes, Bandwidth: 16 bytes/cycle
+  DRAM - Capacity: 34359738368 bytes, Bandwidth: 288 bytes/cycle
+```
+
+### Affine Expression Evaluation
 
 Affine maps use recursive evaluation with helper constructors:
 
