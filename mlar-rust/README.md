@@ -13,13 +13,15 @@ The `mlar-rust` library is designed as a modular, composable system for describi
 ```
 src/
 ├── lib.rs              # Public API and module exports
-├── primitives.rs       # Core types and traits
+├── core/
+│   ├── mod.rs          # Core module exports
+│   ├── size_dim.rs     # Size and Dimension types
+│   ├── memory.rs       # Memory regions (Bank, MemRegion, AggregationType)
+│   └── processor.rs    # Processor trait for functional units and lanes
 ├── functional_unit.rs  # Fixed-shape synchronous operations
 ├── lane.rs             # Dynamic-shape streaming operations
-├── memory.rs           # Memory resources with capacity/bandwidth
 ├── interconnect.rs     # Network-on-chip topology with affine maps
-├── architecture.rs     # Top-level hardware composition
-└── main.rs             # Example usage and demonstrations
+└── architecture.rs     # Top-level hardware composition
 ```
 
 ## Architecture
@@ -32,18 +34,16 @@ Architecture::builder("2D Mesh")
     .dimension(dim_y)
     .functional_unit(mat_fu)
     .lane(mat_lane)
-    .memory(l1)
-    .memory(dram)
     .interconnect(noc_h)
     .build()
 ```
 
 ## Next Steps
 
-- **Memory Region Extraction**: Implement methods to extract `Memory` from `MemRegion` for `Processor` trait
 - **MLIR Code Generation**: Generate MLIR dialect code from architecture
 - **Dataflow Analysis**: Use memory dependencies for optimization
 - **Validation**: Add compile-time checks for memory region compatibility
+- **Port Modeling**: Leverage aggregation types for bandwidth analysis
 
 ### Core Modules
 
@@ -107,24 +107,24 @@ Represents dynamic-shape, streaming operations with runtime-computed latencies.
 
 ## Features
 
-- **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Leaf structure)
-- **Memory Blocks**: Specify memory using `block_size` and `num_blocks` (both can be symbolic)
+- **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Bank structure)
+- **Memory Banks**: Specify memory using `block_size` and `num_blocks` via `Bank` type (both can be symbolic)
+- **Aggregation Types**: Model how memory regions are connected (`Bus` vs `Separate` ports)
 - **Processor Abstraction**: Common `Processor` trait for functional units and lanes
 - **Symbolic Sizes**: Dimensions and memory sizes can be symbolic for parameterized architectures
 - **Affine Interconnects**: Express NoC routing with affine maps (dimension permutations, modulo, ceildiv)
 - **Performance Models**: Lane latency computed with precondition validation
 
-#### 4. **Memory** (`memory.rs`)
+#### 4. **Memory** (`core/memory.rs`)
 
-Describes memory resources with capacity and bandwidth constraints.
+Defines hierarchical memory regions and banks.
 
-**Key characteristics**:
-- Capacity in bytes
-- Bandwidth in bytes/cycle
-- Grid placement
-- Transfer latency computation: `⌈data_size / bandwidth⌉`
+**Key types**:
+- `Bank`: Concrete memory block with `block_size` and `num_blocks`
+- `MemRegion`: Hierarchical memory region (Indexed or Bank)
+- `AggregationType`: How sub-regions are aggregated (`Bus` vs `Separate` ports)
 
-**MLIR equivalent**: `mlar.memory "name" capacity bandwidth <dims>`
+**Memory is modeled purely as regions** - bandwidth and capacity are properties of interconnects and banks, not a separate Memory class.
 
 #### 5. **Interconnects** (`interconnect.rs`)
 
@@ -148,31 +148,49 @@ Memory in MLAR is organized as hierarchical regions using `MemRegion`:
 pub enum MemRegion {
     // Non-leaf: indexed region containing sub-regions
     Indexed {
-        indices: Vec<Dimension>,     // e.g., [x:8, y:8]
+        indices: Vec<Dimension>,
         sub_region: Box<MemRegion>,
+        aggregation: AggregationType,  // How sub-regions are connected
     },
-    // Leaf: concrete memory block
-    Leaf(MemoryBlock),
+    // Leaf: concrete memory bank
+    Bank(Bank),
 }
 
-pub struct MemoryBlock {
+pub struct Bank {
     pub block_size: Size,   // Size of each block
     pub num_blocks: Size,   // Number of blocks
 }
+
+pub enum AggregationType {
+    Bus,       // All sub-regions share a bus, single port exposed
+    Separate,  // Each sub-region has its own port
+}
 ```
 
-Example: L1 memory indexed by processor coordinates:
+Example: L1 memory indexed by processor coordinates with bus aggregation:
 ```rust
 // L1 memory: indexed by [x:8, y:8], each location has 64KB
-let l1_region = MemRegion::indexed(
+// Using bus aggregation (single shared port)
+let l1_region = MemRegion::indexed_bus(
     vec![Dimension::new("x", 8), Dimension::new("y", 8)],
-    MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)),
+    MemRegion::bank(Bank::builder()
+        .block_size(65536)
+        .num_blocks(1)
+        .build()),
 );
+```
 
-let l1 = Memory::builder("L1")
-    .region(l1_region)
-    .bandwidth(16)
-    .build();
+Example: DRAM with separate ports:
+```rust
+// DRAM: indexed by [d:4], each has 8GB
+// Using separate ports (independent access)
+let dram_region = MemRegion::indexed_separate(
+    vec![Dimension::new("d", 4)],
+    MemRegion::bank(Bank::builder()
+        .block_size(8589934592)
+        .num_blocks(1)
+        .build()),
+);
 ```
 
 ### Processors with Memory Dependencies
@@ -200,9 +218,12 @@ pub struct Lane {
 Example:
 ```rust
 // Define memory region first
-let l1_region = MemRegion::indexed(
+let l1_region = MemRegion::indexed_bus(
     vec![dim_x.clone(), dim_y.clone()],
-    MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)),
+    MemRegion::bank(Bank::builder()
+        .block_size(65536)
+        .num_blocks(1)
+        .build()),
 );
 
 // Create functional unit that operates on L1
@@ -229,11 +250,11 @@ pub enum Size {
 let dim_x = Dimension::new_symbolic("x", "N");
 let dim_y = Dimension::new_symbolic("y", "M");
 
-// Create memory with symbolic block size
-let symbolic_block = MemoryBlock::new(
-    Size::symbolic("BLOCK_SIZE"),
-    Size::symbolic("NUM_BLOCKS")
-);
+// Create memory bank with symbolic block size
+let symbolic_bank = Bank::builder()
+    .block_size(Size::symbolic("BLOCK_SIZE"))
+    .num_blocks(Size::symbolic("NUM_BLOCKS"))
+    .build();
 ```
 
 **Benefits**:
@@ -297,9 +318,8 @@ Lanes: 2
   matmul_lane
   vec_lane
 
-Memories: 2
-  L1 - Capacity: 4194304 bytes, Bandwidth: 16 bytes/cycle
-  DRAM - Capacity: 34359738368 bytes, Bandwidth: 288 bytes/cycle
+Interconnects: 3
+  horizontal_noc, vertical_noc, to_dram
 ```
 
 ### Affine Expression Evaluation
@@ -363,14 +383,13 @@ cargo test
 
 | MLIR Construct | Rust Type | File |
 |----------------|-----------|------|
-| `index` | `Index` (= `usize`) | `primitives.rs` |
-| `mlar.dim` | `Dimension::new()` | `primitives.rs` |
-| `memref<NxM>` | `MemRef::new_static()` | `primitives.rs` |
-| `memref<?x?>` | `MemRef::new_dynamic()` | `primitives.rs` |
+| `index` | `Index` (= `usize`) | `core/size_dim.rs` |
+| `mlar.dim` | `Dimension::new()` | `core/size_dim.rs` |
+| `mlar.bank` | `Bank::builder()` | `core/memory.rs` |
+| `mlar.region` | `MemRegion::indexed_*()` | `core/memory.rs` |
 | `mlar.fu` | `FunctionalUnit::builder()` | `functional_unit.rs` |
 | `mlar.lane` | `Lane::new()` | `lane.rs` |
 | `cf.assert` | `LaneModel::validate_preconditions()` | `lane.rs` |
-| `mlar.memory` | `Memory::builder()` | `memory.rs` |
 | `mlar.interconnects` | `Interconnect::builder()` | `interconnect.rs` |
 | `affine_map<...>` | `AffineMap::new()` + `AffineExpr` | `interconnect.rs` |
 | `module {...}` | `Architecture::builder()` | `architecture.rs` |

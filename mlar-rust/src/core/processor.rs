@@ -1,6 +1,5 @@
-use crate::memory::Memory;
 use super::size_dim::{Dimension, Index};
-use super::memory_region::MemRegion;
+use super::memory::MemRegion;
 
 /// Trait for all processor types (functional units, lanes, etc.)
 /// Processors operate on memory regions, transforming data from input memories to output memories
@@ -9,10 +8,10 @@ pub trait Processor {
     fn name(&self) -> &str;
     
     /// Get the input memory regions this processor reads from
-    fn input_memories(&self) -> &[Memory];
+    fn input_memories(&self) -> &[MemRegion];
     
     /// Get the output memory regions this processor writes to
-    fn output_memories(&self) -> &[Memory];
+    fn output_memories(&self) -> &[MemRegion];
     
     /// Get the grid dimensions where this processor is replicated
     fn grid(&self) -> &[Dimension];

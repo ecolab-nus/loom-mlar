@@ -10,27 +10,18 @@ fn test_2d_mesh_architecture() {
     let dim_d = Dimension::new("d", 4);
 
     // Define L1 memory region: indexed by [x, y], each has 64KB blocks
-    let l1_region = MemRegion::indexed(
+    // Using bus aggregation (single shared port)
+    let l1_region = MemRegion::indexed_bus(
         vec![dim_x.clone(), dim_y.clone()],
-        MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)), // 64KB per location
+        MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()), // 64KB per location
     );
 
     // Define DRAM memory region: indexed by [d], each has 8GB
-    let dram_region = MemRegion::indexed(
+    // Using separate ports (each DRAM independently accessible)
+    let _dram_region = MemRegion::indexed_separate(
         vec![dim_d.clone()],
-        MemRegion::leaf(MemoryBlock::new_concrete(8589934592, 1)), // 8GB per DRAM
+        MemRegion::bank(Bank::builder().block_size(8589934592usize).num_blocks(1).build()), // 8GB per DRAM
     );
-
-    // Create memories with their regions
-    let l1 = Memory::builder("L1")
-        .region(l1_region.clone())
-        .bandwidth(16)
-        .build();
-
-    let dram = Memory::builder("DRAM")
-        .region(dram_region.clone())
-        .bandwidth(288)
-        .build();
 
     // Create functional units that operate on L1 regions
     let mat_fu = FunctionalUnit::builder("matmul_32x32")
@@ -127,8 +118,6 @@ fn test_2d_mesh_architecture() {
         .functional_unit(vec_fu)
         .lane(mat_lane)
         .lane(vec_lane)
-        .memory(l1)
-        .memory(dram)
         .interconnect(noc_h)
         .interconnect(noc_v)
         .interconnect(to_dram)
@@ -139,7 +128,6 @@ fn test_2d_mesh_architecture() {
     assert_eq!(arch.dimensions.len(), 3);
     assert_eq!(arch.functional_units.len(), 2);
     assert_eq!(arch.lanes.len(), 2);
-    assert_eq!(arch.memories.len(), 2);
     assert_eq!(arch.interconnects.len(), 3);
     assert_eq!(arch.total_processing_elements(), Some(256));
 }
@@ -195,9 +183,9 @@ fn test_lane_preconditions() {
     let dim_x = Dimension::new("x", 8);
     let dim_y = Dimension::new("y", 8);
     
-    let l1_region = MemRegion::indexed(
+    let l1_region = MemRegion::indexed_bus(
         vec![dim_x.clone(), dim_y.clone()],
-        MemRegion::leaf(MemoryBlock::new_concrete(65536, 1)),
+        MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build()),
     );
 
     let mat_lane = Lane::new(
@@ -210,15 +198,15 @@ fn test_lane_preconditions() {
 
     // Test valid dimensions (512x512x512 > 256 threshold)
     // Create input regions for the computation
-    let input_a = MemRegion::leaf(MemoryBlock::new_concrete(512 * 512 * 4, 1)); // 512x512 f32
-    let input_b = MemRegion::leaf(MemoryBlock::new_concrete(512 * 512 * 4, 1)); // 512x512 f32
+    let input_a = MemRegion::bank(Bank::builder().block_size(512 * 512 * 4).num_blocks(1).build()); // 512x512 f32
+    let input_b = MemRegion::bank(Bank::builder().block_size(512 * 512 * 4).num_blocks(1).build()); // 512x512 f32
     
     let latency = mat_lane.compute_latency(&[512, 512, 512], &[input_a.clone(), input_b.clone()]).unwrap();
     assert_eq!(latency, 2097152); // 512*512*8
 
     // Test invalid dimensions (should return error with precondition failure)
-    let input_small_a = MemRegion::leaf(MemoryBlock::new_concrete(128 * 128 * 4, 1));
-    let input_small_b = MemRegion::leaf(MemoryBlock::new_concrete(128 * 128 * 4, 1));
+    let input_small_a = MemRegion::bank(Bank::builder().block_size(128 * 128 * 4).num_blocks(1).build());
+    let input_small_b = MemRegion::bank(Bank::builder().block_size(128 * 128 * 4).num_blocks(1).build());
     
     let result = mat_lane.compute_latency(&[128, 128, 128], &[input_small_a, input_small_b]);
     assert!(result.is_err(), "Expected error: matmul_lane requires M >= 256, got 128");
@@ -232,15 +220,15 @@ fn test_lane_preconditions() {
     );
 
     // Test valid dimensions (2048 >= 1024 threshold)
-    let vec_input_a = MemRegion::leaf(MemoryBlock::new_concrete(2048 * 4, 1));
-    let vec_input_b = MemRegion::leaf(MemoryBlock::new_concrete(2048 * 4, 1));
+    let vec_input_a = MemRegion::bank(Bank::builder().block_size(2048 * 4).num_blocks(1).build());
+    let vec_input_b = MemRegion::bank(Bank::builder().block_size(2048 * 4).num_blocks(1).build());
     
     let latency = vec_lane.compute_latency(&[2048], &[vec_input_a, vec_input_b]).unwrap();
     assert_eq!(latency, 64); // 2048/32
 
     // Test invalid dimensions
-    let vec_small_a = MemRegion::leaf(MemoryBlock::new_concrete(512 * 4, 1));
-    let vec_small_b = MemRegion::leaf(MemoryBlock::new_concrete(512 * 4, 1));
+    let vec_small_a = MemRegion::bank(Bank::builder().block_size(512 * 4).num_blocks(1).build());
+    let vec_small_b = MemRegion::bank(Bank::builder().block_size(512 * 4).num_blocks(1).build());
     
     let result = vec_lane.compute_latency(&[512], &[vec_small_a, vec_small_b]);
     assert!(result.is_err(), "Expected error: vec_lane requires N >= 1024, got 512");
@@ -260,18 +248,18 @@ fn test_symbolic_sizes() {
     assert!(dim_z.size.is_concrete());
 
     // Test symbolic memory blocks
-    let symbolic_block = MemoryBlock::new(
-        Size::symbolic("BLOCK_SIZE"),
-        Size::symbolic("N")
-    );
+    let symbolic_block = Bank::builder()
+        .block_size(Size::symbolic("BLOCK_SIZE"))
+        .num_blocks(Size::symbolic("N"))
+        .build();
     
     assert!(symbolic_block.block_size.is_symbolic());
     assert!(symbolic_block.num_blocks.is_symbolic());
     
-    let mixed_block = MemoryBlock::new(
-        Size::concrete(1024),
-        Size::symbolic("M")
-    );
+    let mixed_block = Bank::builder()
+        .block_size(Size::concrete(1024))
+        .num_blocks(Size::symbolic("M"))
+        .build();
     
     assert!(mixed_block.block_size.is_concrete());
     assert!(mixed_block.num_blocks.is_symbolic());

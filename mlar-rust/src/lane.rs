@@ -1,4 +1,3 @@
-use crate::memory::Memory;
 use crate::core::{Dimension, Index, MemRegion, Processor};
 
 /// Represents a lane processor (mlar.lane) - dynamic shapes, streaming operations
@@ -40,14 +39,12 @@ impl Processor for Lane {
         &self.name
     }
 
-    fn input_memories(&self) -> &[Memory] {
-        // TODO: Extract Memory from MemRegion
-        &[]
+    fn input_memories(&self) -> &[MemRegion] {
+        &self.input_regions
     }
 
-    fn output_memories(&self) -> &[Memory] {
-        // TODO: Extract Memory from MemRegion
-        &[]
+    fn output_memories(&self) -> &[MemRegion] {
+        &self.output_regions
     }
 
     fn grid(&self) -> &[Dimension] {
