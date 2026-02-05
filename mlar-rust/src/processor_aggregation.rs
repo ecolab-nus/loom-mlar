@@ -96,7 +96,7 @@ pub trait Scalable {
 }
 
 /// Processor aggregation - describes how to use a set of processors
-/// Analogous to MemoryAggregation for memory
+/// Analogous to MemoryInterface for memory
 #[derive(Debug, Clone)]
 pub struct ProcessorAggregation {
     pub name: String,

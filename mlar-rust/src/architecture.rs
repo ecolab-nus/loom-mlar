@@ -1,4 +1,4 @@
-use crate::core::{Dimension, MemoryAggregation};
+use crate::core::{Dimension, MemoryInterface};
 use crate::processor_aggregation::{ProcessorAggregation, ProcessorSet};
 use crate::interconnect::Interconnect;
 
@@ -11,7 +11,7 @@ pub struct Architecture {
     pub processor_sets: Vec<ProcessorSet>,
     /// Processor aggregations for modeling contention/interference between processors
     pub processor_aggregations: Vec<ProcessorAggregation>,
-    pub memory_aggregations: Vec<MemoryAggregation>,
+    pub memory_aggregations: Vec<MemoryInterface>,
     pub interconnects: Vec<Interconnect>,
 }
 
@@ -59,7 +59,7 @@ pub struct ArchitectureBuilder {
     dimensions: Vec<Dimension>,
     processor_sets: Vec<ProcessorSet>,
     processor_aggregations: Vec<ProcessorAggregation>,
-    memory_aggregations: Vec<MemoryAggregation>,
+    memory_aggregations: Vec<MemoryInterface>,
     interconnects: Vec<Interconnect>,
 }
 
@@ -81,7 +81,7 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn memory_aggregation(mut self, agg: MemoryAggregation) -> Self {
+    pub fn memory_aggregation(mut self, agg: MemoryInterface) -> Self {
         self.memory_aggregations.push(agg);
         self
     }

@@ -4,7 +4,7 @@
 //! into graphs that can be exported to GraphViz DOT format for visualization.
 
 use crate::architecture::Architecture;
-use crate::core::{Dimension, MemRegion, MemoryAggregation};
+use crate::core::{Dimension, MemRegion, MemoryInterface};
 use crate::processor_aggregation::ProcessorSet;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -212,7 +212,7 @@ impl ArchVisualizer {
     }
 
     /// Build a graph from memory aggregations (e.g., GPU memory hierarchy)
-    pub fn from_memory_aggregations(aggregations: &[MemoryAggregation]) -> Self {
+    pub fn from_memory_aggregations(aggregations: &[MemoryInterface]) -> Self {
         let mut viz = Self::new();
 
         for agg in aggregations {
@@ -508,7 +508,7 @@ pub fn architecture_to_dot(arch: &Architecture) -> String {
 }
 
 /// Convenience function to generate DOT from memory aggregations
-pub fn memory_hierarchy_to_dot(name: &str, aggregations: &[MemoryAggregation]) -> String {
+pub fn memory_hierarchy_to_dot(name: &str, aggregations: &[MemoryInterface]) -> String {
     let viz = ArchVisualizer::from_memory_aggregations(aggregations);
     viz.to_dot_styled(name)
 }

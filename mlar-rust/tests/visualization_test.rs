@@ -47,14 +47,14 @@ fn test_gpu_memory_hierarchy_visualization() {
     );
 
     // DRAM Output Aggregation (DRAM -> Buffer)
-    let dram_bus_output = MemoryAggregation::builder("DRAM_bus_output")
+    let dram_bus_output = MemoryInterface::builder("DRAM_bus_output")
         .source(dram_banks.clone())
         .target(dram_l2_buffer.clone())
         .bandwidth(256)
         .build();
 
     // L2 Input Aggregation (Buffer -> L2)
-    let l2_bus_input = MemoryAggregation::builder("L2_bus_input")
+    let l2_bus_input = MemoryInterface::builder("L2_bus_input")
         .source(dram_l2_buffer.clone())
         .target(l2_banks.clone())
         .bandwidth(128)
@@ -71,14 +71,14 @@ fn test_gpu_memory_hierarchy_visualization() {
     );
 
     // L2 Output Aggregation (L2 -> Buffer)
-    let l2_bus_output = MemoryAggregation::builder("L2_bus_output")
+    let l2_bus_output = MemoryInterface::builder("L2_bus_output")
         .source(l2_banks.clone())
         .target(l2_l1_buffer.clone())
         .bandwidth(128)
         .build();
 
     // L1 Input Aggregation (Buffer -> L1)
-    let l1_bus_input = MemoryAggregation::builder("L1_bus_input")
+    let l1_bus_input = MemoryInterface::builder("L1_bus_input")
         .source(l2_l1_buffer.clone())
         .target(l1_banks.clone())
         .bandwidth(64)
@@ -287,19 +287,19 @@ fn test_gpu_memory_hierarchy_simplified() {
     );
 
     // Build the memory aggregations
-    let dram_to_l2 = MemoryAggregation::builder("DRAM_to_L2")
+    let dram_to_l2 = MemoryInterface::builder("DRAM_to_L2")
         .source(dram)
         .target(l2.clone())
         .bandwidth(256)
         .build();
 
-    let l2_to_l1 = MemoryAggregation::builder("L2_to_L1")
+    let l2_to_l1 = MemoryInterface::builder("L2_to_L1")
         .source(l2)
         .target(l1.clone())
         .bandwidth(128)
         .build();
 
-    let l1_to_reg = MemoryAggregation::builder("L1_to_REG")
+    let l1_to_reg = MemoryInterface::builder("L1_to_REG")
         .source(l1)
         .target(reg)
         .bandwidth(64)

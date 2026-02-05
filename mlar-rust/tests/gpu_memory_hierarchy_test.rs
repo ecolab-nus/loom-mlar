@@ -32,14 +32,14 @@ fn test_gpu_memory_hierarchy() {
         .build());
 
     // DRAM Output Aggregation (DRAM -> Buffer)
-    let dram_bus_output = MemoryAggregation::builder("DRAM_bus_output")
+    let dram_bus_output = MemoryInterface::builder("DRAM_bus_output")
         .source(dram_banks.clone())
         .target(dram_l2_buffer.clone())
         .bandwidth(256)
         .build();
 
     // L2 Input Aggregation (Buffer -> L2)
-    let l2_bus_input = MemoryAggregation::builder("L2_bus_input")
+    let l2_bus_input = MemoryInterface::builder("L2_bus_input")
         .source(dram_l2_buffer.clone())
         .target(l2_banks.clone())
         .bandwidth(128)
@@ -54,14 +54,14 @@ fn test_gpu_memory_hierarchy() {
         .build());
 
     // L2 Output Aggregation (L2 -> Buffer)
-    let l2_bus_output = MemoryAggregation::builder("L2_bus_output")
+    let l2_bus_output = MemoryInterface::builder("L2_bus_output")
         .source(l2_banks.clone())
         .target(l2_l1_buffer.clone())
         .bandwidth(128)
         .build();
 
     // L1 Input Aggregation (Buffer -> L1)
-    let l1_bus_input = MemoryAggregation::builder("L1_bus_input")
+    let l1_bus_input = MemoryInterface::builder("L1_bus_input")
         .source(l2_l1_buffer.clone())
         .target(l1_banks.clone())
         .bandwidth(64)

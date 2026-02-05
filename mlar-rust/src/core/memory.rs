@@ -47,16 +47,16 @@ impl BankBuilder {
 
 /// Memory aggregation - acts as a processor moving data between regions
 #[derive(Debug, Clone)]
-pub struct MemoryAggregation {
+pub struct MemoryInterface {
     pub name: String,
     pub sources: Vec<MemRegion>,
     pub target: MemRegion,
     pub bandwidth: usize,  // bytes/cycle
 }
 
-impl MemoryAggregation {
-    pub fn builder(name: impl Into<String>) -> MemoryAggregationBuilder {
-        MemoryAggregationBuilder {
+impl MemoryInterface {
+    pub fn builder(name: impl Into<String>) -> MemoryInterfaceBuilder {
+        MemoryInterfaceBuilder {
             name: name.into(),
             sources: Vec::new(),
             target: None,
@@ -65,14 +65,14 @@ impl MemoryAggregation {
     }
 }
 
-pub struct MemoryAggregationBuilder {
+pub struct MemoryInterfaceBuilder {
     name: String,
     sources: Vec<MemRegion>,
     target: Option<MemRegion>,
     bandwidth: Option<usize>,
 }
 
-impl MemoryAggregationBuilder {
+impl MemoryInterfaceBuilder {
     pub fn source(mut self, region: MemRegion) -> Self {
         self.sources.push(region);
         self
@@ -88,8 +88,8 @@ impl MemoryAggregationBuilder {
         self
     }
 
-    pub fn build(self) -> MemoryAggregation {
-        MemoryAggregation {
+    pub fn build(self) -> MemoryInterface {
+        MemoryInterface {
             name: self.name,
             sources: self.sources,
             target: self.target.expect("target must be set"),

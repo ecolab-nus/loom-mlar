@@ -16,7 +16,7 @@ src/
 ├── core/
 │   ├── mod.rs              # Core module exports
 │   ├── size_dim.rs         # Size and Dimension types
-│   ├── memory.rs           # Memory regions (Bank, MemRegion, MemoryAggregation)
+│   ├── memory.rs           # Memory regions (Bank, MemRegion, MemoryInterface)
 │   └── processor.rs        # Processor trait for functional units and lanes
 ├── processor_aggregation.rs # ProcessorSet and ProcessorAggregation
 ├── functional_unit.rs      # Fixed-shape synchronous operations
@@ -68,7 +68,7 @@ The `ProcessorSet` enum represents either:
 
 ### ProcessorAggregation (for Contention Modeling)
 
-`ProcessorAggregation` is only needed when modeling contention/interference between processors (similar to `MemoryAggregation` for memory):
+`ProcessorAggregation` is only needed when modeling contention/interference between processors (similar to `MemoryInterface` for memory):
 
 ```rust
 // Only use ProcessorAggregation when there's contention to model
@@ -109,14 +109,14 @@ let arch = Architecture::builder("2D Mesh")
 The `Architecture` struct contains:
 - `processor_sets: Vec<ProcessorSet>` - Independent processors (no contention)
 - `processor_aggregations: Vec<ProcessorAggregation>` - Processors with contention modeling
-- `memory_aggregations: Vec<MemoryAggregation>` - Memory access patterns
+- `memory_aggregations: Vec<MemoryInterface>` - Memory access patterns
 - `interconnects: Vec<Interconnect>` - Network topology
 
 ## Features
 
 - **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Bank structure)
 - **Memory Banks**: Specify memory using `block_size` and `num_blocks` via `Bank` type (both can be symbolic)
-- **Memory Aggregation**: Model how memory regions are connected with `MemoryAggregation`
+- **Memory Interface**: Model how memory regions are connected with `MemoryInterface`
 - **Processor Abstraction**: Common `Processor` trait for functional units and lanes
 - **ProcessorSet**: Scale processors across dimensions with the `scale()` method
 - **Scalable Trait**: Implemented by all processor types for creating ProcessorSets
@@ -213,7 +213,7 @@ pub trait Scalable {
 }
 ```
 
-**ProcessorAggregation**: Describes how to use a ProcessorSet when modeling contention (analogous to `MemoryAggregation`).
+**ProcessorAggregation**: Describes how to use a ProcessorSet when modeling contention (analogous to `MemoryInterface`).
 
 ```rust
 pub struct ProcessorAggregation {
@@ -229,7 +229,7 @@ Defines hierarchical memory regions and banks.
 **Key types**:
 - `Bank`: Concrete memory block with `block_size` and `num_blocks`
 - `MemRegion`: Hierarchical memory region (Indexed or Bank)
-- `MemoryAggregation`: Describes data movement between memory regions
+- `MemoryInterface`: Describes data movement between memory regions
 
 ```rust
 pub enum MemRegion {
