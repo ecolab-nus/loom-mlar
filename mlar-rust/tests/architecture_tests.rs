@@ -55,16 +55,14 @@ fn test_2d_mesh_architecture() {
     let vec_lane_set = vec_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
 
     // Create interconnects with affine maps
-    let noc_h_map = AffineMap::new(
-        2,
-        vec![
-            AffineExpr::modulo(
-                AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-                AffineExpr::constant(8),
-            ),
-            AffineExpr::dim(1),
-        ],
-    );
+    let noc_h_map = AffineMap::builder()
+        .num_dims(2)
+        .result(AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ))
+        .result(AffineExpr::dim(1))
+        .build();
 
     let noc_h = Interconnect::builder("horizontal_noc")
         .grid(vec![dim_x.clone(), dim_y.clone()])
@@ -72,16 +70,14 @@ fn test_2d_mesh_architecture() {
         .bandwidth(32)
         .build();
 
-    let noc_v_map = AffineMap::new(
-        2,
-        vec![
-            AffineExpr::dim(0),
-            AffineExpr::modulo(
-                AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
-                AffineExpr::constant(8),
-            ),
-        ],
-    );
+    let noc_v_map = AffineMap::builder()
+        .num_dims(2)
+        .result(AffineExpr::dim(0))
+        .result(AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ))
+        .build();
 
     let noc_v = Interconnect::builder("vertical_noc")
         .grid(vec![dim_x.clone(), dim_y.clone()])
@@ -89,16 +85,16 @@ fn test_2d_mesh_architecture() {
         .bandwidth(32)
         .build();
 
-    let dram_map = AffineMap::new(
-        2,
-        vec![AffineExpr::add(
+    let dram_map = AffineMap::builder()
+        .num_dims(2)
+        .result(AffineExpr::add(
             AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
             AffineExpr::mul(
                 AffineExpr::constant(2),
                 AffineExpr::ceildiv(AffineExpr::dim(1), AffineExpr::constant(4)),
             ),
-        )],
-    );
+        ))
+        .build();
 
     let to_dram = Interconnect::builder("to_dram")
         .grid(vec![dim_x.clone(), dim_y.clone()])
@@ -132,25 +128,26 @@ fn test_2d_mesh_architecture() {
 #[test]
 fn test_affine_maps() {
     // Test basic affine map construction
-    let map = AffineMap::new(
-        2,
-        vec![
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-            AffineExpr::dim(1),
-        ],
-    );
+    let map = AffineMap::builder()
+        .num_dims(2)
+        .result(AffineExpr::add(
+            AffineExpr::dim(0),
+            AffineExpr::constant(1),
+        ))
+        .result(AffineExpr::dim(1))
+        .build();
     
     let result = map.apply(&[3, 5]);
     assert_eq!(result, vec![4, 5]);
     
     // Test modulo
-    let wrap_map = AffineMap::new(
-        1,
-        vec![AffineExpr::modulo(
+    let wrap_map = AffineMap::builder()
+        .num_dims(1)
+        .result(AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::constant(8),
-        )],
-    );
+        ))
+        .build();
     
     assert_eq!(wrap_map.apply(&[7]), vec![0]); // (7 + 1) % 8 = 0
     assert_eq!(wrap_map.apply(&[6]), vec![7]); // (6 + 1) % 8 = 7

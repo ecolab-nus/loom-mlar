@@ -7,7 +7,10 @@ pub mod architecture;
 pub mod visualization;
 
 // Re-export commonly used types from core
-pub use core::{Dimension, Index, MemRegion, Bank, Size, Processor, PerformanceModel, MemoryInterface};
+pub use core::{
+    Dimension, Index, MemRegion, Bank, Size, Processor, PerformanceModel, MemoryInterface,
+    MemoryInterconnects, MemoryProcessorInterconnect,
+};
 
 // Re-export commonly used types from modules
 pub use functional_unit::FunctionalUnit;

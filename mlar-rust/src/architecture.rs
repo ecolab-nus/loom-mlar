@@ -1,4 +1,4 @@
-use crate::core::{Dimension, MemoryInterface};
+use crate::core::{Dimension, MemoryInterconnects, MemoryProcessorInterconnect, MemRegion};
 use crate::processor_aggregation::{ProcessorAggregation, ProcessorSet};
 use crate::interconnect::Interconnect;
 
@@ -11,7 +11,10 @@ pub struct Architecture {
     pub processor_sets: Vec<ProcessorSet>,
     /// Processor aggregations for modeling contention/interference between processors
     pub processor_aggregations: Vec<ProcessorAggregation>,
-    pub memory_interfaces: Vec<MemoryInterface>,
+    /// Memory regions referenced by processors or interconnects
+    pub memory_regions: Vec<MemRegion>,
+    pub memory_interconnects: Vec<MemoryInterconnects>,
+    pub memory_processor_interconnects: Vec<MemoryProcessorInterconnect>,
     pub interconnects: Vec<Interconnect>,
 }
 
@@ -22,7 +25,9 @@ impl Architecture {
             dimensions: Vec::new(),
             processor_sets: Vec::new(),
             processor_aggregations: Vec::new(),
-            memory_interfaces: Vec::new(),
+            memory_regions: Vec::new(),
+            memory_interconnects: Vec::new(),
+            memory_processor_interconnects: Vec::new(),
             interconnects: Vec::new(),
         }
     }
@@ -59,7 +64,9 @@ pub struct ArchitectureBuilder {
     dimensions: Vec<Dimension>,
     processor_sets: Vec<ProcessorSet>,
     processor_aggregations: Vec<ProcessorAggregation>,
-    memory_interfaces: Vec<MemoryInterface>,
+    memory_regions: Vec<MemRegion>,
+    memory_interconnects: Vec<MemoryInterconnects>,
+    memory_processor_interconnects: Vec<MemoryProcessorInterconnect>,
     interconnects: Vec<Interconnect>,
 }
 
@@ -90,18 +97,51 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn memory_interface(mut self, int: MemoryInterface) -> Self {
-        self.memory_interfaces.push(int);
+    pub fn memory_region(mut self, region: MemRegion) -> Self {
+        self.memory_regions.push(region);
         self
     }
 
-    pub fn memory_interfaces<I>(mut self, interfaces: I) -> Self
+    pub fn memory_regions<I>(mut self, regions: I) -> Self
     where
         I: IntoIterator,
-        I::Item: Into<MemoryInterface>,
+        I::Item: Into<MemRegion>,
     {
-        self.memory_interfaces
-            .extend(interfaces.into_iter().map(Into::into));
+        self.memory_regions
+            .extend(regions.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn memory_interconnect(mut self, ic: MemoryInterconnects) -> Self {
+        self.memory_interconnects.push(ic);
+        self
+    }
+
+    pub fn memory_interconnects<I>(mut self, interconnects: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<MemoryInterconnects>,
+    {
+        self.memory_interconnects
+            .extend(interconnects.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn memory_processor_interconnect(
+        mut self,
+        ic: MemoryProcessorInterconnect,
+    ) -> Self {
+        self.memory_processor_interconnects.push(ic);
+        self
+    }
+
+    pub fn memory_processor_interconnects<I>(mut self, interconnects: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<MemoryProcessorInterconnect>,
+    {
+        self.memory_processor_interconnects
+            .extend(interconnects.into_iter().map(Into::into));
         self
     }
 
@@ -116,7 +156,9 @@ impl ArchitectureBuilder {
             dimensions: self.dimensions,
             processor_sets: self.processor_sets,
             processor_aggregations: self.processor_aggregations,
-            memory_interfaces: self.memory_interfaces,
+            memory_regions: self.memory_regions,
+            memory_interconnects: self.memory_interconnects,
+            memory_processor_interconnects: self.memory_processor_interconnects,
             interconnects: self.interconnects,
         }
     }

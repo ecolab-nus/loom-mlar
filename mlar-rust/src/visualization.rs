@@ -4,7 +4,7 @@
 //! into graphs that can be exported to GraphViz DOT format for visualization.
 
 use crate::architecture::Architecture;
-use crate::core::{Dimension, MemRegion, MemoryInterface};
+use crate::core::{Dimension, MemRegion, MemoryInterconnects};
 use crate::processor_aggregation::ProcessorSet;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -58,10 +58,11 @@ impl std::fmt::Display for ArchNode {
 /// Edge types in the architecture graph
 #[derive(Debug, Clone)]
 pub enum ArchEdge {
-    /// Data movement (memory aggregation)
-    DataFlow {
+    /// Memory interconnect mapping between regions
+    MemoryInterconnect {
         name: String,
         bandwidth: usize,
+        mapping: String,
     },
     /// Interconnect connection
     Interconnect {
@@ -80,9 +81,11 @@ pub enum ArchEdge {
 impl std::fmt::Display for ArchEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArchEdge::DataFlow { name, bandwidth } => {
-                write!(f, "{}\\n({} B/cycle)", name, bandwidth)
-            }
+            ArchEdge::MemoryInterconnect {
+                name,
+                bandwidth,
+                mapping,
+            } => write!(f, "{}\\n{}\\n({} B/cycle)", name, mapping, bandwidth),
             ArchEdge::Interconnect { name, bandwidth, mapping } => {
                 write!(f, "{}\\n{}\\n({} B/cycle)", name, mapping, bandwidth)
             }
@@ -211,36 +214,47 @@ impl ArchVisualizer {
         idx
     }
 
-    /// Build a graph from memory aggregations (e.g., GPU memory hierarchy)
-    pub fn from_memory_aggregations(aggregations: &[MemoryInterface]) -> Self {
+    /// Build a graph from memory interconnects (e.g., GPU memory hierarchy)
+    pub fn from_memory_interconnects(interconnects: &[MemoryInterconnects]) -> Self {
         let mut viz = Self::new();
 
-        for agg in aggregations {
+        for ic in interconnects {
             // Add source regions
-            let source_indices: Vec<_> = agg
+            let source_indices: Vec<_> = ic
                 .sources
                 .iter()
                 .enumerate()
                 .map(|(i, src)| {
-                    let name = format!("{}_src_{}", agg.name, i);
+                    let name = format!("{}_src_{}", ic.name, i);
                     viz.add_memory_region(src, Some(&name))
                 })
                 .collect();
 
             // Add target region
-            let target_name = format!("{}_tgt", agg.name);
-            let target_idx = viz.add_memory_region(&agg.target, Some(&target_name));
+            let target_indices: Vec<_> = ic
+                .targets
+                .iter()
+                .enumerate()
+                .map(|(i, tgt)| {
+                    let name = format!("{}_tgt_{}", ic.name, i);
+                    viz.add_memory_region(tgt, Some(&name))
+                })
+                .collect();
 
             // Add edges from sources to target
+            let mapping = format_affine_map(&ic.map);
             for src_idx in source_indices {
-                viz.graph.add_edge(
-                    src_idx,
-                    target_idx,
-                    ArchEdge::DataFlow {
-                        name: agg.name.clone(),
-                        bandwidth: agg.bandwidth,
-                    },
-                );
+                for tgt_idx in &target_indices {
+                    viz.graph.add_edge(
+                        src_idx,
+                        *tgt_idx,
+                        ArchEdge::MemoryInterconnect {
+                            name: ic.name.clone(),
+                            bandwidth: ic.bandwidth,
+                            mapping: mapping.clone(),
+                        },
+                    );
+                }
             }
         }
 
@@ -261,30 +275,41 @@ impl ArchVisualizer {
             viz.add_processor_set(set);
         }
 
-        // Add memory aggregations with data flow edges
-        for agg in &arch.memory_interfaces {
-            let source_indices: Vec<_> = agg
+        // Add memory interconnects with mapping edges
+        for ic in &arch.memory_interconnects {
+            let source_indices: Vec<_> = ic
                 .sources
                 .iter()
                 .enumerate()
                 .map(|(i, src)| {
-                    let name = format!("{}_src_{}", agg.name, i);
+                    let name = format!("{}_src_{}", ic.name, i);
                     viz.add_memory_region(src, Some(&name))
                 })
                 .collect();
 
-            let target_name = format!("{}_tgt", agg.name);
-            let target_idx = viz.add_memory_region(&agg.target, Some(&target_name));
+            let target_indices: Vec<_> = ic
+                .targets
+                .iter()
+                .enumerate()
+                .map(|(i, tgt)| {
+                    let name = format!("{}_tgt_{}", ic.name, i);
+                    viz.add_memory_region(tgt, Some(&name))
+                })
+                .collect();
 
+            let mapping = format_affine_map(&ic.map);
             for src_idx in source_indices {
-                viz.graph.add_edge(
-                    src_idx,
-                    target_idx,
-                    ArchEdge::DataFlow {
-                        name: agg.name.clone(),
-                        bandwidth: agg.bandwidth,
-                    },
-                );
+                for tgt_idx in &target_indices {
+                    viz.graph.add_edge(
+                        src_idx,
+                        *tgt_idx,
+                        ArchEdge::MemoryInterconnect {
+                            name: ic.name.clone(),
+                            bandwidth: ic.bandwidth,
+                            mapping: mapping.clone(),
+                        },
+                    );
+                }
             }
         }
 
@@ -322,10 +347,10 @@ impl ArchVisualizer {
         // Parse memory aggregation names to determine hierarchy
         let mut levels: Vec<(&str, NodeIndex)> = Vec::new();
 
-        for agg in &arch.memory_interfaces {
+        for ic in &arch.memory_interconnects {
             // Add source
-            if let Some(src) = agg.sources.first() {
-                let src_name = extract_level_name(&agg.name, true);
+            if let Some(src) = ic.sources.first() {
+                let src_name = extract_level_name(&ic.name, true);
                 if !levels.iter().any(|(n, _)| *n == src_name) {
                     let idx = viz.add_memory_region(src, Some(src_name));
                     levels.push((src_name, idx));
@@ -333,17 +358,19 @@ impl ArchVisualizer {
             }
 
             // Add target
-            let tgt_name = extract_level_name(&agg.name, false);
-            if !levels.iter().any(|(n, _)| *n == tgt_name) {
-                let idx = viz.add_memory_region(&agg.target, Some(tgt_name));
-                levels.push((tgt_name, idx));
+            let tgt_name = extract_level_name(&ic.name, false);
+            if let Some(tgt) = ic.targets.first() {
+                if !levels.iter().any(|(n, _)| *n == tgt_name) {
+                    let idx = viz.add_memory_region(tgt, Some(tgt_name));
+                    levels.push((tgt_name, idx));
+                }
             }
         }
 
         // Add edges
-        for agg in &arch.memory_interfaces {
-            let src_name = extract_level_name(&agg.name, true);
-            let tgt_name = extract_level_name(&agg.name, false);
+        for ic in &arch.memory_interconnects {
+            let src_name = extract_level_name(&ic.name, true);
+            let tgt_name = extract_level_name(&ic.name, false);
 
             if let (Some((_, src_idx)), Some((_, tgt_idx))) = (
                 levels.iter().find(|(n, _)| *n == src_name),
@@ -352,9 +379,10 @@ impl ArchVisualizer {
                 viz.graph.add_edge(
                     *src_idx,
                     *tgt_idx,
-                    ArchEdge::DataFlow {
-                        name: agg.name.clone(),
-                        bandwidth: agg.bandwidth,
+                    ArchEdge::MemoryInterconnect {
+                        name: ic.name.clone(),
+                        bandwidth: ic.bandwidth,
+                        mapping: format_affine_map(&ic.map),
                     },
                 );
             }
@@ -409,9 +437,15 @@ impl ArchVisualizer {
             let (src, tgt) = self.graph.edge_endpoints(edge).unwrap();
             let weight = &self.graph[edge];
             let (label, color, style) = match weight {
-                ArchEdge::DataFlow { name, bandwidth } => {
-                    (format!("{}\\n{} B/cycle", name, bandwidth), "blue", "solid")
-                }
+                ArchEdge::MemoryInterconnect {
+                    name,
+                    bandwidth,
+                    mapping,
+                } => (
+                    format!("{}\\n{}\\n{} B/cycle", name, mapping, bandwidth),
+                    "blue",
+                    "solid",
+                ),
                 ArchEdge::Interconnect {
                     name,
                     bandwidth,
@@ -496,6 +530,11 @@ fn extract_level_name(agg_name: &str, is_source: bool) -> &str {
         } else {
             agg_name.split("_bus_input").next().unwrap_or(agg_name)
         }
+    } else if agg_name.contains("_to_") {
+        let mut parts = agg_name.split("_to_");
+        let src = parts.next().unwrap_or(agg_name);
+        let tgt = parts.next().unwrap_or(agg_name);
+        if is_source { src } else { tgt }
     } else {
         agg_name
     }
@@ -507,9 +546,9 @@ pub fn architecture_to_dot(arch: &Architecture) -> String {
     viz.to_dot_styled(&arch.name)
 }
 
-/// Convenience function to generate DOT from memory aggregations
-pub fn memory_hierarchy_to_dot(name: &str, aggregations: &[MemoryInterface]) -> String {
-    let viz = ArchVisualizer::from_memory_aggregations(aggregations);
+/// Convenience function to generate DOT from memory interconnects
+pub fn memory_hierarchy_to_dot(name: &str, interconnects: &[MemoryInterconnects]) -> String {
+    let viz = ArchVisualizer::from_memory_interconnects(interconnects);
     viz.to_dot_styled(name)
 }
 

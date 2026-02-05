@@ -16,7 +16,7 @@ src/
 ├── core/
 │   ├── mod.rs              # Core module exports
 │   ├── size_dim.rs         # Size and Dimension types
-│   ├── memory.rs           # Memory regions (Bank, MemRegion, MemoryInterface)
+│   ├── memory.rs           # Memory regions + interconnects
 │   └── processor.rs        # Processor trait for functional units and lanes
 ├── processor_aggregation.rs # ProcessorSet and ProcessorAggregation
 ├── functional_unit.rs      # Fixed-shape synchronous operations
@@ -26,6 +26,15 @@ src/
 ```
 
 ## Core Concepts
+
+### Creating Components (Current API)
+
+- **Dimensions**: `Dimension::new("x", 8)` or `Dimension::new_symbolic("x", "N")`
+- **Memory banks/regions**: `Bank::builder()` + `MemRegion::bank(...).scale([...])`
+- **Processors**: `FunctionalUnit::builder(...)` or `FunctionalLane::new(...)`, then `.scale(...)`
+- **Memory↔Memory**: `MemoryInterconnects::builder(...)` with `AffineMap::builder(...)`
+- **Memory→Processor**: `MemoryProcessorInterconnect::builder(...)` with `AffineMap::builder(...)`
+- **NoC interconnects**: `Interconnect::builder(...)` with `AffineMap::builder(...)`
 
 ### Scaling with `scale()`
 
@@ -70,7 +79,7 @@ The `ProcessorSet` enum represents either:
 
 ### ProcessorAggregation (for Contention Modeling)
 
-`ProcessorAggregation` is only needed when modeling contention/interference between processors (similar to `MemoryInterface` for memory):
+`ProcessorAggregation` is only needed when modeling contention/interference between processors (similar to `MemoryInterconnects` for memory):
 
 ```rust
 // Only use ProcessorAggregation when there's contention to model
@@ -111,14 +120,17 @@ let arch = Architecture::builder("2D Mesh")
 The `Architecture` struct contains:
 - `processor_sets: Vec<ProcessorSet>` - Independent processors (no contention)
 - `processor_aggregations: Vec<ProcessorAggregation>` - Processors with contention modeling
-- `memory_aggregations: Vec<MemoryInterface>` - Memory access patterns
+- `memory_regions: Vec<MemRegion>` - Explicit memory region inventory
+- `memory_interconnects: Vec<MemoryInterconnects>` - Memory connectivity mappings
+- `memory_processor_interconnects: Vec<MemoryProcessorInterconnect>` - Memory-to-processor mappings
 - `interconnects: Vec<Interconnect>` - Network topology
 
 ## Features
 
 - **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Bank structure)
 - **Memory Banks**: Specify memory using `block_size` and `num_blocks` via `Bank` type (both can be symbolic)
-- **Memory Interface**: Model how memory regions are connected with `MemoryInterface`
+- **Memory Interconnects**: Model how memory regions are connected with affine maps
+- **Memory→Processor Interconnects**: Map memory regions to processor sets
 - **Processor Abstraction**: Common `Processor` trait for functional units and lanes
 - **ProcessorSet**: Scale processors across dimensions with the `scale()` method
 - **Scalable Trait**: Implemented by all processor types for creating ProcessorSets
@@ -215,7 +227,7 @@ pub trait Scalable {
 }
 ```
 
-**ProcessorAggregation**: Describes how to use a ProcessorSet when modeling contention (analogous to `MemoryInterface`).
+**ProcessorAggregation**: Describes how to use a ProcessorSet when modeling contention (analogous to `MemoryInterconnects`).
 
 ```rust
 pub struct ProcessorAggregation {
@@ -231,7 +243,8 @@ Defines hierarchical memory regions and banks.
 **Key types**:
 - `Bank`: Concrete memory block with `block_size` and `num_blocks`
 - `MemRegion`: Hierarchical memory region (Indexed or Bank)
-- `MemoryInterface`: Describes data movement between memory regions
+- `MemoryInterconnects`: Describes mapping between memory regions
+- `MemoryProcessorInterconnect`: Describes mapping from memory regions to processor sets
 
 ```rust
 pub enum MemRegion {
@@ -254,6 +267,49 @@ let l1_region = MemRegion::bank(Bank::builder()
     .scale([&dim_x, &dim_y]);
 ```
 
+Memory-to-memory interconnect (affine mapping between regions):
+```rust
+let l1_to_l2 = MemoryInterconnects::builder("L1_to_L2")
+    .source(&l1_region)
+    .target(&l2_region)
+    .affine_map(
+        AffineMap::builder()
+            .source_dims(vec![&dim_x, &dim_y])
+            .target_dims(vec![&dim_x, &dim_y])
+            .result(AffineExpr::dim(0))
+            .result(AffineExpr::dim(1))
+            .build(),
+    )
+    .bandwidth(128)
+    .build();
+```
+
+Memory-to-processor interconnect (affine mapping to a `ProcessorSet`):
+```rust
+let mat_lane = FunctionalLane::new(
+    "matmul_lane",
+    vec![&l1_region, &l1_region],
+    vec![&l1_region],
+    MatMulLane,
+);
+
+let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
+
+let l1_to_mat = MemoryProcessorInterconnect::builder("L1_to_MatLane")
+    .source(&l1_region)
+    .target(mat_lane_set.clone())
+    .affine_map(
+        AffineMap::builder()
+            .source_dims(vec![&dim_x, &dim_y])
+            .target_dims(vec![&dim_x, &dim_y])
+            .result(AffineExpr::dim(0))
+            .result(AffineExpr::dim(1))
+            .build(),
+    )
+    .bandwidth(64)
+    .build();
+```
+
 #### 6. **Interconnects** (`interconnect.rs`)
 
 Models network-on-chip (NoC) topology using affine maps.
@@ -268,16 +324,14 @@ Models network-on-chip (NoC) topology using affine maps.
 
 ```rust
 // Horizontal NoC: (x, y) -> ((x + 1) mod 8, y)
-let noc_h_map = AffineMap::new(
-    2,
-    vec![
-        AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ),
-        AffineExpr::dim(1),
-    ],
-);
+let noc_h_map = AffineMap::builder()
+    .num_dims(2)
+    .result(AffineExpr::modulo(
+        AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+        AffineExpr::constant(8),
+    ))
+    .result(AffineExpr::dim(1))
+    .build();
 
 let noc_h = Interconnect::builder("horizontal_noc")
     .grid(vec![dim_x.clone(), dim_y.clone()])
@@ -375,8 +429,10 @@ cargo build --release
 | `mlar.lane` | `FunctionalLane::new()` | `lane.rs` |
 | `cf.assert` | `LaneModel::validate_preconditions()` | `lane.rs` |
 | Processor scaling | `processor.scale(dims)` | `processor_aggregation.rs` |
+| `memory interconnects` | `MemoryInterconnects::builder()` | `core/memory.rs` |
+| `memory→processor` | `MemoryProcessorInterconnect::builder()` | `core/memory.rs` |
 | `mlar.interconnects` | `Interconnect::builder()` | `interconnect.rs` |
-| `affine_map<...>` | `AffineMap::new()` + `AffineExpr` | `interconnect.rs` |
+| `affine_map<...>` | `AffineMap::builder()` + `AffineExpr` | `interconnect.rs` |
 | `module {...}` | `Architecture::builder()` | `architecture.rs` |
 
 ## Next Steps

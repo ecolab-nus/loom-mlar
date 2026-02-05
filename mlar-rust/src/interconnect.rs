@@ -74,13 +74,100 @@ pub struct AffineMap {
 }
 
 impl AffineMap {
+    pub fn builder() -> AffineMapBuilder {
+        AffineMapBuilder {
+            num_dims: None,
+            source_dims: None,
+            target_dims: None,
+            results: Vec::new(),
+        }
+    }
+
     pub fn new(num_dims: usize, results: Vec<AffineExpr>) -> Self {
         Self { num_dims, results }
+    }
+
+    /// Create an affine map with explicit source/target dimensions.
+    pub fn from_dimensions(
+        source_dims: &[Dimension],
+        target_dims: &[Dimension],
+        results: Vec<AffineExpr>,
+    ) -> Self {
+        assert!(
+            results.len() == target_dims.len(),
+            "result arity must match target dimensions"
+        );
+        Self {
+            num_dims: source_dims.len(),
+            results,
+        }
     }
 
     /// Apply the affine map to the given dimension values
     pub fn apply(&self, dims: &[Index]) -> Vec<isize> {
         self.results.iter().map(|expr| expr.eval(dims)).collect()
+    }
+}
+
+pub struct AffineMapBuilder {
+    num_dims: Option<usize>,
+    source_dims: Option<Vec<Dimension>>,
+    target_dims: Option<Vec<Dimension>>,
+    results: Vec<AffineExpr>,
+}
+
+impl AffineMapBuilder {
+    pub fn num_dims(mut self, num_dims: usize) -> Self {
+        self.num_dims = Some(num_dims);
+        self
+    }
+
+    pub fn source_dims<I>(mut self, dims: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<Dimension>,
+    {
+        self.source_dims = Some(dims.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub fn target_dims<I>(mut self, dims: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<Dimension>,
+    {
+        self.target_dims = Some(dims.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub fn result(mut self, expr: AffineExpr) -> Self {
+        self.results.push(expr);
+        self
+    }
+
+    pub fn results(mut self, exprs: Vec<AffineExpr>) -> Self {
+        self.results = exprs;
+        self
+    }
+
+    pub fn build(self) -> AffineMap {
+        let num_dims = if let Some(source_dims) = &self.source_dims {
+            source_dims.len()
+        } else {
+            self.num_dims.expect("num_dims or source_dims must be set")
+        };
+
+        if let Some(target_dims) = &self.target_dims {
+            assert!(
+                self.results.len() == target_dims.len(),
+                "result arity must match target dimensions"
+            );
+        }
+
+        AffineMap {
+            num_dims,
+            results: self.results,
+        }
     }
 }
 
@@ -143,7 +230,11 @@ impl InterconnectBuilder {
             grid: self.grid,
             affine_map: self.affine_map.unwrap_or_else(|| {
                 // Default identity map
-                AffineMap::new(2, vec![AffineExpr::dim(0), AffineExpr::dim(1)])
+                AffineMap::builder()
+                    .num_dims(2)
+                    .result(AffineExpr::dim(0))
+                    .result(AffineExpr::dim(1))
+                    .build()
             }),
             bandwidth: self.bandwidth,
         }
