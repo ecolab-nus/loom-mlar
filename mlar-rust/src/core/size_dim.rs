@@ -105,3 +105,9 @@ impl Dimension {
         }
     }
 }
+
+impl From<&Dimension> for Dimension {
+    fn from(dim: &Dimension) -> Self {
+        dim.clone()
+    }
+}

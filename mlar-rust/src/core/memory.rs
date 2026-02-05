@@ -73,13 +73,13 @@ pub struct MemoryInterfaceBuilder {
 }
 
 impl MemoryInterfaceBuilder {
-    pub fn source(mut self, region: MemRegion) -> Self {
-        self.sources.push(region);
+    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
+        self.sources.push(region.into());
         self
     }
 
-    pub fn target(mut self, region: MemRegion) -> Self {
-        self.target = Some(region);
+    pub fn target(mut self, region: impl Into<MemRegion>) -> Self {
+        self.target = Some(region.into());
         self
     }
 
@@ -136,11 +136,27 @@ impl MemRegion {
 
     /// Scale this memory region across the given dimensions.
     /// Creates a new indexed region wrapping this one.
-    pub fn scale(self, indices: Vec<Dimension>) -> Self {
+    pub fn scale<'a, I>(self, indices: I) -> Self
+    where
+        I: IntoIterator<Item = &'a Dimension>,
+    {
+        let indices = indices.into_iter().cloned().collect();
         MemRegion::Indexed {
             indices,
             sub_region: Box::new(self),
         }
+    }
+}
+
+impl From<&MemRegion> for MemRegion {
+    fn from(region: &MemRegion) -> Self {
+        region.clone()
+    }
+}
+
+impl From<&MemoryInterface> for MemoryInterface {
+    fn from(interface: &MemoryInterface) -> Self {
+        interface.clone()
     }
 }
 

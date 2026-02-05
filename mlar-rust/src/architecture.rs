@@ -11,7 +11,7 @@ pub struct Architecture {
     pub processor_sets: Vec<ProcessorSet>,
     /// Processor aggregations for modeling contention/interference between processors
     pub processor_aggregations: Vec<ProcessorAggregation>,
-    pub memory_aggregations: Vec<MemoryInterface>,
+    pub memory_interfaces: Vec<MemoryInterface>,
     pub interconnects: Vec<Interconnect>,
 }
 
@@ -22,7 +22,7 @@ impl Architecture {
             dimensions: Vec::new(),
             processor_sets: Vec::new(),
             processor_aggregations: Vec::new(),
-            memory_aggregations: Vec::new(),
+            memory_interfaces: Vec::new(),
             interconnects: Vec::new(),
         }
     }
@@ -59,13 +59,22 @@ pub struct ArchitectureBuilder {
     dimensions: Vec<Dimension>,
     processor_sets: Vec<ProcessorSet>,
     processor_aggregations: Vec<ProcessorAggregation>,
-    memory_aggregations: Vec<MemoryInterface>,
+    memory_interfaces: Vec<MemoryInterface>,
     interconnects: Vec<Interconnect>,
 }
 
 impl ArchitectureBuilder {
     pub fn dimension(mut self, dim: Dimension) -> Self {
         self.dimensions.push(dim);
+        self
+    }
+
+    pub fn dimensions<I>(mut self, dims: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<Dimension>,
+    {
+        self.dimensions.extend(dims.into_iter().map(Into::into));
         self
     }
 
@@ -81,8 +90,18 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn memory_aggregation(mut self, agg: MemoryInterface) -> Self {
-        self.memory_aggregations.push(agg);
+    pub fn memory_interface(mut self, int: MemoryInterface) -> Self {
+        self.memory_interfaces.push(int);
+        self
+    }
+
+    pub fn memory_interfaces<I>(mut self, interfaces: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<MemoryInterface>,
+    {
+        self.memory_interfaces
+            .extend(interfaces.into_iter().map(Into::into));
         self
     }
 
@@ -97,7 +116,7 @@ impl ArchitectureBuilder {
             dimensions: self.dimensions,
             processor_sets: self.processor_sets,
             processor_aggregations: self.processor_aggregations,
-            memory_aggregations: self.memory_aggregations,
+            memory_interfaces: self.memory_interfaces,
             interconnects: self.interconnects,
         }
     }

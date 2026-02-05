@@ -11,39 +11,39 @@ fn test_2d_mesh_architecture() {
 
     // Define L1 memory region: indexed by [x, y], each has 64KB blocks
     let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
-        .scale(vec![dim_x.clone(), dim_y.clone()]); // 64KB per location
+        .scale([&dim_x, &dim_y]); // 64KB per location
 
     // Define DRAM memory region: indexed by [d], each has 8GB
     let _dram_region = MemRegion::bank(Bank::builder().block_size(8589934592usize).num_blocks(1).build())
-        .scale(vec![dim_d.clone()]); // 8GB per DRAM
+        .scale([&dim_d]); // 8GB per DRAM
 
     // Create functional units that operate on L1 regions
     let mat_fu = FunctionalUnit::builder("matmul_32x32")
-        .input_region(l1_region.clone())
-        .input_region(l1_region.clone())
-        .output_region(l1_region.clone())
+        .input_region(&l1_region)
+        .input_region(&l1_region)
+        .output_region(&l1_region)
         .latency(8)
         .build();
 
     let vec_fu = FunctionalUnit::builder("vec_add_32")
-        .input_region(l1_region.clone())
-        .input_region(l1_region.clone())
-        .output_region(l1_region.clone())
+        .input_region(&l1_region)
+        .input_region(&l1_region)
+        .output_region(&l1_region)
         .latency(1)
         .build();
 
     // Create lanes with performance models
     let mat_lane = FunctionalLane::new(
         "matmul_lane",
-        vec![l1_region.clone(), l1_region.clone()],
-        vec![l1_region.clone()],
+        vec![&l1_region, &l1_region],
+        vec![&l1_region],
         MatMulLane,
     );
 
     let vec_lane = FunctionalLane::new(
         "vec_lane",
-        vec![l1_region.clone(), l1_region.clone()],
-        vec![l1_region.clone()],
+        vec![&l1_region, &l1_region],
+        vec![&l1_region],
         VecLane,
     );
 
@@ -162,12 +162,12 @@ fn test_lane_preconditions() {
     let dim_y = Dimension::new("y", 8);
     
     let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
-        .scale(vec![dim_x.clone(), dim_y.clone()]);
+        .scale([&dim_x, &dim_y]);
     
     let mat_lane = FunctionalLane::new(
         "matmul_lane",
-        vec![l1_region.clone(), l1_region.clone()],
-        vec![l1_region.clone()],
+        vec![&l1_region, &l1_region],
+        vec![&l1_region],
         MatMulLane,
     );
     

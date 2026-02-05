@@ -49,13 +49,13 @@ pub struct FunctionalUnitBuilder {
 }
 
 impl FunctionalUnitBuilder {
-    pub fn input_region(mut self, region: MemRegion) -> Self {
-        self.input_regions.push(region);
+    pub fn input_region(mut self, region: impl Into<MemRegion>) -> Self {
+        self.input_regions.push(region.into());
         self
     }
 
-    pub fn output_region(mut self, region: MemRegion) -> Self {
-        self.output_regions.push(region);
+    pub fn output_region(mut self, region: impl Into<MemRegion>) -> Self {
+        self.output_regions.push(region.into());
         self
     }
 

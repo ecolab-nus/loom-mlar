@@ -37,11 +37,13 @@ Memory regions can be scaled to create indexed regions:
 
 ```rust
 // Create a bank and scale it across dimensions
+let dim_x = Dimension::new("x", 8);
+let dim_y = Dimension::new("y", 8);
 let l1_region = MemRegion::bank(Bank::builder()
         .block_size(65536)
         .num_blocks(1)
         .build())
-    .scale(vec![dim_x.clone(), dim_y.clone()]);  // 64KB per [x,y] location
+    .scale([&dim_x, &dim_y]);  // 64KB per [x,y] location
 ```
 
 This is equivalent to calling `MemRegion::indexed(dims, region)` but provides a more fluent API.
@@ -53,8 +55,8 @@ Processors (FunctionalUnit, FunctionalLane) can be scaled across dimensions usin
 ```rust
 // Create a functional unit (defines the processor's behavior)
 let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(l1_region.clone())
-    .output_region(l1_region.clone())
+    .input_region(&l1_region)
+    .output_region(&l1_region)
     .latency(8)
     .build();
 
@@ -90,8 +92,8 @@ let dim_y = Dimension::new("y", 8);
 
 // Create functional unit and scale it
 let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(l1_region.clone())
-    .output_region(l1_region.clone())
+    .input_region(&l1_region)
+    .output_region(&l1_region)
     .latency(8)
     .build();
 
@@ -150,9 +152,9 @@ Represents fixed-shape, synchronous operations with predetermined latencies.
 
 ```rust
 let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(l1_region.clone())
-    .input_region(l1_region.clone())
-    .output_region(l1_region.clone())
+    .input_region(&l1_region)
+    .input_region(&l1_region)
+    .output_region(&l1_region)
     .latency(8)
     .build();
 
@@ -176,8 +178,8 @@ Represents dynamic-shape, streaming operations with runtime-computed latencies.
 ```rust
 let mat_lane = FunctionalLane::new(
     "matmul_lane",
-    vec![l1_region.clone(), l1_region.clone()],
-    vec![l1_region.clone()],
+    vec![&l1_region, &l1_region],
+    vec![&l1_region],
     MatMulLane,  // Implements LaneModel trait
 );
 
@@ -243,11 +245,13 @@ pub enum MemRegion {
 
 Example: L1 memory indexed by processor coordinates using `scale()`:
 ```rust
+let dim_x = Dimension::new("x", 8);
+let dim_y = Dimension::new("y", 8);
 let l1_region = MemRegion::bank(Bank::builder()
         .block_size(65536)
         .num_blocks(1)
         .build())
-    .scale(vec![Dimension::new("x", 8), Dimension::new("y", 8)]);
+    .scale([&dim_x, &dim_y]);
 ```
 
 #### 6. **Interconnects** (`interconnect.rs`)
@@ -316,17 +320,17 @@ let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).
 
 // Create functional unit
 let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(l1_region.clone())
-    .input_region(l1_region.clone())
-    .output_region(l1_region.clone())
+    .input_region(&l1_region)
+    .input_region(&l1_region)
+    .output_region(&l1_region)
     .latency(8)
     .build();
 
 // Create lane with performance model
 let mat_lane = FunctionalLane::new(
     "matmul_lane",
-    vec![l1_region.clone(), l1_region.clone()],
-    vec![l1_region.clone()],
+    vec![&l1_region, &l1_region],
+    vec![&l1_region],
     MatMulLane,
 );
 

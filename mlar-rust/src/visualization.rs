@@ -262,7 +262,7 @@ impl ArchVisualizer {
         }
 
         // Add memory aggregations with data flow edges
-        for agg in &arch.memory_aggregations {
+        for agg in &arch.memory_interfaces {
             let source_indices: Vec<_> = agg
                 .sources
                 .iter()
@@ -322,7 +322,7 @@ impl ArchVisualizer {
         // Parse memory aggregation names to determine hierarchy
         let mut levels: Vec<(&str, NodeIndex)> = Vec::new();
 
-        for agg in &arch.memory_aggregations {
+        for agg in &arch.memory_interfaces {
             // Add source
             if let Some(src) = agg.sources.first() {
                 let src_name = extract_level_name(&agg.name, true);
@@ -341,7 +341,7 @@ impl ArchVisualizer {
         }
 
         // Add edges
-        for agg in &arch.memory_aggregations {
+        for agg in &arch.memory_interfaces {
             let src_name = extract_level_name(&agg.name, true);
             let tgt_name = extract_level_name(&agg.name, false);
 

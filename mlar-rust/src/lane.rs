@@ -12,16 +12,24 @@ pub struct FunctionalLane {
 }
 
 impl FunctionalLane {
-    pub fn new(
-        name: impl Into<String>,
-        input_regions: Vec<MemRegion>,
-        output_regions: Vec<MemRegion>,
-        model: impl LaneModel + 'static,
-    ) -> Self {
+    pub fn new<N, I, O, M>(
+        name: N,
+        input_regions: I,
+        output_regions: O,
+        model: M,
+    ) -> Self
+    where
+        N: Into<String>,
+        I: IntoIterator,
+        I::Item: Into<MemRegion>,
+        O: IntoIterator,
+        O::Item: Into<MemRegion>,
+        M: LaneModel + 'static,
+    {
         Self {
             name: name.into(),
-            input_regions,
-            output_regions,
+            input_regions: input_regions.into_iter().map(Into::into).collect(),
+            output_regions: output_regions.into_iter().map(Into::into).collect(),
             model: Arc::new(model),
         }
     }

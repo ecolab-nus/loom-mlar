@@ -9,6 +9,10 @@ use std::fs;
 /// Generate DOT visualization for the GPU memory hierarchy architecture
 #[test]
 fn test_gpu_memory_hierarchy_visualization() {
+    let dram_dim = Dimension::new("dram_banks", 2);
+    let l2_dim = Dimension::new("l2_banks", 4);
+    let l1_dim = Dimension::new("l1_banks", 8);
+
     // DRAM: 2 banks, large capacity
     let dram_banks = MemRegion::bank(
         Bank::builder()
@@ -16,7 +20,7 @@ fn test_gpu_memory_hierarchy_visualization() {
             .num_blocks(Size::symbolic("DRAM_SIZE"))
             .build(),
     )
-    .scale(vec![Dimension::new("dram_banks", 2)]);
+    .scale([&dram_dim]);
 
     // L2: 4 banks, each with many small blocks totaling 1MB
     let l2_banks = MemRegion::bank(
@@ -25,7 +29,7 @@ fn test_gpu_memory_hierarchy_visualization() {
             .num_blocks(4096_usize)
             .build(),
     )
-    .scale(vec![Dimension::new("l2_banks", 4)]);
+    .scale([&l2_dim]);
 
     // L1: 8 banks, each with many small blocks totaling 64KB
     let l1_banks = MemRegion::bank(
@@ -34,7 +38,7 @@ fn test_gpu_memory_hierarchy_visualization() {
             .num_blocks(1024_usize)
             .build(),
     )
-    .scale(vec![Dimension::new("l1_banks", 8)]);
+    .scale([&l1_dim]);
 
     // --- DRAM <-> L2 Connection ---
 
@@ -48,15 +52,15 @@ fn test_gpu_memory_hierarchy_visualization() {
 
     // DRAM Output Aggregation (DRAM -> Buffer)
     let dram_bus_output = MemoryInterface::builder("DRAM_bus_output")
-        .source(dram_banks.clone())
-        .target(dram_l2_buffer.clone())
+        .source(&dram_banks)
+        .target(&dram_l2_buffer)
         .bandwidth(256)
         .build();
 
     // L2 Input Aggregation (Buffer -> L2)
     let l2_bus_input = MemoryInterface::builder("L2_bus_input")
-        .source(dram_l2_buffer.clone())
-        .target(l2_banks.clone())
+        .source(&dram_l2_buffer)
+        .target(&l2_banks)
         .bandwidth(128)
         .build();
 
@@ -72,27 +76,27 @@ fn test_gpu_memory_hierarchy_visualization() {
 
     // L2 Output Aggregation (L2 -> Buffer)
     let l2_bus_output = MemoryInterface::builder("L2_bus_output")
-        .source(l2_banks.clone())
-        .target(l2_l1_buffer.clone())
+        .source(&l2_banks)
+        .target(&l2_l1_buffer)
         .bandwidth(128)
         .build();
 
     // L1 Input Aggregation (Buffer -> L1)
     let l1_bus_input = MemoryInterface::builder("L1_bus_input")
-        .source(l2_l1_buffer.clone())
-        .target(l1_banks.clone())
+        .source(&l2_l1_buffer)
+        .target(&l1_banks)
         .bandwidth(64)
         .build();
 
     // Build architecture
     let arch = Architecture::builder("GPU_Memory_Hierarchy")
-        .dimension(Dimension::new("dram_banks", 2))
-        .dimension(Dimension::new("l2_banks", 4))
-        .dimension(Dimension::new("l1_banks", 8))
-        .memory_aggregation(dram_bus_output)
-        .memory_aggregation(l2_bus_input)
-        .memory_aggregation(l2_bus_output)
-        .memory_aggregation(l1_bus_input)
+        .dimension(dram_dim)
+        .dimension(l2_dim)
+        .dimension(l1_dim)
+        .memory_interface(dram_bus_output)
+        .memory_interface(l2_bus_input)
+        .memory_interface(l2_bus_output)
+        .memory_interface(l1_bus_input)
         .build();
 
     // Generate DOT
@@ -126,35 +130,35 @@ fn test_2d_mesh_visualization() {
             .num_blocks(1_usize)
             .build(),
     )
-    .scale(vec![dim_x.clone(), dim_y.clone()]);
+    .scale([&dim_x, &dim_y]);
 
     // Create functional units
     let mat_fu = FunctionalUnit::builder("matmul_32x32")
-        .input_region(l1_region.clone())
-        .input_region(l1_region.clone())
-        .output_region(l1_region.clone())
+        .input_region(&l1_region)
+        .input_region(&l1_region)
+        .output_region(&l1_region)
         .latency(8)
         .build();
 
     let vec_fu = FunctionalUnit::builder("vec_add_32")
-        .input_region(l1_region.clone())
-        .input_region(l1_region.clone())
-        .output_region(l1_region.clone())
+        .input_region(&l1_region)
+        .input_region(&l1_region)
+        .output_region(&l1_region)
         .latency(1)
         .build();
 
     // Create lanes
     let mat_lane = FunctionalLane::new(
         "matmul_lane",
-        vec![l1_region.clone(), l1_region.clone()],
-        vec![l1_region.clone()],
+        vec![&l1_region, &l1_region],
+        vec![&l1_region],
         MatMulLane,
     );
 
     let vec_lane = FunctionalLane::new(
         "vec_lane",
-        vec![l1_region.clone(), l1_region.clone()],
-        vec![l1_region.clone()],
+        vec![&l1_region, &l1_region],
+        vec![&l1_region],
         VecLane,
     );
 
@@ -255,13 +259,17 @@ fn test_gpu_memory_hierarchy_simplified() {
     let _viz = ArchVisualizer::new();
 
     // Add memory level nodes manually for a cleaner view
+    let banks_2 = Dimension::new("banks", 2);
+    let banks_4 = Dimension::new("banks", 4);
+    let banks_8 = Dimension::new("banks", 8);
+
     let dram = MemRegion::bank(
         Bank::builder()
             .block_size(256_usize)
             .num_blocks(Size::symbolic("DRAM_SIZE"))
             .build(),
     )
-    .scale(vec![Dimension::new("banks", 2)]);
+    .scale([&banks_2]);
 
     let l2 = MemRegion::bank(
         Bank::builder()
@@ -269,7 +277,7 @@ fn test_gpu_memory_hierarchy_simplified() {
             .num_blocks(4096_usize)
             .build(),
     )
-    .scale(vec![Dimension::new("banks", 4)]);
+    .scale([&banks_4]);
 
     let l1 = MemRegion::bank(
         Bank::builder()
@@ -277,7 +285,7 @@ fn test_gpu_memory_hierarchy_simplified() {
             .num_blocks(1024_usize)
             .build(),
     )
-    .scale(vec![Dimension::new("banks", 8)]);
+    .scale([&banks_8]);
 
     let reg = MemRegion::bank(
         Bank::builder()
@@ -288,20 +296,20 @@ fn test_gpu_memory_hierarchy_simplified() {
 
     // Build the memory aggregations
     let dram_to_l2 = MemoryInterface::builder("DRAM_to_L2")
-        .source(dram)
-        .target(l2.clone())
+        .source(&dram)
+        .target(&l2)
         .bandwidth(256)
         .build();
 
     let l2_to_l1 = MemoryInterface::builder("L2_to_L1")
-        .source(l2)
-        .target(l1.clone())
+        .source(&l2)
+        .target(&l1)
         .bandwidth(128)
         .build();
 
     let l1_to_reg = MemoryInterface::builder("L1_to_REG")
-        .source(l1)
-        .target(reg)
+        .source(&l1)
+        .target(&reg)
         .bandwidth(64)
         .build();
 
