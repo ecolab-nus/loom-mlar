@@ -579,7 +579,7 @@ impl Default for ArchVisualizer {
 /// Format an affine map for display
 fn format_affine_map(map: &crate::interconnect::AffineMap) -> String {
     let src_dims = map.source_dim_names();
-    let results: Vec<_> = map.results.iter().map(format_affine_expr).collect();
+    let results: Vec<_> = map.map.iter().map(format_affine_expr).collect();
     format!(
         "({}) -> ({})",
         src_dims.join(", "),
@@ -603,7 +603,7 @@ fn format_affine_map_detailed(map: &crate::interconnect::AffineMap) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     
-    let results: Vec<_> = map.results.iter().map(format_affine_expr).collect();
+    let results: Vec<_> = map.map.iter().map(format_affine_expr).collect();
     format!(
         "[{}] -> [{}]\\n({})",
         src_info,

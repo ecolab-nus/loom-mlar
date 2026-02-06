@@ -64,7 +64,7 @@ fn test_2d_mesh_architecture() {
     let noc_h_map = AffineMap {
         source_dims: vec![dim_x.clone(), dim_y.clone()],
         target_dims: vec![dim_x.clone(), dim_y.clone()],
-        results: vec![
+        map: vec![
             AffineExpr::modulo(
                 AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
                 AffineExpr::constant(8),
@@ -83,7 +83,7 @@ fn test_2d_mesh_architecture() {
     let noc_v_map = AffineMap {
         source_dims: vec![dim_x.clone(), dim_y.clone()],
         target_dims: vec![dim_x.clone(), dim_y.clone()],
-        results: vec![
+        map: vec![
             AffineExpr::dim(0),
             AffineExpr::modulo(
                 AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
@@ -102,7 +102,7 @@ fn test_2d_mesh_architecture() {
     let dram_map = AffineMap {
         source_dims: vec![dim_x.clone(), dim_y.clone()],
         target_dims: vec![dim_d.clone()],
-        results: vec![AffineExpr::add(
+        map: vec![AffineExpr::add(
             AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
             AffineExpr::mul(
                 AffineExpr::constant(2),
@@ -147,7 +147,7 @@ fn test_affine_maps() {
     let map = AffineMap {
         source_dims: vec![dim_a.clone(), dim_b.clone()],
         target_dims: vec![dim_a.clone(), dim_b.clone()],
-        results: vec![
+        map: vec![
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::dim(1),
         ],
@@ -161,7 +161,7 @@ fn test_affine_maps() {
     let wrap_map = AffineMap {
         source_dims: vec![dim_wrap.clone()],
         target_dims: vec![dim_wrap],
-        results: vec![AffineExpr::modulo(
+        map: vec![AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::constant(8),
         )],

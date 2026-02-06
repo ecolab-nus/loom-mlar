@@ -39,7 +39,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let dram_to_l2_map = AffineMap {
         source_dims: vec![dram_dim.clone()],
         target_dims: vec![dram_dim.clone()],
-        results: vec![AffineExpr::dim(0)],
+        map: vec![AffineExpr::dim(0)],
     };
 
     let dram_to_l2 = MemoryInterconnects {
@@ -55,7 +55,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l2_to_l1_map = AffineMap {
         source_dims: vec![dram_dim.clone()],
         target_dims: vec![warp_dim.clone()],
-        results: vec![AffineExpr::mul(
+        map: vec![AffineExpr::mul(
             AffineExpr::dim(0),
             AffineExpr::constant(8), // L2[i] -> L1[i*8..i*8+7]
         )],
@@ -74,7 +74,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l1_to_rf_map = AffineMap {
         source_dims: vec![warp_dim.clone()],
         target_dims: vec![warp_dim.clone()],
-        results: vec![AffineExpr::dim(0)],
+        map: vec![AffineExpr::dim(0)],
     };
 
     let l1_to_rf = MemoryInterconnects {
@@ -99,7 +99,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let rf_to_mat_map = AffineMap {
         source_dims: vec![warp_dim.clone()],
         target_dims: vec![warp_dim.clone()],
-        results: vec![AffineExpr::dim(0)],
+        map: vec![AffineExpr::dim(0)],
     };
 
     let rf_to_mat = MemoryProcessorInterconnect {

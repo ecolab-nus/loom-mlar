@@ -73,7 +73,7 @@ pub struct AffineMap {
     pub source_dims: Vec<Dimension>,
     /// Target dimensions
     pub target_dims: Vec<Dimension>,
-    pub results: Vec<AffineExpr>,
+    pub map: Vec<AffineExpr>,
 }
 
 impl AffineMap {
@@ -85,7 +85,7 @@ impl AffineMap {
         Self {
             source_dims,
             target_dims,
-            results,
+            map: results,
         }
     }
 
@@ -100,7 +100,7 @@ impl AffineMap {
 
     /// Apply the affine map to the given dimension values
     pub fn apply(&self, dims: &[Index]) -> Vec<isize> {
-        self.results.iter().map(|expr| expr.eval(dims)).collect()
+        self.map.iter().map(|expr| expr.eval(dims)).collect()
     }
 
     /// Get source dimension names
