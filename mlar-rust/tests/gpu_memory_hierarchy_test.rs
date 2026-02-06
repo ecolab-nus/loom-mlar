@@ -4,11 +4,10 @@ use mlar_rust::*;
 use std::fs;
 
 fn example_gpu_memory_hierarchy() -> Architecture {
-    let dram_dim = Dimension::new("dram_banks", 4);
-    let l2_dim = Dimension::new("l2_banks", 4);
-    let l1_dim = Dimension::new("l1_banks", 32);
+    let dram_dim = Dimension::new("dram_dim", 4);   // Shared by DRAM and L2
+    let warp_dim = Dimension::new("warp_dim", 32);  // Shared by L1, RF, and MatLane
 
-    // DRAM: 2 banks, large capacity
+    // DRAM: 4 banks, large capacity
     let dram_banks = MemRegion::bank(Bank::builder()
             .block_size(256) // 256 bytes per block transfer
             .num_blocks(Size::symbolic("DRAM_SIZE"))
@@ -20,26 +19,26 @@ fn example_gpu_memory_hierarchy() -> Architecture {
             .block_size(256)  // 256 bytes per block
             .num_blocks(4096)  // 4096 blocks = 1MB total per bank
             .build())
-        .scale([&l2_dim]);
+        .scale([&dram_dim]);
 
     // L1: 32 banks, each with many small blocks totaling 64KB
     let l1_banks = MemRegion::bank(Bank::builder()
             .block_size(64)   // 64 bytes per block
             .num_blocks(1024) // 1024 blocks = 64KB total per bank
             .build())
-        .scale([&l1_dim]);
+        .scale([&warp_dim]);
 
     // RF: same number of banks as L1, smaller size per bank
     let rf_banks = MemRegion::bank(Bank::builder()
             .block_size(32)   // smaller block size than L1
             .num_blocks(128)  // 128 blocks = 4KB total per bank
             .build())
-        .scale([&l1_dim]);
+        .scale([&warp_dim]);
 
-    // --- DRAM <-> L2 Connection ---
+    // --- DRAM <-> L2 Connection (1-to-1) ---
     let dram_to_l2_map = AffineMap::builder()
         .source_dims(vec![&dram_dim])
-        .target_dims(vec![&l2_dim])
+        .target_dims(vec![&dram_dim])
         .result(AffineExpr::dim(0))
         .build();
 
@@ -51,11 +50,13 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .build();
 
     // --- L2 <-> L1 Connection ---
+    // Each L2 bank connects to 8 L1 banks (32/4 = 8)
     let l2_to_l1_map = AffineMap::builder()
-        .num_dims(1)
+        .source_dims(vec![&dram_dim])
+        .target_dims(vec![&warp_dim])
         .result(AffineExpr::mul(
             AffineExpr::dim(0),
-            AffineExpr::constant(2),
+            AffineExpr::constant(8),  // L2[i] -> L1[i*8..i*8+7]
         ))
         .build();
 
@@ -67,10 +68,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .build();
 
 
-    // --- L1 <-> RF Connection ---
+    // --- L1 <-> RF Connection (1-to-1) ---
     let l1_to_rf_map = AffineMap::builder()
-        .source_dims(vec![&l1_dim])
-        .target_dims(vec![&l1_dim])
+        .source_dims(vec![&warp_dim])
+        .target_dims(vec![&warp_dim])
         .result(AffineExpr::dim(0))
         .build();
 
@@ -80,8 +81,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .affine_map(l1_to_rf_map)
         .bandwidth(64)
         .build();
-    
-    // Matrix lane per L1 bank
+
+    // Matrix lane per RF bank
     let mat_lane = FunctionalLane::new(
         "matmul_lane",
         vec![&rf_banks, &rf_banks],
@@ -89,12 +90,12 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         MatMulLane,
     );
 
-    let mat_lane_set = mat_lane.scale(vec![l1_dim.clone()]);
+    let mat_lane_set = mat_lane.scale(vec![warp_dim.clone()]);
 
     // RF -> Matrix Lane Connection (1-to-1)
     let rf_to_mat_map = AffineMap::builder()
-        .source_dims(vec![&l1_dim])
-        .target_dims(vec![&l1_dim])
+        .source_dims(vec![&warp_dim])
+        .target_dims(vec![&warp_dim])
         .result(AffineExpr::dim(0))
         .build();
 
@@ -108,8 +109,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     // Build architecture
     let arch = Architecture::builder("GPU")
         .dimension(dram_dim)
-        .dimension(l2_dim)
-        .dimension(l1_dim)
+        .dimension(warp_dim)
         .processor_set(mat_lane_set)
         .memory_interconnect(dram_to_l2)
         .memory_interconnect(l2_to_l1)
@@ -140,9 +140,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     return arch;
     // In this architecture:
-    // - DRAM banks (2 x Large) -> DRAM_to_L2 -> L2 banks
-    // - L2 banks (4 x 1MB) -> L2_to_L1 -> L1 banks
-    // - L1 banks (32 x 64KB) -> L1_to_RF -> RF banks (32 x 4KB)
+    // - DRAM banks [dram_dim:4] -> DRAM_to_L2 (1:1) -> L2 banks [dram_dim:4]
+    // - L2 banks [dram_dim:4] -> L2_to_L1 (1:8) -> L1 banks [warp_dim:32]
+    // - L1 banks [warp_dim:32] -> L1_to_RF (1:1) -> RF banks [warp_dim:32]
+    // - RF banks [warp_dim:32] -> RF_to_MatLane (1:1) -> MatLane [warp_dim:32]
 }
 
 #[test]
@@ -155,14 +156,17 @@ fn test_gpu_memory_hierarchy() {
 fn test_gpu_memory_hierarchy_visualization() {
     let arch = example_gpu_memory_hierarchy();
 
-    // Generate DOT
+    // Generate summary DOT (one block per memory level)
     let dot = architecture_to_dot(&arch);
-
-    // Write to file
     fs::write("gpu_memory_hierarchy.dot", &dot).expect("Failed to write DOT file");
-
     println!("Generated gpu_memory_hierarchy.dot:");
     println!("{}", dot);
+
+    // Generate expanded DOT (all instances with affine-mapped edges)
+    let expanded_dot = architecture_to_dot_expanded(&arch);
+    fs::write("gpu_memory_hierarchy_expanded.dot", &expanded_dot).expect("Failed to write expanded DOT file");
+    println!("\nGenerated gpu_memory_hierarchy_expanded.dot:");
+    println!("{}", expanded_dot);
 }
 
 /// Print instructions for viewing the generated DOT files

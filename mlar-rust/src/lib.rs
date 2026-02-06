@@ -20,4 +20,4 @@ pub use architecture::Architecture;
 pub use processor_aggregation::{ProcessorSet, ProcessorAggregation, Scalable};
 
 // Re-export visualization utilities
-pub use visualization::{ArchVisualizer, architecture_to_dot, memory_hierarchy_to_dot};
+pub use visualization::{ArchVisualizer, architecture_to_dot, architecture_to_dot_expanded, memory_hierarchy_to_dot};

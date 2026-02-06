@@ -70,6 +70,10 @@ impl AffineExpr {
 #[derive(Debug, Clone)]
 pub struct AffineMap {
     pub num_dims: usize,
+    /// Source dimensions (if explicitly provided)
+    pub source_dims: Option<Vec<Dimension>>,
+    /// Target dimensions (if explicitly provided)
+    pub target_dims: Option<Vec<Dimension>>,
     pub results: Vec<AffineExpr>,
 }
 
@@ -84,7 +88,12 @@ impl AffineMap {
     }
 
     pub fn new(num_dims: usize, results: Vec<AffineExpr>) -> Self {
-        Self { num_dims, results }
+        Self {
+            num_dims,
+            source_dims: None,
+            target_dims: None,
+            results,
+        }
     }
 
     /// Create an affine map with explicit source/target dimensions.
@@ -99,6 +108,8 @@ impl AffineMap {
         );
         Self {
             num_dims: source_dims.len(),
+            source_dims: Some(source_dims.to_vec()),
+            target_dims: Some(target_dims.to_vec()),
             results,
         }
     }
@@ -106,6 +117,24 @@ impl AffineMap {
     /// Apply the affine map to the given dimension values
     pub fn apply(&self, dims: &[Index]) -> Vec<isize> {
         self.results.iter().map(|expr| expr.eval(dims)).collect()
+    }
+
+    /// Get source dimension names
+    pub fn source_dim_names(&self) -> Vec<String> {
+        if let Some(dims) = &self.source_dims {
+            dims.iter().map(|d| d.name.clone()).collect()
+        } else {
+            (0..self.num_dims).map(|i| format!("d{}", i)).collect()
+        }
+    }
+
+    /// Get target dimension names
+    pub fn target_dim_names(&self) -> Vec<String> {
+        if let Some(dims) = &self.target_dims {
+            dims.iter().map(|d| d.name.clone()).collect()
+        } else {
+            (0..self.results.len()).map(|i| format!("d{}", i)).collect()
+        }
     }
 }
 
@@ -166,6 +195,8 @@ impl AffineMapBuilder {
 
         AffineMap {
             num_dims,
+            source_dims: self.source_dims,
+            target_dims: self.target_dims,
             results: self.results,
         }
     }
@@ -225,17 +256,19 @@ impl InterconnectBuilder {
     }
 
     pub fn build(self) -> Interconnect {
+        let affine_map = self.affine_map.unwrap_or_else(|| {
+            // Default identity map based on grid dimensions
+            let num_dims = self.grid.len().max(2);
+            let mut builder = AffineMap::builder().num_dims(num_dims);
+            for i in 0..num_dims {
+                builder = builder.result(AffineExpr::dim(i));
+            }
+            builder.build()
+        });
         Interconnect {
             name: self.name,
             grid: self.grid,
-            affine_map: self.affine_map.unwrap_or_else(|| {
-                // Default identity map
-                AffineMap::builder()
-                    .num_dims(2)
-                    .result(AffineExpr::dim(0))
-                    .result(AffineExpr::dim(1))
-                    .build()
-            }),
+            affine_map,
             bandwidth: self.bandwidth,
         }
     }
