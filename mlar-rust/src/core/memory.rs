@@ -130,8 +130,8 @@ impl MemRegion {
     /// Convenience: create a leaf with concrete sizes
     pub fn leaf_concrete(block_size: usize, num_blocks: usize) -> Self {
         MemRegion::Bank(Bank {
-            block_size: Size::concrete(block_size),
-            num_blocks: Size::concrete(num_blocks),
+            block_size: Size::int(block_size),
+            num_blocks: Size::int(num_blocks),
         })
     }
 
@@ -180,16 +180,16 @@ mod tests {
     #[test]
     fn test_bank_construction() {
         let mb = Bank {
-            block_size: Size::concrete(1024),
-            num_blocks: Size::concrete(4),
+            block_size: Size::int(1024),
+            num_blocks: Size::int(4),
         };
         
         assert!(matches!(mb.block_size, Size::Int(1024)));
         assert!(matches!(mb.num_blocks, Size::Int(4)));
 
         let mb_sym = Bank {
-            block_size: Size::symbolic("N"),
-            num_blocks: Size::symbolic("M"),
+            block_size: Size::sym("N"),
+            num_blocks: Size::sym("M"),
         };
             
         assert!(matches!(mb_sym.block_size, Size::Sym(_)));

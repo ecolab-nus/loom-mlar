@@ -11,15 +11,15 @@ fn test_2d_mesh_architecture() {
 
     // Define L1 memory region: indexed by [x, y], each has 64KB blocks
     let l1_region = MemRegion::bank(Bank {
-        block_size: Size::concrete(65536),
-        num_blocks: Size::concrete(1),
+        block_size: Size::int(65536),
+        num_blocks: Size::int(1),
     })
     .scale([&dim_x, &dim_y]); // 64KB per location
 
     // Define DRAM memory region: indexed by [d], each has 8GB
     let _dram_region = MemRegion::bank(Bank {
-        block_size: Size::concrete(8589934592usize),
-        num_blocks: Size::concrete(1),
+        block_size: Size::int(8589934592usize),
+        num_blocks: Size::int(1),
     })
     .scale([&dim_d]); // 8GB per DRAM
 
@@ -179,8 +179,8 @@ fn test_lane_preconditions() {
     let dim_y = Dimension::new("y", 8);
     
     let l1_region = MemRegion::bank(Bank {
-        block_size: Size::concrete(65536),
-        num_blocks: Size::concrete(1),
+        block_size: Size::int(65536),
+        num_blocks: Size::int(1),
     })
     .scale([&dim_x, &dim_y]);
     
@@ -203,35 +203,35 @@ fn test_lane_preconditions() {
 fn test_symbolic_sizes() {
     // Test symbolic dimension
     let sym_dim = Dimension::new_symbolic("x", "N");
-    assert!(sym_dim.size.is_symbolic());
-    assert_eq!(sym_dim.size.as_symbolic(), Some("N"));
+    assert!(sym_dim.size.is_sym());
+    assert_eq!(sym_dim.size.as_sym(), Some("N"));
     
     // Test symbolic Bank
     let sym_bank = Bank {
-        block_size: Size::symbolic("BLOCK_SIZE"),
-        num_blocks: Size::symbolic("NUM_BLOCKS"),
+        block_size: Size::sym("BLOCK_SIZE"),
+        num_blocks: Size::sym("NUM_BLOCKS"),
     };
     
-    assert!(sym_bank.block_size.is_symbolic());
-    assert!(sym_bank.num_blocks.is_symbolic());
+    assert!(sym_bank.block_size.is_sym());
+    assert!(sym_bank.num_blocks.is_sym());
     
     // Test mixed sizes
     let mixed_block = Bank {
-        block_size: Size::concrete(1024),
-        num_blocks: Size::symbolic("M"),
+        block_size: Size::int(1024),
+        num_blocks: Size::sym("M"),
     };
     
-    assert!(mixed_block.block_size.is_concrete());
-    assert!(mixed_block.num_blocks.is_symbolic());
-    assert_eq!(mixed_block.block_size.as_concrete(), Some(1024));
-    assert_eq!(mixed_block.num_blocks.as_symbolic(), Some("M"));
+    assert!(mixed_block.block_size.is_int());
+    assert!(mixed_block.num_blocks.is_sym());
+    assert_eq!(mixed_block.block_size.as_int(), Some(1024));
+    assert_eq!(mixed_block.num_blocks.as_sym(), Some("M"));
 
     // Test Size checking
-    let concrete = Size::concrete(64);
-    let symbolic = Size::symbolic("TILE_SIZE");
+    let concrete = Size::int(64);
+    let symbolic = Size::sym("TILE_SIZE");
     
-    assert!(concrete.is_concrete());
-    assert!(symbolic.is_symbolic());
-    assert_eq!(concrete.as_concrete(), Some(64));
-    assert_eq!(symbolic.as_symbolic(), Some("TILE_SIZE"));
+    assert!(concrete.is_int());
+    assert!(symbolic.is_sym());
+    assert_eq!(concrete.as_int(), Some(64));
+    assert_eq!(symbolic.as_sym(), Some("TILE_SIZE"));
 }

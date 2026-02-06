@@ -9,29 +9,29 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     // DRAM: 4 banks, large capacity
     let dram_banks = MemRegion::bank(Bank {
-        block_size: Size::concrete(256), // 256 bytes per block transfer
-        num_blocks: Size::symbolic("DRAM_SIZE"),
+        block_size: Size::int(256), // 256 bytes per block transfer
+        num_blocks: Size::sym("DRAM_SIZE"),
     })
     .scale([&dram_dim]);
 
     // L2: 4 banks, each with many small blocks totaling 1MB
     let l2_banks = MemRegion::bank(Bank {
-        block_size: Size::concrete(256),  // 256 bytes per block
-        num_blocks: Size::concrete(4096), // 4096 blocks = 1MB total per bank
+        block_size: Size::int(256),  // 256 bytes per block
+        num_blocks: Size::int(4096), // 4096 blocks = 1MB total per bank
     })
     .scale([&dram_dim]);
 
     // L1: 32 banks, each with many small blocks totaling 64KB
     let l1_banks = MemRegion::bank(Bank {
-        block_size: Size::concrete(64),   // 64 bytes per block
-        num_blocks: Size::concrete(1024), // 1024 blocks = 64KB total per bank
+        block_size: Size::int(64),   // 64 bytes per block
+        num_blocks: Size::int(1024), // 1024 blocks = 64KB total per bank
     })
     .scale([&warp_dim]);
 
     // RF: same number of banks as L1, smaller size per bank
     let rf_banks = MemRegion::bank(Bank {
-        block_size: Size::concrete(32),   // smaller block size than L1
-        num_blocks: Size::concrete(128),  // 128 blocks = 4KB total per bank
+        block_size: Size::int(32),   // smaller block size than L1
+        num_blocks: Size::int(128),  // 128 blocks = 4KB total per bank
     })
     .scale([&warp_dim]);
 

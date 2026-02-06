@@ -80,7 +80,7 @@ impl ProcessorSet {
             ProcessorSet::Indexed { indices, .. } => {
                 indices
                     .iter()
-                    .map(|d| d.size.as_concrete())
+                    .map(|d| d.size.as_int())
                     .collect::<Option<Vec<_>>>()
                     .map(|sizes| sizes.into_iter().product())
             }

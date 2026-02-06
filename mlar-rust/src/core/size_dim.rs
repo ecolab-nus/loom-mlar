@@ -7,27 +7,27 @@ pub enum Size {
 
 impl Size {
     /// Create a concrete size
-    pub fn concrete(value: usize) -> Self {
+    pub fn int(value: usize) -> Self {
         Size::Int(value)
     }
 
     /// Create a symbolic size
-    pub fn symbolic(name: impl Into<String>) -> Self {
+    pub fn sym(name: impl Into<String>) -> Self {
         Size::Sym(name.into())
     }
 
     /// Check if this size is concrete
-    pub fn is_concrete(&self) -> bool {
+    pub fn is_int(&self) -> bool {
         matches!(self, Size::Int(_))
     }
 
     /// Check if this size is symbolic
-    pub fn is_symbolic(&self) -> bool {
+    pub fn is_sym(&self) -> bool {
         matches!(self, Size::Sym(_))
     }
 
     /// Try to get the concrete value, if available
-    pub fn as_concrete(&self) -> Option<usize> {
+    pub fn as_int(&self) -> Option<usize> {
         match self {
             Size::Int(v) => Some(*v),
             Size::Sym(_) => None,
@@ -35,7 +35,7 @@ impl Size {
     }
 
     /// Try to get the symbolic name, if available
-    pub fn as_symbolic(&self) -> Option<&str> {
+    pub fn as_sym(&self) -> Option<&str> {
         match self {
             Size::Sym(name) => Some(name),
             Size::Int(_) => None,

@@ -922,8 +922,8 @@ mod tests {
     #[test]
     fn test_simple_memory_visualization() {
         let bank = Bank {
-            block_size: Size::concrete(1024),
-            num_blocks: Size::concrete(16),
+            block_size: Size::int(1024),
+            num_blocks: Size::int(16),
         };
 
         let region = MemRegion::bank(bank);
