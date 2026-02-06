@@ -55,23 +55,21 @@ fn test_2d_mesh_architecture() {
 
     // Create ProcessorSets by scaling processors across dimensions
     // No contention in this example, so we use ProcessorSets directly
-    let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
-    let vec_fu_set = vec_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
-    let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
-    let vec_lane_set = vec_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
+    let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
+    let vec_fu_set = vec_fu.scale([&dim_x, &dim_y]);
+    let mat_lane_set = mat_lane.scale([&dim_x, &dim_y]);
+    let vec_lane_set = vec_lane.scale([&dim_x, &dim_y]);
 
     // Create interconnects with affine maps
-    let noc_h_map = AffineMap {
-        source_dims: vec![dim_x.clone(), dim_y.clone()],
-        target_dims: vec![dim_x.clone(), dim_y.clone()],
-        map: vec![
-            AffineExpr::modulo(
-                AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-                AffineExpr::constant(8),
-            ),
-            AffineExpr::dim(1),
-        ],
-    };
+    let noc_h_map = AffineMap::builder()
+        .source_dims(vec![&dim_x, &dim_y])
+        .target_dims(vec![&dim_x, &dim_y])
+        .result(AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ))
+        .result(AffineExpr::dim(1))
+        .build();
 
     let noc_h = Interconnect {
         name: "horizontal_noc".to_string(),
@@ -80,17 +78,15 @@ fn test_2d_mesh_architecture() {
         bandwidth: 32,
     };
 
-    let noc_v_map = AffineMap {
-        source_dims: vec![dim_x.clone(), dim_y.clone()],
-        target_dims: vec![dim_x.clone(), dim_y.clone()],
-        map: vec![
-            AffineExpr::dim(0),
-            AffineExpr::modulo(
-                AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
-                AffineExpr::constant(8),
-            ),
-        ],
-    };
+    let noc_v_map = AffineMap::builder()
+        .source_dims(vec![&dim_x, &dim_y])
+        .target_dims(vec![&dim_x, &dim_y])
+        .result(AffineExpr::dim(0))
+        .result(AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ))
+        .build();
 
     let noc_v = Interconnect {
         name: "vertical_noc".to_string(),
@@ -99,17 +95,17 @@ fn test_2d_mesh_architecture() {
         bandwidth: 32,
     };
 
-    let dram_map = AffineMap {
-        source_dims: vec![dim_x.clone(), dim_y.clone()],
-        target_dims: vec![dim_d.clone()],
-        map: vec![AffineExpr::add(
+    let dram_map = AffineMap::builder()
+        .source_dims(vec![&dim_x, &dim_y])
+        .target_dims(vec![&dim_d])
+        .result(AffineExpr::add(
             AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
             AffineExpr::mul(
                 AffineExpr::constant(2),
                 AffineExpr::ceildiv(AffineExpr::dim(1), AffineExpr::constant(4)),
             ),
-        )],
-    };
+        ))
+        .build();
 
     let to_dram = Interconnect {
         name: "to_dram".to_string(),
@@ -144,28 +140,26 @@ fn test_affine_maps() {
     // Test basic affine map construction
     let dim_a = Dimension::new("a", 8);
     let dim_b = Dimension::new("b", 8);
-    let map = AffineMap {
-        source_dims: vec![dim_a.clone(), dim_b.clone()],
-        target_dims: vec![dim_a.clone(), dim_b.clone()],
-        map: vec![
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-            AffineExpr::dim(1),
-        ],
-    };
+    let map = AffineMap::builder()
+        .source_dims(vec![&dim_a, &dim_b])
+        .target_dims(vec![&dim_a, &dim_b])
+        .result(AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)))
+        .result(AffineExpr::dim(1))
+        .build();
     
     let result = map.apply(&[3, 5]);
     assert_eq!(result, vec![4, 5]);
     
     // Test modulo
     let dim_wrap = Dimension::new("w", 8);
-    let wrap_map = AffineMap {
-        source_dims: vec![dim_wrap.clone()],
-        target_dims: vec![dim_wrap],
-        map: vec![AffineExpr::modulo(
+    let wrap_map = AffineMap::builder()
+        .source_dims(vec![&dim_wrap])
+        .target_dims(vec![&dim_wrap])
+        .result(AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::constant(8),
-        )],
-    };
+        ))
+        .build();
     
     assert_eq!(wrap_map.apply(&[7]), vec![0]); // (7 + 1) % 8 = 0
     assert_eq!(wrap_map.apply(&[6]), vec![7]); // (6 + 1) % 8 = 7

@@ -77,6 +77,14 @@ pub struct AffineMap {
 }
 
 impl AffineMap {
+    pub fn builder() -> AffineMapBuilder {
+        AffineMapBuilder {
+            source_dims: None,
+            target_dims: None,
+            results: Vec::new(),
+        }
+    }
+
     pub fn new(source_dims: Vec<Dimension>, target_dims: Vec<Dimension>, results: Vec<AffineExpr>) -> Self {
         assert!(
             results.len() == target_dims.len(),
@@ -111,6 +119,48 @@ impl AffineMap {
     /// Get target dimension names
     pub fn target_dim_names(&self) -> Vec<String> {
         self.target_dims.iter().map(|d| d.name.clone()).collect()
+    }
+}
+
+pub struct AffineMapBuilder {
+    source_dims: Option<Vec<Dimension>>,
+    target_dims: Option<Vec<Dimension>>,
+    results: Vec<AffineExpr>,
+}
+
+impl AffineMapBuilder {
+    pub fn source_dims<I>(mut self, dims: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<Dimension>,
+    {
+        self.source_dims = Some(dims.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub fn target_dims<I>(mut self, dims: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<Dimension>,
+    {
+        self.target_dims = Some(dims.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub fn result(mut self, expr: AffineExpr) -> Self {
+        self.results.push(expr);
+        self
+    }
+
+    pub fn results(mut self, exprs: Vec<AffineExpr>) -> Self {
+        self.results = exprs;
+        self
+    }
+
+    pub fn build(self) -> AffineMap {
+        let source_dims = self.source_dims.expect("source_dims must be set");
+        let target_dims = self.target_dims.expect("target_dims must be set");
+        AffineMap::new(source_dims, target_dims, self.results)
     }
 }
 

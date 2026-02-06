@@ -89,10 +89,18 @@ impl ProcessorSet {
     }
 }
 
+impl From<&ProcessorSet> for ProcessorSet {
+    fn from(set: &ProcessorSet) -> Self {
+        set.clone()
+    }
+}
+
 /// Trait to allow processors to be scaled into ProcessorSets
 pub trait Scalable {
     /// Scale this processor across the given dimensions to create a ProcessorSet
-    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet;
+    fn scale<'a, I>(self, indices: I) -> ProcessorSet
+    where
+        I: IntoIterator<Item = &'a Dimension>;
 }
 
 /// Processor aggregation - describes how to use a set of processors

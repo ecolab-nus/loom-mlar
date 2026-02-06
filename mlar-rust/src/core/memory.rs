@@ -39,6 +39,16 @@ pub struct MemoryInterconnects {
 }
 
 impl MemoryInterconnects {
+    pub fn builder(name: impl Into<String>) -> MemoryInterconnectsBuilder {
+        MemoryInterconnectsBuilder {
+            name: name.into(),
+            sources: Vec::new(),
+            targets: Vec::new(),
+            map: None,
+            bandwidth: None,
+        }
+    }
+
     pub fn new(
         name: impl Into<String>,
         sources: Vec<MemRegion>,
@@ -68,6 +78,16 @@ pub struct MemoryProcessorInterconnect {
 }
 
 impl MemoryProcessorInterconnect {
+    pub fn builder(name: impl Into<String>) -> MemoryProcessorInterconnectBuilder {
+        MemoryProcessorInterconnectBuilder {
+            name: name.into(),
+            source: None,
+            target: None,
+            map: None,
+            bandwidth: None,
+        }
+    }
+
     pub fn new(
         name: impl Into<String>,
         source: MemRegion,
@@ -171,6 +191,147 @@ impl From<&MemoryProcessorInterconnect> for MemoryProcessorInterconnect {
     fn from(interconnect: &MemoryProcessorInterconnect) -> Self {
         interconnect.clone()
     }
+}
+
+pub struct MemoryInterconnectsBuilder {
+    name: String,
+    sources: Vec<MemRegion>,
+    targets: Vec<MemRegion>,
+    map: Option<AffineMap>,
+    bandwidth: Option<usize>,
+}
+
+impl MemoryInterconnectsBuilder {
+    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
+        self.sources.push(region.into());
+        self
+    }
+
+    pub fn target(mut self, region: impl Into<MemRegion>) -> Self {
+        self.targets.push(region.into());
+        self
+    }
+
+    pub fn affine_map(mut self, map: AffineMap) -> Self {
+        self.map = Some(map);
+        self
+    }
+
+    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
+        self.bandwidth = Some(bandwidth);
+        self
+    }
+
+    pub fn build(self) -> MemoryInterconnects {
+        let map = self.map.expect("map must be set");
+        let bandwidth = self.bandwidth.expect("bandwidth must be set");
+
+        for (index, source) in self.sources.iter().enumerate() {
+            assert!(
+                dims_match(&map.source_dims, source),
+                "source dimensions do not match affine map for '{}' at index {}",
+                self.name,
+                index
+            );
+        }
+
+        for (index, target) in self.targets.iter().enumerate() {
+            assert!(
+                dims_match(&map.target_dims, target),
+                "target dimensions do not match affine map for '{}' at index {}",
+                self.name,
+                index
+            );
+        }
+
+        MemoryInterconnects {
+            name: self.name,
+            sources: self.sources,
+            targets: self.targets,
+            map,
+            bandwidth,
+        }
+    }
+}
+
+pub struct MemoryProcessorInterconnectBuilder {
+    name: String,
+    source: Option<MemRegion>,
+    target: Option<ProcessorSet>,
+    map: Option<AffineMap>,
+    bandwidth: Option<usize>,
+}
+
+impl MemoryProcessorInterconnectBuilder {
+    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
+        self.source = Some(region.into());
+        self
+    }
+
+    pub fn target(mut self, set: impl Into<ProcessorSet>) -> Self {
+        self.target = Some(set.into());
+        self
+    }
+
+    pub fn affine_map(mut self, map: AffineMap) -> Self {
+        self.map = Some(map);
+        self
+    }
+
+    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
+        self.bandwidth = Some(bandwidth);
+        self
+    }
+
+    pub fn build(self) -> MemoryProcessorInterconnect {
+        let source = self.source.expect("source must be set");
+        let target = self.target.expect("target must be set");
+        let map = self.map.expect("map must be set");
+        let bandwidth = self.bandwidth.expect("bandwidth must be set");
+
+        assert!(
+            dims_equal(&map.source_dims, region_dims(&source)),
+            "source dimensions do not match affine map for '{}'",
+            self.name
+        );
+
+        assert!(
+            dims_equal(&map.target_dims, processor_dims(&target)),
+            "target dimensions do not match affine map for '{}'",
+            self.name
+        );
+
+        MemoryProcessorInterconnect {
+            name: self.name,
+            source,
+            target,
+            map,
+            bandwidth,
+        }
+    }
+}
+
+fn dims_match(map_dims: &[Dimension], region: &MemRegion) -> bool {
+    dims_equal(map_dims, region_dims(region))
+}
+
+fn dims_equal(map_dims: &[Dimension], other_dims: &[Dimension]) -> bool {
+    map_dims.len() == other_dims.len()
+        && map_dims
+            .iter()
+            .zip(other_dims.iter())
+            .all(|(map_dim, other_dim)| map_dim.name == other_dim.name && map_dim.size == other_dim.size)
+}
+
+fn region_dims(region: &MemRegion) -> &[Dimension] {
+    match region {
+        MemRegion::Indexed { indices, .. } => indices.as_slice(),
+        MemRegion::Bank(_) => &[],
+    }
+}
+
+fn processor_dims(set: &ProcessorSet) -> &[Dimension] {
+    set.indices()
 }
 
 #[cfg(test)]

@@ -11,7 +11,11 @@ pub struct FunctionalUnit {
 }
 
 impl Scalable for FunctionalUnit {
-    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet {
+    fn scale<'a, I>(self, indices: I) -> ProcessorSet
+    where
+        I: IntoIterator<Item = &'a Dimension>,
+    {
+        let indices = indices.into_iter().cloned().collect();
         ProcessorSet::from_unit_indexed(self, indices)
     }
 }

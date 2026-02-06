@@ -42,7 +42,11 @@ impl FunctionalLane {
 }
 
 impl Scalable for FunctionalLane {
-    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet {
+    fn scale<'a, I>(self, indices: I) -> ProcessorSet
+    where
+        I: IntoIterator<Item = &'a Dimension>,
+    {
+        let indices = indices.into_iter().cloned().collect();
         ProcessorSet::from_lane_indexed(self, indices)
     }
 }

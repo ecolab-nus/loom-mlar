@@ -36,54 +36,51 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     .scale([&warp_dim]);
 
     // --- DRAM <-> L2 Connection (1-to-1) ---
-    let dram_to_l2_map = AffineMap {
-        source_dims: vec![dram_dim.clone()],
-        target_dims: vec![dram_dim.clone()],
-        map: vec![AffineExpr::dim(0)],
-    };
+    let dram_to_l2_map = AffineMap::builder()
+        .source_dims(vec![&dram_dim])
+        .target_dims(vec![&dram_dim])
+        .result(AffineExpr::dim(0))
+        .build();
 
-    let dram_to_l2 = MemoryInterconnects {
-        name: "DRAM_to_L2".to_string(),
-        sources: vec![dram_banks.clone()],
-        targets: vec![l2_banks.clone()],
-        map: dram_to_l2_map,
-        bandwidth: 256,
-    };
+    let dram_to_l2 = MemoryInterconnects::builder("DRAM_to_L2")
+        .source(&dram_banks)
+        .target(&l2_banks)
+        .affine_map(dram_to_l2_map)
+        .bandwidth(256)
+        .build();
 
     // --- L2 <-> L1 Connection ---
     // Each L2 bank connects to 8 L1 banks (32/4 = 8)
-    let l2_to_l1_map = AffineMap {
-        source_dims: vec![dram_dim.clone()],
-        target_dims: vec![warp_dim.clone()],
-        map: vec![AffineExpr::mul(
+    let l2_to_l1_map = AffineMap::builder()
+        .source_dims(vec![&dram_dim])
+        .target_dims(vec![&warp_dim])
+        .result(AffineExpr::mul(
             AffineExpr::dim(0),
             AffineExpr::constant(8), // L2[i] -> L1[i*8..i*8+7]
-        )],
-    };
+        ))
+        .build();
 
-    let l2_to_l1 = MemoryInterconnects {
-        name: "L2_to_L1".to_string(),
-        sources: vec![l2_banks.clone()],
-        targets: vec![l1_banks.clone()],
-        map: l2_to_l1_map,
-        bandwidth: 128,
-    };
+    let l2_to_l1 = MemoryInterconnects::builder("L2_to_L1")
+        .source(&l2_banks)
+        .target(&l1_banks)
+        .affine_map(l2_to_l1_map)
+        .bandwidth(128)
+        .build();
 
 
     // --- L1 <-> RF Connection (1-to-1) ---
-    let l1_to_rf_map = AffineMap {
-        source_dims: vec![warp_dim.clone()],
-        target_dims: vec![warp_dim.clone()],
-        map: vec![AffineExpr::dim(0)],
-    };
+    let l1_to_rf_map = AffineMap::builder()
+        .source_dims(vec![&warp_dim])
+        .target_dims(vec![&warp_dim])
+        .result(AffineExpr::dim(0))
+        .build();
 
-    let l1_to_rf = MemoryInterconnects {
-        name: "L1_to_RF".to_string(),
-        sources: vec![l1_banks.clone()],
-        targets: vec![rf_banks.clone()],
-        map: l1_to_rf_map,
-        bandwidth: 64,
-    };
+    let l1_to_rf = MemoryInterconnects::builder("L1_to_RF")
+        .source(&l1_banks)
+        .target(&rf_banks)
+        .affine_map(l1_to_rf_map)
+        .bandwidth(64)
+        .build();
 
     // Matrix lane per RF bank
     let mat_lane = FunctionalLane::new(
@@ -93,22 +90,21 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         MatMulLane,
     );
 
-    let mat_lane_set = mat_lane.scale(vec![warp_dim.clone()]);
+    let mat_lane_set = mat_lane.scale([&warp_dim]);
 
     // RF -> Matrix Lane Connection (1-to-1)
-    let rf_to_mat_map = AffineMap {
-        source_dims: vec![warp_dim.clone()],
-        target_dims: vec![warp_dim.clone()],
-        map: vec![AffineExpr::dim(0)],
-    };
+    let rf_to_mat_map = AffineMap::builder()
+        .source_dims(vec![&warp_dim])
+        .target_dims(vec![&warp_dim])
+        .result(AffineExpr::dim(0))
+        .build();
 
-    let rf_to_mat = MemoryProcessorInterconnect {
-        name: "RF_to_MatLane".to_string(),
-        source: rf_banks.clone(),
-        target: mat_lane_set.clone(),
-        map: rf_to_mat_map,
-        bandwidth: 64,
-    };
+    let rf_to_mat = MemoryProcessorInterconnect::builder("RF_to_MatLane")
+        .source(&rf_banks)
+        .target(&mat_lane_set)
+        .affine_map(rf_to_mat_map)
+        .bandwidth(64)
+        .build();
 
     // Build architecture
     let arch = Architecture {

@@ -32,9 +32,9 @@ src/
 - **Dimensions**: `Dimension::new("x", 8)` or `Dimension::new_symbolic("x", "N")`
 - **Memory banks/regions**: `Bank { ... }` + `MemRegion::bank(...).scale([...])`
 - **Processors**: `FunctionalUnit { ... }` or `FunctionalLane::new(...)`, then `.scale(...)`
-- **Memory↔Memory**: `MemoryInterconnects { ... }` with `AffineMap { ... }`
-- **Memory→Processor**: `MemoryProcessorInterconnect { ... }` with `AffineMap { ... }`
-- **NoC interconnects**: `Interconnect { ... }` with `AffineMap { ... }`
+- **Memory↔Memory**: `MemoryInterconnects::builder(...)` with `AffineMap::builder(...)`
+- **Memory→Processor**: `MemoryProcessorInterconnect::builder(...)` with `AffineMap::builder(...)`
+- **NoC interconnects**: `Interconnect { ... }` with `AffineMap::builder(...)`
 
 ### Scaling with `scale()`
 
@@ -71,7 +71,7 @@ let mat_fu = FunctionalUnit {
 };
 
 // Scale it across dimensions to create a ProcessorSet
-let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
+let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
 ```
 
 The `ProcessorSet` enum represents either:
@@ -109,7 +109,7 @@ let mat_fu = FunctionalUnit {
     latency: 8,
 };
 
-let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
+let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
 
 // Build architecture
 let arch = Architecture {
@@ -178,7 +178,7 @@ let mat_fu = FunctionalUnit {
 };
 
 // Scale across 8x8 grid
-let mat_fu_set = mat_fu.scale(vec![dim_x, dim_y]);
+let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
 ```
 
 **MLIR equivalent**: `mlar.fu @function_name`
@@ -203,7 +203,7 @@ let mat_lane = FunctionalLane::new(
 );
 
 // Scale across grid
-let mat_lane_set = mat_lane.scale(vec![dim_x, dim_y]);
+let mat_lane_set = mat_lane.scale([&dim_x, &dim_y]);
 ```
 
 **Example implementations**:
@@ -230,7 +230,9 @@ Created via the `Scalable` trait:
 
 ```rust
 pub trait Scalable {
-    fn scale(self, indices: Vec<Dimension>) -> ProcessorSet;
+    fn scale<'a, I>(self, indices: I) -> ProcessorSet
+    where
+        I: IntoIterator<Item = &'a Dimension>;
 }
 ```
 
@@ -276,17 +278,19 @@ let l1_region = MemRegion::bank(Bank {
 
 Memory-to-memory interconnect (affine mapping between regions):
 ```rust
-let l1_to_l2 = MemoryInterconnects {
-    name: "L1_to_L2".to_string(),
-    sources: vec![l1_region.clone()],
-    targets: vec![l2_region.clone()],
-    map: AffineMap {
-        source_dims: vec![dim_x.clone(), dim_y.clone()],
-        target_dims: vec![dim_x.clone(), dim_y.clone()],
-        results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
-    },
-    bandwidth: 128,
-};
+let l1_to_l2 = MemoryInterconnects::builder("L1_to_L2")
+    .source(&l1_region)
+    .target(&l2_region)
+    .affine_map(
+        AffineMap::builder()
+            .source_dims(vec![&dim_x, &dim_y])
+            .target_dims(vec![&dim_x, &dim_y])
+            .result(AffineExpr::dim(0))
+            .result(AffineExpr::dim(1))
+            .build(),
+    )
+    .bandwidth(128)
+    .build();
 ```
 
 Memory-to-processor interconnect (affine mapping to a `ProcessorSet`):
@@ -298,19 +302,21 @@ let mat_lane = FunctionalLane::new(
     MatMulLane,
 );
 
-let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
+let mat_lane_set = mat_lane.scale([&dim_x, &dim_y]);
 
-let l1_to_mat = MemoryProcessorInterconnect {
-    name: "L1_to_MatLane".to_string(),
-    source: l1_region.clone(),
-    target: mat_lane_set.clone(),
-    map: AffineMap {
-        source_dims: vec![dim_x.clone(), dim_y.clone()],
-        target_dims: vec![dim_x.clone(), dim_y.clone()],
-        results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
-    },
-    bandwidth: 64,
-};
+let l1_to_mat = MemoryProcessorInterconnect::builder("L1_to_MatLane")
+    .source(&l1_region)
+    .target(mat_lane_set.clone())
+    .affine_map(
+        AffineMap::builder()
+            .source_dims(vec![&dim_x, &dim_y])
+            .target_dims(vec![&dim_x, &dim_y])
+            .result(AffineExpr::dim(0))
+            .result(AffineExpr::dim(1))
+            .build(),
+    )
+    .bandwidth(64)
+    .build();
 ```
 
 #### 6. **Interconnects** (`interconnect.rs`)
@@ -327,17 +333,15 @@ Models network-on-chip (NoC) topology using affine maps.
 
 ```rust
 // Horizontal NoC: (x, y) -> ((x + 1) mod 8, y)
-let noc_h_map = AffineMap {
-    source_dims: vec![dim_x.clone(), dim_y.clone()],
-    target_dims: vec![dim_x.clone(), dim_y.clone()],
-    results: vec![
-        AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ),
-        AffineExpr::dim(1),
-    ],
-};
+let noc_h_map = AffineMap::builder()
+    .source_dims(vec![&dim_x, &dim_y])
+    .target_dims(vec![&dim_x, &dim_y])
+    .result(AffineExpr::modulo(
+        AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+        AffineExpr::constant(8),
+    ))
+    .result(AffineExpr::dim(1))
+    .build();
 
 let noc_h = Interconnect {
     name: "horizontal_noc".to_string(),
@@ -380,7 +384,7 @@ let l1_region = MemRegion::bank(Bank {
     block_size: Size::concrete(65536),
     num_blocks: Size::concrete(1),
 })
-    .scale(vec![dim_x.clone(), dim_y.clone()]);
+    .scale([&dim_x, &dim_y]);
 
 // Create functional unit
 let mat_fu = FunctionalUnit {
@@ -399,8 +403,8 @@ let mat_lane = FunctionalLane::new(
 );
 
 // Scale processors across dimensions to create ProcessorSets
-let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
-let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
+let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
+let mat_lane_set = mat_lane.scale([&dim_x, &dim_y]);
 
 // Build architecture
 let arch = Architecture {
@@ -443,10 +447,10 @@ cargo build --release
 | `mlar.lane` | `FunctionalLane::new()` | `lane.rs` |
 | `cf.assert` | `LaneModel::validate_preconditions()` | `lane.rs` |
 | Processor scaling | `processor.scale(dims)` | `processor_aggregation.rs` |
-| `memory interconnects` | `MemoryInterconnects { ... }` | `core/memory.rs` |
-| `memory→processor` | `MemoryProcessorInterconnect { ... }` | `core/memory.rs` |
+| `memory interconnects` | `MemoryInterconnects::builder(...)` | `core/memory.rs` |
+| `memory→processor` | `MemoryProcessorInterconnect::builder(...)` | `core/memory.rs` |
 | `mlar.interconnects` | `Interconnect { ... }` | `interconnect.rs` |
-| `affine_map<...>` | `AffineMap { ... }` + `AffineExpr` | `interconnect.rs` |
+| `affine_map<...>` | `AffineMap::builder(...)` + `AffineExpr` | `interconnect.rs` |
 | `module {...}` | `Architecture { ... }` | `architecture.rs` |
 
 ## Next Steps
