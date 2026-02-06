@@ -281,9 +281,8 @@ let l1_to_l2 = MemoryInterconnects {
     sources: vec![l1_region.clone()],
     targets: vec![l2_region.clone()],
     map: AffineMap {
-        num_dims: 2,
-        source_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
-        target_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        source_dims: vec![dim_x.clone(), dim_y.clone()],
+        target_dims: vec![dim_x.clone(), dim_y.clone()],
         results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
     },
     bandwidth: 128,
@@ -306,9 +305,8 @@ let l1_to_mat = MemoryProcessorInterconnect {
     source: l1_region.clone(),
     target: mat_lane_set.clone(),
     map: AffineMap {
-        num_dims: 2,
-        source_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
-        target_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        source_dims: vec![dim_x.clone(), dim_y.clone()],
+        target_dims: vec![dim_x.clone(), dim_y.clone()],
         results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
     },
     bandwidth: 64,
@@ -330,9 +328,8 @@ Models network-on-chip (NoC) topology using affine maps.
 ```rust
 // Horizontal NoC: (x, y) -> ((x + 1) mod 8, y)
 let noc_h_map = AffineMap {
-    num_dims: 2,
-    source_dims: None,
-    target_dims: None,
+    source_dims: vec![dim_x.clone(), dim_y.clone()],
+    target_dims: vec![dim_x.clone(), dim_y.clone()],
     results: vec![
         AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),

@@ -37,9 +37,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     // --- DRAM <-> L2 Connection (1-to-1) ---
     let dram_to_l2_map = AffineMap {
-        num_dims: 1,
-        source_dims: Some(vec![dram_dim.clone()]),
-        target_dims: Some(vec![dram_dim.clone()]),
+        source_dims: vec![dram_dim.clone()],
+        target_dims: vec![dram_dim.clone()],
         results: vec![AffineExpr::dim(0)],
     };
 
@@ -54,9 +53,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     // --- L2 <-> L1 Connection ---
     // Each L2 bank connects to 8 L1 banks (32/4 = 8)
     let l2_to_l1_map = AffineMap {
-        num_dims: 1,
-        source_dims: Some(vec![dram_dim.clone()]),
-        target_dims: Some(vec![warp_dim.clone()]),
+        source_dims: vec![dram_dim.clone()],
+        target_dims: vec![warp_dim.clone()],
         results: vec![AffineExpr::mul(
             AffineExpr::dim(0),
             AffineExpr::constant(8), // L2[i] -> L1[i*8..i*8+7]
@@ -74,9 +72,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     // --- L1 <-> RF Connection (1-to-1) ---
     let l1_to_rf_map = AffineMap {
-        num_dims: 1,
-        source_dims: Some(vec![warp_dim.clone()]),
-        target_dims: Some(vec![warp_dim.clone()]),
+        source_dims: vec![warp_dim.clone()],
+        target_dims: vec![warp_dim.clone()],
         results: vec![AffineExpr::dim(0)],
     };
 
@@ -100,9 +97,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     // RF -> Matrix Lane Connection (1-to-1)
     let rf_to_mat_map = AffineMap {
-        num_dims: 1,
-        source_dims: Some(vec![warp_dim.clone()]),
-        target_dims: Some(vec![warp_dim.clone()]),
+        source_dims: vec![warp_dim.clone()],
+        target_dims: vec![warp_dim.clone()],
         results: vec![AffineExpr::dim(0)],
     };
 

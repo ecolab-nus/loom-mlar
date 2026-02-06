@@ -589,23 +589,19 @@ fn format_affine_map(map: &crate::interconnect::AffineMap) -> String {
 
 /// Format an affine map with dimension details for display
 fn format_affine_map_detailed(map: &crate::interconnect::AffineMap) -> String {
-    let src_info = if let Some(dims) = &map.source_dims {
-        dims.iter()
-            .map(|d| format!("{}:{}", d.name, d.size))
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        (0..map.num_dims).map(|i| format!("d{}", i)).collect::<Vec<_>>().join(", ")
-    };
+    let src_info = map
+        .source_dims
+        .iter()
+        .map(|d| format!("{}:{}", d.name, d.size))
+        .collect::<Vec<_>>()
+        .join(", ");
     
-    let tgt_info = if let Some(dims) = &map.target_dims {
-        dims.iter()
-            .map(|d| format!("{}:{}", d.name, d.size))
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        map.results.iter().map(format_affine_expr).collect::<Vec<_>>().join(", ")
-    };
+    let tgt_info = map
+        .target_dims
+        .iter()
+        .map(|d| format!("{}:{}", d.name, d.size))
+        .collect::<Vec<_>>()
+        .join(", ");
     
     let results: Vec<_> = map.results.iter().map(format_affine_expr).collect();
     format!(

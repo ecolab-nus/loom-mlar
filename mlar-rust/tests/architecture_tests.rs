@@ -62,9 +62,8 @@ fn test_2d_mesh_architecture() {
 
     // Create interconnects with affine maps
     let noc_h_map = AffineMap {
-        num_dims: 2,
-        source_dims: None,
-        target_dims: None,
+        source_dims: vec![dim_x.clone(), dim_y.clone()],
+        target_dims: vec![dim_x.clone(), dim_y.clone()],
         results: vec![
             AffineExpr::modulo(
                 AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
@@ -82,9 +81,8 @@ fn test_2d_mesh_architecture() {
     };
 
     let noc_v_map = AffineMap {
-        num_dims: 2,
-        source_dims: None,
-        target_dims: None,
+        source_dims: vec![dim_x.clone(), dim_y.clone()],
+        target_dims: vec![dim_x.clone(), dim_y.clone()],
         results: vec![
             AffineExpr::dim(0),
             AffineExpr::modulo(
@@ -102,9 +100,8 @@ fn test_2d_mesh_architecture() {
     };
 
     let dram_map = AffineMap {
-        num_dims: 2,
-        source_dims: None,
-        target_dims: None,
+        source_dims: vec![dim_x.clone(), dim_y.clone()],
+        target_dims: vec![dim_d.clone()],
         results: vec![AffineExpr::add(
             AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
             AffineExpr::mul(
@@ -145,10 +142,11 @@ fn test_2d_mesh_architecture() {
 #[test]
 fn test_affine_maps() {
     // Test basic affine map construction
+    let dim_a = Dimension::new("a", 8);
+    let dim_b = Dimension::new("b", 8);
     let map = AffineMap {
-        num_dims: 2,
-        source_dims: None,
-        target_dims: None,
+        source_dims: vec![dim_a.clone(), dim_b.clone()],
+        target_dims: vec![dim_a.clone(), dim_b.clone()],
         results: vec![
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::dim(1),
@@ -159,10 +157,10 @@ fn test_affine_maps() {
     assert_eq!(result, vec![4, 5]);
     
     // Test modulo
+    let dim_wrap = Dimension::new("w", 8);
     let wrap_map = AffineMap {
-        num_dims: 1,
-        source_dims: None,
-        target_dims: None,
+        source_dims: vec![dim_wrap.clone()],
+        target_dims: vec![dim_wrap],
         results: vec![AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::constant(8),

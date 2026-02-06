@@ -69,20 +69,22 @@ impl AffineExpr {
 /// Represents an affine map (d0, d1, ...) -> (expr0, expr1, ...)
 #[derive(Debug, Clone)]
 pub struct AffineMap {
-    pub num_dims: usize,
-    /// Source dimensions (if explicitly provided)
-    pub source_dims: Option<Vec<Dimension>>,
-    /// Target dimensions (if explicitly provided)
-    pub target_dims: Option<Vec<Dimension>>,
+    /// Source dimensions
+    pub source_dims: Vec<Dimension>,
+    /// Target dimensions
+    pub target_dims: Vec<Dimension>,
     pub results: Vec<AffineExpr>,
 }
 
 impl AffineMap {
-    pub fn new(num_dims: usize, results: Vec<AffineExpr>) -> Self {
+    pub fn new(source_dims: Vec<Dimension>, target_dims: Vec<Dimension>, results: Vec<AffineExpr>) -> Self {
+        assert!(
+            results.len() == target_dims.len(),
+            "result arity must match target dimensions"
+        );
         Self {
-            num_dims,
-            source_dims: None,
-            target_dims: None,
+            source_dims,
+            target_dims,
             results,
         }
     }
@@ -93,16 +95,7 @@ impl AffineMap {
         target_dims: &[Dimension],
         results: Vec<AffineExpr>,
     ) -> Self {
-        assert!(
-            results.len() == target_dims.len(),
-            "result arity must match target dimensions"
-        );
-        Self {
-            num_dims: source_dims.len(),
-            source_dims: Some(source_dims.to_vec()),
-            target_dims: Some(target_dims.to_vec()),
-            results,
-        }
+        Self::new(source_dims.to_vec(), target_dims.to_vec(), results)
     }
 
     /// Apply the affine map to the given dimension values
@@ -112,20 +105,12 @@ impl AffineMap {
 
     /// Get source dimension names
     pub fn source_dim_names(&self) -> Vec<String> {
-        if let Some(dims) = &self.source_dims {
-            dims.iter().map(|d| d.name.clone()).collect()
-        } else {
-            (0..self.num_dims).map(|i| format!("d{}", i)).collect()
-        }
+        self.source_dims.iter().map(|d| d.name.clone()).collect()
     }
 
     /// Get target dimension names
     pub fn target_dim_names(&self) -> Vec<String> {
-        if let Some(dims) = &self.target_dims {
-            dims.iter().map(|d| d.name.clone()).collect()
-        } else {
-            (0..self.results.len()).map(|i| format!("d{}", i)).collect()
-        }
+        self.target_dims.iter().map(|d| d.name.clone()).collect()
     }
 }
 
