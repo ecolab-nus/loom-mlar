@@ -11,38 +11,9 @@ pub struct Bank {
 
 impl Bank {
     pub fn new(block_size: Size, num_blocks: Size) -> Self {
-        Self::builder()
-            .block_size(block_size)
-            .num_blocks(num_blocks)
-            .build()
-    }
-    
-    pub fn builder() -> BankBuilder {
-        BankBuilder::default()
-    }
-}
-
-#[derive(Default)]
-pub struct BankBuilder {
-    block_size: Option<Size>,
-    num_blocks: Option<Size>,
-}
-
-impl BankBuilder {
-    pub fn block_size(mut self, block_size: impl Into<Size>) -> Self {
-        self.block_size = Some(block_size.into());
-        self
-    }
-
-    pub fn num_blocks(mut self, num_blocks: impl Into<Size>) -> Self {
-        self.num_blocks = Some(num_blocks.into());
-        self
-    }
-
-    pub fn build(self) -> Bank {
-        Bank {
-            block_size: self.block_size.expect("block_size must be set"),
-            num_blocks: self.num_blocks.expect("num_blocks must be set"),
+        Self {
+            block_size,
+            num_blocks,
         }
     }
 }
@@ -68,53 +39,19 @@ pub struct MemoryInterconnects {
 }
 
 impl MemoryInterconnects {
-    pub fn builder(name: impl Into<String>) -> MemoryInterconnectsBuilder {
-        MemoryInterconnectsBuilder {
+    pub fn new(
+        name: impl Into<String>,
+        sources: Vec<MemRegion>,
+        targets: Vec<MemRegion>,
+        map: AffineMap,
+        bandwidth: usize,
+    ) -> Self {
+        Self {
             name: name.into(),
-            sources: Vec::new(),
-            targets: Vec::new(),
-            map: None,
-            bandwidth: None,
-        }
-    }
-}
-
-pub struct MemoryInterconnectsBuilder {
-    name: String,
-    sources: Vec<MemRegion>,
-    targets: Vec<MemRegion>,
-    map: Option<AffineMap>,
-    bandwidth: Option<usize>,
-}
-
-impl MemoryInterconnectsBuilder {
-    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
-        self.sources.push(region.into());
-        self
-    }
-
-    pub fn target(mut self, region: impl Into<MemRegion>) -> Self {
-        self.targets.push(region.into());
-        self
-    }
-
-    pub fn affine_map(mut self, map: AffineMap) -> Self {
-        self.map = Some(map);
-        self
-    }
-
-    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
-        self.bandwidth = Some(bandwidth);
-        self
-    }
-
-    pub fn build(self) -> MemoryInterconnects {
-        MemoryInterconnects {
-            name: self.name,
-            sources: self.sources,
-            targets: self.targets,
-            map: self.map.expect("map must be set"),
-            bandwidth: self.bandwidth.expect("bandwidth must be set"),
+            sources,
+            targets,
+            map,
+            bandwidth,
         }
     }
 }
@@ -131,97 +68,35 @@ pub struct MemoryProcessorInterconnect {
 }
 
 impl MemoryProcessorInterconnect {
-    pub fn builder(name: impl Into<String>) -> MemoryProcessorInterconnectBuilder {
-        MemoryProcessorInterconnectBuilder {
+    pub fn new(
+        name: impl Into<String>,
+        source: MemRegion,
+        target: ProcessorSet,
+        map: AffineMap,
+        bandwidth: usize,
+    ) -> Self {
+        Self {
             name: name.into(),
-            source: None,
-            target: None,
-            map: None,
-            bandwidth: None,
-        }
-    }
-}
-
-pub struct MemoryProcessorInterconnectBuilder {
-    name: String,
-    source: Option<MemRegion>,
-    target: Option<ProcessorSet>,
-    map: Option<AffineMap>,
-    bandwidth: Option<usize>,
-}
-
-impl MemoryProcessorInterconnectBuilder {
-    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
-        self.source = Some(region.into());
-        self
-    }
-
-    pub fn target(mut self, set: ProcessorSet) -> Self {
-        self.target = Some(set);
-        self
-    }
-
-    pub fn affine_map(mut self, map: AffineMap) -> Self {
-        self.map = Some(map);
-        self
-    }
-
-    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
-        self.bandwidth = Some(bandwidth);
-        self
-    }
-
-    pub fn build(self) -> MemoryProcessorInterconnect {
-        MemoryProcessorInterconnect {
-            name: self.name,
-            source: self.source.expect("source must be set"),
-            target: self.target.expect("target must be set"),
-            map: self.map.expect("map must be set"),
-            bandwidth: self.bandwidth.expect("bandwidth must be set"),
+            source,
+            target,
+            map,
+            bandwidth,
         }
     }
 }
 
 impl MemoryInterface {
-    pub fn builder(name: impl Into<String>) -> MemoryInterfaceBuilder {
-        MemoryInterfaceBuilder {
+    pub fn new(
+        name: impl Into<String>,
+        sources: Vec<MemRegion>,
+        target: MemRegion,
+        bandwidth: usize,
+    ) -> Self {
+        Self {
             name: name.into(),
-            sources: Vec::new(),
-            target: None,
-            bandwidth: None,
-        }
-    }
-}
-
-pub struct MemoryInterfaceBuilder {
-    name: String,
-    sources: Vec<MemRegion>,
-    target: Option<MemRegion>,
-    bandwidth: Option<usize>,
-}
-
-impl MemoryInterfaceBuilder {
-    pub fn source(mut self, region: impl Into<MemRegion>) -> Self {
-        self.sources.push(region.into());
-        self
-    }
-
-    pub fn target(mut self, region: impl Into<MemRegion>) -> Self {
-        self.target = Some(region.into());
-        self
-    }
-
-    pub fn bandwidth(mut self, bandwidth: usize) -> Self {
-        self.bandwidth = Some(bandwidth);
-        self
-    }
-
-    pub fn build(self) -> MemoryInterface {
-        MemoryInterface {
-            name: self.name,
-            sources: self.sources,
-            target: self.target.expect("target must be set"),
-            bandwidth: self.bandwidth.expect("bandwidth must be set"),
+            sources,
+            target,
+            bandwidth,
         }
     }
 }
@@ -254,12 +129,10 @@ impl MemRegion {
 
     /// Convenience: create a leaf with concrete sizes
     pub fn leaf_concrete(block_size: usize, num_blocks: usize) -> Self {
-        MemRegion::Bank(
-            Bank::builder()
-                .block_size(block_size)
-                .num_blocks(num_blocks)
-                .build(),
-        )
+        MemRegion::Bank(Bank {
+            block_size: Size::concrete(block_size),
+            num_blocks: Size::concrete(num_blocks),
+        })
     }
 
     /// Scale this memory region across the given dimensions.
@@ -305,19 +178,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bank_builder() {
-        let mb = Bank::builder()
-            .block_size(1024 as usize)
-            .num_blocks(4 as usize)
-            .build();
+    fn test_bank_construction() {
+        let mb = Bank {
+            block_size: Size::concrete(1024),
+            num_blocks: Size::concrete(4),
+        };
         
         assert!(matches!(mb.block_size, Size::Int(1024)));
         assert!(matches!(mb.num_blocks, Size::Int(4)));
 
-        let mb_sym = Bank::builder()
-            .block_size("N")
-            .num_blocks("M")
-            .build();
+        let mb_sym = Bank {
+            block_size: Size::symbolic("N"),
+            num_blocks: Size::symbolic("M"),
+        };
             
         assert!(matches!(mb_sym.block_size, Size::Sym(_)));
         assert!(matches!(mb_sym.num_blocks, Size::Sym(_)));

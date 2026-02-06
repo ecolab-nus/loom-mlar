@@ -105,34 +105,8 @@ pub struct ProcessorAggregation {
 }
 
 impl ProcessorAggregation {
-    pub fn builder(name: impl Into<String>) -> ProcessorAggregationBuilder {
-        ProcessorAggregationBuilder {
-            name: name.into(),
-            processor_set: None,
-        }
-    }
-
     /// Get the total number of processor instances
     pub fn total_instances(&self) -> Option<usize> {
         self.processor_set.total_instances()
-    }
-}
-
-pub struct ProcessorAggregationBuilder {
-    name: String,
-    processor_set: Option<ProcessorSet>,
-}
-
-impl ProcessorAggregationBuilder {
-    pub fn processor_set(mut self, set: ProcessorSet) -> Self {
-        self.processor_set = Some(set);
-        self
-    }
-
-    pub fn build(self) -> ProcessorAggregation {
-        ProcessorAggregation {
-            name: self.name,
-            processor_set: self.processor_set.expect("processor_set must be set"),
-        }
     }
 }

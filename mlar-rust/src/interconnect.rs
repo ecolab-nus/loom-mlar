@@ -78,15 +78,6 @@ pub struct AffineMap {
 }
 
 impl AffineMap {
-    pub fn builder() -> AffineMapBuilder {
-        AffineMapBuilder {
-            num_dims: None,
-            source_dims: None,
-            target_dims: None,
-            results: Vec::new(),
-        }
-    }
-
     pub fn new(num_dims: usize, results: Vec<AffineExpr>) -> Self {
         Self {
             num_dims,
@@ -138,70 +129,6 @@ impl AffineMap {
     }
 }
 
-pub struct AffineMapBuilder {
-    num_dims: Option<usize>,
-    source_dims: Option<Vec<Dimension>>,
-    target_dims: Option<Vec<Dimension>>,
-    results: Vec<AffineExpr>,
-}
-
-impl AffineMapBuilder {
-    pub fn num_dims(mut self, num_dims: usize) -> Self {
-        self.num_dims = Some(num_dims);
-        self
-    }
-
-    pub fn source_dims<I>(mut self, dims: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<Dimension>,
-    {
-        self.source_dims = Some(dims.into_iter().map(Into::into).collect());
-        self
-    }
-
-    pub fn target_dims<I>(mut self, dims: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<Dimension>,
-    {
-        self.target_dims = Some(dims.into_iter().map(Into::into).collect());
-        self
-    }
-
-    pub fn result(mut self, expr: AffineExpr) -> Self {
-        self.results.push(expr);
-        self
-    }
-
-    pub fn results(mut self, exprs: Vec<AffineExpr>) -> Self {
-        self.results = exprs;
-        self
-    }
-
-    pub fn build(self) -> AffineMap {
-        let num_dims = if let Some(source_dims) = &self.source_dims {
-            source_dims.len()
-        } else {
-            self.num_dims.expect("num_dims or source_dims must be set")
-        };
-
-        if let Some(target_dims) = &self.target_dims {
-            assert!(
-                self.results.len() == target_dims.len(),
-                "result arity must match target dimensions"
-            );
-        }
-
-        AffineMap {
-            num_dims,
-            source_dims: self.source_dims,
-            target_dims: self.target_dims,
-            results: self.results,
-        }
-    }
-}
-
 /// Represents an interconnect (mlar.interconnects)
 #[derive(Debug)]
 pub struct Interconnect {
@@ -212,15 +139,6 @@ pub struct Interconnect {
 }
 
 impl Interconnect {
-    pub fn builder(name: impl Into<String>) -> InterconnectBuilder {
-        InterconnectBuilder {
-            name: name.into(),
-            grid: Vec::new(),
-            affine_map: None,
-            bandwidth: 32, // default bandwidth
-        }
-    }
-
     /// Compute target coordinates given source coordinates
     pub fn get_target(&self, source_coords: &[Index]) -> Vec<isize> {
         self.affine_map.apply(source_coords)
@@ -229,47 +147,5 @@ impl Interconnect {
     /// Compute latency for transferring data of given size
     pub fn transfer_latency(&self, data_size: usize) -> Index {
         (data_size + self.bandwidth - 1) / self.bandwidth
-    }
-}
-
-pub struct InterconnectBuilder {
-    name: String,
-    grid: Vec<Dimension>,
-    affine_map: Option<AffineMap>,
-    bandwidth: usize,
-}
-
-impl InterconnectBuilder {
-    pub fn grid(mut self, dims: Vec<Dimension>) -> Self {
-        self.grid = dims;
-        self
-    }
-
-    pub fn affine_map(mut self, map: AffineMap) -> Self {
-        self.affine_map = Some(map);
-        self
-    }
-
-    pub fn bandwidth(mut self, bytes_per_cycle: usize) -> Self {
-        self.bandwidth = bytes_per_cycle;
-        self
-    }
-
-    pub fn build(self) -> Interconnect {
-        let affine_map = self.affine_map.unwrap_or_else(|| {
-            // Default identity map based on grid dimensions
-            let num_dims = self.grid.len().max(2);
-            let mut builder = AffineMap::builder().num_dims(num_dims);
-            for i in 0..num_dims {
-                builder = builder.result(AffineExpr::dim(i));
-            }
-            builder.build()
-        });
-        Interconnect {
-            name: self.name,
-            grid: self.grid,
-            affine_map,
-            bandwidth: self.bandwidth,
-        }
     }
 }

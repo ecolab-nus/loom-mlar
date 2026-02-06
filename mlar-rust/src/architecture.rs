@@ -19,19 +19,6 @@ pub struct Architecture {
 }
 
 impl Architecture {
-    pub fn builder(name: impl Into<String>) -> ArchitectureBuilder {
-        ArchitectureBuilder {
-            name: name.into(),
-            dimensions: Vec::new(),
-            processor_sets: Vec::new(),
-            processor_aggregations: Vec::new(),
-            memory_regions: Vec::new(),
-            memory_interconnects: Vec::new(),
-            memory_processor_interconnects: Vec::new(),
-            interconnects: Vec::new(),
-        }
-    }
-
     /// Find a dimension by name
     pub fn get_dimension(&self, name: &str) -> Option<&Dimension> {
         self.dimensions.iter().find(|d| d.name == name)
@@ -55,111 +42,6 @@ impl Architecture {
         match (sets_count, aggs_count) {
             (Some(s), Some(a)) => Some(s + a),
             _ => None,
-        }
-    }
-}
-
-pub struct ArchitectureBuilder {
-    name: String,
-    dimensions: Vec<Dimension>,
-    processor_sets: Vec<ProcessorSet>,
-    processor_aggregations: Vec<ProcessorAggregation>,
-    memory_regions: Vec<MemRegion>,
-    memory_interconnects: Vec<MemoryInterconnects>,
-    memory_processor_interconnects: Vec<MemoryProcessorInterconnect>,
-    interconnects: Vec<Interconnect>,
-}
-
-impl ArchitectureBuilder {
-    pub fn dimension(mut self, dim: Dimension) -> Self {
-        self.dimensions.push(dim);
-        self
-    }
-
-    pub fn dimensions<I>(mut self, dims: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<Dimension>,
-    {
-        self.dimensions.extend(dims.into_iter().map(Into::into));
-        self
-    }
-
-    /// Add a processor set (no contention modeling)
-    pub fn processor_set(mut self, set: ProcessorSet) -> Self {
-        self.processor_sets.push(set);
-        self
-    }
-
-    /// Add a processor aggregation (for modeling contention/interference)
-    pub fn processor_aggregation(mut self, agg: ProcessorAggregation) -> Self {
-        self.processor_aggregations.push(agg);
-        self
-    }
-
-    pub fn memory_region(mut self, region: MemRegion) -> Self {
-        self.memory_regions.push(region);
-        self
-    }
-
-    pub fn memory_regions<I>(mut self, regions: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<MemRegion>,
-    {
-        self.memory_regions
-            .extend(regions.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn memory_interconnect(mut self, ic: MemoryInterconnects) -> Self {
-        self.memory_interconnects.push(ic);
-        self
-    }
-
-    pub fn memory_interconnects<I>(mut self, interconnects: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<MemoryInterconnects>,
-    {
-        self.memory_interconnects
-            .extend(interconnects.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn memory_processor_interconnect(
-        mut self,
-        ic: MemoryProcessorInterconnect,
-    ) -> Self {
-        self.memory_processor_interconnects.push(ic);
-        self
-    }
-
-    pub fn memory_processor_interconnects<I>(mut self, interconnects: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<MemoryProcessorInterconnect>,
-    {
-        self.memory_processor_interconnects
-            .extend(interconnects.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn interconnect(mut self, ic: Interconnect) -> Self {
-        self.interconnects.push(ic);
-        self
-    }
-
-    pub fn build(self) -> Architecture {
-        Architecture {
-            name: self.name,
-            dimensions: self.dimensions,
-            processor_sets: self.processor_sets,
-            processor_aggregations: self.processor_aggregations,
-            memory_regions: self.memory_regions,
-            memory_interconnects: self.memory_interconnects,
-            memory_processor_interconnects: self.memory_processor_interconnects,
-            interconnects: self.interconnects,
         }
     }
 }

@@ -10,17 +10,6 @@ pub struct FunctionalUnit {
     pub latency: Index,
 }
 
-impl FunctionalUnit {
-    pub fn builder(name: impl Into<String>) -> FunctionalUnitBuilder {
-        FunctionalUnitBuilder {
-            name: name.into(),
-            input_regions: Vec::new(),
-            output_regions: Vec::new(),
-            latency: 0,
-        }
-    }
-}
-
 impl Scalable for FunctionalUnit {
     fn scale(self, indices: Vec<Dimension>) -> ProcessorSet {
         ProcessorSet::from_unit_indexed(self, indices)
@@ -38,39 +27,6 @@ impl Processor for FunctionalUnit {
 
     fn output_memories(&self) -> &[MemRegion] {
         &self.output_regions
-    }
-}
-
-pub struct FunctionalUnitBuilder {
-    name: String,
-    input_regions: Vec<MemRegion>,
-    output_regions: Vec<MemRegion>,
-    latency: Index,
-}
-
-impl FunctionalUnitBuilder {
-    pub fn input_region(mut self, region: impl Into<MemRegion>) -> Self {
-        self.input_regions.push(region.into());
-        self
-    }
-
-    pub fn output_region(mut self, region: impl Into<MemRegion>) -> Self {
-        self.output_regions.push(region.into());
-        self
-    }
-
-    pub fn latency(mut self, cycles: Index) -> Self {
-        self.latency = cycles;
-        self
-    }
-
-    pub fn build(self) -> FunctionalUnit {
-        FunctionalUnit {
-            name: self.name,
-            input_regions: self.input_regions,
-            output_regions: self.output_regions,
-            latency: self.latency,
-        }
     }
 }
 

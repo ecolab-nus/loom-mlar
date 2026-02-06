@@ -921,10 +921,10 @@ mod tests {
 
     #[test]
     fn test_simple_memory_visualization() {
-        let bank = Bank::builder()
-            .block_size(1024_usize)
-            .num_blocks(16_usize)
-            .build();
+        let bank = Bank {
+            block_size: Size::concrete(1024),
+            num_blocks: Size::concrete(16),
+        };
 
         let region = MemRegion::bank(bank);
 

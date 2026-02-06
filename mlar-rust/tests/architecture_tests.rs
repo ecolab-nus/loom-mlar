@@ -10,27 +10,33 @@ fn test_2d_mesh_architecture() {
     let dim_d = Dimension::new("d", 4);
 
     // Define L1 memory region: indexed by [x, y], each has 64KB blocks
-    let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
-        .scale([&dim_x, &dim_y]); // 64KB per location
+    let l1_region = MemRegion::bank(Bank {
+        block_size: Size::concrete(65536),
+        num_blocks: Size::concrete(1),
+    })
+    .scale([&dim_x, &dim_y]); // 64KB per location
 
     // Define DRAM memory region: indexed by [d], each has 8GB
-    let _dram_region = MemRegion::bank(Bank::builder().block_size(8589934592usize).num_blocks(1).build())
-        .scale([&dim_d]); // 8GB per DRAM
+    let _dram_region = MemRegion::bank(Bank {
+        block_size: Size::concrete(8589934592usize),
+        num_blocks: Size::concrete(1),
+    })
+    .scale([&dim_d]); // 8GB per DRAM
 
     // Create functional units that operate on L1 regions
-    let mat_fu = FunctionalUnit::builder("matmul_32x32")
-        .input_region(&l1_region)
-        .input_region(&l1_region)
-        .output_region(&l1_region)
-        .latency(8)
-        .build();
+    let mat_fu = FunctionalUnit {
+        name: "matmul_32x32".to_string(),
+        input_regions: vec![l1_region.clone(), l1_region.clone()],
+        output_regions: vec![l1_region.clone()],
+        latency: 8,
+    };
 
-    let vec_fu = FunctionalUnit::builder("vec_add_32")
-        .input_region(&l1_region)
-        .input_region(&l1_region)
-        .output_region(&l1_region)
-        .latency(1)
-        .build();
+    let vec_fu = FunctionalUnit {
+        name: "vec_add_32".to_string(),
+        input_regions: vec![l1_region.clone(), l1_region.clone()],
+        output_regions: vec![l1_region.clone()],
+        latency: 1,
+    };
 
     // Create lanes with performance models
     let mat_lane = FunctionalLane::new(
@@ -55,66 +61,77 @@ fn test_2d_mesh_architecture() {
     let vec_lane_set = vec_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
 
     // Create interconnects with affine maps
-    let noc_h_map = AffineMap::builder()
-        .num_dims(2)
-        .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ))
-        .result(AffineExpr::dim(1))
-        .build();
+    let noc_h_map = AffineMap {
+        num_dims: 2,
+        source_dims: None,
+        target_dims: None,
+        results: vec![
+            AffineExpr::modulo(
+                AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+                AffineExpr::constant(8),
+            ),
+            AffineExpr::dim(1),
+        ],
+    };
 
-    let noc_h = Interconnect::builder("horizontal_noc")
-        .grid(vec![dim_x.clone(), dim_y.clone()])
-        .affine_map(noc_h_map)
-        .bandwidth(32)
-        .build();
+    let noc_h = Interconnect {
+        name: "horizontal_noc".to_string(),
+        grid: vec![dim_x.clone(), dim_y.clone()],
+        affine_map: noc_h_map,
+        bandwidth: 32,
+    };
 
-    let noc_v_map = AffineMap::builder()
-        .num_dims(2)
-        .result(AffineExpr::dim(0))
-        .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ))
-        .build();
+    let noc_v_map = AffineMap {
+        num_dims: 2,
+        source_dims: None,
+        target_dims: None,
+        results: vec![
+            AffineExpr::dim(0),
+            AffineExpr::modulo(
+                AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
+                AffineExpr::constant(8),
+            ),
+        ],
+    };
 
-    let noc_v = Interconnect::builder("vertical_noc")
-        .grid(vec![dim_x.clone(), dim_y.clone()])
-        .affine_map(noc_v_map)
-        .bandwidth(32)
-        .build();
+    let noc_v = Interconnect {
+        name: "vertical_noc".to_string(),
+        grid: vec![dim_x.clone(), dim_y.clone()],
+        affine_map: noc_v_map,
+        bandwidth: 32,
+    };
 
-    let dram_map = AffineMap::builder()
-        .num_dims(2)
-        .result(AffineExpr::add(
+    let dram_map = AffineMap {
+        num_dims: 2,
+        source_dims: None,
+        target_dims: None,
+        results: vec![AffineExpr::add(
             AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
             AffineExpr::mul(
                 AffineExpr::constant(2),
                 AffineExpr::ceildiv(AffineExpr::dim(1), AffineExpr::constant(4)),
             ),
-        ))
-        .build();
+        )],
+    };
 
-    let to_dram = Interconnect::builder("to_dram")
-        .grid(vec![dim_x.clone(), dim_y.clone()])
-        .affine_map(dram_map)
-        .bandwidth(64)
-        .build();
+    let to_dram = Interconnect {
+        name: "to_dram".to_string(),
+        grid: vec![dim_x.clone(), dim_y.clone()],
+        affine_map: dram_map,
+        bandwidth: 64,
+    };
 
     // Build the architecture using ProcessorSets directly (no contention)
-    let arch = Architecture::builder("2D Mesh")
-        .dimension(dim_x.clone())
-        .dimension(dim_y.clone())
-        .dimension(dim_d.clone())
-        .processor_set(mat_fu_set)
-        .processor_set(vec_fu_set)
-        .processor_set(mat_lane_set)
-        .processor_set(vec_lane_set)
-        .interconnect(noc_h)
-        .interconnect(noc_v)
-        .interconnect(to_dram)
-        .build();
+    let arch = Architecture {
+        name: "2D Mesh".to_string(),
+        dimensions: vec![dim_x.clone(), dim_y.clone(), dim_d.clone()],
+        processor_sets: vec![mat_fu_set, vec_fu_set, mat_lane_set, vec_lane_set],
+        processor_aggregations: Vec::new(),
+        memory_regions: Vec::new(),
+        memory_interconnects: Vec::new(),
+        memory_processor_interconnects: Vec::new(),
+        interconnects: vec![noc_h, noc_v, to_dram],
+    };
 
     // Verify architecture properties
     assert_eq!(arch.name, "2D Mesh");
@@ -128,26 +145,29 @@ fn test_2d_mesh_architecture() {
 #[test]
 fn test_affine_maps() {
     // Test basic affine map construction
-    let map = AffineMap::builder()
-        .num_dims(2)
-        .result(AffineExpr::add(
-            AffineExpr::dim(0),
-            AffineExpr::constant(1),
-        ))
-        .result(AffineExpr::dim(1))
-        .build();
+    let map = AffineMap {
+        num_dims: 2,
+        source_dims: None,
+        target_dims: None,
+        results: vec![
+            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::dim(1),
+        ],
+    };
     
     let result = map.apply(&[3, 5]);
     assert_eq!(result, vec![4, 5]);
     
     // Test modulo
-    let wrap_map = AffineMap::builder()
-        .num_dims(1)
-        .result(AffineExpr::modulo(
+    let wrap_map = AffineMap {
+        num_dims: 1,
+        source_dims: None,
+        target_dims: None,
+        results: vec![AffineExpr::modulo(
             AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
             AffineExpr::constant(8),
-        ))
-        .build();
+        )],
+    };
     
     assert_eq!(wrap_map.apply(&[7]), vec![0]); // (7 + 1) % 8 = 0
     assert_eq!(wrap_map.apply(&[6]), vec![7]); // (6 + 1) % 8 = 7
@@ -158,8 +178,11 @@ fn test_lane_preconditions() {
     let dim_x = Dimension::new("x", 8);
     let dim_y = Dimension::new("y", 8);
     
-    let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
-        .scale([&dim_x, &dim_y]);
+    let l1_region = MemRegion::bank(Bank {
+        block_size: Size::concrete(65536),
+        num_blocks: Size::concrete(1),
+    })
+    .scale([&dim_x, &dim_y]);
     
     let mat_lane = FunctionalLane::new(
         "matmul_lane",
@@ -184,19 +207,19 @@ fn test_symbolic_sizes() {
     assert_eq!(sym_dim.size.as_symbolic(), Some("N"));
     
     // Test symbolic Bank
-    let sym_bank = Bank::builder()
-        .block_size(Size::symbolic("BLOCK_SIZE"))
-        .num_blocks(Size::symbolic("NUM_BLOCKS"))
-        .build();
+    let sym_bank = Bank {
+        block_size: Size::symbolic("BLOCK_SIZE"),
+        num_blocks: Size::symbolic("NUM_BLOCKS"),
+    };
     
     assert!(sym_bank.block_size.is_symbolic());
     assert!(sym_bank.num_blocks.is_symbolic());
     
     // Test mixed sizes
-    let mixed_block = Bank::builder()
-        .block_size(Size::concrete(1024))
-        .num_blocks(Size::symbolic("M"))
-        .build();
+    let mixed_block = Bank {
+        block_size: Size::concrete(1024),
+        num_blocks: Size::symbolic("M"),
+    };
     
     assert!(mixed_block.block_size.is_concrete());
     assert!(mixed_block.num_blocks.is_symbolic());

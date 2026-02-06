@@ -8,79 +8,85 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let warp_dim = Dimension::new("warp_dim", 32);  // Shared by L1, RF, and MatLane
 
     // DRAM: 4 banks, large capacity
-    let dram_banks = MemRegion::bank(Bank::builder()
-            .block_size(256) // 256 bytes per block transfer
-            .num_blocks(Size::symbolic("DRAM_SIZE"))
-            .build())
-        .scale([&dram_dim]);
+    let dram_banks = MemRegion::bank(Bank {
+        block_size: Size::concrete(256), // 256 bytes per block transfer
+        num_blocks: Size::symbolic("DRAM_SIZE"),
+    })
+    .scale([&dram_dim]);
 
     // L2: 4 banks, each with many small blocks totaling 1MB
-    let l2_banks = MemRegion::bank(Bank::builder()
-            .block_size(256)  // 256 bytes per block
-            .num_blocks(4096)  // 4096 blocks = 1MB total per bank
-            .build())
-        .scale([&dram_dim]);
+    let l2_banks = MemRegion::bank(Bank {
+        block_size: Size::concrete(256),  // 256 bytes per block
+        num_blocks: Size::concrete(4096), // 4096 blocks = 1MB total per bank
+    })
+    .scale([&dram_dim]);
 
     // L1: 32 banks, each with many small blocks totaling 64KB
-    let l1_banks = MemRegion::bank(Bank::builder()
-            .block_size(64)   // 64 bytes per block
-            .num_blocks(1024) // 1024 blocks = 64KB total per bank
-            .build())
-        .scale([&warp_dim]);
+    let l1_banks = MemRegion::bank(Bank {
+        block_size: Size::concrete(64),   // 64 bytes per block
+        num_blocks: Size::concrete(1024), // 1024 blocks = 64KB total per bank
+    })
+    .scale([&warp_dim]);
 
     // RF: same number of banks as L1, smaller size per bank
-    let rf_banks = MemRegion::bank(Bank::builder()
-            .block_size(32)   // smaller block size than L1
-            .num_blocks(128)  // 128 blocks = 4KB total per bank
-            .build())
-        .scale([&warp_dim]);
+    let rf_banks = MemRegion::bank(Bank {
+        block_size: Size::concrete(32),   // smaller block size than L1
+        num_blocks: Size::concrete(128),  // 128 blocks = 4KB total per bank
+    })
+    .scale([&warp_dim]);
 
     // --- DRAM <-> L2 Connection (1-to-1) ---
-    let dram_to_l2_map = AffineMap::builder()
-        .source_dims(vec![&dram_dim])
-        .target_dims(vec![&dram_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let dram_to_l2_map = AffineMap {
+        num_dims: 1,
+        source_dims: Some(vec![dram_dim.clone()]),
+        target_dims: Some(vec![dram_dim.clone()]),
+        results: vec![AffineExpr::dim(0)],
+    };
 
-    let dram_to_l2 = MemoryInterconnects::builder("DRAM_to_L2")
-        .source(&dram_banks)
-        .target(&l2_banks)
-        .affine_map(dram_to_l2_map)
-        .bandwidth(256)
-        .build();
+    let dram_to_l2 = MemoryInterconnects {
+        name: "DRAM_to_L2".to_string(),
+        sources: vec![dram_banks.clone()],
+        targets: vec![l2_banks.clone()],
+        map: dram_to_l2_map,
+        bandwidth: 256,
+    };
 
     // --- L2 <-> L1 Connection ---
     // Each L2 bank connects to 8 L1 banks (32/4 = 8)
-    let l2_to_l1_map = AffineMap::builder()
-        .source_dims(vec![&dram_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::mul(
+    let l2_to_l1_map = AffineMap {
+        num_dims: 1,
+        source_dims: Some(vec![dram_dim.clone()]),
+        target_dims: Some(vec![warp_dim.clone()]),
+        results: vec![AffineExpr::mul(
             AffineExpr::dim(0),
-            AffineExpr::constant(8),  // L2[i] -> L1[i*8..i*8+7]
-        ))
-        .build();
+            AffineExpr::constant(8), // L2[i] -> L1[i*8..i*8+7]
+        )],
+    };
 
-    let l2_to_l1 = MemoryInterconnects::builder("L2_to_L1")
-        .source(&l2_banks)
-        .target(&l1_banks)
-        .affine_map(l2_to_l1_map)
-        .bandwidth(128)
-        .build();
+    let l2_to_l1 = MemoryInterconnects {
+        name: "L2_to_L1".to_string(),
+        sources: vec![l2_banks.clone()],
+        targets: vec![l1_banks.clone()],
+        map: l2_to_l1_map,
+        bandwidth: 128,
+    };
 
 
     // --- L1 <-> RF Connection (1-to-1) ---
-    let l1_to_rf_map = AffineMap::builder()
-        .source_dims(vec![&warp_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let l1_to_rf_map = AffineMap {
+        num_dims: 1,
+        source_dims: Some(vec![warp_dim.clone()]),
+        target_dims: Some(vec![warp_dim.clone()]),
+        results: vec![AffineExpr::dim(0)],
+    };
 
-    let l1_to_rf = MemoryInterconnects::builder("L1_to_RF")
-        .source(&l1_banks)
-        .target(&rf_banks)
-        .affine_map(l1_to_rf_map)
-        .bandwidth(64)
-        .build();
+    let l1_to_rf = MemoryInterconnects {
+        name: "L1_to_RF".to_string(),
+        sources: vec![l1_banks.clone()],
+        targets: vec![rf_banks.clone()],
+        map: l1_to_rf_map,
+        bandwidth: 64,
+    };
 
     // Matrix lane per RF bank
     let mat_lane = FunctionalLane::new(
@@ -93,29 +99,32 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let mat_lane_set = mat_lane.scale(vec![warp_dim.clone()]);
 
     // RF -> Matrix Lane Connection (1-to-1)
-    let rf_to_mat_map = AffineMap::builder()
-        .source_dims(vec![&warp_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let rf_to_mat_map = AffineMap {
+        num_dims: 1,
+        source_dims: Some(vec![warp_dim.clone()]),
+        target_dims: Some(vec![warp_dim.clone()]),
+        results: vec![AffineExpr::dim(0)],
+    };
 
-    let rf_to_mat = MemoryProcessorInterconnect::builder("RF_to_MatLane")
-        .source(&rf_banks)
-        .target(mat_lane_set.clone())
-        .affine_map(rf_to_mat_map)
-        .bandwidth(64)
-        .build();
+    let rf_to_mat = MemoryProcessorInterconnect {
+        name: "RF_to_MatLane".to_string(),
+        source: rf_banks.clone(),
+        target: mat_lane_set.clone(),
+        map: rf_to_mat_map,
+        bandwidth: 64,
+    };
 
     // Build architecture
-    let arch = Architecture::builder("GPU")
-        .dimension(dram_dim)
-        .dimension(warp_dim)
-        .processor_set(mat_lane_set)
-        .memory_interconnect(dram_to_l2)
-        .memory_interconnect(l2_to_l1)
-        .memory_interconnect(l1_to_rf)
-        .memory_processor_interconnect(rf_to_mat)
-        .build();
+    let arch = Architecture {
+        name: "GPU".to_string(),
+        dimensions: vec![dram_dim, warp_dim],
+        processor_sets: vec![mat_lane_set],
+        processor_aggregations: Vec::new(),
+        memory_regions: Vec::new(),
+        memory_interconnects: vec![dram_to_l2, l2_to_l1, l1_to_rf],
+        memory_processor_interconnects: vec![rf_to_mat],
+        interconnects: Vec::new(),
+    };
         
     // Verify
     assert_eq!(arch.name, "GPU");

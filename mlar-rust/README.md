@@ -30,11 +30,11 @@ src/
 ### Creating Components (Current API)
 
 - **Dimensions**: `Dimension::new("x", 8)` or `Dimension::new_symbolic("x", "N")`
-- **Memory banks/regions**: `Bank::builder()` + `MemRegion::bank(...).scale([...])`
-- **Processors**: `FunctionalUnit::builder(...)` or `FunctionalLane::new(...)`, then `.scale(...)`
-- **Memory↔Memory**: `MemoryInterconnects::builder(...)` with `AffineMap::builder(...)`
-- **Memory→Processor**: `MemoryProcessorInterconnect::builder(...)` with `AffineMap::builder(...)`
-- **NoC interconnects**: `Interconnect::builder(...)` with `AffineMap::builder(...)`
+- **Memory banks/regions**: `Bank { ... }` + `MemRegion::bank(...).scale([...])`
+- **Processors**: `FunctionalUnit { ... }` or `FunctionalLane::new(...)`, then `.scale(...)`
+- **Memory↔Memory**: `MemoryInterconnects { ... }` with `AffineMap { ... }`
+- **Memory→Processor**: `MemoryProcessorInterconnect { ... }` with `AffineMap { ... }`
+- **NoC interconnects**: `Interconnect { ... }` with `AffineMap { ... }`
 
 ### Scaling with `scale()`
 
@@ -48,10 +48,10 @@ Memory regions can be scaled to create indexed regions:
 // Create a bank and scale it across dimensions
 let dim_x = Dimension::new("x", 8);
 let dim_y = Dimension::new("y", 8);
-let l1_region = MemRegion::bank(Bank::builder()
-        .block_size(65536)
-        .num_blocks(1)
-        .build())
+let l1_region = MemRegion::bank(Bank {
+        block_size: Size::concrete(65536),
+        num_blocks: Size::concrete(1),
+    })
     .scale([&dim_x, &dim_y]);  // 64KB per [x,y] location
 ```
 
@@ -63,11 +63,12 @@ Processors (FunctionalUnit, FunctionalLane) can be scaled across dimensions usin
 
 ```rust
 // Create a functional unit (defines the processor's behavior)
-let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(&l1_region)
-    .output_region(&l1_region)
-    .latency(8)
-    .build();
+let mat_fu = FunctionalUnit {
+    name: "matmul_32x32".to_string(),
+    input_regions: vec![l1_region.clone()],
+    output_regions: vec![l1_region.clone()],
+    latency: 8,
+};
 
 // Scale it across dimensions to create a ProcessorSet
 let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
@@ -83,16 +84,17 @@ The `ProcessorSet` enum represents either:
 
 ```rust
 // Only use ProcessorAggregation when there's contention to model
-let agg = ProcessorAggregation::builder("shared_units")
-    .processor_set(processor_set)
-    .build();
+let agg = ProcessorAggregation {
+    name: "shared_units".to_string(),
+    processor_set,
+};
 ```
 
 For processors without contention, add `ProcessorSet` directly to the architecture.
 
 ## Architecture
 
-The prototype uses a builder pattern for constructing architectures:
+The prototype uses explicit struct construction for architectures:
 
 ```rust
 // Create dimensions
@@ -100,21 +102,26 @@ let dim_x = Dimension::new("x", 8);
 let dim_y = Dimension::new("y", 8);
 
 // Create functional unit and scale it
-let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(&l1_region)
-    .output_region(&l1_region)
-    .latency(8)
-    .build();
+let mat_fu = FunctionalUnit {
+    name: "matmul_32x32".to_string(),
+    input_regions: vec![l1_region.clone()],
+    output_regions: vec![l1_region.clone()],
+    latency: 8,
+};
 
 let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
 
 // Build architecture
-let arch = Architecture::builder("2D Mesh")
-    .dimension(dim_x)
-    .dimension(dim_y)
-    .processor_set(mat_fu_set)      // Add ProcessorSet directly (no contention)
-    .interconnect(noc_h)
-    .build();
+let arch = Architecture {
+    name: "2D Mesh".to_string(),
+    dimensions: vec![dim_x, dim_y],
+    processor_sets: vec![mat_fu_set], // Add ProcessorSet directly (no contention)
+    processor_aggregations: Vec::new(),
+    memory_regions: Vec::new(),
+    memory_interconnects: Vec::new(),
+    memory_processor_interconnects: Vec::new(),
+    interconnects: vec![noc_h],
+};
 ```
 
 The `Architecture` struct contains:
@@ -160,15 +167,15 @@ Represents fixed-shape, synchronous operations with predetermined latencies.
 - Fixed input/output shapes (e.g., 32×32 matrices)
 - Constant latency (e.g., 8 cycles for matmul)
 - Scalable across dimensions via `scale()` method
-- Builder pattern for ergonomic construction
+- Explicit struct construction for component definitions
 
 ```rust
-let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(&l1_region)
-    .input_region(&l1_region)
-    .output_region(&l1_region)
-    .latency(8)
-    .build();
+let mat_fu = FunctionalUnit {
+    name: "matmul_32x32".to_string(),
+    input_regions: vec![l1_region.clone(), l1_region.clone()],
+    output_regions: vec![l1_region.clone()],
+    latency: 8,
+};
 
 // Scale across 8x8 grid
 let mat_fu_set = mat_fu.scale(vec![dim_x, dim_y]);
@@ -260,28 +267,27 @@ Example: L1 memory indexed by processor coordinates using `scale()`:
 ```rust
 let dim_x = Dimension::new("x", 8);
 let dim_y = Dimension::new("y", 8);
-let l1_region = MemRegion::bank(Bank::builder()
-        .block_size(65536)
-        .num_blocks(1)
-        .build())
+let l1_region = MemRegion::bank(Bank {
+        block_size: Size::concrete(65536),
+        num_blocks: Size::concrete(1),
+    })
     .scale([&dim_x, &dim_y]);
 ```
 
 Memory-to-memory interconnect (affine mapping between regions):
 ```rust
-let l1_to_l2 = MemoryInterconnects::builder("L1_to_L2")
-    .source(&l1_region)
-    .target(&l2_region)
-    .affine_map(
-        AffineMap::builder()
-            .source_dims(vec![&dim_x, &dim_y])
-            .target_dims(vec![&dim_x, &dim_y])
-            .result(AffineExpr::dim(0))
-            .result(AffineExpr::dim(1))
-            .build(),
-    )
-    .bandwidth(128)
-    .build();
+let l1_to_l2 = MemoryInterconnects {
+    name: "L1_to_L2".to_string(),
+    sources: vec![l1_region.clone()],
+    targets: vec![l2_region.clone()],
+    map: AffineMap {
+        num_dims: 2,
+        source_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        target_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
+    },
+    bandwidth: 128,
+};
 ```
 
 Memory-to-processor interconnect (affine mapping to a `ProcessorSet`):
@@ -295,19 +301,18 @@ let mat_lane = FunctionalLane::new(
 
 let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
 
-let l1_to_mat = MemoryProcessorInterconnect::builder("L1_to_MatLane")
-    .source(&l1_region)
-    .target(mat_lane_set.clone())
-    .affine_map(
-        AffineMap::builder()
-            .source_dims(vec![&dim_x, &dim_y])
-            .target_dims(vec![&dim_x, &dim_y])
-            .result(AffineExpr::dim(0))
-            .result(AffineExpr::dim(1))
-            .build(),
-    )
-    .bandwidth(64)
-    .build();
+let l1_to_mat = MemoryProcessorInterconnect {
+    name: "L1_to_MatLane".to_string(),
+    source: l1_region.clone(),
+    target: mat_lane_set.clone(),
+    map: AffineMap {
+        num_dims: 2,
+        source_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        target_dims: Some(vec![dim_x.clone(), dim_y.clone()]),
+        results: vec![AffineExpr::dim(0), AffineExpr::dim(1)],
+    },
+    bandwidth: 64,
+};
 ```
 
 #### 6. **Interconnects** (`interconnect.rs`)
@@ -324,20 +329,25 @@ Models network-on-chip (NoC) topology using affine maps.
 
 ```rust
 // Horizontal NoC: (x, y) -> ((x + 1) mod 8, y)
-let noc_h_map = AffineMap::builder()
-    .num_dims(2)
-    .result(AffineExpr::modulo(
-        AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
-        AffineExpr::constant(8),
-    ))
-    .result(AffineExpr::dim(1))
-    .build();
+let noc_h_map = AffineMap {
+    num_dims: 2,
+    source_dims: None,
+    target_dims: None,
+    results: vec![
+        AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ),
+        AffineExpr::dim(1),
+    ],
+};
 
-let noc_h = Interconnect::builder("horizontal_noc")
-    .grid(vec![dim_x.clone(), dim_y.clone()])
-    .affine_map(noc_h_map)
-    .bandwidth(32)
-    .build();
+let noc_h = Interconnect {
+    name: "horizontal_noc".to_string(),
+    grid: vec![dim_x.clone(), dim_y.clone()],
+    affine_map: noc_h_map,
+    bandwidth: 32,
+};
 ```
 
 ### Symbolic Sizes
@@ -350,10 +360,10 @@ let dim_x = Dimension::new_symbolic("x", "N");
 let dim_y = Dimension::new_symbolic("y", "M");
 
 // Create memory bank with symbolic block size
-let symbolic_bank = Bank::builder()
-    .block_size(Size::symbolic("BLOCK_SIZE"))
-    .num_blocks(Size::symbolic("NUM_BLOCKS"))
-    .build();
+let symbolic_bank = Bank {
+    block_size: Size::symbolic("BLOCK_SIZE"),
+    num_blocks: Size::symbolic("NUM_BLOCKS"),
+};
 ```
 
 ## Usage Example
@@ -369,16 +379,19 @@ let dim_x = Dimension::new("x", 8);
 let dim_y = Dimension::new("y", 8);
 
 // Define L1 memory region (scale a bank across dimensions)
-let l1_region = MemRegion::bank(Bank::builder().block_size(65536).num_blocks(1).build())
+let l1_region = MemRegion::bank(Bank {
+    block_size: Size::concrete(65536),
+    num_blocks: Size::concrete(1),
+})
     .scale(vec![dim_x.clone(), dim_y.clone()]);
 
 // Create functional unit
-let mat_fu = FunctionalUnit::builder("matmul_32x32")
-    .input_region(&l1_region)
-    .input_region(&l1_region)
-    .output_region(&l1_region)
-    .latency(8)
-    .build();
+let mat_fu = FunctionalUnit {
+    name: "matmul_32x32".to_string(),
+    input_regions: vec![l1_region.clone(), l1_region.clone()],
+    output_regions: vec![l1_region.clone()],
+    latency: 8,
+};
 
 // Create lane with performance model
 let mat_lane = FunctionalLane::new(
@@ -393,12 +406,16 @@ let mat_fu_set = mat_fu.scale(vec![dim_x.clone(), dim_y.clone()]);
 let mat_lane_set = mat_lane.scale(vec![dim_x.clone(), dim_y.clone()]);
 
 // Build architecture
-let arch = Architecture::builder("2D Mesh")
-    .dimension(dim_x.clone())
-    .dimension(dim_y.clone())
-    .processor_set(mat_fu_set)
-    .processor_set(mat_lane_set)
-    .build();
+let arch = Architecture {
+    name: "2D Mesh".to_string(),
+    dimensions: vec![dim_x.clone(), dim_y.clone()],
+    processor_sets: vec![mat_fu_set, mat_lane_set],
+    processor_aggregations: Vec::new(),
+    memory_regions: Vec::new(),
+    memory_interconnects: Vec::new(),
+    memory_processor_interconnects: Vec::new(),
+    interconnects: Vec::new(),
+};
 
 // Query architecture
 println!("Total PEs: {:?}", arch.total_processing_elements());
@@ -423,17 +440,17 @@ cargo build --release
 |----------------|-----------|------|
 | `index` | `Index` (= `usize`) | `core/size_dim.rs` |
 | `mlar.dim` | `Dimension::new()` | `core/size_dim.rs` |
-| `mlar.bank` | `Bank::builder()` | `core/memory.rs` |
+| `mlar.bank` | `Bank { ... }` | `core/memory.rs` |
 | `mlar.region` | `MemRegion::indexed()` | `core/memory.rs` |
-| `mlar.fu` | `FunctionalUnit::builder()` | `functional_unit.rs` |
+| `mlar.fu` | `FunctionalUnit { ... }` | `functional_unit.rs` |
 | `mlar.lane` | `FunctionalLane::new()` | `lane.rs` |
 | `cf.assert` | `LaneModel::validate_preconditions()` | `lane.rs` |
 | Processor scaling | `processor.scale(dims)` | `processor_aggregation.rs` |
-| `memory interconnects` | `MemoryInterconnects::builder()` | `core/memory.rs` |
-| `memory→processor` | `MemoryProcessorInterconnect::builder()` | `core/memory.rs` |
-| `mlar.interconnects` | `Interconnect::builder()` | `interconnect.rs` |
-| `affine_map<...>` | `AffineMap::builder()` + `AffineExpr` | `interconnect.rs` |
-| `module {...}` | `Architecture::builder()` | `architecture.rs` |
+| `memory interconnects` | `MemoryInterconnects { ... }` | `core/memory.rs` |
+| `memory→processor` | `MemoryProcessorInterconnect { ... }` | `core/memory.rs` |
+| `mlar.interconnects` | `Interconnect { ... }` | `interconnect.rs` |
+| `affine_map<...>` | `AffineMap { ... }` + `AffineExpr` | `interconnect.rs` |
+| `module {...}` | `Architecture { ... }` | `architecture.rs` |
 
 ## Next Steps
 
