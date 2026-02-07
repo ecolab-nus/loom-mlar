@@ -1,4 +1,4 @@
-use mlar_rust::interconnect::AffineExpr;
+use mlar_rust::AffineMapTemplate;
 use mlar_rust::lane::MatMulLane;
 use mlar_rust::*;
 use std::fs;
@@ -36,11 +36,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     .scale([&warp_dim]);
 
     // --- DRAM <-> L2 Connection (1-to-1) ---
-    let dram_to_l2_map = AffineMap::builder()
-        .source_dims(vec![&dram_dim])
-        .target_dims(vec![&dram_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let dram_to_l2_map = AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
+        .expect("invalid affine map")
+        .bind([&dram_dim])
+        .expect("failed to bind affine map");
 
     let dram_to_l2 = MemoryInterconnects::builder("DRAM_to_L2")
         .source(&dram_banks)
@@ -51,14 +50,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
     // --- L2 <-> L1 Connection ---
     // Each L2 bank connects to 8 L1 banks (32/4 = 8)
-    let l2_to_l1_map = AffineMap::builder()
-        .source_dims(vec![&dram_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::mul(
-            AffineExpr::dim(0),
-            AffineExpr::constant(8), // L2[i] -> L1[i*8..i*8+7]
-        ))
-        .build();
+    let l2_to_l1_map = AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)")
+        .expect("invalid affine map")
+        .bind([&dram_dim, &warp_dim])
+        .expect("failed to bind affine map"); // L2[i] -> L1[i*8..i*8+7]
 
     let l2_to_l1 = MemoryInterconnects::builder("L2_to_L1")
         .source(&l2_banks)
@@ -69,11 +64,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
 
 
     // --- L1 <-> RF Connection (1-to-1) ---
-    let l1_to_rf_map = AffineMap::builder()
-        .source_dims(vec![&warp_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let l1_to_rf_map = AffineMapTemplate::parse("[warp_dim] -> [warp_dim]: (warp_dim)")
+        .expect("invalid affine map")
+        .bind([&warp_dim])
+        .expect("failed to bind affine map");
 
     let l1_to_rf = MemoryInterconnects::builder("L1_to_RF")
         .source(&l1_banks)
@@ -93,11 +87,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let mat_lane_set = mat_lane.scale([&warp_dim]);
 
     // RF -> Matrix Lane Connection (1-to-1)
-    let rf_to_mat_map = AffineMap::builder()
-        .source_dims(vec![&warp_dim])
-        .target_dims(vec![&warp_dim])
-        .result(AffineExpr::dim(0))
-        .build();
+    let rf_to_mat_map = AffineMapTemplate::parse("[warp_dim] -> [warp_dim]: (warp_dim)")
+        .expect("invalid affine map")
+        .bind([&warp_dim])
+        .expect("failed to bind affine map");
 
     let rf_to_mat = MemoryProcessorInterconnect::builder("RF_to_MatLane")
         .source(&rf_banks)

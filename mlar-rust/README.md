@@ -285,8 +285,8 @@ let l1_to_l2 = MemoryInterconnects::builder("L1_to_L2")
         AffineMap::builder()
             .source_dims(vec![&dim_x, &dim_y])
             .target_dims(vec![&dim_x, &dim_y])
-            .result(AffineExpr::dim(0))
-            .result(AffineExpr::dim(1))
+            .result(AffineExpr::dim(&dim_x))
+            .result(AffineExpr::dim(&dim_y))
             .build(),
     )
     .bandwidth(128)
@@ -311,8 +311,8 @@ let l1_to_mat = MemoryProcessorInterconnect::builder("L1_to_MatLane")
         AffineMap::builder()
             .source_dims(vec![&dim_x, &dim_y])
             .target_dims(vec![&dim_x, &dim_y])
-            .result(AffineExpr::dim(0))
-            .result(AffineExpr::dim(1))
+            .result(AffineExpr::dim(&dim_x))
+            .result(AffineExpr::dim(&dim_y))
             .build(),
     )
     .bandwidth(64)
@@ -325,7 +325,7 @@ Models network-on-chip (NoC) topology using affine maps.
 
 **Key components**:
 - **`AffineExpr`**: Recursive expressions supporting:
-  - Dimension references (`d0`, `d1`, ...)
+  - Dimension references (by name)
   - Constants
   - Operations: `add`, `mul`, `mod`, `ceildiv`
 - **`AffineMap`**: Maps source coordinates to destination coordinates
@@ -337,10 +337,10 @@ let noc_h_map = AffineMap::builder()
     .source_dims(vec![&dim_x, &dim_y])
     .target_dims(vec![&dim_x, &dim_y])
     .result(AffineExpr::modulo(
-        AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+        AffineExpr::add(AffineExpr::dim(&dim_x), AffineExpr::constant(1)),
         AffineExpr::constant(8),
     ))
-    .result(AffineExpr::dim(1))
+    .result(AffineExpr::dim(&dim_y))
     .build();
 
 let noc_h = Interconnect {

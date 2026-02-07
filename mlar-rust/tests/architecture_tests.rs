@@ -1,6 +1,6 @@
 use mlar_rust::*;
 use mlar_rust::lane::{MatMulLane, VecLane};
-use mlar_rust::interconnect::AffineExpr;
+use mlar_rust::AffineExpr;
 
 #[test]
 fn test_2d_mesh_architecture() {
@@ -65,10 +65,10 @@ fn test_2d_mesh_architecture() {
         .source_dims(vec![&dim_x, &dim_y])
         .target_dims(vec![&dim_x, &dim_y])
         .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::add(AffineExpr::dim(&dim_x), AffineExpr::constant(1)),
             AffineExpr::constant(8),
         ))
-        .result(AffineExpr::dim(1))
+        .result(AffineExpr::dim(&dim_y))
         .build();
 
     let noc_h = Interconnect {
@@ -81,9 +81,9 @@ fn test_2d_mesh_architecture() {
     let noc_v_map = AffineMap::builder()
         .source_dims(vec![&dim_x, &dim_y])
         .target_dims(vec![&dim_x, &dim_y])
-        .result(AffineExpr::dim(0))
+        .result(AffineExpr::dim(&dim_x))
         .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(1), AffineExpr::constant(1)),
+            AffineExpr::add(AffineExpr::dim(&dim_y), AffineExpr::constant(1)),
             AffineExpr::constant(8),
         ))
         .build();
@@ -99,10 +99,10 @@ fn test_2d_mesh_architecture() {
         .source_dims(vec![&dim_x, &dim_y])
         .target_dims(vec![&dim_d])
         .result(AffineExpr::add(
-            AffineExpr::ceildiv(AffineExpr::dim(0), AffineExpr::constant(4)),
+            AffineExpr::ceildiv(AffineExpr::dim(&dim_x), AffineExpr::constant(4)),
             AffineExpr::mul(
                 AffineExpr::constant(2),
-                AffineExpr::ceildiv(AffineExpr::dim(1), AffineExpr::constant(4)),
+                AffineExpr::ceildiv(AffineExpr::dim(&dim_y), AffineExpr::constant(4)),
             ),
         ))
         .build();
@@ -143,8 +143,8 @@ fn test_affine_maps() {
     let map = AffineMap::builder()
         .source_dims(vec![&dim_a, &dim_b])
         .target_dims(vec![&dim_a, &dim_b])
-        .result(AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)))
-        .result(AffineExpr::dim(1))
+        .result(AffineExpr::add(AffineExpr::dim(&dim_a), AffineExpr::constant(1)))
+        .result(AffineExpr::dim(&dim_b))
         .build();
     
     let result = map.apply(&[3, 5]);
@@ -156,13 +156,28 @@ fn test_affine_maps() {
         .source_dims(vec![&dim_wrap])
         .target_dims(vec![&dim_wrap])
         .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(0), AffineExpr::constant(1)),
+            AffineExpr::add(AffineExpr::dim(&dim_wrap), AffineExpr::constant(1)),
             AffineExpr::constant(8),
         ))
         .build();
     
     assert_eq!(wrap_map.apply(&[7]), vec![0]); // (7 + 1) % 8 = 0
     assert_eq!(wrap_map.apply(&[6]), vec![7]); // (6 + 1) % 8 = 7
+}
+
+#[test]
+fn test_affine_map_parse_string() {
+    let dim_a = Dimension::new("a", 8);
+    let dim_b = Dimension::new("b", 8);
+
+    let map = AffineMap::parse(
+        "[a, b] -> [a, b]: (a + 1, b mod 8)",
+        &[dim_a.clone(), dim_b.clone()],
+    )
+    .expect("parse affine map failed");
+
+    let result = map.apply(&[7, 9]);
+    assert_eq!(result, vec![8, 1]);
 }
 
 #[test]

@@ -1,5 +1,5 @@
 use super::size_dim::{Size, Dimension};
-use crate::interconnect::AffineMap;
+use crate::core::AffineMap;
 use crate::processor_aggregation::ProcessorSet;
 
 /// Represents a concrete block of memory

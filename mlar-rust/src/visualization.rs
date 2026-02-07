@@ -577,7 +577,7 @@ impl Default for ArchVisualizer {
 }
 
 /// Format an affine map for display
-fn format_affine_map(map: &crate::interconnect::AffineMap) -> String {
+fn format_affine_map(map: &crate::core::AffineMap) -> String {
     let src_dims = map.source_dim_names();
     let results: Vec<_> = map.map.iter().map(format_affine_expr).collect();
     format!(
@@ -588,7 +588,7 @@ fn format_affine_map(map: &crate::interconnect::AffineMap) -> String {
 }
 
 /// Format an affine map with dimension details for display
-fn format_affine_map_detailed(map: &crate::interconnect::AffineMap) -> String {
+fn format_affine_map_detailed(map: &crate::core::AffineMap) -> String {
     let src_info = map
         .source_dims
         .iter()
@@ -613,10 +613,10 @@ fn format_affine_map_detailed(map: &crate::interconnect::AffineMap) -> String {
 }
 
 /// Format an affine expression for display
-fn format_affine_expr(expr: &crate::interconnect::AffineExpr) -> String {
-    use crate::interconnect::AffineExpr;
+fn format_affine_expr(expr: &crate::core::AffineExpr) -> String {
+    use crate::core::AffineExpr;
     match expr {
-        AffineExpr::Dim(i) => format!("d{}", i),
+        AffineExpr::Dim(dim) => dim.name.clone(),
         AffineExpr::Constant(c) => c.to_string(),
         AffineExpr::Add(a, b) => format!("({} + {})", format_affine_expr(a), format_affine_expr(b)),
         AffineExpr::Mul(a, b) => format!("({} * {})", format_affine_expr(a), format_affine_expr(b)),
