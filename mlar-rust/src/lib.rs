@@ -16,7 +16,7 @@ pub use core::{
 pub use functional_unit::FunctionalUnit;
 pub use lane::FunctionalLane;
 pub use interconnect::Interconnect;
-pub use architecture::Architecture;
+pub use architecture::{Architecture, ArchitectureBuilder};
 pub use processor_aggregation::{ProcessorSet, ProcessorAggregation, Scalable};
 
 // Re-export visualization utilities

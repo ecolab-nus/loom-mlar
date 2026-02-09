@@ -74,6 +74,26 @@ impl ProcessorSet {
         }
     }
 
+    /// Scale this processor set by prepending new dimensions.
+    /// - Single(kind) → Indexed { indices: new_dims, processor: kind }
+    /// - Indexed { indices: old, .. } → Indexed { indices: [new_dims ++ old], .. }
+    pub fn scale_by(self, new_dims: &[Dimension]) -> Self {
+        match self {
+            ProcessorSet::Single(kind) => ProcessorSet::Indexed {
+                indices: new_dims.to_vec(),
+                processor: kind,
+            },
+            ProcessorSet::Indexed { indices: mut old, processor } => {
+                let mut combined = new_dims.to_vec();
+                combined.append(&mut old);
+                ProcessorSet::Indexed {
+                    indices: combined,
+                    processor,
+                }
+            }
+        }
+    }
+
     /// Get the total number of processor instances (if all dimensions are concrete)
     pub fn total_instances(&self) -> Option<usize> {
         match self {

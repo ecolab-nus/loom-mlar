@@ -64,6 +64,19 @@ impl MemoryInterconnects {
             bandwidth,
         }
     }
+
+    /// Scale this interconnect by prepending dimensions.
+    /// All source and target regions are scaled, and the affine map
+    /// is replaced with identity on the new dimensions.
+    pub fn scale_by(self, dims: &[Dimension]) -> Self {
+        Self {
+            name: self.name,
+            sources: self.sources.into_iter().map(|r| r.scale(dims.iter())).collect(),
+            targets: self.targets.into_iter().map(|r| r.scale(dims.iter())).collect(),
+            map: AffineMap::identity(dims),
+            bandwidth: self.bandwidth,
+        }
+    }
 }
 
 /// Memory-to-processor interconnect - maps memory sub-regions to processors
@@ -101,6 +114,19 @@ impl MemoryProcessorInterconnect {
             target,
             map,
             bandwidth,
+        }
+    }
+
+    /// Scale this interconnect by prepending dimensions.
+    /// The source region and target processor set are both scaled,
+    /// and the affine map is replaced with identity on the new dimensions.
+    pub fn scale_by(self, dims: &[Dimension]) -> Self {
+        Self {
+            name: self.name,
+            source: self.source.scale(dims.iter()),
+            target: self.target.scale_by(dims),
+            map: AffineMap::identity(dims),
+            bandwidth: self.bandwidth,
         }
     }
 }

@@ -293,7 +293,7 @@ impl ArchVisualizer {
         let mut viz = Self::new();
 
         // Add processor sets
-        for set in &arch.processor_sets {
+        for (_name, set) in &arch.processor_sets {
             viz.add_processor_set(set);
         }
 

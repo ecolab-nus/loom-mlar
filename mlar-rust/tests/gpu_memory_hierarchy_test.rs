@@ -103,7 +103,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let arch = Architecture {
         name: "GPU".to_string(),
         dimensions: vec![dram_dim, warp_dim],
-        processor_sets: vec![mat_lane_set],
+        processor_sets: vec![("matmul_lane".to_string(), mat_lane_set)],
         processor_aggregations: Vec::new(),
         memory_regions: Vec::new(),
         memory_interconnects: vec![dram_to_l2, l2_to_l1, l1_to_rf],

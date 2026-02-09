@@ -274,6 +274,12 @@ impl AffineMap {
         self.target_dims.iter().map(|d| d.name.clone()).collect()
     }
 
+    /// Create an identity affine map: [d0, d1, ...] -> [d0, d1, ...] : (d0, d1, ...)
+    pub fn identity(dims: &[Dimension]) -> Self {
+        let results = dims.iter().map(|d| AffineExpr::dim(d)).collect();
+        Self::new(dims.to_vec(), dims.to_vec(), results)
+    }
+
     /// Parse a string representation into an AffineMap using named dimensions.
     /// Example: "[x, y] -> [y]: (x mod 8)"
     pub fn parse(input: &str, dims: &[Dimension]) -> Result<Self, String> {
