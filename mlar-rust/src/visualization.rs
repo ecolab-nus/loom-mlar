@@ -1,11 +1,11 @@
 //! Visualization support for MLAR architectures using petgraph.
 //!
-//! This module provides functionality to convert MLAR architecture specifications
-//! into graphs that can be exported to GraphViz DOT format for visualization.
+//! Converts MLAR architecture specifications into graphs exportable to GraphViz DOT format.
 
 use crate::architecture::Architecture;
-use crate::core::{Dimension, MemRegion, MemoryInterconnects};
-use crate::processor_aggregation::ProcessorSet;
+use crate::core::{
+    AffineExpr, AffineMap, Dimension, Endpoint, Link, MemoryBank, MemoryRegion, Processor,
+};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
@@ -14,21 +14,9 @@ use std::fmt::Write;
 /// Node types in the architecture graph
 #[derive(Debug, Clone)]
 pub enum ArchNode {
-    /// Memory region (L1, L2, DRAM, etc.)
-    Memory {
-        name: String,
-        details: String,
-    },
-    /// Processing element (functional unit or lane)
-    Processor {
-        name: String,
-        details: String,
-    },
-    /// Dimension node (for showing grid structure)
-    Dimension {
-        name: String,
-        size: String,
-    },
+    Memory { name: String, details: String },
+    Processor { name: String, details: String },
+    Dimension { name: String, size: String },
 }
 
 impl std::fmt::Display for ArchNode {
@@ -58,28 +46,14 @@ impl std::fmt::Display for ArchNode {
 /// Edge types in the architecture graph
 #[derive(Debug, Clone)]
 pub enum ArchEdge {
-    /// Memory interconnect mapping between regions
-    MemoryInterconnect {
+    /// A Link edge (memory-memory or memory-processor)
+    Link {
         name: String,
-        bandwidth: usize,
-        mapping: String,
-    },
-    /// Memory-to-processor interconnect mapping
-    MemoryProcessorInterconnect {
-        name: String,
-        bandwidth: usize,
-        mapping: String,
-    },
-    /// Interconnect connection
-    Interconnect {
-        name: String,
-        bandwidth: usize,
+        bandwidth: String,
         mapping: String,
     },
     /// Contains relationship (region contains sub-region)
     Contains,
-    /// Uses relationship (processor uses memory)
-    Uses,
     /// Scales across dimension
     ScaledBy,
 }
@@ -87,21 +61,12 @@ pub enum ArchEdge {
 impl std::fmt::Display for ArchEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArchEdge::MemoryInterconnect {
+            ArchEdge::Link {
                 name,
                 bandwidth,
                 mapping,
             } => write!(f, "{}\\n{}\\n({} B/cycle)", name, mapping, bandwidth),
-            ArchEdge::MemoryProcessorInterconnect {
-                name,
-                bandwidth,
-                mapping,
-            } => write!(f, "{}\\n{}\\n({} B/cycle)", name, mapping, bandwidth),
-            ArchEdge::Interconnect { name, bandwidth, mapping } => {
-                write!(f, "{}\\n{}\\n({} B/cycle)", name, mapping, bandwidth)
-            }
             ArchEdge::Contains => write!(f, "contains"),
-            ArchEdge::Uses => write!(f, "uses"),
             ArchEdge::ScaledBy => write!(f, "scaled"),
         }
     }
@@ -128,7 +93,6 @@ impl ArchVisualizer {
         }
     }
 
-    /// Generate a unique name for anonymous memory regions
     fn next_mem_name(&mut self) -> String {
         self.node_counter += 1;
         format!("mem_{}", self.node_counter)
@@ -145,49 +109,41 @@ impl ArchVisualizer {
             .join(" ")
     }
 
-    /// Format dimensions for display in detailed form: "dram_dim:4"
-    fn format_dimensions(dims: &[Dimension]) -> String {
-        dims.iter()
-            .map(|d| format!("{}:{}", d.name, d.size))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
     /// Add a memory region to the graph, returning its node index
-    fn add_memory_region(&mut self, region: &MemRegion, suggested_name: Option<&str>) -> NodeIndex {
+    fn add_memory_region(
+        &mut self,
+        region: &MemoryRegion,
+        suggested_name: Option<&str>,
+    ) -> NodeIndex {
         let name = suggested_name
+            .or_else(|| region.name())
             .map(|s| s.to_string())
             .unwrap_or_else(|| self.next_mem_name());
 
-        // Check if we already have this named region
         if let Some(&idx) = self.memory_nodes.get(&name) {
             return idx;
         }
 
         let (node_name, details) = match region {
-            MemRegion::Bank(bank) => {
-                let details = format!(
-                    "block_size: {}\\nnum_blocks: {}",
-                    bank.block_size, bank.num_blocks
-                );
+            MemoryRegion::Bank(bank) => {
+                let details = format_bank_details(bank);
                 (name.clone(), details)
             }
-            MemRegion::Indexed { indices, sub_region } => {
-                let dims_str = Self::format_dimensions_compact(indices);
-                let sub_details = match sub_region.as_ref() {
-                    MemRegion::Bank(bank) => {
-                        format!(
-                            "block_size: {}\\nnum_blocks: {}",
-                            bank.block_size, bank.num_blocks
-                        )
+            MemoryRegion::Replicated { dims, elem, .. } => {
+                let dims_str = Self::format_dimensions_compact(dims);
+                let sub_details = match elem.as_ref() {
+                    MemoryRegion::Bank(bank) => format_bank_details(bank),
+                    MemoryRegion::Replicated { dims: inner_dims, .. } => {
+                        Self::format_dimensions_compact(inner_dims)
                     }
-                    MemRegion::Indexed { indices: inner_indices, .. } => {
-                        format!("{}", Self::format_dimensions_compact(inner_indices))
-                    }
+                    MemoryRegion::Group { .. } => "group".to_string(),
                 };
-                // Format: "L2 x 4 (dram_dim)"
                 let label = format!("{} {}", name, dims_str);
                 (label, sub_details)
+            }
+            MemoryRegion::Group { name: gname, .. } => {
+                let label = gname.clone().unwrap_or_else(|| name.clone());
+                (label, "group".to_string())
             }
         };
 
@@ -199,22 +155,21 @@ impl ArchVisualizer {
         idx
     }
 
-    /// Add a processor set to the graph
-    fn add_processor_set(&mut self, set: &ProcessorSet) -> NodeIndex {
-        let name = set.processor_name().to_string();
+    /// Add a processor to the graph, returning its node index
+    fn add_processor(&mut self, proc: &Processor, suggested_name: &str) -> NodeIndex {
+        let name = suggested_name.to_string();
 
         if let Some(&idx) = self.processor_nodes.get(&name) {
             return idx;
         }
 
-        let indices = set.indices();
-        let details = if indices.is_empty() {
+        let dims = collect_all_dims(proc);
+        let details = if dims.is_empty() {
             String::new()
         } else {
-            Self::format_dimensions_compact(indices)
+            Self::format_dimensions_compact(&dims)
         };
 
-        // Format: "matmul_lane x 32 (warp_dim)"
         let label = if details.is_empty() {
             name.clone()
         } else {
@@ -229,238 +184,72 @@ impl ArchVisualizer {
         idx
     }
 
-    /// Add a dimension node to the graph
-    /// Build a graph from memory interconnects (e.g., GPU memory hierarchy)
-    pub fn from_memory_interconnects(interconnects: &[MemoryInterconnects]) -> Self {
+    /// Build a graph from Links (e.g., memory hierarchy).
+    /// Uses the actual MemoryRegion/Processor data embedded in each endpoint.
+    pub fn from_links(links: &[Link]) -> Self {
         let mut viz = Self::new();
 
-        for ic in interconnects {
-            // Extract source/target names from interconnect name (e.g., "DRAM_to_L2" -> "DRAM", "L2")
-            let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
+        for link in links {
+            let src_idx = viz.add_endpoint(&link.src);
+            let dst_idx = viz.add_endpoint(&link.dst);
 
-            // Add source regions
-            let source_indices: Vec<_> = ic
-                .sources
-                .iter()
-                .enumerate()
-                .map(|(i, src)| {
-                    let name = if ic.sources.len() == 1 {
-                        src_name.clone()
-                    } else {
-                        format!("{}_{}", src_name, i)
-                    };
-                    viz.add_memory_region(src, Some(&name))
-                })
-                .collect();
-
-            // Add target regions
-            let target_indices: Vec<_> = ic
-                .targets
-                .iter()
-                .enumerate()
-                .map(|(i, tgt)| {
-                    let name = if ic.targets.len() == 1 {
-                        tgt_name.clone()
-                    } else {
-                        format!("{}_{}", tgt_name, i)
-                    };
-                    viz.add_memory_region(tgt, Some(&name))
-                })
-                .collect();
-
-            // Add edges from sources to target
-            let mapping = format_affine_map_detailed(&ic.map);
-            for src_idx in source_indices {
-                for tgt_idx in &target_indices {
-                    viz.graph.add_edge(
-                        src_idx,
-                        *tgt_idx,
-                        ArchEdge::MemoryInterconnect {
-                            name: ic.name.clone(),
-                            bandwidth: ic.bandwidth,
-                            mapping: mapping.clone(),
-                        },
-                    );
-                }
-            }
+            let mapping = format_affine_map_detailed(&link.map);
+            let bw = format_expr_short(&link.bandwidth);
+            viz.graph.add_edge(
+                src_idx,
+                dst_idx,
+                ArchEdge::Link {
+                    name: link.name.clone(),
+                    bandwidth: bw,
+                    mapping,
+                },
+            );
         }
 
         viz
     }
 
-    /// Build a complete graph from an Architecture
+    /// Add a node from an Endpoint, using the embedded data for details.
+    fn add_endpoint(&mut self, endpoint: &Endpoint) -> NodeIndex {
+        match endpoint {
+            Endpoint::Mem(region) => self.add_memory_region(region, region.name()),
+            Endpoint::Proc(proc) => {
+                let name = proc.name().unwrap_or("unnamed");
+                self.add_processor(proc, name)
+            }
+        }
+    }
+
+    /// Build a complete graph from an Architecture.
+    /// Adds nodes from architecture components, then edges from links.
     pub fn from_architecture(arch: &Architecture) -> Self {
         let mut viz = Self::new();
 
-        // Add processor sets
-        for (_name, set) in &arch.processor_sets {
-            viz.add_processor_set(set);
+        // Add named memory regions and processors from Architecture
+        for region in &arch.memory {
+            viz.add_memory_region(region, region.name());
+        }
+        for proc in &arch.processors {
+            let name = proc.name().unwrap_or("unnamed");
+            viz.add_processor(proc, name);
         }
 
-        // Add memory interconnects with mapping edges
-        for ic in &arch.memory_interconnects {
-            // Extract source/target names from interconnect name (e.g., "DRAM_to_L2" -> "DRAM", "L2")
-            let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
+        // Add link edges
+        for link in &arch.links {
+            let src_idx = viz.add_endpoint(&link.src);
+            let dst_idx = viz.add_endpoint(&link.dst);
 
-            let source_indices: Vec<_> = ic
-                .sources
-                .iter()
-                .enumerate()
-                .map(|(i, src)| {
-                    let name = if ic.sources.len() == 1 {
-                        src_name.clone()
-                    } else {
-                        format!("{}_{}", src_name, i)
-                    };
-                    viz.add_memory_region(src, Some(&name))
-                })
-                .collect();
-
-            let target_indices: Vec<_> = ic
-                .targets
-                .iter()
-                .enumerate()
-                .map(|(i, tgt)| {
-                    let name = if ic.targets.len() == 1 {
-                        tgt_name.clone()
-                    } else {
-                        format!("{}_{}", tgt_name, i)
-                    };
-                    viz.add_memory_region(tgt, Some(&name))
-                })
-                .collect();
-
-            let mapping = format_affine_map_detailed(&ic.map);
-            for src_idx in source_indices {
-                for tgt_idx in &target_indices {
-                    viz.graph.add_edge(
-                        src_idx,
-                        *tgt_idx,
-                        ArchEdge::MemoryInterconnect {
-                            name: ic.name.clone(),
-                            bandwidth: ic.bandwidth,
-                            mapping: mapping.clone(),
-                        },
-                    );
-                }
-            }
-        }
-
-        // Add memory-processor interconnects
-        for ic in &arch.memory_processor_interconnects {
-            // Extract source name from interconnect name (e.g., "RF_to_MatLane" -> "RF")
-            let (src_name, _) = extract_src_tgt_names(&ic.name);
-
-            // Add source memory region
-            let src_idx = viz.add_memory_region(&ic.source, Some(&src_name));
-
-            // Add target processor set
-            let tgt_idx = viz.add_processor_set(&ic.target);
-
-            // Add edge from memory to processor
-            let mapping = format_affine_map_detailed(&ic.map);
+            let mapping = format_affine_map_detailed(&link.map);
+            let bw = format_expr_short(&link.bandwidth);
             viz.graph.add_edge(
                 src_idx,
-                tgt_idx,
-                ArchEdge::MemoryProcessorInterconnect {
-                    name: ic.name.clone(),
-                    bandwidth: ic.bandwidth,
+                dst_idx,
+                ArchEdge::Link {
+                    name: link.name.clone(),
+                    bandwidth: bw,
                     mapping,
                 },
             );
-        }
-
-        // Add interconnects
-        for ic in &arch.interconnects {
-            // Create nodes for the interconnect grid
-            let grid_name = format!("{}_grid", ic.name);
-            let grid_dims = Self::format_dimensions(&ic.grid);
-            let grid_idx = viz.graph.add_node(ArchNode::Memory {
-                name: grid_name,
-                details: format!("grid [{}]", grid_dims),
-            });
-
-            // Add self-loop to represent the interconnect topology
-            let mapping = format_affine_map(&ic.affine_map);
-            viz.graph.add_edge(
-                grid_idx,
-                grid_idx,
-                ArchEdge::Interconnect {
-                    name: ic.name.clone(),
-                    bandwidth: ic.bandwidth,
-                    mapping,
-                },
-            );
-        }
-
-        viz
-    }
-
-    /// Build a simplified hierarchical view for memory systems
-    pub fn from_architecture_hierarchical(arch: &Architecture) -> Self {
-        let mut viz = Self::new();
-
-        // Create a linear chain of memory levels
-        // Extract memory level names from interconnect names
-        let mut levels: Vec<(String, NodeIndex)> = Vec::new();
-
-        for ic in &arch.memory_interconnects {
-            // Extract source/target names from interconnect name (e.g., "DRAM_to_L2" -> "DRAM", "L2")
-            let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
-
-            // Add source
-            if let Some(src) = ic.sources.first() {
-                if !levels.iter().any(|(n, _)| *n == src_name) {
-                    let idx = viz.add_memory_region(src, Some(&src_name));
-                    levels.push((src_name.clone(), idx));
-                }
-            }
-
-            // Add target
-            if let Some(tgt) = ic.targets.first() {
-                if !levels.iter().any(|(n, _)| *n == tgt_name) {
-                    let idx = viz.add_memory_region(tgt, Some(&tgt_name));
-                    levels.push((tgt_name.clone(), idx));
-                }
-            }
-        }
-
-        // Add edges for memory interconnects
-        for ic in &arch.memory_interconnects {
-            let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
-
-            if let (Some((_, src_idx)), Some((_, tgt_idx))) = (
-                levels.iter().find(|(n, _)| *n == src_name),
-                levels.iter().find(|(n, _)| *n == tgt_name),
-            ) {
-                viz.graph.add_edge(
-                    *src_idx,
-                    *tgt_idx,
-                    ArchEdge::MemoryInterconnect {
-                        name: ic.name.clone(),
-                        bandwidth: ic.bandwidth,
-                        mapping: format_affine_map_detailed(&ic.map),
-                    },
-                );
-            }
-        }
-
-        // Add processor sets and memory-processor interconnects
-        for ic in &arch.memory_processor_interconnects {
-            let (src_name, _) = extract_src_tgt_names(&ic.name);
-            let proc_idx = viz.add_processor_set(&ic.target);
-
-            if let Some((_, src_idx)) = levels.iter().find(|(n, _)| *n == src_name) {
-                viz.graph.add_edge(
-                    *src_idx,
-                    proc_idx,
-                    ArchEdge::MemoryProcessorInterconnect {
-                        name: ic.name.clone(),
-                        bandwidth: ic.bandwidth,
-                        mapping: format_affine_map_detailed(&ic.map),
-                    },
-                );
-            }
         }
 
         viz
@@ -468,7 +257,10 @@ impl ArchVisualizer {
 
     /// Export the graph to DOT format
     pub fn to_dot(&self) -> String {
-        format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]))
+        format!(
+            "{:?}",
+            Dot::with_config(&self.graph, &[Config::EdgeNoLabel])
+        )
     }
 
     /// Export the graph to DOT format with edge labels
@@ -485,7 +277,6 @@ impl ArchVisualizer {
         writeln!(dot, "    edge [fontname=\"Helvetica\", fontsize=10];").unwrap();
         writeln!(dot).unwrap();
 
-        // Add nodes with styling based on type
         for idx in self.graph.node_indices() {
             let node = &self.graph[idx];
             let (shape, color, style) = match node {
@@ -507,12 +298,11 @@ impl ArchVisualizer {
 
         writeln!(dot).unwrap();
 
-        // Add edges with labels
         for edge in self.graph.edge_indices() {
             let (src, tgt) = self.graph.edge_endpoints(edge).unwrap();
             let weight = &self.graph[edge];
             let (label, color, style) = match weight {
-                ArchEdge::MemoryInterconnect {
+                ArchEdge::Link {
                     name,
                     bandwidth,
                     mapping,
@@ -521,26 +311,7 @@ impl ArchVisualizer {
                     "blue",
                     "solid",
                 ),
-                ArchEdge::MemoryProcessorInterconnect {
-                    name,
-                    bandwidth,
-                    mapping,
-                } => (
-                    format!("{}\\n{}\\n{} B/cycle", name, mapping, bandwidth),
-                    "purple",
-                    "solid",
-                ),
-                ArchEdge::Interconnect {
-                    name,
-                    bandwidth,
-                    mapping,
-                } => (
-                    format!("{}\\n{}\\n{} B/cycle", name, mapping, bandwidth),
-                    "red",
-                    "dashed",
-                ),
                 ArchEdge::Contains => ("contains".to_string(), "gray", "dotted"),
-                ArchEdge::Uses => ("uses".to_string(), "green", "dotted"),
                 ArchEdge::ScaledBy => ("scaled".to_string(), "orange", "dashed"),
             };
             writeln!(
@@ -559,12 +330,10 @@ impl ArchVisualizer {
         dot
     }
 
-    /// Get the underlying graph for further manipulation
     pub fn graph(&self) -> &ArchGraph {
         &self.graph
     }
 
-    /// Get mutable access to the underlying graph
     pub fn graph_mut(&mut self) -> &mut ArchGraph {
         &mut self.graph
     }
@@ -576,71 +345,89 @@ impl Default for ArchVisualizer {
     }
 }
 
-/// Format an affine map for display
-fn format_affine_map(map: &crate::core::AffineMap) -> String {
-    let src_dims = map.source_dim_names();
-    let results: Vec<_> = map.map.iter().map(format_affine_expr).collect();
-    format!(
-        "({}) -> ({})",
-        src_dims.join(", "),
-        results.join(", ")
-    )
+// ─── Helper functions ────────────────────────────────────────────────────────
+
+fn format_bank_details(bank: &MemoryBank) -> String {
+    let cap = format!("capacity: {}", bank.capacity_bytes);
+    if let Some(ref gran) = bank.access_granularity {
+        format!("{}\\ngranularity: {}", cap, gran)
+    } else {
+        cap
+    }
+}
+
+fn collect_all_dims(proc: &Processor) -> Vec<Dimension> {
+    match proc {
+        Processor::Primitive(_) => vec![],
+        Processor::Replicated { dims, elem, .. } => {
+            let mut result = dims.clone();
+            result.extend(collect_all_dims(elem));
+            result
+        }
+        Processor::Group { .. } => vec![],
+    }
 }
 
 /// Format an affine map with dimension details for display
-fn format_affine_map_detailed(map: &crate::core::AffineMap) -> String {
+fn format_affine_map_detailed(map: &AffineMap) -> String {
     let src_info = map
-        .source_dims
+        .src_dims
         .iter()
-        .map(|d| format!("{}:{}", d.name, d.size))
+        .map(|d| d.name.0.clone())
         .collect::<Vec<_>>()
         .join(", ");
-    
-    let tgt_info = map
-        .target_dims
+
+    let dst_info = map
+        .dst_dims
         .iter()
-        .map(|d| format!("{}:{}", d.name, d.size))
+        .map(|d| d.name.0.clone())
         .collect::<Vec<_>>()
         .join(", ");
-    
-    let results: Vec<_> = map.map.iter().map(format_affine_expr).collect();
+
+    let results: Vec<_> = map.exprs.iter().map(format_affine_expr).collect();
     format!(
         "[{}] -> [{}]\\n({})",
         src_info,
-        tgt_info,
+        dst_info,
         results.join(", ")
     )
 }
 
 /// Format an affine expression for display
-fn format_affine_expr(expr: &crate::core::AffineExpr) -> String {
-    use crate::core::AffineExpr;
+fn format_affine_expr(expr: &AffineExpr) -> String {
     match expr {
-        AffineExpr::Dim(dim) => dim.name.clone(),
-        AffineExpr::Constant(c) => c.to_string(),
-        AffineExpr::Add(a, b) => format!("({} + {})", format_affine_expr(a), format_affine_expr(b)),
-        AffineExpr::Mul(a, b) => format!("({} * {})", format_affine_expr(a), format_affine_expr(b)),
+        AffineExpr::Var(dim) => dim.name.0.clone(),
+        AffineExpr::Const(c) => c.to_string(),
+        AffineExpr::Add(a, b) => {
+            format!("({} + {})", format_affine_expr(a), format_affine_expr(b))
+        }
+        AffineExpr::MulConst(c, e) => {
+            format!("({} * {})", format_affine_expr(e), c)
+        }
         AffineExpr::Mod(a, b) => {
             format!("({} mod {})", format_affine_expr(a), format_affine_expr(b))
         }
-        AffineExpr::CeilDiv(a, b) => format!(
-            "({} ceildiv {})",
-            format_affine_expr(a),
-            format_affine_expr(b)
-        ),
+        AffineExpr::CeilDiv(a, b) => {
+            format!(
+                "({} ceildiv {})",
+                format_affine_expr(a),
+                format_affine_expr(b)
+            )
+        }
     }
 }
 
-/// Extract source and target names from interconnect name (e.g., "DRAM_to_L2" -> ("DRAM", "L2"))
-fn extract_src_tgt_names(ic_name: &str) -> (String, String) {
-    if ic_name.contains("_to_") {
-        let mut parts = ic_name.split("_to_");
-        let src = parts.next().unwrap_or(ic_name).to_string();
-        let tgt = parts.next().unwrap_or(ic_name).to_string();
-        (src, tgt)
-    } else {
-        // Fallback: use ic_name as prefix
-        (format!("{}_src", ic_name), format!("{}_tgt", ic_name))
+/// Format an Expr for short display (used for bandwidth labels)
+fn format_expr_short(expr: &crate::core::Expr) -> String {
+    use crate::core::Expr;
+    match expr {
+        Expr::Const(v) => v.to_string(),
+        Expr::Sym(s) => s.0.clone(),
+        Expr::Add(a, b) => format!("({} + {})", format_expr_short(a), format_expr_short(b)),
+        Expr::Mul(a, b) => format!("({} * {})", format_expr_short(a), format_expr_short(b)),
+        Expr::Div(a, b) => format!("({} / {})", format_expr_short(a), format_expr_short(b)),
+        Expr::Min(a, b) => format!("min({}, {})", format_expr_short(a), format_expr_short(b)),
+        Expr::Max(a, b) => format!("max({}, {})", format_expr_short(a), format_expr_short(b)),
     }
 }
 
@@ -650,264 +437,225 @@ pub fn architecture_to_dot(arch: &Architecture) -> String {
     viz.to_dot_styled(&arch.name)
 }
 
-/// Convenience function to generate DOT from memory interconnects
-pub fn memory_hierarchy_to_dot(name: &str, interconnects: &[MemoryInterconnects]) -> String {
-    let viz = ArchVisualizer::from_memory_interconnects(interconnects);
+/// Convenience function to generate DOT from links
+pub fn memory_hierarchy_to_dot(name: &str, links: &[Link]) -> String {
+    let viz = ArchVisualizer::from_links(links);
     viz.to_dot_styled(name)
 }
 
-/// Convenience function to generate expanded DOT from an architecture
-/// Shows all instances of memory regions and processors, with edges based on affine mapping
+/// Convenience function to generate expanded DOT from an architecture.
+/// Shows all instances of memory regions and processors, with edges based on affine mapping.
 pub fn architecture_to_dot_expanded(arch: &Architecture) -> String {
     to_dot_expanded(arch)
 }
 
-/// Generate an expanded DOT visualization showing all instances
+/// Generate an expanded DOT visualization showing all instances.
 fn to_dot_expanded(arch: &Architecture) -> String {
-    use crate::core::Size;
-    
     let mut dot = String::new();
     writeln!(dot, "digraph \"{}\" {{", arch.name).unwrap();
     writeln!(dot, "    rankdir=TB;").unwrap();
     writeln!(dot, "    node [fontname=\"Helvetica\"];").unwrap();
     writeln!(dot, "    edge [fontname=\"Helvetica\", fontsize=10];").unwrap();
     writeln!(dot).unwrap();
-    
-    // Track node IDs for each instance
-    let mut node_id = 0;
-    let mut memory_instance_nodes: HashMap<String, Vec<usize>> = HashMap::new();
-    let mut processor_instance_nodes: HashMap<String, Vec<usize>> = HashMap::new();
-    
-    // Helper function to get dimension size as usize
-    fn get_dim_size(size: &Size) -> Option<usize> {
-        match size {
-            Size::Int(n) => Some(*n),
-            Size::Sym(_) => None, // Can't expand symbolic sizes
-        }
-    }
-    
-    // Helper function to extract dimensions from a MemRegion
-    fn get_region_dims(region: &MemRegion) -> Vec<&Dimension> {
-        match region {
-            MemRegion::Indexed { indices, .. } => indices.iter().collect(),
-            MemRegion::Bank(_) => vec![],
-        }
-    }
-    
-    // Helper function to get bank info
-    fn get_bank_info(region: &MemRegion) -> Option<(String, String)> {
-        match region {
-            MemRegion::Bank(bank) => Some((bank.block_size.to_string(), bank.num_blocks.to_string())),
-            MemRegion::Indexed { sub_region, .. } => get_bank_info(sub_region),
-        }
-    }
-    
-    // Collect all unique memory levels from interconnects
-    let mut memory_levels: Vec<(String, &MemRegion)> = Vec::new();
-    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    
-    for ic in &arch.memory_interconnects {
-        let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
-        
-        if let Some(src) = ic.sources.first() {
-            if !seen_names.contains(&src_name) {
-                memory_levels.push((src_name.clone(), src));
-                seen_names.insert(src_name);
-            }
-        }
-        if let Some(tgt) = ic.targets.first() {
-            if !seen_names.contains(&tgt_name) {
-                memory_levels.push((tgt_name.clone(), tgt));
-                seen_names.insert(tgt_name);
-            }
-        }
-    }
-    
-    for ic in &arch.memory_processor_interconnects {
-        let (src_name, _) = extract_src_tgt_names(&ic.name);
-        if !seen_names.contains(&src_name) {
-            memory_levels.push((src_name.clone(), &ic.source));
-            seen_names.insert(src_name);
-        }
-    }
-    
-    // Create subgraphs for each memory level with all instances
-    for (level_name, region) in &memory_levels {
-        let dims = get_region_dims(region);
-        let bank_info = get_bank_info(region);
-        
-        // Calculate total instances
-        let mut total_instances = 1usize;
-        let mut expandable = true;
-        for dim in &dims {
-            if let Some(size) = get_dim_size(&dim.size) {
-                total_instances *= size;
+
+    let mut node_id = 0usize;
+    let mut entity_nodes: HashMap<String, Vec<usize>> = HashMap::new();
+
+    // Add memory region instances
+    for region in &arch.memory {
+        let name = region.name().unwrap_or("unnamed").to_string();
+        let total = region_total_instances(region);
+
+        if let Some(count) = total {
+            if count > 1 {
+                writeln!(dot, "    subgraph cluster_{} {{", name).unwrap();
+                writeln!(dot, "        label=\"{}\";", name).unwrap();
+                writeln!(dot, "        style=rounded;").unwrap();
+                writeln!(dot, "        bgcolor=\"#E8F4FD\";").unwrap();
+
+                let mut ids = Vec::new();
+                for i in 0..count {
+                    let bank_label = format_bank_instance_label(region, &name, i);
+                    writeln!(dot, "        {} [label=\"{}\", shape=box, fillcolor=lightblue, style=filled];",
+                        node_id, bank_label).unwrap();
+                    ids.push(node_id);
+                    node_id += 1;
+                }
+                writeln!(dot, "    }}").unwrap();
+                entity_nodes.insert(name, ids);
             } else {
-                expandable = false;
-                break;
-            }
-        }
-        
-        if !expandable || total_instances == 0 {
-            // Create single node for symbolic/non-expandable regions
-            let label = format!("{}\\n[symbolic]", level_name);
-            writeln!(dot, "    {} [label=\"{}\", shape=box, fillcolor=lightblue, style=filled];", 
-                node_id, label).unwrap();
-            memory_instance_nodes.insert(level_name.clone(), vec![node_id]);
-            node_id += 1;
-        } else {
-            // Create subgraph cluster for this memory level
-            writeln!(dot, "    subgraph cluster_{} {{", level_name).unwrap();
-            writeln!(dot, "        label=\"{}\";", level_name).unwrap();
-            writeln!(dot, "        style=rounded;").unwrap();
-            writeln!(dot, "        bgcolor=\"#E8F4FD\";").unwrap();
-            
-            let mut instance_ids = Vec::new();
-            for i in 0..total_instances {
-                let bank_label = if let Some((bs, nb)) = &bank_info {
-                    format!("{}[{}]\\nbs:{} nb:{}", level_name, i, bs, nb)
-                } else {
-                    format!("{}[{}]", level_name, i)
-                };
-                writeln!(dot, "        {} [label=\"{}\", shape=box, fillcolor=lightblue, style=filled];",
-                    node_id, bank_label).unwrap();
-                instance_ids.push(node_id);
+                writeln!(
+                    dot,
+                    "    {} [label=\"{}\", shape=box, fillcolor=lightblue, style=filled];",
+                    node_id, name
+                )
+                .unwrap();
+                entity_nodes.insert(name, vec![node_id]);
                 node_id += 1;
             }
-            
-            writeln!(dot, "    }}").unwrap();
-            memory_instance_nodes.insert(level_name.clone(), instance_ids);
+        } else {
+            let label = format!("{}\\n[symbolic]", name);
+            writeln!(
+                dot,
+                "    {} [label=\"{}\", shape=box, fillcolor=lightblue, style=filled];",
+                node_id, label
+            )
+            .unwrap();
+            entity_nodes.insert(name, vec![node_id]);
+            node_id += 1;
         }
     }
-    
-    // Create processor instances
-    for ic in &arch.memory_processor_interconnects {
-        let (_, _tgt_name) = extract_src_tgt_names(&ic.name);
-        let proc_name = ic.target.processor_name();
-        let proc_dims = ic.target.indices();
-        
-        let mut total_instances = 1usize;
-        let mut expandable = true;
-        for dim in proc_dims {
-            if let Some(size) = get_dim_size(&dim.size) {
-                total_instances *= size;
+
+    // Add processor instances
+    for proc in &arch.processors {
+        let name = proc.name().unwrap_or("unnamed").to_string();
+        let total = proc.total_instances();
+
+        if let Some(count) = total {
+            if count > 1 {
+                writeln!(dot, "    subgraph cluster_{} {{", name).unwrap();
+                writeln!(dot, "        label=\"{}\";", name).unwrap();
+                writeln!(dot, "        style=rounded;").unwrap();
+                writeln!(dot, "        bgcolor=\"#E8FDE8\";").unwrap();
+
+                let mut ids = Vec::new();
+                for i in 0..count {
+                    let label = format!("{}[{}]", name, i);
+                    writeln!(dot, "        {} [label=\"{}\", shape=ellipse, fillcolor=lightgreen, style=filled];",
+                        node_id, label).unwrap();
+                    ids.push(node_id);
+                    node_id += 1;
+                }
+                writeln!(dot, "    }}").unwrap();
+                entity_nodes.insert(name, ids);
             } else {
-                expandable = false;
-                break;
-            }
-        }
-        
-        if processor_instance_nodes.contains_key(proc_name) {
-            continue;
-        }
-        
-        if !expandable || total_instances == 0 {
-            let label = format!("{}\\n[symbolic]", proc_name);
-            writeln!(dot, "    {} [label=\"{}\", shape=ellipse, fillcolor=lightgreen, style=filled];",
-                node_id, label).unwrap();
-            processor_instance_nodes.insert(proc_name.to_string(), vec![node_id]);
-            node_id += 1;
-        } else {
-            // Create subgraph cluster for processors
-            writeln!(dot, "    subgraph cluster_{} {{", proc_name).unwrap();
-            writeln!(dot, "        label=\"{}\";", proc_name).unwrap();
-            writeln!(dot, "        style=rounded;").unwrap();
-            writeln!(dot, "        bgcolor=\"#E8FDE8\";").unwrap();
-            
-            let mut instance_ids = Vec::new();
-            for i in 0..total_instances {
-                let label = format!("{}[{}]", proc_name, i);
-                writeln!(dot, "        {} [label=\"{}\", shape=ellipse, fillcolor=lightgreen, style=filled];",
-                    node_id, label).unwrap();
-                instance_ids.push(node_id);
+                writeln!(
+                    dot,
+                    "    {} [label=\"{}\", shape=ellipse, fillcolor=lightgreen, style=filled];",
+                    node_id, name
+                )
+                .unwrap();
+                entity_nodes.insert(name, vec![node_id]);
                 node_id += 1;
             }
-            
-            writeln!(dot, "    }}").unwrap();
-            processor_instance_nodes.insert(proc_name.to_string(), instance_ids);
+        } else {
+            let label = format!("{}\\n[symbolic]", name);
+            writeln!(
+                dot,
+                "    {} [label=\"{}\", shape=ellipse, fillcolor=lightgreen, style=filled];",
+                node_id, label
+            )
+            .unwrap();
+            entity_nodes.insert(name, vec![node_id]);
+            node_id += 1;
         }
     }
-    
+
     writeln!(dot).unwrap();
-    
+
     // Draw edges based on affine maps
-    for ic in &arch.memory_interconnects {
-        let (src_name, tgt_name) = extract_src_tgt_names(&ic.name);
-        
-        let src_nodes = match memory_instance_nodes.get(&src_name) {
+    for link in &arch.links {
+        let src_name = link.src.name();
+        let dst_name = link.dst.name();
+
+        let src_nodes = match entity_nodes.get(src_name) {
             Some(nodes) => nodes,
             None => continue,
         };
-        let tgt_nodes = match memory_instance_nodes.get(&tgt_name) {
+        let dst_nodes = match entity_nodes.get(dst_name) {
             Some(nodes) => nodes,
             None => continue,
         };
-        
+
         let src_count = src_nodes.len();
-        let tgt_count = tgt_nodes.len();
-        
-        if src_count == 0 || tgt_count == 0 {
+        let dst_count = dst_nodes.len();
+
+        if src_count == 0 || dst_count == 0 {
             continue;
         }
-        
-        // For each source instance, compute which target instances it connects to
+
+        let edge_color = if link.dst.is_proc() {
+            "purple"
+        } else {
+            "blue"
+        };
+
         for (src_idx, &src_node) in src_nodes.iter().enumerate() {
-            // Apply the affine map to get the base target index
-            let target_base = ic.map.apply(&[src_idx])[0] as usize;
-            
-            // Calculate fan-out: how many targets each source connects to
-            // This is based on the ratio of target size to source size
-            let fan_out = if src_count > 0 { tgt_count / src_count } else { 1 };
-            
-            // Connect to fan_out consecutive targets starting at target_base
+            let target_base = if !link.map.exprs.is_empty() {
+                link.map.apply(&[src_idx as i64])[0] as usize
+            } else {
+                0
+            };
+
+            let fan_out = if src_count > 0 {
+                dst_count / src_count
+            } else {
+                1
+            };
+
             for offset in 0..fan_out {
                 let tgt_idx = target_base + offset;
-                if tgt_idx < tgt_nodes.len() {
-                    let tgt_node = tgt_nodes[tgt_idx];
-                    writeln!(dot, "    {} -> {} [color=blue];", src_node, tgt_node).unwrap();
+                if tgt_idx < dst_nodes.len() {
+                    let tgt_node = dst_nodes[tgt_idx];
+                    writeln!(
+                        dot,
+                        "    {} -> {} [color={}];",
+                        src_node, tgt_node, edge_color
+                    )
+                    .unwrap();
                 }
             }
         }
     }
-    
-    // Draw edges for memory-processor interconnects
-    for ic in &arch.memory_processor_interconnects {
-        let (src_name, _) = extract_src_tgt_names(&ic.name);
-        let proc_name = ic.target.processor_name();
-        
-        let src_nodes = match memory_instance_nodes.get(&src_name) {
-            Some(nodes) => nodes,
-            None => continue,
-        };
-        let proc_nodes = match processor_instance_nodes.get(proc_name) {
-            Some(nodes) => nodes,
-            None => continue,
-        };
-        
-        let src_count = src_nodes.len();
-        let proc_count = proc_nodes.len();
-        
-        if src_count == 0 || proc_count == 0 {
-            continue;
-        }
-        
-        // For each source instance, compute which processor instances it connects to
-        for (src_idx, &src_node) in src_nodes.iter().enumerate() {
-            let target_base = ic.map.apply(&[src_idx])[0] as usize;
-            let fan_out = if src_count > 0 { proc_count / src_count } else { 1 };
-            
-            for offset in 0..fan_out {
-                let tgt_idx = target_base + offset;
-                if tgt_idx < proc_nodes.len() {
-                    let tgt_node = proc_nodes[tgt_idx];
-                    writeln!(dot, "    {} -> {} [color=purple];", src_node, tgt_node).unwrap();
-                }
-            }
-        }
-    }
-    
+
     writeln!(dot, "}}").unwrap();
     dot
+}
+
+/// Compute total number of instances for a memory region
+fn region_total_instances(region: &MemoryRegion) -> Option<u64> {
+    match region {
+        MemoryRegion::Bank(_) => Some(1),
+        MemoryRegion::Replicated { dims, elem, .. } => {
+            let outer: u64 = dims
+                .iter()
+                .map(|d| d.size.as_const())
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .product();
+            let inner = region_total_instances(elem)?;
+            Some(outer * inner)
+        }
+        MemoryRegion::Group { parts, .. } => {
+            let mut total = 0u64;
+            for p in parts {
+                total += region_total_instances(p)?;
+            }
+            Some(total)
+        }
+    }
+}
+
+/// Format a bank instance label for the expanded view
+fn format_bank_instance_label(region: &MemoryRegion, name: &str, index: u64) -> String {
+    // Walk down to find bank details
+    fn find_bank(region: &MemoryRegion) -> Option<&MemoryBank> {
+        match region {
+            MemoryRegion::Bank(b) => Some(b),
+            MemoryRegion::Replicated { elem, .. } => find_bank(elem),
+            MemoryRegion::Group { .. } => None,
+        }
+    }
+
+    if let Some(bank) = find_bank(region) {
+        if let Some(ref gran) = bank.access_granularity {
+            format!("{}[{}]\\ncap:{} gran:{}", name, index, bank.capacity_bytes, gran)
+        } else {
+            format!("{}[{}]\\ncap:{}", name, index, bank.capacity_bytes)
+        }
+    } else {
+        format!("{}[{}]", name, index)
+    }
 }
 
 #[cfg(test)]
@@ -917,12 +665,8 @@ mod tests {
 
     #[test]
     fn test_simple_memory_visualization() {
-        let bank = Bank {
-            block_size: Size::int(1024),
-            num_blocks: Size::int(16),
-        };
-
-        let region = MemRegion::bank(bank);
+        let bank = MemoryBank::from_blocks(SizeExpr::Const(1024), SizeExpr::Const(16));
+        let region = MemoryRegion::bank(bank);
 
         let mut viz = ArchVisualizer::new();
         viz.add_memory_region(&region, Some("test_mem"));

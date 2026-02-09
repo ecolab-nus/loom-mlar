@@ -1,95 +1,225 @@
 # MLAR Rust Front-end
 
-A Rust implementation of the Multi-Level Array Representation (MLAR) for hardware architecture description and performance modeling. This library provides a type-safe, ergonomic API that mirrors the MLAR MLIR dialect concepts.
+A Rust implementation of the Multi-Level Architecture Representation (MLAR) for hardware architecture description and performance modeling. The library provides a composable, compiler-oriented IR for describing hardware with symbolic sizes, affine connectivity maps, and constraint-based performance models.
 
-## Software Architecture
+## Design Principles
 
-### Overview
+- **Composable and indexable** -- hierarchical, scalable components via recursive enums
+- **Self-describing** -- components carry their own names; no external name-to-object registries
+- **Compiler-oriented** -- focus on regularity, mapping, and cost modeling (not cycle-accurate simulation)
+- **Symbolic-friendly** -- sizes and dimensions can be concrete or symbolic expressions
+- **Performance-aware** -- models are conditionally valid via a constraint system (no port/protocol modeling)
+- **Reference-friendly** -- builders take `&T` references, cloning internally; callers never worry about ownership
 
-The `mlar-rust` library is designed as a modular, composable system for describing hardware architectures with performance models. It uses Rust's type system and trait-based polymorphism to provide compile-time safety while maintaining flexibility for different hardware configurations.
-
-### Module Structure
+## Module Structure
 
 ```
 src/
-├── lib.rs                  # Public API and module exports
+├── lib.rs                      # Public API and re-exports
 ├── core/
-│   ├── mod.rs              # Core module exports
-│   ├── size_dim.rs         # Size and Dimension types
-│   ├── affine.rs           # AffineExpr, AffineMap, parsing
-│   ├── memory.rs           # Memory regions + interconnects
-│   └── processor.rs        # Processor trait for functional units and lanes
-├── processor_aggregation.rs # ProcessorSet and ProcessorAggregation
-├── functional_unit.rs      # Fixed-shape synchronous operations
-├── lane.rs                 # Dynamic-shape streaming operations
-├── interconnect.rs         # Network-on-chip topology with affine maps
-├── architecture.rs         # Top-level hardware composition + scaling
-└── visualization.rs        # GraphViz DOT export
+│   ├── mod.rs                  # Core module re-exports
+│   ├── size_dim.rs             # DimName, Symbol, SizeExpr, Dimension
+│   ├── expr.rs                 # General symbolic Expr (for cost modeling)
+│   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
+│   ├── perf.rs                 # PerfModel, CostExpr
+│   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
+│   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
+│   ├── processor.rs            # PrimitiveProc, Processor (Primitive/Replicated/Group)
+│   └── link.rs                 # Link, Endpoint, SharingDomain
+├── architecture.rs             # Architecture, ArchitectureBuilder
+└── visualization.rs            # GraphViz DOT export (summary + expanded views)
 ```
 
 ## Core Concepts
 
-### Components
+The type system is built around a small number of symmetric abstractions. Memory and processors share the same recursive structure (Bank/Primitive at the leaf, Replicated for homogeneous scaling, Group for heterogeneous composition), and all connectivity is expressed through a single `Link` type with affine maps.
 
-- **Dimensions**: `Dimension::new("x", 8)` or `Dimension::new_symbolic("x", "N")`
-- **Memory banks/regions**: `Bank { ... }` + `MemRegion::bank(...).scale([...])`
-- **Processors**: `FunctionalUnit { ... }` or `FunctionalLane::new(...)`, then `.scale(...)`
-- **Memory-to-Memory**: `MemoryInterconnects::builder(...)` with affine maps
-- **Memory-to-Processor**: `MemoryProcessorInterconnect::builder(...)` with affine maps
-- **NoC interconnects**: `Interconnect { ... }` with affine maps
+Components are **self-naming**: a `MemoryRegion` carries its name via `.with_name()`, and a `Processor` carries its name from `Processor::primitive("name")`. Builders and endpoints extract names from the data itself -- you never pass a separate name string alongside the object.
 
-### Scaling
+### 1. Dimensions and Sizes
 
-Both memory regions and processors support scaling to replicate them across dimensions.
+A `Dimension` defines a named axis of homogeneous replication.
 
-#### Scaling Memory Regions
+```rust
+// Concrete dimension
+let dim_x = Dimension::new("x", 8);
+
+// Symbolic dimension (size unknown at IR construction time)
+let dim_n = Dimension::new_symbolic("n", "N");
+```
+
+Sizes are represented by `SizeExpr`, which supports concrete values, symbolic names, and arithmetic:
+
+```rust
+SizeExpr::Const(1024)                              // concrete
+SizeExpr::sym("DRAM_SIZE")                         // symbolic
+SizeExpr::Mul(Box::new(SizeExpr::Const(256)),      // arithmetic: 256 * DRAM_SIZE
+              Box::new(SizeExpr::sym("DRAM_SIZE")))
+```
+
+A single `Dimension` can be passed as a slice via the convenience method `dim.as_slice()`, which returns `&[Dimension]` without allocating a `Vec`.
+
+### 2. Memory Model (recursive `MemoryRegion`)
+
+Memory is described by a recursive enum with three variants:
+
+```
+MemoryRegion
+├── Bank(MemoryBank)                          -- atomic leaf unit
+├── Replicated { name, dims, elem }           -- homogeneous replication
+└── Group { name, parts }                     -- heterogeneous composition
+```
+
+A `MemoryBank` is the leaf unit. It stores total capacity (which can be symbolic) and optional access granularity:
+
+```rust
+// Bank from block_size and num_blocks (common pattern)
+let bank = MemoryBank::from_blocks(SizeExpr::Const(128), SizeExpr::Const(1024));
+// capacity_bytes = 128 * 1024, access_granularity = 128
+
+// Symbolic capacity
+let dram_bank = MemoryBank::from_blocks(SizeExpr::Const(256), SizeExpr::sym("DRAM_SIZE"));
+// capacity_bytes = 256 * DRAM_SIZE (kept as SizeExpr::Mul)
+```
+
+Replication creates a multi-dimensional array of identical banks. The `.with_name()` method attaches a name to the region so it can be referenced later:
 
 ```rust
 let dim_bank = Dimension::new("nbank", 16);
 
-// 16 banks, each 16KB (1024 blocks x 128 bytes)
-let l1 = MemRegion::bank(Bank {
-    block_size: Size::int(128),
-    num_blocks: Size::int(1024),
-})
-.scale([&dim_bank]); // Indexed[nbank] -> Bank
+// 16-bank L1 cache: Replicated[nbank:16] -> Bank(128 * 1024)
+let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(128),
+    SizeExpr::Const(1024),
+))
+.replicate(dim_bank.as_slice())
+.with_name("l1");
+
+assert_eq!(l1.name(), Some("l1"));
 ```
 
-#### Scaling Processors
+Names propagate through scaling: when `Architecture::scale()` wraps a named region in another `Replicated`, `name()` recurses to find the inner name.
 
-Processors (`FunctionalUnit`, `FunctionalLane`) are scaled via the `Scalable` trait to create a `ProcessorSet`:
+### 3. Processor Model (recursive `Processor`)
 
-```rust
-let matrix_lane = FunctionalLane::new(
-    "matrix_lane",
-    vec![&l1, &l1],
-    vec![&l1],
-    MatMulLane,
-);
+Processors mirror the memory structure with the same three-variant pattern:
 
-// Single processor (not scaled)
-let single = ProcessorSet::from_lane(matrix_lane);
-
-// Or scale across dimensions
-let scaled = matrix_lane.scale([&dim_x, &dim_y]); // 8x8 = 64 instances
+```
+Processor
+├── Primitive(PrimitiveProc)                  -- atomic compute unit
+├── Replicated { name, dims, elem }           -- homogeneous replication
+└── Group { name, parts }                     -- heterogeneous composition
 ```
 
-#### Scaling Architectures
-
-Entire architectures can be scaled, which scales all internal components together:
+A `PrimitiveProc` carries its name from construction. The name is accessible via `Processor::name()`, which recurses through `Replicated` wrappers:
 
 ```rust
-let core = Architecture::builder("core")
-    .mem("l1", l1)
-    .processor("matrix_lane", matrix_lane_set)
-    .mem_proc_interconnect(l1_to_matrix)
+// Structural-only (no cost model)
+let lane = Processor::primitive("matrix_lane");
+assert_eq!(lane.name(), Some("matrix_lane"));
+
+// With performance model
+let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
+    constraints: ConstraintExpr::And(vec![
+        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(256)),
+        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(256)),
+    ]),
+    cost: CostExpr {
+        latency: Expr::div(
+            Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+            Expr::Const(64),
+        ),
+        throughput: Expr::Const(64),
+    },
+});
+```
+
+Replication scales processors across dimensions, just like memory:
+
+```rust
+let warp_dim = Dimension::new("warp_dim", 32);
+
+// 32 matrix lanes (one per warp)
+let mat_lanes = Processor::primitive("matmul_lane")
+    .replicate(warp_dim.as_slice());
+
+assert_eq!(mat_lanes.name(), Some("matmul_lane")); // name recurses to Primitive
+assert_eq!(mat_lanes.total_instances(), Some(32));
+```
+
+### 4. Connectivity (`Link`)
+
+All connectivity between architecture entities is expressed through a single `Link` type. A link connects two endpoints (memory or processor) with an affine map describing the regular connection pattern, plus bandwidth and optional constraints.
+
+Endpoints hold the actual `MemoryRegion` or `Processor` objects directly. Names are derived from the data -- you just pass a reference:
+
+```rust
+// Memory-to-memory link
+let dram_to_l2 = Link::builder("DRAM_to_L2")
+    .from_mem(&dram)      // borrows and clones internally
+    .to_mem(&l2)
+    .map(affine_map)
+    .bandwidth(256)       // bytes/cycle
     .build();
 
-// Scale to 8x8 grid: memory, processors, and interconnects all scale together
-let cores = core.scale([&dim_x, &dim_y]);
+// Memory-to-processor link
+let rf_to_lane = Link::builder("RF_to_MatLane")
+    .from_mem(&rf)
+    .to_proc(&mat_lane)
+    .map(affine_map)
+    .bandwidth(64)
+    .build();
 ```
 
-See the [Compositional Architecture](#compositional-architecture) section for the full pattern.
+The `Endpoint` enum is simply `Mem(MemoryRegion)` or `Proc(Processor)`, with `name()` delegating to the inner data.
+
+### 5. Affine Maps
+
+Affine maps express how source indices map to destination indices. They are the core mechanism for describing regular, replicated connectivity patterns. Source and destination dimensions are full `Dimension` objects (not just names):
+
+```rust
+// Programmatic construction (takes &[Dimension] slices, clones internally)
+let map = AffineMap::new(
+    dim_x.as_slice(),             // source dims
+    dim_y.as_slice(),             // destination dims
+    vec![AffineExpr::Var(dim_x.clone())],  // exprs: y = x (1-to-1)
+);
+
+// Identity map (each instance connects to itself)
+let id = AffineMap::identity(&[dim_x.clone(), dim_y.clone()]);
+
+// Parse from string (unbound template, then bind to dimensions)
+let template = AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)").unwrap();
+let map = template.bind([&dram_dim, &warp_dim]).unwrap();
+```
+
+The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`, `MulConst` (scalar multiplication only), `Mod`, and `CeilDiv`.
+
+### 6. Performance Models
+
+Performance models replace trait-based latency computation with a data-driven approach. A `PerfModel` combines constraints (when the model is valid) with cost expressions (what the model predicts):
+
+```rust
+PerfModel {
+    constraints: ConstraintExpr::And(vec![
+        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(256)),  // M >= 256
+        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(256)),  // N >= 256
+    ]),
+    cost: CostExpr {
+        latency: Expr::div(                                     // M*N*K / 64
+            Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+            Expr::Const(64),
+        ),
+        throughput: Expr::Const(64),                            // 64 ops/cycle
+    },
+}
+```
+
+The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
+
+- **Provably true**: model is applicable, use the cost expressions
+- **Provably false**: reject model, try alternatives
+- **Unknown** (symbolic): keep symbolic as a guard, or use a conservative fallback
 
 ## Compositional Architecture
 
@@ -97,14 +227,39 @@ The primary pattern for building architectures is **define-once, scale, compose*
 
 1. **Define** a single unit (e.g., one core) as an `Architecture` with named components
 2. **Scale** it across dimensions -- all internals scale together
-3. **Extract** named memory regions from the scaled result for inter-unit wiring
-4. **Compose** by adding interconnects on top
+3. **Compose** by adding inter-unit links
+
+### Architecture Structure
+
+An `Architecture` stores components directly -- names live inside the data:
+
+```rust
+pub struct Architecture {
+    pub name: String,
+    pub memory: Vec<MemoryRegion>,    // each carries its own name via .name()
+    pub processors: Vec<Processor>,   // each carries its own name via .name()
+    pub links: Vec<Link>,             // connectivity
+}
+```
+
+The builder takes references, extracting names from the objects:
+
+```rust
+let core = Architecture::builder("core")
+    .mem(&l1)                   // name "l1" is inside the region
+    .processor(&matrix_lane)    // name "matrix_lane" is inside the processor
+    .link(l1_to_matrix)
+    .build();
+
+// Look up by name (searches via .name())
+let region = core.get_memory_region("l1").unwrap();
+let proc = core.get_processor("matrix_lane").unwrap();
+```
 
 ### Full Example: 8x8 Core Grid
 
 ```rust
 use mlar_rust::*;
-use mlar_rust::lane::{MatMulLane, VecLane};
 
 // === Dimensions ===
 let dim_bank = Dimension::new("nbank", 16);
@@ -113,107 +268,53 @@ let dim_y = Dimension::new("y", 8);
 
 // === Step 1: Define a single core ===
 
-// L1 cache: 16 banks, each 16KB
-let l1 = MemRegion::bank(Bank {
-    block_size: Size::int(128),
-    num_blocks: Size::int(1024),
-})
-.scale([&dim_bank]);
+// L1 cache: 16 banks, each 128KB (1024 blocks x 128 bytes)
+let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(128),
+    SizeExpr::Const(1024),
+))
+.replicate(dim_bank.as_slice())
+.with_name("l1");
 
-// Compute lanes (single instances within one core)
-let matrix_lane_set = ProcessorSet::from_lane(
-    FunctionalLane::new("matrix_lane", vec![&l1, &l1], vec![&l1], MatMulLane),
-);
-let vector_lane_set = ProcessorSet::from_lane(
-    FunctionalLane::new("vector_lane", vec![&l1, &l1], vec![&l1], VecLane),
-);
+// Two processor types (names set at construction)
+let matrix_lane = Processor::primitive("matrix_lane");
+let vector_lane = Processor::primitive("vector_lane");
 
-// All-to-one interconnect: all 16 banks visible to each lane
-let all_to_one_map = AffineMap::new(
-    vec![dim_bank.clone()], // source: bank index
-    vec![],                 // target: no dims (single processor)
-    vec![],                 // no result expressions
+// All-to-one connectivity: all 16 banks visible to each lane
+let all_to_one = AffineMap::new(
+    dim_bank.as_slice(), &[], vec![],
 );
 
-let l1_to_matrix = MemoryProcessorInterconnect::builder("l1_to_matrix_lane")
-    .source(&l1)
-    .target(&matrix_lane_set)
-    .affine_map(all_to_one_map.clone())
-    .bandwidth(512)
-    .build();
+let l1_to_matrix = Link::builder("l1_to_matrix_lane")
+    .from_mem(&l1).to_proc(&matrix_lane)
+    .map(all_to_one.clone()).bandwidth(512).build();
 
-let l1_to_vector = MemoryProcessorInterconnect::builder("l1_to_vector_lane")
-    .source(&l1)
-    .target(&vector_lane_set)
-    .affine_map(all_to_one_map)
-    .bandwidth(128)
-    .build();
+let l1_to_vector = Link::builder("l1_to_vector_lane")
+    .from_mem(&l1).to_proc(&vector_lane)
+    .map(all_to_one).bandwidth(128).build();
 
-// Build the core as an Architecture with named components
+// Build the core (all names come from the data)
 let core = Architecture::builder("core")
-    .dim(&dim_bank)
-    .mem("l1", l1)
-    .processor("matrix_lane", matrix_lane_set)
-    .processor("vector_lane", vector_lane_set)
-    .mem_proc_interconnect(l1_to_matrix)
-    .mem_proc_interconnect(l1_to_vector)
+    .mem(&l1)
+    .processor(&matrix_lane)
+    .processor(&vector_lane)
+    .link(l1_to_matrix)
+    .link(l1_to_vector)
     .build();
+
+assert_eq!(core.total_processing_elements(), Some(2));
 
 // === Step 2: Scale to 8x8 ===
 let cores = core.scale([&dim_x, &dim_y]);
 
 // After scaling:
-// - "l1" region is now Indexed[x,y] -> Indexed[nbank] -> Bank
-// - matrix_lane_set is now Indexed[x,y] (64 instances)
-// - interconnect maps became identity [x,y] -> [x,y]
+// - "l1" is now Replicated[x,y] -> Replicated[nbank] -> Bank
+// - each processor is Replicated[x,y] -> Primitive
+// - link maps became identity [x,y] -> [x,y]
 assert_eq!(cores.total_processing_elements(), Some(128)); // 2 lanes x 64 cores
 
-// === Step 3: Extract regions for inter-core wiring ===
-let all_l1s = cores.get_memory_region("l1").unwrap();
-
-// === Step 4: Compose with inter-core connections ===
-// e.g., horizontal NoC connecting neighboring L1s
-let shift_x_map = AffineMap::builder()
-    .source_dims(vec![&dim_x, &dim_y])
-    .target_dims(vec![&dim_x, &dim_y])
-    .result(AffineExpr::modulo(
-        AffineExpr::add(AffineExpr::dim(&dim_x), AffineExpr::constant(1)),
-        AffineExpr::constant(8),
-    ))
-    .result(AffineExpr::dim(&dim_y))
-    .build();
-
-let noc = MemoryInterconnects::builder("l1_to_l1_horizontal")
-    .source(all_l1s)
-    .target(all_l1s)
-    .affine_map(shift_x_map)
-    .bandwidth(32)
-    .build();
-
-let chip = cores
-    .with_name("chip")
-    .with_memory_interconnect(noc);
-```
-
-### Architecture Builder
-
-The `Architecture::builder()` API provides fluent construction with named components:
-
-```rust
-let arch = Architecture::builder("my_arch")
-    .dim(&dim_x)                          // add dimensions
-    .dims([&dim_y, &dim_z])              // add multiple dimensions
-    .mem("l1", l1_region)                 // named memory region
-    .mem("l2", l2_region)                 // another named region
-    .processor("mat_lane", mat_set)       // named processor set
-    .mem_interconnect(l1_to_l2)           // memory-to-memory interconnect
-    .mem_proc_interconnect(l1_to_mat)     // memory-to-processor interconnect
-    .interconnect(noc)                    // NoC interconnect
-    .build();
-
-// Look up named components
-let l1 = arch.get_memory_region("l1").unwrap();
-let mat = arch.get_processor_set("mat_lane").unwrap();
+// Name lookup still works through nested Replicated layers
+assert_eq!(cores.get_memory_region("l1").unwrap().name(), Some("l1"));
 ```
 
 ### How Scaling Works
@@ -222,20 +323,81 @@ When `architecture.scale(dims)` is called:
 
 | Component | Before (single core) | After scaling by [x, y] |
 |-----------|---------------------|------------------------|
-| Memory region "l1" | `Indexed[nbank] -> Bank` | `Indexed[x,y] -> Indexed[nbank] -> Bank` |
-| ProcessorSet | `Single(lane)` | `Indexed[x,y] -> lane` |
-| Interconnect map | `[nbank] -> []` | `[x,y] -> [x,y]` (identity) |
+| Memory region "l1" | `Replicated[nbank] -> Bank` | `Replicated[x,y] -> Replicated[nbank] -> Bank` |
+| Processor | `Primitive(lane)` | `Replicated[x,y] -> Primitive(lane)` |
+| Link map | `[nbank] -> []` | `[x,y] -> [x,y]` (identity) |
 
-The interconnect maps are replaced with identity maps on the new dimensions. This captures the replication semantics: each core at (x,y) connects to its own L1 at (x,y). The original bank-level connectivity is preserved inside the hierarchical MemRegion structure.
+The link maps are replaced with identity maps on the new dimensions. This captures replication semantics: each core at (x,y) connects to its own L1 at (x,y). The original bank-level connectivity is preserved inside the hierarchical structure.
+
+Names are preserved through scaling because `name()` recurses: the outer `Replicated` added by `scale()` has `name: None`, so `name()` falls through to the inner `Replicated` which carries the original name.
+
+### Full Example: GPU Memory Hierarchy
+
+```rust
+use mlar_rust::*;
+
+let dram_dim = Dimension::new("dram_dim", 4);
+let warp_dim = Dimension::new("warp_dim", 32);
+
+// Memory regions (each named via .with_name())
+let dram = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(256), SizeExpr::sym("DRAM_SIZE"),
+))
+.replicate(dram_dim.as_slice())
+.with_name("dram");
+
+let l2 = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(256), SizeExpr::Const(4096),
+))
+.replicate(dram_dim.as_slice())
+.with_name("l2");
+
+let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(64), SizeExpr::Const(1024),
+))
+.replicate(warp_dim.as_slice())
+.with_name("l1");
+
+let rf = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(32), SizeExpr::Const(128),
+))
+.replicate(warp_dim.as_slice())
+.with_name("rf");
+
+// Connectivity via affine maps (endpoints are just &references)
+let dram_to_l2 = Link::builder("DRAM_to_L2")
+    .from_mem(&dram).to_mem(&l2)
+    .map(AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
+        .unwrap().bind([&dram_dim]).unwrap())
+    .bandwidth(256).build();
+
+// 1:8 fan-out from L2 to L1
+let l2_to_l1 = Link::builder("L2_to_L1")
+    .from_mem(&l2).to_mem(&l1)
+    .map(AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)")
+        .unwrap().bind([&dram_dim, &warp_dim]).unwrap())
+    .bandwidth(128).build();
+
+// 32 matrix lanes, one per warp
+let mat_lane = Processor::primitive("matmul_lane")
+    .replicate(warp_dim.as_slice());
+
+let arch = Architecture::builder("GPU")
+    .mem(&dram).mem(&l2).mem(&l1).mem(&rf)
+    .processor(&mat_lane)
+    .link(dram_to_l2).link(l2_to_l1)
+    // ... l1_to_rf, rf_to_mat links ...
+    .build();
+```
+
+This produces the hierarchy: DRAM[4] -> L2[4] -> L1[32] -> RF[32] -> MatLane[32].
 
 ## Visualization
 
 Generate GraphViz DOT visualizations of architectures:
 
 ```rust
-use mlar_rust::*;
-
-// Summary view (one node per component)
+// Summary view (one node per named component)
 let dot = architecture_to_dot(&arch);
 std::fs::write("arch.dot", &dot).unwrap();
 
@@ -243,8 +405,8 @@ std::fs::write("arch.dot", &dot).unwrap();
 let expanded = architecture_to_dot_expanded(&arch);
 std::fs::write("arch_expanded.dot", &expanded).unwrap();
 
-// Memory hierarchy only
-let mem_dot = memory_hierarchy_to_dot("GPU Memory", &interconnects);
+// From links only (e.g., memory hierarchy)
+let mem_dot = memory_hierarchy_to_dot("GPU Memory", &links);
 ```
 
 Render with GraphViz:
@@ -254,147 +416,32 @@ dot -Tpng arch.dot -o arch.png
 dot -Tsvg arch_expanded.dot -o arch_expanded.svg
 ```
 
-## Features
+## Type Reference
 
-- **Hierarchical Memory Regions**: Define memory as indexed regions with `MemRegion` (Indexed/Bank structure)
-- **Memory Banks**: Specify memory using `block_size` and `num_blocks` via `Bank` type (both can be symbolic)
-- **Memory Interconnects**: Model how memory regions are connected with affine maps
-- **Memory-to-Processor Interconnects**: Map memory regions to processor sets
-- **Processor Abstraction**: Common `Processor` trait for functional units and lanes
-- **ProcessorSet**: Scale processors across dimensions with the `scale()` method
-- **Compositional Architectures**: Define once, scale, extract, compose
-- **Architecture Scaling**: `arch.scale(dims)` scales all components together
-- **Named Components**: Look up memory regions and processor sets by name after scaling
-- **Symbolic Sizes**: Dimensions and memory sizes can be symbolic for parameterized architectures
-- **Affine Maps**: Express routing and connectivity with affine expressions (add, mul, mod, ceildiv)
-- **Affine Map Parsing**: Parse affine maps from strings: `"[x, y] -> [y]: (x mod 8)"`
-- **Identity Maps**: `AffineMap::identity(dims)` for replicated connectivity patterns
-- **Performance Models**: Lane latency computed with precondition validation
-- **DOT Visualization**: Export architectures to GraphViz for visual inspection
-
-### Core Modules
-
-#### 1. **Primitives** (`core/size_dim.rs`)
-
-- **`Size`**: Enum representing either concrete or symbolic sizes
-  - `Int(usize)`: Known size value
-  - `Sym(String)`: Named symbolic size (e.g., "N", "TILE_SIZE")
-- **`Dimension`**: Grid dimensions with a name and `Size`
-- **`Index`**: Type alias for `usize`
-
-#### 2. **Functional Units** (`functional_unit.rs`)
-
-Fixed-shape, synchronous operations with predetermined latencies.
-
-```rust
-let mat_fu = FunctionalUnit {
-    name: "matmul_32x32".to_string(),
-    input_regions: vec![l1.clone(), l1.clone()],
-    output_regions: vec![l1.clone()],
-    latency: 8,
-};
-```
-
-#### 3. **Lanes** (`lane.rs`)
-
-Dynamic-shape, streaming operations with runtime-computed latencies and precondition validation.
-
-```rust
-let mat_lane = FunctionalLane::new(
-    "matmul_lane",
-    vec![&l1, &l1],
-    vec![&l1],
-    MatMulLane,  // Implements LaneModel trait
-);
-
-// Validate and compute latency
-let latency = mat_lane.compute_latency(&[512, 512, 256], &[]);
-```
-
-#### 4. **ProcessorSet** (`processor_aggregation.rs`)
-
-Represents processors scaled across dimensions:
-
-```rust
-pub enum ProcessorSet {
-    Indexed { indices: Vec<Dimension>, processor: ProcessorKind },
-    Single(ProcessorKind),
-}
-```
-
-Key methods:
-- `ProcessorSet::from_lane(lane)` / `ProcessorSet::from_unit(unit)` -- single instance
-- `lane.scale([&dim_x, &dim_y])` -- scale via Scalable trait
-- `processor_set.scale_by(dims)` -- prepend dimensions to an existing set
-
-#### 5. **Memory** (`core/memory.rs`)
-
-Hierarchical memory regions and connectivity:
-
-```rust
-pub enum MemRegion {
-    Indexed { indices: Vec<Dimension>, sub_region: Box<MemRegion> },
-    Bank(Bank),
-}
-```
-
-Key interconnect types:
-- `MemoryInterconnects` -- memory-to-memory with affine mapping
-- `MemoryProcessorInterconnect` -- memory-to-processor with affine mapping
-
-Both support `scale_by(dims)` for architecture scaling.
-
-#### 6. **Affine Maps** (`core/affine.rs`)
-
-Express connectivity patterns with affine expressions:
-
-```rust
-// Programmatic construction
-let map = AffineMap::builder()
-    .source_dims(vec![&dim_x, &dim_y])
-    .target_dims(vec![&dim_x, &dim_y])
-    .result(AffineExpr::modulo(
-        AffineExpr::add(AffineExpr::dim(&dim_x), AffineExpr::constant(1)),
-        AffineExpr::constant(8),
-    ))
-    .result(AffineExpr::dim(&dim_y))
-    .build();
-
-// Identity map (for replicated patterns)
-let id = AffineMap::identity(&[dim_x.clone(), dim_y.clone()]);
-
-// Parse from string
-let map = AffineMap::parse("[x, y] -> [x, y]: (x + 1, y mod 8)", &[dim_x, dim_y]);
-
-// Unbound template (parse once, bind to different dimensions)
-let template = AffineMapTemplate::parse("[a, b] -> [b]: (a mod 8)").unwrap();
-let bound = template.bind([&dim_x, &dim_y]).unwrap();
-```
-
-#### 7. **Architecture** (`architecture.rs`)
-
-Top-level composition with named components and scaling:
-
-```rust
-pub struct Architecture {
-    pub name: String,
-    pub dimensions: Vec<Dimension>,
-    pub processor_sets: Vec<(String, ProcessorSet)>,          // named
-    pub processor_aggregations: Vec<ProcessorAggregation>,
-    pub memory_regions: Vec<(String, MemRegion)>,             // named
-    pub memory_interconnects: Vec<MemoryInterconnects>,
-    pub memory_processor_interconnects: Vec<MemoryProcessorInterconnect>,
-    pub interconnects: Vec<Interconnect>,
-}
-```
-
-Key methods:
-- `Architecture::builder(name)` -- fluent construction
-- `arch.scale(dims)` -- scale all components
-- `arch.get_memory_region(name)` -- look up named region
-- `arch.get_processor_set(name)` -- look up named processor set
-- `arch.with_name(n)` / `arch.with_memory_interconnect(ic)` -- post-scaling composition
-- `arch.total_processing_elements()` -- count total PEs
+| Type | Description | Module |
+|------|-------------|--------|
+| `DimName` | Newtype for dimension names (inside `Dimension.name`) | `core/size_dim.rs` |
+| `Symbol` | Newtype for symbolic names in expressions | `core/size_dim.rs` |
+| `SizeExpr` | Concrete, symbolic, or arithmetic size | `core/size_dim.rs` |
+| `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
+| `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
+| `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
+| `PerfModel` | Constraints + cost expressions | `core/perf.rs` |
+| `CostExpr` | Symbolic latency + throughput | `core/perf.rs` |
+| `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
+| `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `core/affine.rs` |
+| `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `core/affine.rs` |
+| `IndexExpr` | Index tuple: one affine expression per dimension | `core/affine.rs` |
+| `IndexSelector` | Partial index: named dimension assignments | `core/affine.rs` |
+| `MemoryBank` | Leaf memory unit (capacity, granularity, optional perf) | `core/memory.rs` |
+| `MemoryRegion` | Recursive: `Bank` / `Replicated { name, dims, elem }` / `Group`; use `.with_name()` and `.name()` | `core/memory.rs` |
+| `PrimitiveProc` | Leaf processor (name, optional perf model) | `core/processor.rs` |
+| `Processor` | Recursive: `Primitive` / `Replicated { name, dims, elem }` / `Group`; name recurses to leaf | `core/processor.rs` |
+| `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `core/link.rs` |
+| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(Processor)`; name derived from data | `core/link.rs` |
+| `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `core/link.rs` |
+| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<Processor>`, and links | `architecture.rs` |
+| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&proc)` | `architecture.rs` |
 
 ## Building and Running
 
@@ -402,31 +449,12 @@ Key methods:
 # Build the library
 cargo build
 
-# Run tests
+# Run all tests
 cargo test
 
-# Run with output (to see visualization file generation)
+# Run with output (to see generated DOT files)
 cargo test -- --nocapture
 ```
-
-## MLIR Correspondence
-
-| MLIR Construct | Rust Type | File |
-|----------------|-----------|------|
-| `index` | `Index` (= `usize`) | `core/size_dim.rs` |
-| `mlar.dim` | `Dimension::new()` | `core/size_dim.rs` |
-| `mlar.bank` | `Bank { ... }` | `core/memory.rs` |
-| `mlar.region` | `MemRegion::indexed()` / `.scale()` | `core/memory.rs` |
-| `mlar.fu` | `FunctionalUnit { ... }` | `functional_unit.rs` |
-| `mlar.lane` | `FunctionalLane::new()` | `lane.rs` |
-| `cf.assert` | `LaneModel::validate_preconditions()` | `lane.rs` |
-| Processor scaling | `processor.scale(dims)` | `processor_aggregation.rs` |
-| `memory interconnects` | `MemoryInterconnects::builder(...)` | `core/memory.rs` |
-| `memory->processor` | `MemoryProcessorInterconnect::builder(...)` | `core/memory.rs` |
-| `mlar.interconnects` | `Interconnect { ... }` | `interconnect.rs` |
-| `affine_map<...>` | `AffineMap::builder(...)` / `AffineMap::parse(...)` | `core/affine.rs` |
-| `module {...}` | `Architecture::builder(...)` | `architecture.rs` |
-| Module nesting | `arch.scale(dims)` + compose | `architecture.rs` |
 
 ## License
 

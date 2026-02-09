@@ -1,5 +1,4 @@
 use mlar_rust::*;
-use mlar_rust::lane::{MatMulLane, VecLane};
 use std::fs;
 
 #[test]
@@ -12,66 +11,54 @@ fn test_core_architecture() {
     // === Define a single core ===
 
     // L1: 16 banks, each bank has 1024 x 128B blocks = 16KB per bank, 256KB total
-    let l1 = MemRegion::bank(Bank {
-        block_size: Size::int(128),
-        num_blocks: Size::int(1024),
-    })
-    .scale([&dim_bank]); // 16 banks => one L1
+    let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+        SizeExpr::Const(128),
+        SizeExpr::Const(1024),
+    ))
+    .replicate(dim_bank.as_slice())
+    .with_name("l1");
 
-    // Matrix lane (single processor, reads from L1)
-    let matrix_lane = FunctionalLane::new(
-        "matrix_lane",
-        vec![&l1, &l1],
-        vec![&l1],
-        MatMulLane,
-    );
-    let matrix_lane_set = ProcessorSet::from_lane(matrix_lane);
+    // Matrix lane (single primitive processor)
+    let matrix_lane = Processor::primitive("matrix_lane");
 
-    // Vector lane (single processor, reads from L1)
-    let vector_lane = FunctionalLane::new(
-        "vector_lane",
-        vec![&l1, &l1],
-        vec![&l1],
-        VecLane,
-    );
-    let vector_lane_set = ProcessorSet::from_lane(vector_lane);
+    // Vector lane (single primitive processor)
+    let vector_lane = Processor::primitive("vector_lane");
 
     // All-to-one: all 16 L1 banks visible to the single lane
     let all_to_one_map = AffineMap::new(
-        vec![dim_bank.clone()], // source: bank index
-        vec![],                 // target: no dims (single processor)
-        vec![],                 // no result expressions
+        dim_bank.as_slice(),
+        &[],
+        vec![],
     );
 
-    let l1_to_matrix = MemoryProcessorInterconnect::builder("l1_to_matrix_lane")
-        .source(&l1)
-        .target(&matrix_lane_set)
-        .affine_map(all_to_one_map.clone())
+    let l1_to_matrix = Link::builder("l1_to_matrix_lane")
+        .from_mem(&l1)
+        .to_proc(&matrix_lane)
+        .map(all_to_one_map.clone())
         .bandwidth(512)
         .build();
 
-    let l1_to_vector = MemoryProcessorInterconnect::builder("l1_to_vector_lane")
-        .source(&l1)
-        .target(&vector_lane_set)
-        .affine_map(all_to_one_map)
+    let l1_to_vector = Link::builder("l1_to_vector_lane")
+        .from_mem(&l1)
+        .to_proc(&vector_lane)
+        .map(all_to_one_map)
         .bandwidth(128)
         .build();
 
     // Build a single core as an Architecture
     let core = Architecture::builder("core")
-        .dim(&dim_bank)
-        .mem("l1", l1)
-        .processor("matrix_lane", matrix_lane_set)
-        .processor("vector_lane", vector_lane_set)
-        .mem_proc_interconnect(l1_to_matrix)
-        .mem_proc_interconnect(l1_to_vector)
+        .mem(&l1)
+        .processor(&matrix_lane)
+        .processor(&vector_lane)
+        .link(l1_to_matrix)
+        .link(l1_to_vector)
         .build();
 
     // Verify single core
     assert_eq!(core.name, "core");
-    assert_eq!(core.processor_sets.len(), 2);
-    assert_eq!(core.memory_regions.len(), 1);
-    assert_eq!(core.memory_processor_interconnects.len(), 2);
+    assert_eq!(core.processors.len(), 2);
+    assert_eq!(core.memory.len(), 1);
+    assert_eq!(core.links.len(), 2);
     assert_eq!(core.total_processing_elements(), Some(2));
 
     // Visualize single core
@@ -83,45 +70,45 @@ fn test_core_architecture() {
     let cores = core.scale([&dim_x, &dim_y]);
 
     // Verify scaled architecture
-    assert_eq!(cores.name, "core"); // name preserved
-    assert_eq!(cores.dimensions.len(), 3); // x, y, nbank
+    assert_eq!(cores.name, "core");
 
     // Processor sets are now scaled by [x, y]
-    assert_eq!(cores.processor_sets.len(), 2);
-    let (mat_name, mat_set) = &cores.processor_sets[0];
-    assert_eq!(mat_name, "matrix_lane");
-    assert_eq!(mat_set.total_instances(), Some(64)); // 8x8
+    assert_eq!(cores.processors.len(), 2);
+    let mat_proc = &cores.processors[0];
+    assert_eq!(mat_proc.name(), Some("matrix_lane"));
+    assert_eq!(mat_proc.total_instances(), Some(64));
 
-    let (vec_name, vec_set) = &cores.processor_sets[1];
-    assert_eq!(vec_name, "vector_lane");
-    assert_eq!(vec_set.total_instances(), Some(64)); // 8x8
+    let vec_proc = &cores.processors[1];
+    assert_eq!(vec_proc.name(), Some("vector_lane"));
+    assert_eq!(vec_proc.total_instances(), Some(64));
 
     // Memory region "l1" is now scaled by [x, y] on top of [nbank]
     let all_l1s = cores.get_memory_region("l1").unwrap();
+    assert_eq!(all_l1s.name(), Some("l1"));
     match all_l1s {
-        MemRegion::Indexed { indices, sub_region } => {
+        MemoryRegion::Replicated { dims, elem, .. } => {
             // Outermost: [x, y]
-            assert_eq!(indices.len(), 2);
-            assert_eq!(indices[0].name, "x");
-            assert_eq!(indices[1].name, "y");
-            // Inner: [nbank] -> Bank
-            match sub_region.as_ref() {
-                MemRegion::Indexed { indices: inner, .. } => {
+            assert_eq!(dims.len(), 2);
+            assert_eq!(dims[0].name.0, "x");
+            assert_eq!(dims[1].name.0, "y");
+            // Inner: Replicated [nbank] -> Bank
+            match elem.as_ref() {
+                MemoryRegion::Replicated { dims: inner, .. } => {
                     assert_eq!(inner.len(), 1);
-                    assert_eq!(inner[0].name, "nbank");
+                    assert_eq!(inner[0].name.0, "nbank");
                 }
-                _ => panic!("expected inner Indexed region"),
+                _ => panic!("expected inner Replicated region"),
             }
         }
-        _ => panic!("expected Indexed region"),
+        _ => panic!("expected Replicated region"),
     }
 
-    // Interconnect maps were replaced with identity on [x, y]
-    let mpi = &cores.memory_processor_interconnects[0];
-    assert_eq!(mpi.map.source_dims.len(), 2);
-    assert_eq!(mpi.map.target_dims.len(), 2);
-    assert_eq!(mpi.map.source_dims[0].name, "x");
-    assert_eq!(mpi.map.source_dims[1].name, "y");
+    // Link maps were replaced with identity on [x, y]
+    let link0 = &cores.links[0];
+    assert_eq!(link0.map.src_dims.len(), 2);
+    assert_eq!(link0.map.dst_dims.len(), 2);
+    assert_eq!(link0.map.src_dims[0].name.0, "x");
+    assert_eq!(link0.map.src_dims[1].name.0, "y");
 
     // 2 lane types x 8x8 = 128 total processing elements
     assert_eq!(cores.total_processing_elements(), Some(128));
@@ -132,6 +119,7 @@ fn test_core_architecture() {
     println!("Generated cores_8x8_architecture.dot");
 
     let cores_expanded_dot = architecture_to_dot_expanded(&cores);
-    fs::write("cores_8x8_expanded.dot", &cores_expanded_dot).expect("Failed to write DOT file");
+    fs::write("cores_8x8_expanded.dot", &cores_expanded_dot)
+        .expect("Failed to write DOT file");
     println!("Generated cores_8x8_expanded.dot");
 }

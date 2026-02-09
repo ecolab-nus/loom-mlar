@@ -1,6 +1,6 @@
 # Loom MLAR
 
-Multi-Level Array Representation (MLAR) compiler infrastructure.
+Multi-Level Architecture Representation (MLAR) compiler infrastructure.
 
 ## Project Structure
 
@@ -9,7 +9,7 @@ Multi-Level Array Representation (MLAR) compiler infrastructure.
 
 ## Overview
 
-This project implements the MLAR (Multi-Level Array Representation) compiler infrastructure with:
+This project implements the MLAR (Multi-Level Architecture Representation) compiler infrastructure with:
 - A custom MLIR dialect for hardware array declarations and interconnects
 - A Rust-based front-end for high-level array programming
 

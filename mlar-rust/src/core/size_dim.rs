@@ -1,108 +1,173 @@
-/// Represents a size that can be either concrete or symbolic
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Size {
-    Int(usize),
-    Sym(String),
+/// Newtype for dimension names — stable identifier for a replication axis.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DimName(pub String);
+
+impl DimName {
+    pub fn new(name: impl Into<String>) -> Self {
+        DimName(name.into())
+    }
 }
 
-impl Size {
+impl std::fmt::Display for DimName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for DimName {
+    fn from(s: &str) -> Self {
+        DimName(s.to_string())
+    }
+}
+
+impl From<String> for DimName {
+    fn from(s: String) -> Self {
+        DimName(s)
+    }
+}
+
+/// Newtype for symbolic names used in expressions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Symbol(pub String);
+
+impl Symbol {
+    pub fn new(name: impl Into<String>) -> Self {
+        Symbol(name.into())
+    }
+}
+
+impl std::fmt::Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for Symbol {
+    fn from(s: &str) -> Self {
+        Symbol(s.to_string())
+    }
+}
+
+impl From<String> for Symbol {
+    fn from(s: String) -> Self {
+        Symbol(s)
+    }
+}
+
+/// Represents a size that can be concrete, symbolic, or an arithmetic expression.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SizeExpr {
+    Const(u64),
+    Sym(Symbol),
+    Add(Box<SizeExpr>, Box<SizeExpr>),
+    Mul(Box<SizeExpr>, Box<SizeExpr>),
+}
+
+impl SizeExpr {
     /// Create a concrete size
-    pub fn int(value: usize) -> Self {
-        Size::Int(value)
+    pub fn int(value: u64) -> Self {
+        SizeExpr::Const(value)
     }
 
     /// Create a symbolic size
     pub fn sym(name: impl Into<String>) -> Self {
-        Size::Sym(name.into())
+        SizeExpr::Sym(Symbol::new(name))
     }
 
-    /// Check if this size is concrete
-    pub fn is_int(&self) -> bool {
-        matches!(self, Size::Int(_))
+    /// Check if this size is a concrete constant
+    pub fn is_const(&self) -> bool {
+        matches!(self, SizeExpr::Const(_))
     }
 
     /// Check if this size is symbolic
     pub fn is_sym(&self) -> bool {
-        matches!(self, Size::Sym(_))
+        matches!(self, SizeExpr::Sym(_))
     }
 
-    /// Try to get the concrete value, if available
-    pub fn as_int(&self) -> Option<usize> {
+    /// Try to get the concrete value, if available (evaluates arithmetic on constants)
+    pub fn as_const(&self) -> Option<u64> {
         match self {
-            Size::Int(v) => Some(*v),
-            Size::Sym(_) => None,
-        }
-    }
-
-    /// Try to get the symbolic name, if available
-    pub fn as_sym(&self) -> Option<&str> {
-        match self {
-            Size::Sym(name) => Some(name),
-            Size::Int(_) => None,
+            SizeExpr::Const(v) => Some(*v),
+            SizeExpr::Sym(_) => None,
+            SizeExpr::Add(a, b) => {
+                let a = a.as_const()?;
+                let b = b.as_const()?;
+                Some(a + b)
+            }
+            SizeExpr::Mul(a, b) => {
+                let a = a.as_const()?;
+                let b = b.as_const()?;
+                Some(a * b)
+            }
         }
     }
 }
 
-impl From<usize> for Size {
+impl From<u64> for SizeExpr {
+    fn from(value: u64) -> Self {
+        SizeExpr::Const(value)
+    }
+}
+
+impl From<usize> for SizeExpr {
     fn from(value: usize) -> Self {
-        Size::Int(value)
+        SizeExpr::Const(value as u64)
     }
 }
 
-impl From<&str> for Size {
+impl From<&str> for SizeExpr {
     fn from(name: &str) -> Self {
-        Size::Sym(name.to_string())
+        SizeExpr::Sym(Symbol::new(name))
     }
 }
 
-impl From<String> for Size {
-    fn from(name: String) -> Self {
-        Size::Sym(name)
-    }
-}
-
-impl std::fmt::Display for Size {
+impl std::fmt::Display for SizeExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Size::Int(value) => write!(f, "{}", value),
-            Size::Sym(name) => write!(f, "{}", name),
+            SizeExpr::Const(value) => write!(f, "{}", value),
+            SizeExpr::Sym(sym) => write!(f, "{}", sym),
+            SizeExpr::Add(a, b) => write!(f, "({} + {})", a, b),
+            SizeExpr::Mul(a, b) => write!(f, "({} * {})", a, b),
         }
     }
 }
 
-/// Represents an index value (like MLIR index type)
-pub type Index = usize;
-
-/// Represents a dimension in the grid (e.g., x, y coordinates)
-#[derive(Debug, Clone)]
+/// Represents a dimension — a named axis of homogeneous replication.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Dimension {
-    pub name: String,
-    pub size: Size,
+    pub name: DimName,
+    pub size: SizeExpr,
 }
 
 impl Dimension {
     /// Create a new dimension with a concrete size
-    pub fn new(name: impl Into<String>, size: usize) -> Self {
+    pub fn new(name: impl Into<String>, size: u64) -> Self {
         Self {
-            name: name.into(),
-            size: Size::Int(size),
+            name: DimName::new(name),
+            size: SizeExpr::Const(size),
         }
     }
 
     /// Create a new dimension with a symbolic size
     pub fn new_symbolic(name: impl Into<String>, size_name: impl Into<String>) -> Self {
         Self {
-            name: name.into(),
-            size: Size::Sym(size_name.into()),
+            name: DimName::new(name),
+            size: SizeExpr::sym(size_name),
         }
     }
 
-    /// Create a dimension with an explicit Size value
-    pub fn with_size(name: impl Into<String>, size: Size) -> Self {
+    /// Create a dimension with an explicit SizeExpr value
+    pub fn with_size(name: impl Into<String>, size: SizeExpr) -> Self {
         Self {
-            name: name.into(),
+            name: DimName::new(name),
             size,
         }
+    }
+
+    /// View this single dimension as a one-element slice.
+    /// Convenience for APIs that accept `&[Dimension]`.
+    pub fn as_slice(&self) -> &[Dimension] {
+        std::slice::from_ref(self)
     }
 }
 
