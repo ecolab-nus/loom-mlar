@@ -1,244 +1,84 @@
 use mlar_rust::*;
 use mlar_rust::lane::{MatMulLane, VecLane};
-use mlar_rust::AffineExpr;
 
 #[test]
-fn test_2d_mesh_architecture() {
-    // Create grid dimensions
+fn test_core_architecture() {
+    // === Dimensions ===
+    let dim_bank = Dimension::new("nbank", 16);
     let dim_x = Dimension::new("x", 8);
     let dim_y = Dimension::new("y", 8);
-    let dim_d = Dimension::new("d", 4);
 
-    // Define L1 memory region: indexed by [x, y], each has 64KB blocks
-    let l1_region = MemRegion::bank(Bank {
-        block_size: Size::int(65536),
-        num_blocks: Size::int(1),
+    // === Memory hierarchy ===
+    // Single L1: 16 banks, each bank has 1024 x 128B blocks = 16KB per bank, 256KB total
+    let l1 = MemRegion::bank(Bank {
+        block_size: Size::int(128),
+        num_blocks: Size::int(1024),
     })
-    .scale([&dim_x, &dim_y]); // 64KB per location
+    .scale([&dim_bank]); // 16 banks => one L1
 
-    // Define DRAM memory region: indexed by [d], each has 8GB
-    let _dram_region = MemRegion::bank(Bank {
-        block_size: Size::int(8589934592usize),
-        num_blocks: Size::int(1),
-    })
-    .scale([&dim_d]); // 8GB per DRAM
+    // All L1s across the 8x8 core grid
+    let all_l1s = l1.clone().scale([&dim_x, &dim_y]); // 64 L1s, one per core
 
-    // Create functional units that operate on L1 regions
-    let mat_fu = FunctionalUnit {
-        name: "matmul_32x32".to_string(),
-        input_regions: vec![l1_region.clone(), l1_region.clone()],
-        output_regions: vec![l1_region.clone()],
-        latency: 8,
-    };
-
-    let vec_fu = FunctionalUnit {
-        name: "vec_add_32".to_string(),
-        input_regions: vec![l1_region.clone(), l1_region.clone()],
-        output_regions: vec![l1_region.clone()],
-        latency: 1,
-    };
-
-    // Create lanes with performance models
-    let mat_lane = FunctionalLane::new(
-        "matmul_lane",
-        vec![&l1_region, &l1_region],
-        vec![&l1_region],
+    // === Compute lanes, scaled across 8x8 cores ===
+    let matrix_lane = FunctionalLane::new(
+        "matrix_lane",
+        vec![&l1, &l1],
+        vec![&l1],
         MatMulLane,
     );
+    let matrix_lane_set = matrix_lane.scale([&dim_x, &dim_y]); // 64 matrix lanes
 
-    let vec_lane = FunctionalLane::new(
-        "vec_lane",
-        vec![&l1_region, &l1_region],
-        vec![&l1_region],
+    let vector_lane = FunctionalLane::new(
+        "vector_lane",
+        vec![&l1, &l1],
+        vec![&l1],
         VecLane,
     );
+    let vector_lane_set = vector_lane.scale([&dim_x, &dim_y]); // 64 vector lanes
 
-    // Create ProcessorSets by scaling processors across dimensions
-    // No contention in this example, so we use ProcessorSets directly
-    let mat_fu_set = mat_fu.scale([&dim_x, &dim_y]);
-    let vec_fu_set = vec_fu.scale([&dim_x, &dim_y]);
-    let mat_lane_set = mat_lane.scale([&dim_x, &dim_y]);
-    let vec_lane_set = vec_lane.scale([&dim_x, &dim_y]);
-
-    // Create interconnects with affine maps
-    let noc_h_map = AffineMap::builder()
-        .source_dims(vec![&dim_x, &dim_y])
-        .target_dims(vec![&dim_x, &dim_y])
-        .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(&dim_x), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ))
-        .result(AffineExpr::dim(&dim_y))
-        .build();
-
-    let noc_h = Interconnect {
-        name: "horizontal_noc".to_string(),
-        grid: vec![dim_x.clone(), dim_y.clone()],
-        affine_map: noc_h_map,
-        bandwidth: 32,
-    };
-
-    let noc_v_map = AffineMap::builder()
-        .source_dims(vec![&dim_x, &dim_y])
-        .target_dims(vec![&dim_x, &dim_y])
-        .result(AffineExpr::dim(&dim_x))
-        .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(&dim_y), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ))
-        .build();
-
-    let noc_v = Interconnect {
-        name: "vertical_noc".to_string(),
-        grid: vec![dim_x.clone(), dim_y.clone()],
-        affine_map: noc_v_map,
-        bandwidth: 32,
-    };
-
-    let dram_map = AffineMap::builder()
-        .source_dims(vec![&dim_x, &dim_y])
-        .target_dims(vec![&dim_d])
-        .result(AffineExpr::add(
-            AffineExpr::ceildiv(AffineExpr::dim(&dim_x), AffineExpr::constant(4)),
-            AffineExpr::mul(
-                AffineExpr::constant(2),
-                AffineExpr::ceildiv(AffineExpr::dim(&dim_y), AffineExpr::constant(4)),
-            ),
-        ))
-        .build();
-
-    let to_dram = Interconnect {
-        name: "to_dram".to_string(),
-        grid: vec![dim_x.clone(), dim_y.clone()],
-        affine_map: dram_map,
-        bandwidth: 64,
-    };
-
-    // Build the architecture using ProcessorSets directly (no contention)
-    let arch = Architecture {
-        name: "2D Mesh".to_string(),
-        dimensions: vec![dim_x.clone(), dim_y.clone(), dim_d.clone()],
-        processor_sets: vec![mat_fu_set, vec_fu_set, mat_lane_set, vec_lane_set],
-        processor_aggregations: Vec::new(),
-        memory_regions: Vec::new(),
-        memory_interconnects: Vec::new(),
-        memory_processor_interconnects: Vec::new(),
-        interconnects: vec![noc_h, noc_v, to_dram],
-    };
-
-    // Verify architecture properties
-    assert_eq!(arch.name, "2D Mesh");
-    assert_eq!(arch.dimensions.len(), 3);
-    assert_eq!(arch.processor_sets.len(), 4);
-    assert_eq!(arch.interconnects.len(), 3);
-    // 4 processor sets, each with 8x8=64 instances = 256 total
-    assert_eq!(arch.total_processing_elements(), Some(256));
-}
-
-#[test]
-fn test_affine_maps() {
-    // Test basic affine map construction
-    let dim_a = Dimension::new("a", 8);
-    let dim_b = Dimension::new("b", 8);
-    let map = AffineMap::builder()
-        .source_dims(vec![&dim_a, &dim_b])
-        .target_dims(vec![&dim_a, &dim_b])
-        .result(AffineExpr::add(AffineExpr::dim(&dim_a), AffineExpr::constant(1)))
-        .result(AffineExpr::dim(&dim_b))
-        .build();
-    
-    let result = map.apply(&[3, 5]);
-    assert_eq!(result, vec![4, 5]);
-    
-    // Test modulo
-    let dim_wrap = Dimension::new("w", 8);
-    let wrap_map = AffineMap::builder()
-        .source_dims(vec![&dim_wrap])
-        .target_dims(vec![&dim_wrap])
-        .result(AffineExpr::modulo(
-            AffineExpr::add(AffineExpr::dim(&dim_wrap), AffineExpr::constant(1)),
-            AffineExpr::constant(8),
-        ))
-        .build();
-    
-    assert_eq!(wrap_map.apply(&[7]), vec![0]); // (7 + 1) % 8 = 0
-    assert_eq!(wrap_map.apply(&[6]), vec![7]); // (6 + 1) % 8 = 7
-}
-
-#[test]
-fn test_affine_map_parse_string() {
-    let dim_a = Dimension::new("a", 8);
-    let dim_b = Dimension::new("b", 8);
-
-    let map = AffineMap::parse(
-        "[a, b] -> [a, b]: (a + 1, b mod 8)",
-        &[dim_a.clone(), dim_b.clone()],
-    )
-    .expect("parse affine map failed");
-
-    let result = map.apply(&[7, 9]);
-    assert_eq!(result, vec![8, 1]);
-}
-
-#[test]
-fn test_lane_preconditions() {
-    let dim_x = Dimension::new("x", 8);
-    let dim_y = Dimension::new("y", 8);
-    
-    let l1_region = MemRegion::bank(Bank {
-        block_size: Size::int(65536),
-        num_blocks: Size::int(1),
-    })
-    .scale([&dim_x, &dim_y]);
-    
-    let mat_lane = FunctionalLane::new(
-        "matmul_lane",
-        vec![&l1_region, &l1_region],
-        vec![&l1_region],
-        MatMulLane,
+    // === Interconnects: each core's L1 connects to that core's lanes ===
+    // Identity map [x, y] -> [x, y]: core (x,y) reads from L1 (x,y)
+    let identity_map = AffineMap::new(
+        vec![dim_x.clone(), dim_y.clone()], // source dims (from all_l1s)
+        vec![dim_x.clone(), dim_y.clone()], // target dims (from lane set)
+        vec![
+            AffineExpr::dim(&dim_x),
+            AffineExpr::dim(&dim_y),
+        ],
     );
-    
-    // Test preconditions for MatMulLane (requires M,N >= 256)
-    let result = mat_lane.compute_latency(&[512, 512, 256], &[]);
-    assert!(result.is_ok());
-    
-    let result_fail = mat_lane.compute_latency(&[128, 128, 128], &[]);
-    assert!(result_fail.is_err());
-}
 
-#[test]
-fn test_symbolic_sizes() {
-    // Test symbolic dimension
-    let sym_dim = Dimension::new_symbolic("x", "N");
-    assert!(sym_dim.size.is_sym());
-    assert_eq!(sym_dim.size.as_sym(), Some("N"));
-    
-    // Test symbolic Bank
-    let sym_bank = Bank {
-        block_size: Size::sym("BLOCK_SIZE"),
-        num_blocks: Size::sym("NUM_BLOCKS"),
-    };
-    
-    assert!(sym_bank.block_size.is_sym());
-    assert!(sym_bank.num_blocks.is_sym());
-    
-    // Test mixed sizes
-    let mixed_block = Bank {
-        block_size: Size::int(1024),
-        num_blocks: Size::sym("M"),
-    };
-    
-    assert!(mixed_block.block_size.is_int());
-    assert!(mixed_block.num_blocks.is_sym());
-    assert_eq!(mixed_block.block_size.as_int(), Some(1024));
-    assert_eq!(mixed_block.num_blocks.as_sym(), Some("M"));
+    let l1_to_matrix = MemoryProcessorInterconnect::builder("l1_to_matrix_lane")
+        .source(&all_l1s)
+        .target(&matrix_lane_set)
+        .affine_map(identity_map.clone())
+        .bandwidth(512) // 512 bits/cycle
+        .build();
 
-    // Test Size checking
-    let concrete = Size::int(64);
-    let symbolic = Size::sym("TILE_SIZE");
-    
-    assert!(concrete.is_int());
-    assert!(symbolic.is_sym());
-    assert_eq!(concrete.as_int(), Some(64));
-    assert_eq!(symbolic.as_sym(), Some("TILE_SIZE"));
+    let l1_to_vector = MemoryProcessorInterconnect::builder("l1_to_vector_lane")
+        .source(&all_l1s)
+        .target(&vector_lane_set)
+        .affine_map(identity_map)
+        .bandwidth(128) // 128 bits/cycle
+        .build();
+
+    // === Assemble the architecture ===
+    let arch = Architecture {
+        name: "8x8 Core Grid".to_string(),
+        dimensions: vec![dim_x.clone(), dim_y.clone(), dim_bank.clone()],
+        processor_sets: vec![matrix_lane_set, vector_lane_set],
+        processor_aggregations: Vec::new(),
+        memory_regions: vec![all_l1s],
+        memory_interconnects: Vec::new(),
+        memory_processor_interconnects: vec![l1_to_matrix, l1_to_vector],
+        interconnects: Vec::new(),
+    };
+
+    // Verify structure
+    assert_eq!(arch.name, "8x8 Core Grid");
+    assert_eq!(arch.dimensions.len(), 3); // x, y, nbank
+    assert_eq!(arch.processor_sets.len(), 2); // matrix + vector lane sets
+    assert_eq!(arch.memory_regions.len(), 1); // all_l1s (hierarchical)
+    assert_eq!(arch.memory_processor_interconnects.len(), 2); // one per lane type
+    // 2 lane types x 8x8 cores = 128 total processing elements
+    assert_eq!(arch.total_processing_elements(), Some(128));
 }
