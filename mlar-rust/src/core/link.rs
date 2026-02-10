@@ -153,8 +153,9 @@ impl LinkBuilder {
         self
     }
 
-    pub fn map(mut self, map: AffineMap) -> Self {
-        self.map = Some(map);
+    /// Set the affine map (borrows and clones internally).
+    pub fn map(mut self, map: &AffineMap) -> Self {
+        self.map = Some(map.clone());
         self
     }
 

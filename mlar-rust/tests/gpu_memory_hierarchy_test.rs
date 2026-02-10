@@ -41,7 +41,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let dram_to_l2 = Link::builder("DRAM_to_L2")
         .from_mem(&dram)
         .to_mem(&l2)
-        .map(dram_to_l2_map)
+        .map(&dram_to_l2_map)
         .bandwidth(256)
         .build();
 
@@ -53,7 +53,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l2_to_l1 = Link::builder("L2_to_L1")
         .from_mem(&l2)
         .to_mem(&l1)
-        .map(l2_to_l1_map)
+        .map(&l2_to_l1_map)
         .bandwidth(128)
         .build();
 
@@ -65,7 +65,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l1_to_rf = Link::builder("L1_to_RF")
         .from_mem(&l1)
         .to_mem(&rf)
-        .map(l1_to_rf_map)
+        .map(&l1_to_rf_map)
         .bandwidth(64)
         .build();
 
@@ -79,7 +79,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let rf_to_mat = Link::builder("RF_to_MatLane")
         .from_mem(&rf)
         .to_proc(&mat_lane)
-        .map(rf_to_mat_map)
+        .map(&rf_to_mat_map)
         .bandwidth(64)
         .build();
 

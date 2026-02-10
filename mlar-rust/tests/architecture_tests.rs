@@ -34,14 +34,14 @@ fn test_core_architecture() {
     let l1_to_matrix = Link::builder("l1_to_matrix_lane")
         .from_mem(&l1)
         .to_proc(&matrix_lane)
-        .map(all_to_one_map.clone())
+        .map(&all_to_one_map)
         .bandwidth(512)
         .build();
 
     let l1_to_vector = Link::builder("l1_to_vector_lane")
         .from_mem(&l1)
         .to_proc(&vector_lane)
-        .map(all_to_one_map)
+        .map(&all_to_one_map)
         .bandwidth(128)
         .build();
 
