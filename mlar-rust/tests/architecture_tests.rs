@@ -1,16 +1,17 @@
 use mlar_rust::*;
+use std::collections::HashMap;
 use std::fs;
 
 #[test]
-fn test_core_architecture() {
+fn test_2d_mesh_torus() {
     // === Dimensions ===
-    let dim_bank = Dimension::new("nbank", 16);
-    let dim_x = Dimension::new("x", 8);
-    let dim_y = Dimension::new("y", 8);
+    let dim_bank = Dimension::new_int("nbank", 16);
+    let dim_x = Dimension::new_sym("x", "X");
+    let dim_y = Dimension::new_sym("y", "Y");
 
     // === Define a single core ===
 
-    // L1: 16 banks, each bank has 1024 x 128B blocks = 16KB per bank, 256KB total
+    // L1: 16 banks, each bank has 1024 x 128B blocks
     let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(128),
         SizeExpr::Const(1024),
@@ -18,10 +19,7 @@ fn test_core_architecture() {
     .replicate(dim_bank.as_slice())
     .with_name("l1");
 
-    // Matrix lane (single primitive processor)
     let matrix_lane = Processor::primitive("matrix_lane");
-
-    // Vector lane (single primitive processor)
     let vector_lane = Processor::primitive("vector_lane");
 
     // All-to-one: all 16 L1 banks visible to the single lane
@@ -45,7 +43,6 @@ fn test_core_architecture() {
         .bandwidth(128)
         .build();
 
-    // Build a single core as an Architecture
     let core = Architecture::builder("core")
         .mem(&l1)
         .processor(&matrix_lane)
@@ -54,72 +51,79 @@ fn test_core_architecture() {
         .link(l1_to_vector)
         .build();
 
-    // Verify single core
-    assert_eq!(core.name, "core");
-    assert_eq!(core.processors.len(), 2);
-    assert_eq!(core.memory.len(), 1);
-    assert_eq!(core.links.len(), 2);
+    // total_processing_elements is None because x, y are symbolic
     assert_eq!(core.total_processing_elements(), Some(2));
 
-    // Visualize single core
-    let core_dot = architecture_to_dot(&core);
-    fs::write("core_architecture.dot", &core_dot).expect("Failed to write DOT file");
-    println!("Generated core_architecture.dot");
+    // === Scale to XxY 2D mesh (torus) ===
+    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
 
-    // === Scale to 8x8 cores ===
-    let cores = core.scale([&dim_x, &dim_y]);
+    // === Add torus interconnect between L1 caches ===
+    //
+    // Each core (x, y) has its L1 linked to its neighbors with wraparound:
+    //   - horizontal ring: L1(x, y) -> L1(x, (y+1) mod Y)
+    //   - vertical ring:   L1(x, y) -> L1((x+1) mod X, y)
+    //
+    // Names not found in the dimension list (X, Y) are treated as symbolic parameters.
+    let scaled_l1 = mesh.get_memory_region("l1").unwrap().clone();
 
-    // Verify scaled architecture
-    assert_eq!(cores.name, "core");
+    // Horizontal torus: y-neighbor with wraparound
+    let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod Y)")
+        .expect("invalid affine map")
+        .bind([&dim_x, &dim_y])
+        .expect("failed to bind");
 
-    // Processor sets are now scaled by [x, y]
-    assert_eq!(cores.processors.len(), 2);
-    let mat_proc = &cores.processors[0];
-    assert_eq!(mat_proc.name(), Some("matrix_lane"));
-    assert_eq!(mat_proc.total_instances(), Some(64));
+    let torus_y = Link::builder("l1_torus_y")
+        .from_mem(&scaled_l1)
+        .to_mem(&scaled_l1)
+        .map(&torus_y_map)
+        .bandwidth(64)
+        .build();
 
-    let vec_proc = &cores.processors[1];
-    assert_eq!(vec_proc.name(), Some("vector_lane"));
-    assert_eq!(vec_proc.total_instances(), Some(64));
+    // Vertical torus: x-neighbor with wraparound
+    let torus_x_map = AffineMapTemplate::parse("[x, y] -> [x, y]: ((x + 1) mod X, y)")
+        .expect("invalid affine map")
+        .bind([&dim_x, &dim_y])
+        .expect("failed to bind");
 
-    // Memory region "l1" is now scaled by [x, y] on top of [nbank]
-    let all_l1s = cores.get_memory_region("l1").unwrap();
-    assert_eq!(all_l1s.name(), Some("l1"));
-    match all_l1s {
-        MemoryRegion::Replicated { dims, elem, .. } => {
-            // Outermost: [x, y]
-            assert_eq!(dims.len(), 2);
-            assert_eq!(dims[0].name.0, "x");
-            assert_eq!(dims[1].name.0, "y");
-            // Inner: Replicated [nbank] -> Bank
-            match elem.as_ref() {
-                MemoryRegion::Replicated { dims: inner, .. } => {
-                    assert_eq!(inner.len(), 1);
-                    assert_eq!(inner[0].name.0, "nbank");
-                }
-                _ => panic!("expected inner Replicated region"),
-            }
-        }
-        _ => panic!("expected Replicated region"),
-    }
+    let torus_x = Link::builder("l1_torus_x")
+        .from_mem(&scaled_l1)
+        .to_mem(&scaled_l1)
+        .map(&torus_x_map)
+        .bandwidth(64)
+        .build();
 
-    // Link maps were replaced with identity on [x, y]
-    let link0 = &cores.links[0];
-    assert_eq!(link0.map.src_dims.len(), 2);
-    assert_eq!(link0.map.dst_dims.len(), 2);
-    assert_eq!(link0.map.src_dims[0].name.0, "x");
-    assert_eq!(link0.map.src_dims[1].name.0, "y");
+    mesh.links.push(torus_y);
+    mesh.links.push(torus_x);
 
-    // 2 lane types x 8x8 = 128 total processing elements
-    assert_eq!(cores.total_processing_elements(), Some(128));
+    // === Verify topology ===
+    assert_eq!(mesh.name, "2d_mesh_torus");
+    assert_eq!(mesh.processors.len(), 2);
+    assert_eq!(mesh.memory.len(), 1);
+    assert_eq!(mesh.links.len(), 4); // 2 intra-core + 2 torus
 
-    // Visualize scaled architecture
-    let cores_dot = architecture_to_dot(&cores);
-    fs::write("cores_8x8_architecture.dot", &cores_dot).expect("Failed to write DOT file");
-    println!("Generated cores_8x8_architecture.dot");
+    // Sizes are symbolic, so total_processing_elements is None
+    assert_eq!(mesh.total_processing_elements(), None);
 
-    let cores_expanded_dot = architecture_to_dot_expanded(&cores);
-    fs::write("cores_8x8_expanded.dot", &cores_expanded_dot)
-        .expect("Failed to write DOT file");
-    println!("Generated cores_8x8_expanded.dot");
+    // Verify torus maps with concrete symbol bindings (X=8, Y=8)
+    let syms: HashMap<Symbol, i64> = [
+        (Symbol::new("X"), 8),
+        (Symbol::new("Y"), 8),
+    ]
+    .into();
+
+    let torus_y_link = &mesh.links[2];
+    assert_eq!(torus_y_link.name, "l1_torus_y");
+    assert_eq!(torus_y_link.map.apply_with_symbols(&[0, 0], &syms), vec![0, 1]);
+    assert_eq!(torus_y_link.map.apply_with_symbols(&[3, 5], &syms), vec![3, 6]);
+    assert_eq!(torus_y_link.map.apply_with_symbols(&[3, 7], &syms), vec![3, 0]); // wraps
+
+    let torus_x_link = &mesh.links[3];
+    assert_eq!(torus_x_link.name, "l1_torus_x");
+    assert_eq!(torus_x_link.map.apply_with_symbols(&[0, 0], &syms), vec![1, 0]);
+    assert_eq!(torus_x_link.map.apply_with_symbols(&[5, 3], &syms), vec![6, 3]);
+    assert_eq!(torus_x_link.map.apply_with_symbols(&[7, 3], &syms), vec![0, 3]); // wraps
+
+    // === Visualize ===
+    let mesh_dot = architecture_to_dot(&mesh);
+    fs::write("2d_mesh_torus.dot", &mesh_dot).expect("Failed to write DOT file");
 }

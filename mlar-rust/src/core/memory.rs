@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_replicate() {
-        let dim = Dimension::new("nbank", 16);
+        let dim = Dimension::new_int("nbank", 16);
         let region = MemoryRegion::leaf_concrete(128, 1024)
             .replicate(dim.as_slice())
             .with_name("test_mem");

@@ -141,7 +141,7 @@ pub struct Dimension {
 
 impl Dimension {
     /// Create a new dimension with a concrete size
-    pub fn new(name: impl Into<String>, size: u64) -> Self {
+    pub fn new_int(name: impl Into<String>, size: u64) -> Self {
         Self {
             name: DimName::new(name),
             size: SizeExpr::Const(size),
@@ -149,7 +149,7 @@ impl Dimension {
     }
 
     /// Create a new dimension with a symbolic size
-    pub fn new_symbolic(name: impl Into<String>, size_name: impl Into<String>) -> Self {
+    pub fn new_sym(name: impl Into<String>, size_name: impl Into<String>) -> Self {
         Self {
             name: DimName::new(name),
             size: SizeExpr::sym(size_name),

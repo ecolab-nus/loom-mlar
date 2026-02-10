@@ -1,4 +1,4 @@
-use crate::core::size_dim::Dimension;
+use crate::core::size_dim::{Dimension, Symbol};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::{i64 as parse_i64, multispace0};
@@ -15,8 +15,10 @@ use std::collections::HashMap;
 /// quasi-affine extensions (Mod, CeilDiv) needed for hardware mapping patterns.
 #[derive(Debug, Clone)]
 pub enum AffineExpr {
-    /// Variable corresponding to a dimension
+    /// Variable corresponding to a dimension (index variable)
     Var(Dimension),
+    /// Symbolic parameter (e.g., dimension size -- not an index)
+    Sym(Symbol),
     /// Integer constant
     Const(i64),
     /// Addition: a + b
@@ -31,30 +33,51 @@ pub enum AffineExpr {
 
 impl AffineExpr {
     /// Evaluate the affine expression given dimension values (positional, ordered by src_dims).
+    /// Panics if the expression contains symbolic parameters (`Sym`).
+    /// Use `eval_with_symbols` for expressions that may contain symbols.
     pub fn eval(&self, vals: &[i64], src_dims: &[Dimension]) -> i64 {
+        self.eval_with_symbols(vals, src_dims, &HashMap::new())
+    }
+
+    /// Evaluate with both dimension index values and symbolic parameter values.
+    pub fn eval_with_symbols(
+        &self,
+        vals: &[i64],
+        src_dims: &[Dimension],
+        sym_vals: &HashMap<Symbol, i64>,
+    ) -> i64 {
         match self {
             AffineExpr::Var(dim) => src_dims
                 .iter()
                 .position(|d| d.name == dim.name)
                 .and_then(|idx| vals.get(idx).copied())
                 .unwrap_or(0),
+            AffineExpr::Sym(sym) => *sym_vals
+                .get(sym)
+                .unwrap_or_else(|| panic!("unbound symbol '{}' in eval", sym.0)),
             AffineExpr::Const(c) => *c,
-            AffineExpr::Add(a, b) => a.eval(vals, src_dims) + b.eval(vals, src_dims),
-            AffineExpr::MulConst(c, expr) => c * expr.eval(vals, src_dims),
+            AffineExpr::Add(a, b) => {
+                a.eval_with_symbols(vals, src_dims, sym_vals)
+                    + b.eval_with_symbols(vals, src_dims, sym_vals)
+            }
+            AffineExpr::MulConst(c, expr) => {
+                c * expr.eval_with_symbols(vals, src_dims, sym_vals)
+            }
             AffineExpr::Mod(a, b) => {
-                let divisor = b.eval(vals, src_dims);
+                let divisor = b.eval_with_symbols(vals, src_dims, sym_vals);
                 if divisor == 0 {
                     0
                 } else {
-                    a.eval(vals, src_dims).rem_euclid(divisor)
+                    a.eval_with_symbols(vals, src_dims, sym_vals)
+                        .rem_euclid(divisor)
                 }
             }
             AffineExpr::CeilDiv(a, b) => {
-                let divisor = b.eval(vals, src_dims);
+                let divisor = b.eval_with_symbols(vals, src_dims, sym_vals);
                 if divisor == 0 {
                     0
                 } else {
-                    let dividend = a.eval(vals, src_dims);
+                    let dividend = a.eval_with_symbols(vals, src_dims, sym_vals);
                     (dividend + divisor - 1) / divisor
                 }
             }
@@ -65,6 +88,11 @@ impl AffineExpr {
 
     pub fn var(dim: impl Into<Dimension>) -> Self {
         AffineExpr::Var(dim.into())
+    }
+
+    /// Create a symbolic parameter reference (e.g., a dimension size).
+    pub fn sym(name: impl Into<String>) -> Self {
+        AffineExpr::Sym(Symbol::new(name))
     }
 
     pub fn constant(value: i64) -> Self {
@@ -130,10 +158,23 @@ impl AffineMap {
     }
 
     /// Apply the affine map to the given dimension values (positional).
+    /// Panics if expressions contain unbound symbols; use `apply_with_symbols` instead.
     pub fn apply(&self, vals: &[i64]) -> Vec<i64> {
         self.exprs
             .iter()
             .map(|expr| expr.eval(vals, &self.src_dims))
+            .collect()
+    }
+
+    /// Apply the affine map with both dimension values and symbol bindings.
+    pub fn apply_with_symbols(
+        &self,
+        vals: &[i64],
+        sym_vals: &HashMap<Symbol, i64>,
+    ) -> Vec<i64> {
+        self.exprs
+            .iter()
+            .map(|expr| expr.eval_with_symbols(vals, &self.src_dims, sym_vals))
             .collect()
     }
 
@@ -198,7 +239,10 @@ pub struct IndexSelector {
 /// Unbound affine expression that references dimension names as strings.
 #[derive(Debug, Clone)]
 pub enum AffineExprTemplate {
+    /// Reference to a dimension (resolved during bind)
     Dim(String),
+    /// Symbolic parameter (stays as Sym after bind)
+    Sym(String),
     Const(i64),
     Add(Box<AffineExprTemplate>, Box<AffineExprTemplate>),
     MulConst(i64, Box<AffineExprTemplate>),
@@ -233,11 +277,16 @@ impl AffineExprTemplate {
 
     fn bind(&self, dims_by_name: &HashMap<String, Dimension>) -> Result<AffineExpr, String> {
         match self {
-            AffineExprTemplate::Dim(name) => dims_by_name
-                .get(name)
-                .cloned()
-                .map(AffineExpr::var)
-                .ok_or_else(|| format!("unknown dimension '{name}'")),
+            AffineExprTemplate::Dim(name) => {
+                // If the name matches a known dimension, it becomes a Var (index variable).
+                // Otherwise, it becomes a Sym (symbolic parameter, e.g. a dimension size).
+                if let Some(dim) = dims_by_name.get(name) {
+                    Ok(AffineExpr::var(dim.clone()))
+                } else {
+                    Ok(AffineExpr::sym(name.clone()))
+                }
+            }
+            AffineExprTemplate::Sym(name) => Ok(AffineExpr::sym(name.clone())),
             AffineExprTemplate::Const(value) => Ok(AffineExpr::constant(*value)),
             AffineExprTemplate::Add(a, b) => {
                 Ok(AffineExpr::add(a.bind(dims_by_name)?, b.bind(dims_by_name)?))

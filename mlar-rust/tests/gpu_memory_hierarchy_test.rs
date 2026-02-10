@@ -2,8 +2,8 @@ use mlar_rust::*;
 use std::fs;
 
 fn example_gpu_memory_hierarchy() -> Architecture {
-    let dram_dim = Dimension::new("dram_dim", 4);
-    let warp_dim = Dimension::new("warp_dim", 32);
+    let dram_dim = Dimension::new_int("dram_dim", 4);
+    let warp_dim = Dimension::new_int("warp_dim", 32);
 
     let dram = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(256),

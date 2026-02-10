@@ -397,6 +397,7 @@ fn format_affine_map_detailed(map: &AffineMap) -> String {
 fn format_affine_expr(expr: &AffineExpr) -> String {
     match expr {
         AffineExpr::Var(dim) => dim.name.0.clone(),
+        AffineExpr::Sym(sym) => sym.0.clone(),
         AffineExpr::Const(c) => c.to_string(),
         AffineExpr::Add(a, b) => {
             format!("({} + {})", format_affine_expr(a), format_affine_expr(b))
