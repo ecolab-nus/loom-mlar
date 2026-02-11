@@ -1,5 +1,14 @@
 use crate::core::{Dimension, Link, MemoryRegion, Processor};
 
+/// Label describing a parent architecture level introduced by scaling.
+#[derive(Debug, Clone)]
+pub struct ArchitectureLabel {
+    /// Parent architecture name (e.g., "core")
+    pub name: String,
+    /// Dimensions introduced when scaling that parent architecture
+    pub dims: Vec<Dimension>,
+}
+
 /// Represents the complete hardware architecture.
 ///
 /// Memory regions and processors carry their own names (via `.name()`).
@@ -13,6 +22,8 @@ pub struct Architecture {
     pub processors: Vec<Processor>,
     /// Connectivity links between memory regions and/or processors
     pub links: Vec<Link>,
+    /// Hierarchical labels added by `scale()` from outermost to innermost.
+    pub labels: Vec<ArchitectureLabel>,
 }
 
 impl Architecture {
@@ -28,16 +39,12 @@ impl Architecture {
 
     /// Look up a named memory region.
     pub fn get_memory_region(&self, name: &str) -> Option<&MemoryRegion> {
-        self.memory
-            .iter()
-            .find(|r| r.name() == Some(name))
+        self.memory.iter().find(|r| r.name() == Some(name))
     }
 
     /// Look up a named processor.
     pub fn get_processor(&self, name: &str) -> Option<&Processor> {
-        self.processors
-            .iter()
-            .find(|p| p.name() == Some(name))
+        self.processors.iter().find(|p| p.name() == Some(name))
     }
 
     /// Scale this architecture by prepending dimensions.
@@ -50,30 +57,42 @@ impl Architecture {
         I: IntoIterator<Item = &'a Dimension>,
     {
         let dims: Vec<Dimension> = dims.into_iter().cloned().collect();
+        let Architecture {
+            name,
+            memory,
+            processors,
+            links,
+            mut labels,
+        } = self;
 
-        let memory = self
-            .memory
+        let memory = memory
             .into_iter()
             .map(|region| region.replicate(&dims))
             .collect();
 
-        let processors = self
-            .processors
+        let processors = processors
             .into_iter()
             .map(|proc| proc.replicate(&dims))
             .collect();
 
-        let links = self
-            .links
+        let links = links
             .into_iter()
             .map(|link| link.prepend_identity_dims(&dims))
             .collect();
 
+        if !dims.is_empty() {
+            labels.push(ArchitectureLabel {
+                name: name.clone(),
+                dims: dims.clone(),
+            });
+        }
+
         Architecture {
-            name: self.name,
+            name,
             memory,
             processors,
             links,
+            labels,
         }
     }
 
@@ -128,6 +147,7 @@ impl ArchitectureBuilder {
             memory: self.memory,
             processors: self.processors,
             links: self.links,
+            labels: Vec::new(),
         }
     }
 }

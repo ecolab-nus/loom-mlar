@@ -100,9 +100,7 @@ impl MemoryRegion {
     pub fn name(&self) -> Option<&str> {
         match self {
             MemoryRegion::Bank(b) => b.name.as_deref(),
-            MemoryRegion::Replicated { name, elem, .. } => {
-                name.as_deref().or_else(|| elem.name())
-            }
+            MemoryRegion::Replicated { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
             MemoryRegion::Group { name, .. } => name.as_deref(),
         }
     }

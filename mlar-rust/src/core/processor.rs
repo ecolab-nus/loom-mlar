@@ -64,9 +64,7 @@ impl Processor {
     pub fn name(&self) -> Option<&str> {
         match self {
             Processor::Primitive(p) => p.name.as_deref(),
-            Processor::Replicated { name, elem, .. } => {
-                name.as_deref().or_else(|| elem.name())
-            }
+            Processor::Replicated { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
             Processor::Group { name, .. } => name.as_deref(),
         }
     }

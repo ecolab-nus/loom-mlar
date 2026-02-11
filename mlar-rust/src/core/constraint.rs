@@ -39,9 +39,16 @@ pub enum ConstraintExpr {
 
     // Convenience predicates
     /// x % by == 0
-    Divisible { x: Expr, by: Expr },
+    Divisible {
+        x: Expr,
+        by: Expr,
+    },
     /// lo <= x <= hi
-    InRange { x: Expr, lo: Expr, hi: Expr },
+    InRange {
+        x: Expr,
+        lo: Expr,
+        hi: Expr,
+    },
 }
 
 impl ConstraintExpr {
@@ -143,12 +150,10 @@ impl std::fmt::Display for ConstraintExpr {
                 }
                 Ok(())
             }
-            ConstraintExpr::Not(c) => {
-                match c.as_ref() {
-                    ConstraintExpr::True | ConstraintExpr::False => write!(f, "!{}", c),
-                    _ => write!(f, "!({})", c),
-                }
-            }
+            ConstraintExpr::Not(c) => match c.as_ref() {
+                ConstraintExpr::True | ConstraintExpr::False => write!(f, "!{}", c),
+                _ => write!(f, "!({})", c),
+            },
             ConstraintExpr::Eq(a, b) => write!(f, "{} == {}", a, b),
             ConstraintExpr::Le(a, b) => write!(f, "{} <= {}", a, b),
             ConstraintExpr::Lt(a, b) => write!(f, "{} < {}", a, b),

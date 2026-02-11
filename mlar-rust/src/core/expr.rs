@@ -95,7 +95,11 @@ impl Expr {
             Expr::Mul(a, b) => Some(a.eval_const()? * b.eval_const()?),
             Expr::Div(a, b) => {
                 let d = b.eval_const()?;
-                if d == 0 { None } else { Some(a.eval_const()? / d) }
+                if d == 0 {
+                    None
+                } else {
+                    Some(a.eval_const()? / d)
+                }
             }
             Expr::Min(a, b) => Some(a.eval_const()?.min(b.eval_const()?)),
             Expr::Max(a, b) => Some(a.eval_const()?.max(b.eval_const()?)),

@@ -116,8 +116,4 @@ fn test_gpu_memory_hierarchy_visualization() {
 
     let dot = architecture_to_dot(&arch);
     fs::write("gpu_memory_hierarchy.dot", &dot).expect("Failed to write DOT file");
-
-    let expanded_dot = architecture_to_dot_expanded(&arch);
-    fs::write("gpu_memory_hierarchy_expanded.dot", &expanded_dot)
-        .expect("Failed to write expanded DOT file");
 }
