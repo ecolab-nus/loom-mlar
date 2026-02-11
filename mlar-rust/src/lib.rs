@@ -5,7 +5,7 @@ pub mod visualization;
 // Re-export commonly used types from core
 pub use core::{
     Symbol, SizeExpr, Dimension,
-    Expr, ConstraintExpr, PerfModel, CostExpr,
+    Expr, ConstraintExpr, ParseError, PerfModel, CostExpr,
     AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector,
     MemoryBank, MemoryRegion,
     Processor, PrimitiveProc,

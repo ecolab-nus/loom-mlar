@@ -1,4 +1,5 @@
 use super::expr::Expr;
+use super::parse::ParseError;
 
 /// Constraint expression — composable, evaluable predicate for performance model applicability.
 ///
@@ -6,6 +7,17 @@ use super::expr::Expr;
 /// - If provably true: model is applicable
 /// - If provably false: reject model
 /// - If unknown (symbolic): keep symbolic, attach as guard, or use fallback
+///
+/// # Parsing from strings
+///
+/// Constraints can be parsed from human-readable strings:
+///
+/// ```
+/// use mlar_rust::core::ConstraintExpr;
+///
+/// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
+/// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
+/// ```
 #[derive(Clone, Debug)]
 pub enum ConstraintExpr {
     /// Always true
@@ -33,6 +45,36 @@ pub enum ConstraintExpr {
 }
 
 impl ConstraintExpr {
+    /// Parse a constraint from a string.
+    ///
+    /// # Grammar
+    ///
+    /// ```text
+    /// constraint := or_expr
+    /// or_expr    := and_expr ('||' and_expr)*
+    /// and_expr   := not_expr ('&&' not_expr)*
+    /// not_expr   := '!' not_expr | atom_c
+    /// atom_c     := 'true' | 'false'
+    ///             | 'divisible' '(' expr ',' expr ')'
+    ///             | 'in_range' '(' expr ',' expr ',' expr ')'
+    ///             | '(' constraint ')'
+    ///             | expr cmp_op expr
+    /// cmp_op     := '==' | '<=' | '<' | '>=' | '>'
+    /// ```
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mlar_rust::core::ConstraintExpr;
+    ///
+    /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
+    /// let c = ConstraintExpr::parse("divisible(M, 16) && in_range(N, 1, 1024)").unwrap();
+    /// let c = ConstraintExpr::parse("!false").unwrap();
+    /// ```
+    pub fn parse(input: &str) -> Result<Self, ParseError> {
+        super::parse::parse_constraint(input)
+    }
+
     /// Try to evaluate the constraint to a concrete bool, if all leaves are constants.
     pub fn eval_const(&self) -> Option<bool> {
         match self {
@@ -68,6 +110,53 @@ impl ConstraintExpr {
                 let lov = lo.eval_const()?;
                 let hiv = hi.eval_const()?;
                 Some(lov <= xv && xv <= hiv)
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ConstraintExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstraintExpr::True => write!(f, "true"),
+            ConstraintExpr::False => write!(f, "false"),
+            ConstraintExpr::And(cs) => {
+                for (i, c) in cs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " && ")?;
+                    }
+                    // Wrap Or children in parens (lower precedence)
+                    match c {
+                        ConstraintExpr::Or(_) => write!(f, "({})", c)?,
+                        _ => write!(f, "{}", c)?,
+                    }
+                }
+                Ok(())
+            }
+            ConstraintExpr::Or(cs) => {
+                for (i, c) in cs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " || ")?;
+                    }
+                    // And binds tighter, so no parens needed for And children
+                    write!(f, "{}", c)?;
+                }
+                Ok(())
+            }
+            ConstraintExpr::Not(c) => {
+                match c.as_ref() {
+                    ConstraintExpr::True | ConstraintExpr::False => write!(f, "!{}", c),
+                    _ => write!(f, "!({})", c),
+                }
+            }
+            ConstraintExpr::Eq(a, b) => write!(f, "{} == {}", a, b),
+            ConstraintExpr::Le(a, b) => write!(f, "{} <= {}", a, b),
+            ConstraintExpr::Lt(a, b) => write!(f, "{} < {}", a, b),
+            ConstraintExpr::Ge(a, b) => write!(f, "{} >= {}", a, b),
+            ConstraintExpr::Gt(a, b) => write!(f, "{} > {}", a, b),
+            ConstraintExpr::Divisible { x, by } => write!(f, "divisible({}, {})", x, by),
+            ConstraintExpr::InRange { x, lo, hi } => {
+                write!(f, "in_range({}, {}, {})", x, lo, hi)
             }
         }
     }

@@ -1,6 +1,7 @@
 pub mod size_dim;
 pub mod expr;
 pub mod constraint;
+pub mod parse;
 pub mod perf;
 pub mod affine;
 pub mod memory;
@@ -11,6 +12,7 @@ pub mod link;
 pub use size_dim::{Symbol, SizeExpr, Dimension};
 pub use expr::Expr;
 pub use constraint::ConstraintExpr;
+pub use parse::ParseError;
 pub use perf::{PerfModel, CostExpr};
 pub use affine::{AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector};
 pub use memory::{MemoryBank, MemoryRegion};
