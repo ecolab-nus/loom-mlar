@@ -1,4 +1,5 @@
 pub mod affine;
+pub mod architecture;
 pub mod constraint;
 pub mod expr;
 pub mod link;
@@ -10,6 +11,7 @@ pub mod size_dim;
 
 // Re-export commonly used types
 pub use affine::{AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector};
+pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use constraint::ConstraintExpr;
 pub use expr::Expr;
 pub use link::{Endpoint, Link, SharingDomain};

@@ -2,7 +2,7 @@
 //!
 //! Converts MLAR architecture specifications into graphs exportable to GraphViz DOT format.
 
-use crate::architecture::{Architecture, ArchitectureLabel};
+use crate::core::architecture::{Architecture, ArchitectureLabel};
 use crate::core::{
     AffineExpr, AffineMap, Dimension, Endpoint, Link, MemoryBank, MemoryRegion, Processor,
 };
