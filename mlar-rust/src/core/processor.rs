@@ -1,14 +1,43 @@
 use super::perf::PerfModel;
 use super::size_dim::Dimension;
 
-/// Primitive processor — the atomic unit that moves/modifies data.
+/// Reference to an external MLIR module that contains compute semantics.
 ///
-/// `ProcBehavior` is deferred (concepts.md §3: "rely on MLIR linalg, to be ignored for now").
+/// The referenced `.mlir` file is expected to contain one module with one or
+/// more linalg functions. `functions` can optionally restrict which symbols
+/// in that module are used for this processor.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MlirModuleRef {
+    pub path: String,
+    pub functions: Vec<String>,
+}
+
+impl MlirModuleRef {
+    /// Reference an external `.mlir` module, with no function filtering.
+    pub fn new(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            functions: Vec::new(),
+        }
+    }
+
+    /// Reference an external `.mlir` module and an explicit list of function symbols.
+    pub fn with_functions(path: impl Into<String>, functions: &[impl AsRef<str>]) -> Self {
+        Self {
+            path: path.into(),
+            functions: functions.iter().map(|f| f.as_ref().to_string()).collect(),
+        }
+    }
+}
+
+/// Primitive processor — the atomic unit that moves/modifies data.
 #[derive(Clone, Debug)]
 pub struct PrimitiveProc {
     pub name: Option<String>,
     /// Optional performance model (constraints + cost). None = structural-only.
     pub perf: Option<PerfModel>,
+    /// Optional external MLIR module reference containing compute semantics.
+    pub compute: Option<MlirModuleRef>,
 }
 
 /// Recursive processor — Primitive, Replicated, or Group.
@@ -38,6 +67,7 @@ impl Processor {
         Processor::Primitive(PrimitiveProc {
             name: Some(name.into()),
             perf: None,
+            compute: None,
         })
     }
 
@@ -46,6 +76,29 @@ impl Processor {
         Processor::Primitive(PrimitiveProc {
             name: Some(name.into()),
             perf: Some(perf),
+            compute: None,
+        })
+    }
+
+    /// Create a primitive processor with compute semantics.
+    pub fn primitive_with_compute(name: impl Into<String>, compute: MlirModuleRef) -> Self {
+        Processor::Primitive(PrimitiveProc {
+            name: Some(name.into()),
+            perf: None,
+            compute: Some(compute),
+        })
+    }
+
+    /// Create a primitive processor with perf model and compute semantics.
+    pub fn primitive_with_perf_and_compute(
+        name: impl Into<String>,
+        perf: PerfModel,
+        compute: MlirModuleRef,
+    ) -> Self {
+        Processor::Primitive(PrimitiveProc {
+            name: Some(name.into()),
+            perf: Some(perf),
+            compute: Some(compute),
         })
     }
 
@@ -66,6 +119,16 @@ impl Processor {
             Processor::Primitive(p) => p.name.as_deref(),
             Processor::Replicated { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
             Processor::Group { name, .. } => name.as_deref(),
+        }
+    }
+
+    /// Get compute semantics for this processor.
+    /// For Replicated, recurses into its element.
+    pub fn compute(&self) -> Option<&MlirModuleRef> {
+        match self {
+            Processor::Primitive(p) => p.compute.as_ref(),
+            Processor::Replicated { elem, .. } => elem.compute(),
+            Processor::Group { .. } => None,
         }
     }
 
@@ -138,5 +201,38 @@ impl Processor {
 impl From<&Processor> for Processor {
     fn from(p: &Processor) -> Self {
         p.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Processor;
+    use crate::core::processor::MlirModuleRef;
+    use crate::core::size_dim::Dimension;
+
+    #[test]
+    fn primitive_with_compute_tracks_external_mlir_module() {
+        let module = MlirModuleRef::with_functions(
+            "compute/matmul_kernel.mlir",
+            &["matmul_f32", "epilogue_bias"],
+        );
+        let proc = Processor::primitive_with_compute("matmul_lane", module);
+        assert_eq!(proc.name(), Some("matmul_lane"));
+        let compute = proc
+            .compute()
+            .expect("compute semantics reference should exist");
+        assert_eq!(compute.path, "compute/matmul_kernel.mlir");
+        assert_eq!(compute.functions, vec!["matmul_f32", "epilogue_bias"]);
+    }
+
+    #[test]
+    fn replicated_processor_recurses_compute_semantics() {
+        let op = MlirModuleRef::new("compute/vector_lane.mlir");
+        let dim = Dimension::new_int("lane", 8);
+        let proc = Processor::primitive_with_compute("v_lane", op).replicate(dim.as_slice());
+
+        let compute = proc.compute().expect("compute semantics should recurse");
+        assert_eq!(compute.path, "compute/vector_lane.mlir");
+        assert!(compute.functions.is_empty());
     }
 }
