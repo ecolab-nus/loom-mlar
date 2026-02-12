@@ -1,4 +1,5 @@
 use super::perf::PerfModel;
+use super::resource::Resource;
 use super::size_dim::{Dimension, SizeExpr};
 
 /// Atomic unit of memory — a single bank with capacity and optional perf model.
@@ -130,6 +131,24 @@ impl MemoryRegion {
             MemoryRegion::Replicated { dims, .. } => dims,
             _ => &[],
         }
+    }
+
+    /// Convert this memory region into a quantitative `Resource`.
+    ///
+    /// - `Replicated`: quantity = product of replication dimension sizes (e.g. 16 banks).
+    /// - `Bank`: quantity = capacity in bytes (if concrete), or 0.
+    /// - `Group`: quantity = number of sub-regions.
+    pub fn as_resource(&self) -> Resource {
+        let name = self.name().unwrap_or("unnamed").to_string();
+        let quantity = match self {
+            MemoryRegion::Bank(b) => b.capacity_bytes.as_const().unwrap_or(0),
+            MemoryRegion::Replicated { dims, .. } => dims
+                .iter()
+                .map(|d| d.size.as_const().unwrap_or(1))
+                .product(),
+            MemoryRegion::Group { parts, .. } => parts.len() as u64,
+        };
+        Resource::new(name, quantity)
     }
 }
 

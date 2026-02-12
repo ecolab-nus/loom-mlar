@@ -7,6 +7,7 @@ pub mod memory;
 pub mod parse;
 pub mod perf;
 pub mod processor;
+pub mod resource;
 pub mod size_dim;
 
 // Re-export commonly used types
@@ -19,4 +20,5 @@ pub use memory::{MemoryBank, MemoryRegion};
 pub use parse::ParseError;
 pub use perf::{CostExpr, PerfModel};
 pub use processor::{MlirModuleRef, PrimitiveProc, Processor};
+pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Symbol};

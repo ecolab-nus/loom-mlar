@@ -3,6 +3,7 @@ use super::constraint::ConstraintExpr;
 use super::expr::Expr;
 use super::memory::MemoryRegion;
 use super::processor::Processor;
+use super::resource::Resource;
 use super::size_dim::Dimension;
 
 /// An endpoint of a Link — holds the actual memory region or processor.
@@ -113,6 +114,14 @@ impl Link {
             constraints: self.constraints,
             sharing: self.sharing,
         }
+    }
+
+    /// Convert this link into a quantitative `Resource`.
+    ///
+    /// The quantity is the link's bandwidth (if concrete), or 0 for symbolic.
+    pub fn as_resource(&self) -> Resource {
+        let quantity = self.bandwidth.eval_const().unwrap_or(0) as u64;
+        Resource::new(&self.name, quantity)
     }
 }
 

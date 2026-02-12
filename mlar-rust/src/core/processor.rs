@@ -1,4 +1,5 @@
 use super::perf::PerfModel;
+use super::resource::ResourceReq;
 use super::size_dim::Dimension;
 
 /// Reference to an external MLIR module that contains compute semantics.
@@ -38,6 +39,8 @@ pub struct PrimitiveProc {
     pub perf: Option<PerfModel>,
     /// Optional external MLIR module reference containing compute semantics.
     pub compute: Option<MlirModuleRef>,
+    /// Resources this processor allocates when executing.
+    pub resources: Vec<ResourceReq>,
 }
 
 /// Recursive processor — Primitive, Replicated, or Group.
@@ -68,6 +71,7 @@ impl Processor {
             name: Some(name.into()),
             perf: None,
             compute: None,
+            resources: Vec::new(),
         })
     }
 
@@ -77,6 +81,7 @@ impl Processor {
             name: Some(name.into()),
             perf: Some(perf),
             compute: None,
+            resources: Vec::new(),
         })
     }
 
@@ -86,6 +91,7 @@ impl Processor {
             name: Some(name.into()),
             perf: None,
             compute: Some(compute),
+            resources: Vec::new(),
         })
     }
 
@@ -99,7 +105,19 @@ impl Processor {
             name: Some(name.into()),
             perf: Some(perf),
             compute: Some(compute),
+            resources: Vec::new(),
         })
+    }
+
+    /// Set resource requirements on a Primitive processor (builder-style).
+    pub fn with_resources(self, resources: Vec<ResourceReq>) -> Self {
+        match self {
+            Processor::Primitive(mut p) => {
+                p.resources = resources;
+                Processor::Primitive(p)
+            }
+            other => other, // no-op for non-Primitive variants
+        }
     }
 
     /// Wrap this processor in a Replicated with the given dimensions.
@@ -129,6 +147,16 @@ impl Processor {
             Processor::Primitive(p) => p.compute.as_ref(),
             Processor::Replicated { elem, .. } => elem.compute(),
             Processor::Group { .. } => None,
+        }
+    }
+
+    /// Get resource requirements for this processor.
+    /// For Replicated, recurses into its element.
+    pub fn resources(&self) -> &[ResourceReq] {
+        match self {
+            Processor::Primitive(p) => &p.resources,
+            Processor::Replicated { elem, .. } => elem.resources(),
+            Processor::Group { .. } => &[],
         }
     }
 

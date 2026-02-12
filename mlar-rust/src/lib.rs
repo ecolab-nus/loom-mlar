@@ -6,7 +6,7 @@ pub use core::{
     AffineExpr, AffineMap, AffineMapTemplate, Architecture, ArchitectureBuilder, ArchitectureLabel,
     ConstraintExpr, CostExpr, Dimension, Endpoint, Expr, IndexExpr, IndexSelector, Link,
     MemoryBank, MemoryRegion, MlirModuleRef, ParseError, PerfModel, PrimitiveProc, Processor,
-    SharingDomain, SizeExpr, Symbol,
+    Resource, ResourceReq, SharingDomain, SizeExpr, Symbol,
 };
 
 // Re-export visualization utilities

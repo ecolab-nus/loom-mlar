@@ -47,7 +47,10 @@ fn test_2d_mesh_with_perf_models() {
     );
     let matrix_lane = Processor::primitive_with_perf_and_compute(
         "matrix_lane", mat_perf, mat_compute,
-    );
+    )
+    .with_resources(vec![
+        ResourceReq::new(l1.as_resource(), 4),
+    ]);
 
     // === Vector lane: element-wise op with (N) ===
     let vec_perf = PerfModel {
@@ -70,7 +73,10 @@ fn test_2d_mesh_with_perf_models() {
     );
     let vector_lane = Processor::primitive_with_perf_and_compute(
         "vector_lane", vec_perf, vec_compute,
-    );
+    )
+    .with_resources(vec![
+        ResourceReq::new(l1.as_resource(), 2),
+    ]);
 
     // === Links & Architecture ===
     let all_to_one_map = AffineMap::new(dim_bank.as_slice(), &[], vec![]);
@@ -119,6 +125,11 @@ fn test_2d_mesh_with_perf_models() {
                         "compute path for {:?} should be an MLIR file",
                         p.name
                     );
+                    assert!(
+                        !p.resources.is_empty(),
+                        "resources on {:?} should be preserved after scaling",
+                        p.name
+                    );
                 }
                 _ => panic!("expected Primitive inside Replicated"),
             },
@@ -146,6 +157,25 @@ fn test_2d_mesh_with_perf_models() {
     assert!(vec_compute.functions.contains(&"vec_add_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_mul_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_div_f32".to_string()));
+
+    // === Verify resource requirements ===
+    let l1_resource = l1.as_resource();
+    assert_eq!(l1_resource.name, "l1");
+    assert_eq!(l1_resource.quantity, 16); // 16 banks in one L1
+
+    let mat_resources = mesh.get_processor("matrix_lane")
+        .expect("matrix_lane should exist")
+        .resources();
+    assert_eq!(mat_resources.len(), 1);
+    assert_eq!(mat_resources[0].resource, l1_resource);
+    assert_eq!(mat_resources[0].quantity, 4); // uses 4 of 16 banks
+
+    let vec_resources = mesh.get_processor("vector_lane")
+        .expect("vector_lane should exist")
+        .resources();
+    assert_eq!(vec_resources.len(), 1);
+    assert_eq!(vec_resources[0].resource, l1_resource);
+    assert_eq!(vec_resources[0].quantity, 2); // uses 2 of 16 banks
 }
 
 #[test]
