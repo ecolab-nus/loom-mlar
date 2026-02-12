@@ -118,18 +118,20 @@ A `PrimitiveProc` carries its name from construction. The name is accessible via
 let lane = Processor::primitive("matrix_lane");
 assert_eq!(lane.name(), Some("matrix_lane"));
 
-// With performance model
+// With performance model — explicit symbol declarations
 let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
+    symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
     constraints: ConstraintExpr::And(vec![
-        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(256)),
-        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(256)),
+        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+        ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
     ]),
     cost: CostExpr {
-        latency: Expr::div(
+        fixed_latency: Expr::Const(8),
+        throughput_latency: Expr::div(
             Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-            Expr::Const(64),
+            Expr::Const(1024),
         ),
-        throughput: Expr::Const(64),
     },
 });
 ```
@@ -197,23 +199,29 @@ The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`,
 
 ### 6. Performance Models
 
-Performance models replace trait-based latency computation with a data-driven approach. A `PerfModel` combines constraints (when the model is valid) with cost expressions (what the model predicts):
+Performance models replace trait-based latency computation with a data-driven approach. A `PerfModel` explicitly declares the symbols it depends on, specifies constraints under which the model is valid, and gives cost expressions split into fixed startup latency and throughput-dependent latency:
 
 ```rust
 PerfModel {
+    // Explicitly declare all symbols the model depends on
+    symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+    // Constraints: model is only valid when all shapes > 128
     constraints: ConstraintExpr::And(vec![
-        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(256)),  // M >= 256
-        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(256)),  // N >= 256
+        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+        ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
     ]),
     cost: CostExpr {
-        latency: Expr::div(                                     // M*N*K / 64
+        fixed_latency: Expr::Const(8),                          // 8 cycles startup
+        throughput_latency: Expr::div(                          // M*N*K / 1024
             Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-            Expr::Const(64),
+            Expr::Const(1024),
         ),
-        throughput: Expr::Const(64),                            // 64 ops/cycle
     },
 }
 ```
+
+Use `model.validate()` to check that all symbols in constraints and cost are declared. Use `model.total_latency()` to get `fixed_latency + throughput_latency`.
 
 The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
 
@@ -422,8 +430,8 @@ dot -Tsvg arch.dot -o arch.svg
 | `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
 | `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
-| `PerfModel` | Constraints + cost expressions | `core/perf.rs` |
-| `CostExpr` | Symbolic latency + throughput | `core/perf.rs` |
+| `PerfModel` | Symbols + constraints + cost expressions | `core/perf.rs` |
+| `CostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
 | `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `core/affine.rs` |
 | `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `core/affine.rs` |

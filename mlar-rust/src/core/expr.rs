@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::parse::ParseError;
 use super::size_dim::Symbol;
 
@@ -103,6 +105,30 @@ impl Expr {
             }
             Expr::Min(a, b) => Some(a.eval_const()?.min(b.eval_const()?)),
             Expr::Max(a, b) => Some(a.eval_const()?.max(b.eval_const()?)),
+        }
+    }
+
+    /// Collect all symbols referenced in this expression.
+    pub fn free_symbols(&self) -> HashSet<Symbol> {
+        let mut syms = HashSet::new();
+        self.collect_symbols(&mut syms);
+        syms
+    }
+
+    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Symbol>) {
+        match self {
+            Expr::Const(_) => {}
+            Expr::Sym(s) => {
+                out.insert(s.clone());
+            }
+            Expr::Add(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Min(a, b)
+            | Expr::Max(a, b) => {
+                a.collect_symbols(out);
+                b.collect_symbols(out);
+            }
         }
     }
 }

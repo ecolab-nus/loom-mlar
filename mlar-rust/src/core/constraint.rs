@@ -1,5 +1,8 @@
+use std::collections::HashSet;
+
 use super::expr::Expr;
 use super::parse::ParseError;
+use super::size_dim::Symbol;
 
 /// Constraint expression — composable, evaluable predicate for performance model applicability.
 ///
@@ -117,6 +120,42 @@ impl ConstraintExpr {
                 let lov = lo.eval_const()?;
                 let hiv = hi.eval_const()?;
                 Some(lov <= xv && xv <= hiv)
+            }
+        }
+    }
+
+    /// Collect all symbols referenced in this constraint's expressions.
+    pub fn free_symbols(&self) -> HashSet<Symbol> {
+        let mut syms = HashSet::new();
+        self.collect_symbols(&mut syms);
+        syms
+    }
+
+    fn collect_symbols(&self, out: &mut HashSet<Symbol>) {
+        match self {
+            ConstraintExpr::True | ConstraintExpr::False => {}
+            ConstraintExpr::And(cs) | ConstraintExpr::Or(cs) => {
+                for c in cs {
+                    c.collect_symbols(out);
+                }
+            }
+            ConstraintExpr::Not(c) => c.collect_symbols(out),
+            ConstraintExpr::Eq(a, b)
+            | ConstraintExpr::Le(a, b)
+            | ConstraintExpr::Lt(a, b)
+            | ConstraintExpr::Ge(a, b)
+            | ConstraintExpr::Gt(a, b) => {
+                a.collect_symbols(out);
+                b.collect_symbols(out);
+            }
+            ConstraintExpr::Divisible { x, by } => {
+                x.collect_symbols(out);
+                by.collect_symbols(out);
+            }
+            ConstraintExpr::InRange { x, lo, hi } => {
+                x.collect_symbols(out);
+                lo.collect_symbols(out);
+                hi.collect_symbols(out);
             }
         }
     }

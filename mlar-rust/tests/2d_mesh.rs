@@ -1,6 +1,153 @@
 use mlar_rust::*;
 use std::fs;
 
+/// 2D mesh with performance models on both processor types.
+///
+/// - **matrix_lane**: matmul-style model with (M, N, K) symbols.
+///   Valid when M, N, K ≥ 128.  Cost = 8 cycles fixed + M*N*K/1024 throughput.
+///
+/// - **vector_lane**: element-wise vector op with (N) symbol.
+///   Valid when N is divisible by 32.  Cost = 2 cycles fixed + N/32 throughput.
+#[test]
+fn test_2d_mesh_with_perf_models() {
+    // === Dimensions ===
+    let dim_bank = Dimension::new_int("nbank", 16);
+    let dim_x = Dimension::new_int("x", 8);
+    let dim_y = Dimension::new_int("y", 8);
+
+    // === Memory ===
+    let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+        SizeExpr::Const(128),
+        SizeExpr::Const(1024),
+    ))
+    .replicate(dim_bank.as_slice())
+    .with_name("l1");
+
+    // === Matrix lane: matmul with (M, N, K) ===
+    let mat_perf = PerfModel {
+        symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+        constraints: ConstraintExpr::And(vec![
+            ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+            ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+            ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
+        ]),
+        cost: CostExpr {
+            fixed_latency: Expr::Const(8),
+            throughput_latency: Expr::div(
+                Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                Expr::Const(1024),
+            ),
+        },
+    };
+    assert!(mat_perf.validate().is_ok());
+
+    let mat_compute = MlirModuleRef::with_functions(
+        "compute/matrix_lane.mlir",
+        &["matmul_f32"],
+    );
+    let matrix_lane = Processor::primitive_with_perf_and_compute(
+        "matrix_lane", mat_perf, mat_compute,
+    );
+
+    // === Vector lane: element-wise op with (N) ===
+    let vec_perf = PerfModel {
+        symbols: vec![Symbol::new("N")],
+        constraints: ConstraintExpr::Divisible {
+            x: Expr::sym("N"),
+            by: Expr::Const(32),
+        },
+        cost: CostExpr {
+            fixed_latency: Expr::Const(2),
+            throughput_latency: Expr::div(Expr::sym("N"), Expr::Const(32)),
+        },
+    };
+    assert!(vec_perf.validate().is_ok());
+
+    let vec_compute = MlirModuleRef::with_functions(
+        "compute/vector_lane.mlir",
+        &["vec_max_f32", "vec_exp_f32", "vec_sum_f32",
+          "vec_add_f32", "vec_mul_f32", "vec_div_f32"],
+    );
+    let vector_lane = Processor::primitive_with_perf_and_compute(
+        "vector_lane", vec_perf, vec_compute,
+    );
+
+    // === Links & Architecture ===
+    let all_to_one_map = AffineMap::new(dim_bank.as_slice(), &[], vec![]);
+
+    let l1_to_matrix = Link::builder("l1_to_matrix_lane")
+        .from_mem(&l1)
+        .to_proc(&matrix_lane)
+        .map(&all_to_one_map)
+        .bandwidth(512)
+        .build();
+
+    let l1_to_vector = Link::builder("l1_to_vector_lane")
+        .from_mem(&l1)
+        .to_proc(&vector_lane)
+        .map(&all_to_one_map)
+        .bandwidth(128)
+        .build();
+
+    let core = Architecture::builder("core")
+        .mem(&l1)
+        .processor(&matrix_lane)
+        .processor(&vector_lane)
+        .link(l1_to_matrix)
+        .link(l1_to_vector)
+        .build();
+
+    // === Scale to 8x8 mesh ===
+    let mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_perf");
+    assert_eq!(mesh.total_processing_elements(), Some(128));
+
+    // === Verify perf models and compute semantics survive scaling ===
+    // After scaling, processors are Replicated -> Primitive, so dig into the leaf.
+    for proc in &mesh.processors {
+        match proc {
+            Processor::Replicated { elem, .. } => match elem.as_ref() {
+                Processor::Primitive(p) => {
+                    let perf = p.perf.as_ref().expect("perf model should be preserved");
+                    assert!(
+                        perf.validate().is_ok(),
+                        "perf model on {:?} should validate after scaling",
+                        p.name
+                    );
+                    let compute = p.compute.as_ref().expect("compute should be preserved");
+                    assert!(
+                        compute.path.ends_with(".mlir"),
+                        "compute path for {:?} should be an MLIR file",
+                        p.name
+                    );
+                }
+                _ => panic!("expected Primitive inside Replicated"),
+            },
+            _ => panic!("expected Replicated after scaling"),
+        }
+    }
+
+    // === Verify specific compute references ===
+    let mat_compute = mesh.get_processor("matrix_lane")
+        .expect("matrix_lane should exist")
+        .compute()
+        .expect("matrix_lane should have compute");
+    assert_eq!(mat_compute.path, "compute/matrix_lane.mlir");
+    assert_eq!(mat_compute.functions, vec!["matmul_f32"]);
+
+    let vec_compute = mesh.get_processor("vector_lane")
+        .expect("vector_lane should exist")
+        .compute()
+        .expect("vector_lane should have compute");
+    assert_eq!(vec_compute.path, "compute/vector_lane.mlir");
+    assert_eq!(vec_compute.functions.len(), 6);
+    assert!(vec_compute.functions.contains(&"vec_max_f32".to_string()));
+    assert!(vec_compute.functions.contains(&"vec_exp_f32".to_string()));
+    assert!(vec_compute.functions.contains(&"vec_sum_f32".to_string()));
+    assert!(vec_compute.functions.contains(&"vec_add_f32".to_string()));
+    assert!(vec_compute.functions.contains(&"vec_mul_f32".to_string()));
+    assert!(vec_compute.functions.contains(&"vec_div_f32".to_string()));
+}
+
 #[test]
 fn test_2d_mesh_torus() {
     // === Dimensions ===
