@@ -23,6 +23,7 @@ pub enum Expr {
     Const(i64),
     Sym(Symbol),
     Add(Box<Expr>, Box<Expr>),
+    Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
     Min(Box<Expr>, Box<Expr>),
@@ -72,6 +73,10 @@ impl Expr {
         Expr::Add(Box::new(a), Box::new(b))
     }
 
+    pub fn sub(a: Expr, b: Expr) -> Self {
+        Expr::Sub(Box::new(a), Box::new(b))
+    }
+
     pub fn mul(a: Expr, b: Expr) -> Self {
         Expr::Mul(Box::new(a), Box::new(b))
     }
@@ -94,6 +99,7 @@ impl Expr {
             Expr::Const(v) => Some(*v),
             Expr::Sym(_) => None,
             Expr::Add(a, b) => Some(a.eval_const()? + b.eval_const()?),
+            Expr::Sub(a, b) => Some(a.eval_const()? - b.eval_const()?),
             Expr::Mul(a, b) => Some(a.eval_const()? * b.eval_const()?),
             Expr::Div(a, b) => {
                 let d = b.eval_const()?;
@@ -122,6 +128,7 @@ impl Expr {
                 out.insert(s.clone());
             }
             Expr::Add(a, b)
+            | Expr::Sub(a, b)
             | Expr::Mul(a, b)
             | Expr::Div(a, b)
             | Expr::Min(a, b)
@@ -139,6 +146,7 @@ impl std::fmt::Display for Expr {
             Expr::Const(v) => write!(f, "{}", v),
             Expr::Sym(s) => write!(f, "{}", s),
             Expr::Add(a, b) => write!(f, "({} + {})", a, b),
+            Expr::Sub(a, b) => write!(f, "({} - {})", a, b),
             Expr::Mul(a, b) => write!(f, "({} * {})", a, b),
             Expr::Div(a, b) => write!(f, "({} / {})", a, b),
             Expr::Min(a, b) => write!(f, "min({}, {})", a, b),

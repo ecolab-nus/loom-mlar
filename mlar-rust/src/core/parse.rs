@@ -141,10 +141,7 @@ fn expr_add(input: &str) -> IResult<&str, Expr> {
             if op == "+" {
                 Expr::add(acc, rhs)
             } else {
-                Expr::Add(
-                    Box::new(acc),
-                    Box::new(Expr::Mul(Box::new(Expr::Const(-1)), Box::new(rhs))),
-                )
+                Expr::sub(acc, rhs)
             }
         },
     )

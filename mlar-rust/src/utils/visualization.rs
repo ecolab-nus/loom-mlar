@@ -425,6 +425,7 @@ fn format_expr_short(expr: &crate::core::Expr) -> String {
         Expr::Const(v) => v.to_string(),
         Expr::Sym(s) => s.0.clone(),
         Expr::Add(a, b) => format!("({} + {})", format_expr_short(a), format_expr_short(b)),
+        Expr::Sub(a, b) => format!("({} - {})", format_expr_short(a), format_expr_short(b)),
         Expr::Mul(a, b) => format!("({} * {})", format_expr_short(a), format_expr_short(b)),
         Expr::Div(a, b) => format!("({} / {})", format_expr_short(a), format_expr_short(b)),
         Expr::Min(a, b) => format!("min({}, {})", format_expr_short(a), format_expr_short(b)),
