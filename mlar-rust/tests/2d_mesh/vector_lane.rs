@@ -17,7 +17,7 @@ pub fn vector_lane() -> Processor {
             },
             time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(2),
-                throughput_latency: Expr::div(Expr::sym("N"), Expr::Const(32)),
+                throughput: Expr::div(Expr::sym("N"), Expr::Const(32)),
             },
         }],
     };

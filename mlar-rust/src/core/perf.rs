@@ -99,7 +99,7 @@ pub struct TimeCostExpr {
     /// Fixed startup latency (cycles), independent of data volume.
     pub fixed_latency: Expr,
     /// Throughput-dependent latency (cycles), scales with workload size.
-    pub throughput_latency: Expr,
+    pub throughput: Expr,
 }
 
 impl PerfModel {
@@ -127,7 +127,7 @@ impl PerfModel {
             scenario.time_cost.fixed_latency.collect_symbols(&mut used);
             scenario
                 .time_cost
-                .throughput_latency
+                .throughput
                 .collect_symbols(&mut used);
             let constraint_syms = scenario.constraints.free_symbols();
             used.extend(constraint_syms);
@@ -148,7 +148,7 @@ impl PerfModel {
         self.scenarios.get(scenario).map(|s| {
             Expr::add(
                 s.time_cost.fixed_latency.clone(),
-                s.time_cost.throughput_latency.clone(),
+                s.time_cost.throughput.clone(),
             )
         })
     }
@@ -185,7 +185,7 @@ mod tests {
                 ]),
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(8),
-                    throughput_latency: Expr::div(
+                    throughput: Expr::div(
                         Expr::mul(
                             Expr::mul(Expr::sym("M"), Expr::sym("N")),
                             Expr::sym("K"),
@@ -208,7 +208,7 @@ mod tests {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(0),
-                    throughput_latency: Expr::mul(
+                    throughput: Expr::mul(
                         Expr::sym("M"),
                         Expr::mul(Expr::sym("N"), Expr::sym("K")),
                     ),
@@ -229,7 +229,7 @@ mod tests {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(8),
-                    throughput_latency: Expr::sym("N"),
+                    throughput: Expr::sym("N"),
                 },
             }],
         };
@@ -255,7 +255,7 @@ mod tests {
                 constraints: ConstraintExpr::Ge(Expr::sym("X"), Expr::Const(64)),
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(0),
-                    throughput_latency: Expr::sym("M"),
+                    throughput: Expr::sym("M"),
                 },
             }],
         };
@@ -277,7 +277,7 @@ mod tests {
                     ]),
                     time_cost: TimeCostExpr {
                         fixed_latency: Expr::Const(8),
-                        throughput_latency: Expr::div(
+                        throughput: Expr::div(
                             Expr::mul(Expr::sym("M"), Expr::sym("N")),
                             Expr::Const(1024),
                         ),
@@ -291,7 +291,7 @@ mod tests {
                     ]),
                     time_cost: TimeCostExpr {
                         fixed_latency: Expr::Const(4),
-                        throughput_latency: Expr::mul(Expr::sym("M"), Expr::sym("N")),
+                        throughput: Expr::mul(Expr::sym("M"), Expr::sym("N")),
                     },
                 },
             ],
