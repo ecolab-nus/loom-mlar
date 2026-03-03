@@ -31,7 +31,7 @@ fn test_2d_mesh_with_perf_models() {
             ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
             ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
         ]),
-        cost: CostExpr {
+        cost: TimeCostExpr {
             fixed_latency: Expr::Const(8),
             throughput_latency: Expr::div(
                 Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
@@ -59,7 +59,7 @@ fn test_2d_mesh_with_perf_models() {
             x: Expr::sym("N"),
             by: Expr::Const(32),
         },
-        cost: CostExpr {
+        cost: TimeCostExpr {
             fixed_latency: Expr::Const(2),
             throughput_latency: Expr::div(Expr::sym("N"), Expr::Const(32)),
         },
