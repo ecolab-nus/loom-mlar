@@ -21,7 +21,7 @@ src/
 │   ├── size_dim.rs             # DimName, Symbol, SizeExpr, Dimension
 │   ├── expr.rs                 # General symbolic Expr (for cost modeling)
 │   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
-│   ├── perf.rs                 # PerfModel, CostExpr
+│   ├── perf.rs                 # PerfModel, TimeCostExpr
 │   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
 │   ├── processor.rs            # PrimitiveProc, Processor (Primitive/Replicated/Group)
@@ -118,21 +118,23 @@ A `PrimitiveProc` carries its name from construction. The name is accessible via
 let lane = Processor::primitive("matrix_lane");
 assert_eq!(lane.name(), Some("matrix_lane"));
 
-// With performance model — explicit symbol declarations
+// With performance model — explicit symbol declarations, scenario-based
 let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
-    constraints: ConstraintExpr::And(vec![
-        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
-        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
-        ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
-    ]),
-    cost: CostExpr {
-        fixed_latency: Expr::Const(8),
-        throughput_latency: Expr::div(
-            Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-            Expr::Const(1024),
-        ),
-    },
+    scenarios: vec![PerfScenario {
+        constraints: ConstraintExpr::And(vec![
+            ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+            ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+            ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
+        ]),
+        time_cost: TimeCostExpr {
+            fixed_latency: Expr::Const(8),
+            throughput_latency: Expr::div(
+                Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                Expr::Const(1024),
+            ),
+        },
+    }],
 });
 ```
 
@@ -199,34 +201,53 @@ The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`,
 
 ### 6. Performance Models
 
-Performance models replace trait-based latency computation with a data-driven approach. A `PerfModel` explicitly declares the symbols it depends on, specifies constraints under which the model is valid, and gives cost expressions split into fixed startup latency and throughput-dependent latency:
+Performance models replace trait-based latency computation with a data-driven, scenario-based approach. A `PerfModel` explicitly declares the symbols it depends on and is composed of a set of **performance scenarios** (`PerfScenario`). All scenarios share the same symbols. Each `PerfScenario` has its own constraints (determining when it applies) and its own cost expressions (fixed startup latency + throughput-dependent latency).
 
 ```rust
 PerfModel {
     // Explicitly declare all symbols the model depends on
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
-    // Constraints: model is only valid when all shapes > 128
-    constraints: ConstraintExpr::And(vec![
-        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
-        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
-        ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
-    ]),
-    cost: CostExpr {
-        fixed_latency: Expr::Const(8),                          // 8 cycles startup
-        throughput_latency: Expr::div(                          // M*N*K / 1024
-            Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-            Expr::Const(1024),
-        ),
-    },
+    scenarios: vec![
+        // Scenario 0: large inputs
+        PerfScenario {
+            constraints: ConstraintExpr::And(vec![
+                ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+                ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+                ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
+            ]),
+            time_cost: TimeCostExpr {
+                fixed_latency: Expr::Const(8),
+                throughput_latency: Expr::div(
+                    Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                    Expr::Const(1024),
+                ),
+            },
+        },
+        // Scenario 1: small inputs
+        PerfScenario {
+            constraints: ConstraintExpr::And(vec![
+                ConstraintExpr::Lt(Expr::sym("M"), Expr::Const(128)),
+                ConstraintExpr::Lt(Expr::sym("N"), Expr::Const(128)),
+                ConstraintExpr::Lt(Expr::sym("K"), Expr::Const(128)),
+            ]),
+            time_cost: TimeCostExpr {
+                fixed_latency: Expr::Const(4),
+                throughput_latency: Expr::div(
+                    Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                    Expr::Const(256),
+                ),
+            },
+        },
+    ],
 }
 ```
 
-Use `model.validate()` to check that all symbols in constraints and cost are declared. Use `model.total_latency()` to get `fixed_latency + throughput_latency`.
+Use `model.validate()` to check that all symbols in constraints and cost are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput_latency` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
 
 The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
 
-- **Provably true**: model is applicable, use the cost expressions
-- **Provably false**: reject model, try alternatives
+- **Provably true**: scenario is applicable, use its cost expressions
+- **Provably false**: reject scenario, try the next one
 - **Unknown** (symbolic): keep symbolic as a guard, or use a conservative fallback
 
 ## Compositional Architecture
@@ -430,8 +451,9 @@ dot -Tsvg arch.dot -o arch.svg
 | `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
 | `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
-| `PerfModel` | Symbols + constraints + cost expressions | `core/perf.rs` |
-| `CostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
+| `PerfModel` | Symbols + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
+| `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
+| `TimeCostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
 | `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `core/affine.rs` |
 | `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `core/affine.rs` |

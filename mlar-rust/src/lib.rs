@@ -5,7 +5,7 @@ pub mod utils;
 pub use core::{
     AffineExpr, AffineMap, AffineMapTemplate, Architecture, ArchitectureBuilder, ArchitectureLabel,
     ConstraintExpr, TimeCostExpr, Dimension, Endpoint, Expr, IndexExpr, IndexSelector, Link,
-    MemoryBank, MemoryRegion, MlirModuleRef, ParseError, PerfModel, PrimitiveProc, Processor,
+    MemoryBank, MemoryRegion, MlirModuleRef, ParseError, PerfModel, PerfScenario, PrimitiveProc, Processor,
     Resource, ResourceReq, SharingDomain, SizeExpr, Symbol,
 };
 

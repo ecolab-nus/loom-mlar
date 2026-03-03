@@ -18,7 +18,7 @@ pub use expr::Expr;
 pub use link::{Endpoint, Link, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use parse::ParseError;
-pub use perf::{TimeCostExpr, PerfModel};
+pub use perf::{PerfScenario, TimeCostExpr, PerfModel};
 pub use processor::{MlirModuleRef, PrimitiveProc, Processor};
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Symbol};

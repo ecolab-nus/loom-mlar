@@ -26,18 +26,20 @@ fn test_2d_mesh_with_perf_models() {
     // === Matrix lane: matmul with (M, N, K) ===
     let mat_perf = PerfModel {
         symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
-        constraints: ConstraintExpr::And(vec![
-            ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
-            ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
-            ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
-        ]),
-        time_cost: TimeCostExpr {
-            fixed_latency: Expr::Const(8),
-            throughput_latency: Expr::div(
-                Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-                Expr::Const(1024),
-            ),
-        },
+        scenarios: vec![PerfScenario {
+            constraints: ConstraintExpr::And(vec![
+                ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
+                ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
+                ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
+            ]),
+            time_cost: TimeCostExpr {
+                fixed_latency: Expr::Const(8),
+                throughput_latency: Expr::div(
+                    Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                    Expr::Const(1024),
+                ),
+            },
+        }],
     };
     assert!(mat_perf.validate().is_ok());
 
@@ -55,14 +57,16 @@ fn test_2d_mesh_with_perf_models() {
     // === Vector lane: element-wise op with (N) ===
     let vec_perf = PerfModel {
         symbols: vec![Symbol::new("N")],
-        constraints: ConstraintExpr::Divisible {
-            x: Expr::sym("N"),
-            by: Expr::Const(32),
-        },
-        time_cost: TimeCostExpr {
-            fixed_latency: Expr::Const(2),
-            throughput_latency: Expr::div(Expr::sym("N"), Expr::Const(32)),
-        },
+        scenarios: vec![PerfScenario {
+            constraints: ConstraintExpr::Divisible {
+                x: Expr::sym("N"),
+                by: Expr::Const(32),
+            },
+            time_cost: TimeCostExpr {
+                fixed_latency: Expr::Const(2),
+                throughput_latency: Expr::div(Expr::sym("N"), Expr::Const(32)),
+            },
+        }],
     };
     assert!(vec_perf.validate().is_ok());
 
