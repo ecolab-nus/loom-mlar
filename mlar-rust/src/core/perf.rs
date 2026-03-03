@@ -33,6 +33,12 @@ pub struct PerfScenario {
 ///
 /// let model = PerfModel {
 ///     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+///     // Global constraints that apply to all scenarios
+///     constraints: ConstraintExpr::And(vec![
+///         ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(1)),
+///         ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(1)),
+///         ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(1)),
+///     ]),
 ///     scenarios: vec![
 ///         // Scenario 0: large inputs (all >= 128)
 ///         PerfScenario {
@@ -70,9 +76,13 @@ pub struct PerfScenario {
 /// ```
 #[derive(Clone, Debug)]
 pub struct PerfModel {
-    /// The symbols this model depends on. All symbols used in scenario
-    /// `constraints` and `time_cost` must be declared here.
+    /// The symbols this model depends on. All symbols used in `constraints`,
+    /// scenario `constraints`, and `time_cost` must be declared here.
     pub symbols: Vec<Symbol>,
+    /// Global constraints that apply to all scenarios. A scenario is only
+    /// applicable when both the global constraints and its own constraints
+    /// are satisfied.
+    pub constraints: ConstraintExpr,
     /// The performance scenarios. Each scenario has its own constraints and
     /// cost expressions.
     pub scenarios: Vec<PerfScenario>,
@@ -97,18 +107,22 @@ impl PerfModel {
     pub fn trivial() -> Self {
         PerfModel {
             symbols: vec![],
+            constraints: ConstraintExpr::True,
             scenarios: vec![],
         }
     }
 
-    /// Validate that all symbols in scenario `constraints` and `time_cost`
-    /// are declared in `symbols`.
+    /// Validate that all symbols in global `constraints`, scenario `constraints`,
+    /// and `time_cost` are declared in `symbols`.
     ///
     /// Returns `Ok(())` if valid, or `Err(undeclared)` with the set of undeclared symbols.
     pub fn validate(&self) -> Result<(), Vec<Symbol>> {
         let declared: HashSet<Symbol> = self.symbols.iter().cloned().collect();
 
         let mut used = HashSet::new();
+        // Collect symbols from global constraints
+        used.extend(self.constraints.free_symbols());
+        // Collect symbols from each scenario
         for scenario in &self.scenarios {
             scenario.time_cost.fixed_latency.collect_symbols(&mut used);
             scenario
@@ -162,6 +176,7 @@ mod tests {
     fn test_validate_all_declared() {
         let model = PerfModel {
             symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+            constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::And(vec![
                     ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
@@ -188,6 +203,7 @@ mod tests {
         // Declare M and N but use K in cost — should fail.
         let model = PerfModel {
             symbols: vec![Symbol::new("M"), Symbol::new("N")],
+            constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCostExpr {
@@ -208,6 +224,7 @@ mod tests {
     fn test_total_latency_for() {
         let model = PerfModel {
             symbols: vec![Symbol::new("N")],
+            constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCostExpr {
@@ -233,6 +250,7 @@ mod tests {
         // Symbol X used in constraints but not declared
         let model = PerfModel {
             symbols: vec![Symbol::new("M")],
+            constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::Ge(Expr::sym("X"), Expr::Const(64)),
                 time_cost: TimeCostExpr {
@@ -249,6 +267,7 @@ mod tests {
     fn test_multi_scenario() {
         let model = PerfModel {
             symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+            constraints: ConstraintExpr::True,
             scenarios: vec![
                 // Scenario 0: large inputs
                 PerfScenario {

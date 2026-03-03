@@ -121,6 +121,7 @@ assert_eq!(lane.name(), Some("matrix_lane"));
 // With performance model — explicit symbol declarations, scenario-based
 let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+    constraints: ConstraintExpr::True,  // no global constraints
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::And(vec![
             ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
@@ -201,12 +202,18 @@ The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`,
 
 ### 6. Performance Models
 
-Performance models replace trait-based latency computation with a data-driven, scenario-based approach. A `PerfModel` explicitly declares the symbols it depends on and is composed of a set of **performance scenarios** (`PerfScenario`). All scenarios share the same symbols. Each `PerfScenario` has its own constraints (determining when it applies) and its own cost expressions (fixed startup latency + throughput-dependent latency).
+Performance models replace trait-based latency computation with a data-driven, scenario-based approach. A `PerfModel` explicitly declares the symbols it depends on, specifies **global constraints** that apply to all scenarios, and is composed of a set of **performance scenarios** (`PerfScenario`). Each `PerfScenario` has its own constraints (determining when it applies) and its own cost expressions (fixed startup latency + throughput-dependent latency). A scenario is only applicable when both the global constraints and its own constraints are satisfied.
 
 ```rust
 PerfModel {
     // Explicitly declare all symbols the model depends on
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+    // Global constraints that apply to ALL scenarios
+    constraints: ConstraintExpr::And(vec![
+        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(1)),
+        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(1)),
+        ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(1)),
+    ]),
     scenarios: vec![
         // Scenario 0: large inputs
         PerfScenario {
@@ -242,7 +249,7 @@ PerfModel {
 }
 ```
 
-Use `model.validate()` to check that all symbols in constraints and cost are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput_latency` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
+Use `model.validate()` to check that all symbols in global constraints, scenario constraints, and cost expressions are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput_latency` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
 
 The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
 
@@ -451,7 +458,7 @@ dot -Tsvg arch.dot -o arch.svg
 | `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
 | `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
-| `PerfModel` | Symbols + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
+| `PerfModel` | Symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
 | `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
 | `TimeCostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
