@@ -42,7 +42,7 @@ pub struct PerfModel {
     /// Constraints under which this model is valid.
     pub constraints: ConstraintExpr,
     /// Cost expressions (fixed + throughput-dependent latency).
-    pub cost: TimeCostExpr,
+    pub time_cost: TimeCostExpr,
 }
 
 /// Cost expression — fixed startup latency and throughput-dependent latency.
@@ -65,7 +65,7 @@ impl PerfModel {
         PerfModel {
             symbols: vec![],
             constraints: ConstraintExpr::True,
-            cost: TimeCostExpr {
+            time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(0),
                 throughput_latency: Expr::Const(0),
             },
@@ -79,8 +79,8 @@ impl PerfModel {
         let declared: HashSet<Symbol> = self.symbols.iter().cloned().collect();
 
         let mut used = HashSet::new();
-        self.cost.fixed_latency.collect_symbols(&mut used);
-        self.cost.throughput_latency.collect_symbols(&mut used);
+        self.time_cost.fixed_latency.collect_symbols(&mut used);
+        self.time_cost.throughput_latency.collect_symbols(&mut used);
         let constraint_syms = self.constraints.free_symbols();
         used.extend(constraint_syms);
 
@@ -95,8 +95,8 @@ impl PerfModel {
     /// Total latency = fixed_latency + throughput_latency.
     pub fn total_latency(&self) -> Expr {
         Expr::add(
-            self.cost.fixed_latency.clone(),
-            self.cost.throughput_latency.clone(),
+            self.time_cost.fixed_latency.clone(),
+            self.time_cost.throughput_latency.clone(),
         )
     }
 }
@@ -122,7 +122,7 @@ mod tests {
                 ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
                 ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
             ]),
-            cost: TimeCostExpr {
+            time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(8),
                 throughput_latency: Expr::div(
                     Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
@@ -139,7 +139,7 @@ mod tests {
         let model = PerfModel {
             symbols: vec![Symbol::new("M"), Symbol::new("N")],
             constraints: ConstraintExpr::True,
-            cost: TimeCostExpr {
+            time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(0),
                 throughput_latency: Expr::mul(
                     Expr::sym("M"),
@@ -157,7 +157,7 @@ mod tests {
         let model = PerfModel {
             symbols: vec![Symbol::new("N")],
             constraints: ConstraintExpr::True,
-            cost: TimeCostExpr {
+            time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(8),
                 throughput_latency: Expr::sym("N"),
             },
@@ -177,7 +177,7 @@ mod tests {
         let model = PerfModel {
             symbols: vec![Symbol::new("M")],
             constraints: ConstraintExpr::Ge(Expr::sym("X"), Expr::Const(64)),
-            cost: TimeCostExpr {
+            time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(0),
                 throughput_latency: Expr::sym("M"),
             },
