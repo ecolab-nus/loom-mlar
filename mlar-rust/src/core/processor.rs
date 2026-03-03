@@ -1,4 +1,4 @@
-use super::perf::PerfModel;
+use super::perf::ProcPerfModel;
 use super::resource::ResourceReq;
 use super::size_dim::Dimension;
 
@@ -35,8 +35,8 @@ impl MlirModuleRef {
 #[derive(Clone, Debug)]
 pub struct PrimitiveProc {
     pub name: Option<String>,
-    /// Optional performance model (constraints + cost). None = structural-only.
-    pub perf: Option<PerfModel>,
+    /// Optional processor-level performance model. None = structural-only.
+    pub perf: Option<ProcPerfModel>,
     /// Optional external MLIR module reference containing compute semantics.
     pub compute: Option<MlirModuleRef>,
     /// Resources this processor allocates when executing.
@@ -76,7 +76,7 @@ impl Processor {
     }
 
     /// Create a primitive processor with a perf model.
-    pub fn primitive_with_perf(name: impl Into<String>, perf: PerfModel) -> Self {
+    pub fn primitive_with_perf(name: impl Into<String>, perf: ProcPerfModel) -> Self {
         Processor::Primitive(PrimitiveProc {
             name: Some(name.into()),
             perf: Some(perf),
@@ -98,7 +98,7 @@ impl Processor {
     /// Create a primitive processor with perf model and compute semantics.
     pub fn primitive_with_perf_and_compute(
         name: impl Into<String>,
-        perf: PerfModel,
+        perf: ProcPerfModel,
         compute: MlirModuleRef,
     ) -> Self {
         Processor::Primitive(PrimitiveProc {

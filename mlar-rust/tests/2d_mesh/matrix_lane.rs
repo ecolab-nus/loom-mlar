@@ -8,7 +8,7 @@ use crate::memory::l1;
 /// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
 /// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
 pub fn matrix_lane() -> Processor {
-    let mat_perf = PerfModel {
+    let mat_func_perf = FuncPerfModel {
         symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
         constraints: ConstraintExpr::And(vec![
             ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)),
@@ -45,6 +45,10 @@ pub fn matrix_lane() -> Processor {
                 },
             },
         ],
+    };
+
+    let mat_perf = ProcPerfModel {
+        func_models: vec![mat_func_perf], // one function: matmul_f32
     };
 
     let mat_compute = MlirModuleRef::with_functions(

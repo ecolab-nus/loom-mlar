@@ -21,7 +21,7 @@ src/
 │   ├── size_dim.rs             # DimName, Symbol, SizeExpr, Dimension
 │   ├── expr.rs                 # General symbolic Expr (for cost modeling)
 │   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
-│   ├── perf.rs                 # PerfModel, TimeCostExpr
+│   ├── perf.rs                 # FuncPerfModel, ProcPerfModel, TimeCostExpr
 │   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
 │   ├── processor.rs            # PrimitiveProc, Processor (Primitive/Replicated/Group)
@@ -118,10 +118,10 @@ A `PrimitiveProc` carries its name from construction. The name is accessible via
 let lane = Processor::primitive("matrix_lane");
 assert_eq!(lane.name(), Some("matrix_lane"));
 
-// With performance model — explicit symbol declarations, scenario-based
-let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
+// With per-function performance models — ProcPerfModel wraps FuncPerfModel(s)
+let matmul_perf = FuncPerfModel {
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
-    constraints: ConstraintExpr::True,  // no global constraints
+    constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::And(vec![
             ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
@@ -136,7 +136,11 @@ let lane = Processor::primitive_with_perf("matrix_lane", PerfModel {
             ),
         },
     }],
-});
+};
+let proc_perf = ProcPerfModel {
+    func_models: vec![matmul_perf],  // one FuncPerfModel per MLIR function
+};
+let lane = Processor::primitive_with_perf("matrix_lane", proc_perf);
 ```
 
 Replication scales processors across dimensions, just like memory:
@@ -202,10 +206,17 @@ The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`,
 
 ### 6. Performance Models
 
-Performance models replace trait-based latency computation with a data-driven, scenario-based approach. A `PerfModel` explicitly declares the symbols it depends on, specifies **global constraints** that apply to all scenarios, and is composed of a set of **performance scenarios** (`PerfScenario`). Each `PerfScenario` has its own constraints (determining when it applies) and its own cost expressions (fixed startup latency + throughput-dependent latency). A scenario is only applicable when both the global constraints and its own constraints are satisfied.
+Performance models use a **two-level hierarchy** to support different performance characteristics for different functions within the same processor:
+
+- **`FuncPerfModel`** (function-level): declares symbols, global constraints, and scenario-based costs for a single function. This is the atomic performance model unit.
+- **`ProcPerfModel`** (processor-level): wraps a list of `FuncPerfModel`s, one per function in the associated `MlirModuleRef`. The function models are stored in the **same order** as the functions listed in `MlirModuleRef::functions`.
+
+#### FuncPerfModel
+
+A `FuncPerfModel` explicitly declares the symbols it depends on, specifies **global constraints** that apply to all scenarios, and is composed of a set of **performance scenarios** (`PerfScenario`). Each `PerfScenario` has its own constraints (determining when it applies) and its own cost expressions (fixed startup latency + throughput-dependent latency). A scenario is only applicable when both the global constraints and its own constraints are satisfied.
 
 ```rust
-PerfModel {
+FuncPerfModel {
     // Explicitly declare all symbols the model depends on
     symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
     // Global constraints that apply to ALL scenarios
@@ -250,6 +261,46 @@ PerfModel {
 ```
 
 Use `model.validate()` to check that all symbols in global constraints, scenario constraints, and cost expressions are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput_latency` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
+
+#### ProcPerfModel
+
+A `ProcPerfModel` groups per-function models and is bound to a processor's `MlirModuleRef`:
+
+```rust
+// MLIR module with two functions having different perf characteristics
+let compute = MlirModuleRef::with_functions("compute/vector_lane.mlir",
+    &["vec_add_f32", "vec_exp_f32"]);
+
+let fast_op = FuncPerfModel {
+    symbols: vec![], constraints: ConstraintExpr::True,
+    scenarios: vec![PerfScenario {
+        constraints: ConstraintExpr::True,
+        time_cost: TimeCostExpr {
+            fixed_latency: Expr::Const(1), throughput: Expr::Const(1024),
+        },
+    }],
+};
+
+let slow_op = FuncPerfModel {
+    symbols: vec![], constraints: ConstraintExpr::True,
+    scenarios: vec![PerfScenario {
+        constraints: ConstraintExpr::True,
+        time_cost: TimeCostExpr {
+            fixed_latency: Expr::Const(16), throughput: Expr::Const(128),
+        },
+    }],
+};
+
+let proc_perf = ProcPerfModel {
+    func_models: vec![fast_op, slow_op],  // same order as MlirModuleRef functions
+};
+assert!(proc_perf.validate().is_ok());
+assert!(proc_perf.validate_against(&compute).is_ok());
+
+let lane = Processor::primitive_with_perf_and_compute("vector_lane", proc_perf, compute);
+```
+
+Use `proc_perf.validate()` to validate all inner function models, `proc_perf.validate_against(&mlir_ref)` to check the function count matches, and `proc_perf.get_func_model(i)` to access individual function models.
 
 The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
 
@@ -458,7 +509,8 @@ dot -Tsvg arch.dot -o arch.svg
 | `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
 | `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
-| `PerfModel` | Symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
+| `FuncPerfModel` | Per-function: symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
+| `ProcPerfModel` | Processor-level: `Vec<FuncPerfModel>` matching MLIR function order; validate with `validate_against(&MlirModuleRef)` | `core/perf.rs` |
 | `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
 | `TimeCostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |

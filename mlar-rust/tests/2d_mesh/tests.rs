@@ -28,6 +28,11 @@ fn test_2d_mesh_with_perf_models() {
                         p.name
                     );
                     assert!(
+                        perf.validate_against(compute).is_ok(),
+                        "perf model on {:?} should match compute function count",
+                        p.name
+                    );
+                    assert!(
                         !p.resources.is_empty(),
                         "resources on {:?} should be preserved after scaling",
                         p.name
@@ -61,6 +66,34 @@ fn test_2d_mesh_with_perf_models() {
     assert!(vec_compute.functions.contains(&"vec_add_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_mul_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_div_f32".to_string()));
+
+    // === Verify per-function perf models for vector lane ===
+    let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
+    match vec_proc {
+        Processor::Replicated { elem, .. } => match elem.as_ref() {
+            Processor::Primitive(p) => {
+                let proc_perf = p.perf.as_ref().expect("perf model");
+                assert_eq!(proc_perf.num_functions(), 6);
+
+                // vec_max_f32 (index 0): throughput=1024, latency=1
+                let fast_model = proc_perf.get_func_model(0).unwrap();
+                assert_eq!(fast_model.scenarios[0].time_cost.throughput.eval_const(), Some(1024));
+                assert_eq!(fast_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(1));
+
+                // vec_exp_f32 (index 1): throughput=128, latency=16
+                let exp_model = proc_perf.get_func_model(1).unwrap();
+                assert_eq!(exp_model.scenarios[0].time_cost.throughput.eval_const(), Some(128));
+                assert_eq!(exp_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(16));
+
+                // vec_div_f32 (index 5): throughput=256, latency=8
+                let div_model = proc_perf.get_func_model(5).unwrap();
+                assert_eq!(div_model.scenarios[0].time_cost.throughput.eval_const(), Some(256));
+                assert_eq!(div_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(8));
+            }
+            _ => panic!("expected Primitive"),
+        },
+        _ => panic!("expected Replicated"),
+    }
 
     // === Verify resource requirements ===
     let l1_resource = l1().as_resource();

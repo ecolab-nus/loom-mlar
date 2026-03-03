@@ -1,4 +1,4 @@
-use super::perf::PerfModel;
+use super::perf::FuncPerfModel;
 use super::resource::Resource;
 use super::size_dim::{Dimension, SizeExpr};
 
@@ -11,7 +11,7 @@ pub struct MemoryBank {
     /// Optional access granularity (block size) for cost analysis
     pub access_granularity: Option<SizeExpr>,
     /// Optional performance model (access cost characteristics)
-    pub perf: Option<PerfModel>,
+    pub perf: Option<FuncPerfModel>,
 }
 
 impl MemoryBank {
@@ -44,7 +44,7 @@ impl MemoryBank {
     }
 
     /// Builder-style: set the perf model.
-    pub fn with_perf(mut self, perf: PerfModel) -> Self {
+    pub fn with_perf(mut self, perf: FuncPerfModel) -> Self {
         self.perf = Some(perf);
         self
     }
