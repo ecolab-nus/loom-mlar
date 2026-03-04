@@ -18,7 +18,7 @@ src/
 ├── lib.rs                      # Public API and re-exports
 ├── core/
 │   ├── mod.rs                  # Core module re-exports
-│   ├── size_dim.rs             # DimName, Symbol, SizeExpr, Dimension
+│   ├── size_dim.rs             # DimName, Sym, SizeExpr, Dimension
 │   ├── expr.rs                 # General symbolic Expr (for cost modeling)
 │   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
 │   ├── perf.rs                 # FuncPerfModel, ProcPerfModel, TimeCostExpr
@@ -42,10 +42,10 @@ A `Dimension` defines a named axis of homogeneous replication.
 
 ```rust
 // Concrete dimension
-let dim_x = Dimension::new("x", 8);
+let dim_x = Dimension::new_int("x", 8);
 
 // Symbolic dimension (size unknown at IR construction time)
-let dim_n = Dimension::new_symbolic("n", "N");
+let dim_n = Dimension::new_sym("n", "N");
 ```
 
 Sizes are represented by `SizeExpr`, which supports concrete values, symbolic names, and arithmetic:
@@ -85,7 +85,7 @@ let dram_bank = MemoryBank::from_blocks(SizeExpr::Const(256), SizeExpr::sym("DRA
 Replication creates a multi-dimensional array of identical banks. The `.with_name()` method attaches a name to the region so it can be referenced later:
 
 ```rust
-let dim_bank = Dimension::new("nbank", 16);
+let dim_bank = Dimension::new_int("nbank", 16);
 
 // 16-bank L1 cache: Replicated[nbank:16] -> Bank(128 * 1024)
 let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
@@ -120,7 +120,7 @@ assert_eq!(lane.name.as_deref(), Some("matrix_lane"));
 
 // With per-function performance models — ProcPerfModel wraps FuncPerfModel(s)
 let matmul_perf = FuncPerfModel {
-    symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+    symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
     constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::And(vec![
@@ -130,7 +130,7 @@ let matmul_perf = FuncPerfModel {
         ]),
         time_cost: TimeCostExpr {
             fixed_latency: Expr::Const(8),
-            throughput_latency: Expr::div(
+            throughput: Expr::div(
                 Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                 Expr::Const(1024),
             ),
@@ -149,7 +149,7 @@ let lane = Processor::with_perf("matrix_lane", proc_perf);
 Replication scales processors across dimensions, just like memory:
 
 ```rust
-let warp_dim = Dimension::new("warp_dim", 32);
+let warp_dim = Dimension::new_int("warp_dim", 32);
 
 // 32 matrix lanes (one per warp)
 let mat_lanes = Processor::new("matmul_lane")
@@ -163,14 +163,14 @@ assert_eq!(mat_lanes.total_instances(), Some(32));
 
 All connectivity between architecture entities is expressed through a single `Link` type. A link connects two endpoints (memory or processor) with an affine map describing the regular connection pattern, plus bandwidth and optional constraints.
 
-Endpoints hold the actual `MemoryRegion` or `Processor` objects directly. Names are derived from the data -- you just pass a reference:
+Endpoints hold the actual `MemoryRegion` or `ProcessorElem` objects directly. Names are derived from the data -- you just pass a reference:
 
 ```rust
 // Memory-to-memory link
 let dram_to_l2 = Link::builder("DRAM_to_L2")
     .from_mem(&dram)      // borrows and clones internally
     .to_mem(&l2)
-    .map(affine_map)
+    .map(&affine_map)
     .bandwidth(256)       // bytes/cycle
     .build();
 
@@ -178,12 +178,12 @@ let dram_to_l2 = Link::builder("DRAM_to_L2")
 let rf_to_lane = Link::builder("RF_to_MatLane")
     .from_mem(&rf)
     .to_proc(&mat_lane)
-    .map(affine_map)
+    .map(&affine_map)
     .bandwidth(64)
     .build();
 ```
 
-The `Endpoint` enum is simply `Mem(MemoryRegion)` or `Proc(Processor)`, with `name()` delegating to the inner data.
+The `Endpoint` enum is simply `Mem(MemoryRegion)` or `Proc(ProcessorElem)`, with `name()` delegating to the inner data.
 
 ### 5. Affine Maps
 
@@ -221,7 +221,7 @@ A `FuncPerfModel` explicitly declares the symbols it depends on, specifies **glo
 ```rust
 FuncPerfModel {
     // Explicitly declare all symbols the model depends on
-    symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+    symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
     // Global constraints that apply to ALL scenarios
     constraints: ConstraintExpr::And(vec![
         ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(1)),
@@ -238,7 +238,7 @@ FuncPerfModel {
             ]),
             time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(8),
-                throughput_latency: Expr::div(
+                throughput: Expr::div(
                     Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                     Expr::Const(1024),
                 ),
@@ -253,7 +253,7 @@ FuncPerfModel {
             ]),
             time_cost: TimeCostExpr {
                 fixed_latency: Expr::Const(4),
-                throughput_latency: Expr::div(
+                throughput: Expr::div(
                     Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                     Expr::Const(256),
                 ),
@@ -263,7 +263,7 @@ FuncPerfModel {
 }
 ```
 
-Use `model.validate()` to check that all symbols in global constraints, scenario constraints, and cost expressions are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput_latency` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
+Use `model.validate()` to check that all symbols in global constraints, scenario constraints, and cost expressions are declared. Use `model.total_latency_for(scenario)` to get `fixed_latency + throughput` for a specific scenario, or `model.num_scenarios()` to query the number of scenarios.
 
 #### ProcPerfModel
 
@@ -325,7 +325,7 @@ An `Architecture` stores components directly -- names live inside the data:
 pub struct Architecture {
     pub name: String,
     pub memory: Vec<MemoryRegion>,    // each carries its own name via .name()
-    pub processors: Vec<Processor>,   // each carries its own name via .name()
+    pub processors: Vec<ProcessorElem>,   // each carries its own name via .name()
     pub links: Vec<Link>,             // connectivity
 }
 ```
@@ -350,9 +350,9 @@ let proc = core.get_processor("matrix_lane").unwrap();
 use mlar_rust::*;
 
 // === Dimensions ===
-let dim_bank = Dimension::new("nbank", 16);
-let dim_x = Dimension::new("x", 8);
-let dim_y = Dimension::new("y", 8);
+let dim_bank = Dimension::new_int("nbank", 16);
+let dim_x = Dimension::new_int("x", 8);
+let dim_y = Dimension::new_int("y", 8);
 
 // === Step 1: Define a single core ===
 
@@ -375,11 +375,11 @@ let all_to_one = AffineMap::new(
 
 let l1_to_matrix = Link::builder("l1_to_matrix_lane")
     .from_mem(&l1).to_proc(&matrix_lane)
-    .map(all_to_one.clone()).bandwidth(512).build();
+    .map(&all_to_one).bandwidth(512).build();
 
 let l1_to_vector = Link::builder("l1_to_vector_lane")
     .from_mem(&l1).to_proc(&vector_lane)
-    .map(all_to_one).bandwidth(128).build();
+    .map(&all_to_one).bandwidth(128).build();
 
 // Build the core (all names come from the data)
 let core = Architecture::builder("core")
@@ -424,8 +424,8 @@ Names are preserved through scaling because `name()` recurses: the outer `Array`
 ```rust
 use mlar_rust::*;
 
-let dram_dim = Dimension::new("dram_dim", 4);
-let warp_dim = Dimension::new("warp_dim", 32);
+let dram_dim = Dimension::new_int("dram_dim", 4);
+let warp_dim = Dimension::new_int("warp_dim", 32);
 
 // Memory regions (each named via .with_name())
 let dram = MemoryRegion::bank(MemoryBank::from_blocks(
@@ -455,14 +455,14 @@ let rf = MemoryRegion::bank(MemoryBank::from_blocks(
 // Connectivity via affine maps (endpoints are just &references)
 let dram_to_l2 = Link::builder("DRAM_to_L2")
     .from_mem(&dram).to_mem(&l2)
-    .map(AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
+    .map(&AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
         .unwrap().bind([&dram_dim]).unwrap())
     .bandwidth(256).build();
 
 // 1:8 fan-out from L2 to L1
 let l2_to_l1 = Link::builder("L2_to_L1")
     .from_mem(&l2).to_mem(&l1)
-    .map(AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)")
+    .map(&AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)")
         .unwrap().bind([&dram_dim, &warp_dim]).unwrap())
     .bandwidth(128).build();
 
@@ -508,7 +508,7 @@ Formal schema:
 | Type | Description | Module |
 |------|-------------|--------|
 | `DimName` | Newtype for dimension names (inside `Dimension.name`) | `core/size_dim.rs` |
-| `Symbol` | Newtype for symbolic names in expressions | `core/size_dim.rs` |
+| `Sym` | Newtype for symbolic names in expressions | `core/size_dim.rs` |
 | `SizeExpr` | Concrete, symbolic, or arithmetic size | `core/size_dim.rs` |
 | `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
@@ -516,7 +516,7 @@ Formal schema:
 | `FuncPerfModel` | Per-function: symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
 | `ProcPerfModel` | Processor-level: `MlirModuleRef` + `Vec<FuncPerfModel>`; `validate()` checks function count alignment | `core/perf.rs` |
 | `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
-| `TimeCostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
+| `TimeCostExpr` | Symbolic fixed_latency + throughput | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
 | `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `core/affine.rs` |
 | `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `core/affine.rs` |
@@ -529,8 +529,8 @@ Formal schema:
 | `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `core/link.rs` |
 | `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(ProcessorElem)`; name derived from data | `core/link.rs` |
 | `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `core/link.rs` |
-| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<ProcessorElem>`, and links | `architecture.rs` |
-| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `architecture.rs` |
+| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<ProcessorElem>`, and links | `core/architecture.rs` |
+| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `core/architecture.rs` |
 
 ## Building and Running
 
