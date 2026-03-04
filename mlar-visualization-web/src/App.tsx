@@ -24,6 +24,7 @@ function AppInner() {
   const [sourceUrl, setSourceUrl] = useState(DEFAULT_GRAPH_URL);
   const [sourceName, setSourceName] = useState('none');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -102,10 +103,17 @@ function AppInner() {
             Open File
             <input type="file" accept="application/json" onChange={onUpload} />
           </label>
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => setIsEditorVisible((visible) => !visible)}
+          >
+            {isEditorVisible ? 'Hide JSON' : 'Show JSON'}
+          </button>
         </div>
       </header>
 
-      <main className="app-main">
+      <main className={`app-main${isEditorVisible ? ' app-main--editor-open' : ''}`}>
         <section className="canvas-panel">
           <ReactFlow<ArchFlowNode, Edge>
             nodes={flow.nodes}
@@ -150,19 +158,21 @@ function AppInner() {
           </ReactFlow>
         </section>
 
-        <section className="editor-panel">
-          <h2>Graph JSON</h2>
-          <textarea
-            value={jsonText}
-            onChange={(event) => {
-              setJsonText(event.target.value);
-              setSourceName('editor');
-              setLoadError(null);
-            }}
-            spellCheck={false}
-          />
-          {(loadError || parsed.error) && <p className="error-line">{loadError ?? parsed.error}</p>}
-        </section>
+        {isEditorVisible && (
+          <section className="editor-panel">
+            <h2>Graph JSON</h2>
+            <textarea
+              value={jsonText}
+              onChange={(event) => {
+                setJsonText(event.target.value);
+                setSourceName('editor');
+                setLoadError(null);
+              }}
+              spellCheck={false}
+            />
+            {(loadError || parsed.error) && <p className="error-line">{loadError ?? parsed.error}</p>}
+          </section>
+        )}
       </main>
     </div>
   );
