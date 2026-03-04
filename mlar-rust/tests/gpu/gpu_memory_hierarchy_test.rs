@@ -1,5 +1,4 @@
 use mlar_rust::*;
-use std::fs;
 
 fn example_gpu_memory_hierarchy() -> Architecture {
     let dram_dim = Dimension::new_int("dram_dim", 4);
@@ -111,9 +110,9 @@ fn test_gpu_memory_hierarchy() {
 }
 
 #[test]
-fn test_gpu_memory_hierarchy_visualization() {
+fn test_gpu_memory_hierarchy_json_export() {
     let arch = example_gpu_memory_hierarchy();
-
-    let dot = architecture_to_dot(&arch);
-    fs::write("gpu_memory_hierarchy.dot", &dot).expect("Failed to write DOT file");
+    let json =
+        architecture_to_graph_json_string(&arch).expect("graph JSON serialization should succeed");
+    assert!(json.contains("\"schema_version\":\"mlar.arch-graph.v1\""));
 }

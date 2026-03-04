@@ -27,7 +27,6 @@ src/
 │   ├── processor.rs            # Processor, ProcessorElem (Unit/Array/Set)
 │   └── link.rs                 # Link, Endpoint, SharingDomain
 └── visualisation/
-    ├── graphviz.rs             # GraphViz DOT export (expanded instance view)
     └── graph_json.rs           # JSON schema export for web visualization
 ```
 
@@ -483,23 +482,8 @@ This produces the hierarchy: DRAM[4] -> L2[4] -> L1[32] -> RF[32] -> MatLane[32]
 
 ## Visualization
 
-Generate GraphViz DOT visualizations of architectures:
-
-```rust
-// Expanded instance view (all instances with affine-mapped edges)
-let dot = architecture_to_dot(&arch);
-std::fs::write("arch.dot", &dot).unwrap();
-
-// From links only (e.g., memory hierarchy)
-let mem_dot = memory_hierarchy_to_dot("GPU Memory", &links);
-```
-
-Render with GraphViz:
-
-```bash
-dot -Tpng arch.dot -o arch.png
-dot -Tsvg arch.dot -o arch.svg
-```
+The Rust side exports architecture JSON consumed by the React web app in
+`../mlar-visualization-web/` (Vite + `@xyflow/react`).
 
 Export architecture graphs as JSON for the web UI:
 
@@ -557,7 +541,7 @@ cargo build
 # Run all tests
 cargo test
 
-# Run with output (to see generated DOT files)
+# Run with output
 cargo test -- --nocapture
 ```
 

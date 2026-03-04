@@ -14,4 +14,3 @@ pub use visualisation::graph_json::{
     ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
     architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
 };
-pub use visualisation::graphviz::{ArchVisualizer, architecture_to_dot, memory_hierarchy_to_dot};

@@ -165,18 +165,10 @@ fn test_2d_mesh_torus() {
     assert_eq!(torus_x_link.map.apply(&[5, 3]), vec![6, 3]);
     assert_eq!(torus_x_link.map.apply(&[7, 3]), vec![0, 3]); // wraps
 
-    // === Visualize ===
-    let mesh_dot = architecture_to_dot(&mesh);
-    assert!(mesh_dot.contains("rank=same"));
-    assert!(mesh_dot.contains("label=\"core[0,0]\""));
-    assert!(mesh_dot.contains("label=\"core[7,7]\""));
-    assert!(mesh_dot.contains("l1[0,0]"));
-    assert!(mesh_dot.contains("l1[7,7]"));
-    assert!(mesh_dot.contains("matrix_lane[0,0]"));
-    assert!(mesh_dot.contains("vector_lane[0,0]"));
-    assert!(mesh_dot.contains("{ rank=same; 64; 128; }"));
-    assert!(!mesh_dot.contains("cluster_mem_l1"));
-    fs::write("2d_mesh_torus.dot", &mesh_dot).expect("Failed to write DOT file");
+    // === JSON export sanity for web visualization ===
+    let json =
+        architecture_to_graph_json_string(&mesh).expect("graph JSON serialization should succeed");
+    assert!(json.contains("\"schema_version\":\"mlar.arch-graph.v1\""));
 }
 
 #[test]
