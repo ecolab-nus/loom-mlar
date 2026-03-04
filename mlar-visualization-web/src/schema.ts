@@ -98,6 +98,8 @@ export interface ArchitectureGraphEdge {
   latency: GraphExpr | null;
   constraints: string;
   sharing: string;
+  map_relation?: 'one_to_one' | 'one_to_many' | 'many_to_one' | 'many_to_many' | 'unknown';
+  topology?: 'ring' | 'general';
   map: {
     source_dimensions: GraphDimension[];
     target_dimensions: GraphDimension[];

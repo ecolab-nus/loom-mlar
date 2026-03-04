@@ -30,6 +30,21 @@ export interface ArchFlowNodeData extends Record<string, unknown> {
 
 export type ArchFlowNode = Node<ArchFlowNodeData, 'archNode'>;
 
+export interface CoreMemorySummary {
+  name: string;
+  summary: string;
+  dimensions: GraphDimension[];
+  bankSlots: BankSlot[];
+}
+
+export interface CoreArchNodeData extends Record<string, unknown> {
+  coreX: number;
+  coreY: number;
+  memories: CoreMemorySummary[];
+}
+
+export type CoreArchFlowNode = Node<CoreArchNodeData, 'coreArchNode'>;
+
 export interface GridFlowNodeData extends Record<string, unknown> {
   archName: string;
   cols: number;
@@ -39,7 +54,19 @@ export interface GridFlowNodeData extends Record<string, unknown> {
 
 export type GridFlowNode = Node<GridFlowNodeData, 'coreGridNode'>;
 
-export type AnyFlowNode = ArchFlowNode | GridFlowNode;
+export type AnyFlowNode = ArchFlowNode | CoreArchFlowNode | GridFlowNode;
+
+export interface CoreLinkLegendEntry {
+  name: string;
+  color: string;
+  bandwidth: string;
+}
+
+export interface FlowConversionResult {
+  nodes: AnyFlowNode[];
+  edges: Edge[];
+  coreLinkLegend: CoreLinkLegendEntry[];
+}
 
 interface LayoutResult {
   levels: Map<string, number>;
@@ -84,6 +111,8 @@ interface LinkAccumulator {
 const LANE_WIDTH = 320;
 const ROW_HEIGHT = 180;
 const PREVIEW_HEAD_BANKS = 4;
+const CORE_STEP_X = 248;
+const CORE_STEP_Y = 188;
 
 /**
  * Detect whether the graph has 2D grid labels (produced by scale()).
@@ -91,7 +120,7 @@ const PREVIEW_HEAD_BANKS = 4;
  */
 export function detectGridLayout(
   graph: ArchitectureGraph,
-): { cols: number; rows: number } | null {
+): { cols: number; rows: number; colDim: string; rowDim: string } | null {
   if (!graph.architecture.labels || graph.architecture.labels.length === 0) {
     return null;
   }
@@ -109,6 +138,8 @@ export function detectGridLayout(
   return {
     cols: concreteDims[0].size_const!,
     rows: concreteDims[1].size_const!,
+    colDim: concreteDims[0].name,
+    rowDim: concreteDims[1].name,
   };
 }
 
@@ -121,13 +152,15 @@ export function detectGridLayout(
 export function architectureToFlow(
   graph: ArchitectureGraph,
   onCoreClick?: (x: number, y: number) => void,
-): {
-  nodes: AnyFlowNode[];
-  edges: Edge[];
-} {
+): FlowConversionResult {
   const grid = detectGridLayout(graph);
 
   if (grid && graph.intra_core) {
+    const coreLevel = buildCoreLevelFlow(graph, grid);
+    if (coreLevel) {
+      return coreLevel;
+    }
+
     const gridNode: GridFlowNode = {
       id: 'core-grid',
       type: 'coreGridNode',
@@ -141,7 +174,7 @@ export function architectureToFlow(
       draggable: true,
     };
 
-    return { nodes: [gridNode], edges: [] };
+    return { nodes: [gridNode], edges: [], coreLinkLegend: [] };
   }
 
   const visual = buildVisualGraph(graph);
@@ -174,7 +207,379 @@ export function architectureToFlow(
   return {
     nodes,
     edges: visual.edges.map((edge) => edgeToFlow(edge)),
+    coreLinkLegend: [],
   };
+}
+
+function buildCoreLevelFlow(
+  graph: ArchitectureGraph,
+  grid: { cols: number; rows: number; colDim: string; rowDim: string },
+): FlowConversionResult | null {
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const intraMemoryByName = new Map<string, ArchitectureGraphNode>();
+  if (graph.intra_core) {
+    for (const node of graph.intra_core.nodes) {
+      if (node.kind === 'memory' && node.details.type === 'memory') {
+        intraMemoryByName.set(node.name, node);
+      }
+    }
+  }
+
+  const interCoreEdges = graph.edges.filter((edge) => {
+    const sourceNode = nodeById.get(edge.source);
+    const targetNode = nodeById.get(edge.target);
+    if (!sourceNode || !targetNode) {
+      return false;
+    }
+    if (sourceNode.kind !== 'memory' || targetNode.kind !== 'memory') {
+      return false;
+    }
+    if (!isOneToOneMap(edge)) {
+      return false;
+    }
+    return (
+      edge.map.source_dimensions.some((d) => d.name === grid.colDim) &&
+      edge.map.source_dimensions.some((d) => d.name === grid.rowDim) &&
+      edge.map.target_dimensions.some((d) => d.name === grid.colDim) &&
+      edge.map.target_dimensions.some((d) => d.name === grid.rowDim)
+    );
+  });
+
+  if (interCoreEdges.length === 0) {
+    return null;
+  }
+
+  const memoryByName = new Map<string, CoreMemorySummary>();
+  for (const edge of interCoreEdges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (source && source.kind === 'memory' && !memoryByName.has(source.name)) {
+      memoryByName.set(source.name, summarizeCoreMemory(intraMemoryByName.get(source.name) ?? source));
+    }
+    if (target && target.kind === 'memory' && !memoryByName.has(target.name)) {
+      memoryByName.set(target.name, summarizeCoreMemory(intraMemoryByName.get(target.name) ?? target));
+    }
+  }
+  const memories = Array.from(memoryByName.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+  const nodes: CoreArchFlowNode[] = [];
+  for (let y = 0; y < grid.rows; y += 1) {
+    for (let x = 0; x < grid.cols; x += 1) {
+      nodes.push({
+        id: coreNodeId(x, y),
+        type: 'coreArchNode',
+        position: {
+          x: 80 + x * CORE_STEP_X,
+          y: 80 + y * CORE_STEP_Y,
+        },
+        data: {
+          coreX: x,
+          coreY: y,
+          memories,
+        },
+        draggable: true,
+      });
+    }
+  }
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edgeKeys = new Set<string>();
+  const edges: Edge[] = [];
+  const legendByName = new Map<string, CoreLinkLegendEntry>();
+  for (const edge of interCoreEdges) {
+    const color = colorForInterCoreEdge(edge.name);
+    if (!legendByName.has(edge.name)) {
+      legendByName.set(edge.name, {
+        name: edge.name,
+        color,
+        bandwidth: edge.bandwidth.expr,
+      });
+    }
+    const sourceNode = nodeById.get(edge.source);
+    const targetNode = nodeById.get(edge.target);
+    if (!sourceNode || !targetNode || sourceNode.kind !== 'memory' || targetNode.kind !== 'memory') {
+      continue;
+    }
+    const sourceMemory = sourceNode.name;
+    const targetMemory = targetNode.name;
+    const pairs = enumerateCoreMappings(edge, grid);
+    for (const pair of pairs) {
+      const source = coreNodeId(pair.sourceX, pair.sourceY);
+      const target = coreNodeId(pair.targetX, pair.targetY);
+      if (!nodeIds.has(source) || !nodeIds.has(target)) {
+        continue;
+      }
+      const key = `${source}->${target}:${edge.name}`;
+      if (edgeKeys.has(key)) {
+        continue;
+      }
+      edgeKeys.add(key);
+      const handles = directionalHandles(pair.sourceX, pair.sourceY, pair.targetX, pair.targetY);
+      edges.push({
+        id: `core-edge:${edge.name}:${pair.sourceX},${pair.sourceY}:${pair.targetX},${pair.targetY}`,
+        type: 'straight',
+        source,
+        target,
+        sourceHandle: memoryHandleId(sourceMemory, 'source', handles.sourceSide),
+        targetHandle: memoryHandleId(targetMemory, 'target', handles.targetSide),
+        zIndex: 1000,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+        },
+        style: {
+          stroke: color,
+          strokeWidth: 1.2,
+        },
+      });
+    }
+  }
+
+  if (edges.length === 0) {
+    return null;
+  }
+
+  const coreLinkLegend = Array.from(legendByName.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+  return { nodes, edges, coreLinkLegend };
+}
+
+function isOneToOneMap(edge: ArchitectureGraphEdge): boolean {
+  if (edge.map_relation === 'one_to_one') {
+    return true;
+  }
+  const srcCard = productConcreteSizes(edge.map.source_dimensions);
+  const dstCard = productConcreteSizes(edge.map.target_dimensions);
+  return srcCard !== null && dstCard !== null && srcCard === dstCard;
+}
+
+function coreNodeId(x: number, y: number): string {
+  return `core|${x}|${y}`;
+}
+
+function enumerateCoreMappings(
+  edge: ArchitectureGraphEdge,
+  grid: { cols: number; rows: number; colDim: string; rowDim: string },
+): Array<{ sourceX: number; sourceY: number; targetX: number; targetY: number }> {
+  const sourceDims = edge.map.source_dimensions;
+  const assignments = enumerateAssignments(sourceDims);
+  if (!assignments) {
+    return [];
+  }
+
+  const out: Array<{ sourceX: number; sourceY: number; targetX: number; targetY: number }> = [];
+  for (const sourceAssignment of assignments) {
+    const sourceX = sourceAssignment[grid.colDim];
+    const sourceY = sourceAssignment[grid.rowDim];
+    if (
+      sourceX === undefined ||
+      sourceY === undefined ||
+      sourceX < 0 ||
+      sourceY < 0 ||
+      sourceX >= grid.cols ||
+      sourceY >= grid.rows
+    ) {
+      continue;
+    }
+
+    const targetAssignment: Record<string, number> = {};
+    let failed = false;
+    for (let i = 0; i < edge.map.expressions.length; i += 1) {
+      const targetDim = edge.map.target_dimensions[i];
+      const value = evaluateAffineExpression(edge.map.expressions[i], sourceAssignment);
+      if (value === null) {
+        failed = true;
+        break;
+      }
+      targetAssignment[targetDim.name] = value;
+    }
+    if (failed) {
+      continue;
+    }
+
+    const targetX = targetAssignment[grid.colDim];
+    const targetY = targetAssignment[grid.rowDim];
+    if (
+      targetX === undefined ||
+      targetY === undefined ||
+      targetX < 0 ||
+      targetY < 0 ||
+      targetX >= grid.cols ||
+      targetY >= grid.rows
+    ) {
+      continue;
+    }
+
+    out.push({ sourceX, sourceY, targetX, targetY });
+  }
+
+  return out;
+}
+
+function enumerateAssignments(dimensions: GraphDimension[]): Array<Record<string, number>> | null {
+  const concrete = dimensions.map((dim) => ({ name: dim.name, size: dim.size_const }));
+  if (concrete.some((dim) => dim.size === null)) {
+    return null;
+  }
+
+  const out: Array<Record<string, number>> = [];
+  const current = new Array(concrete.length).fill(0);
+
+  const walk = (depth: number) => {
+    if (depth === concrete.length) {
+      const assignment: Record<string, number> = {};
+      for (let i = 0; i < concrete.length; i += 1) {
+        assignment[concrete[i].name] = current[i];
+      }
+      out.push(assignment);
+      return;
+    }
+
+    for (let value = 0; value < concrete[depth].size!; value += 1) {
+      current[depth] = value;
+      walk(depth + 1);
+    }
+  };
+
+  walk(0);
+  return out;
+}
+
+function evaluateAffineExpression(expr: string, vars: Record<string, number>): number | null {
+  let trimmed = expr.trim();
+  while (isWrappedByOuterParentheses(trimmed)) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+
+  if (/^-?\d+$/.test(trimmed)) {
+    return Number.parseInt(trimmed, 10);
+  }
+  if (Object.prototype.hasOwnProperty.call(vars, trimmed)) {
+    return vars[trimmed];
+  }
+
+  const operators = [' mod ', ' ceildiv ', ' + ', ' * '] as const;
+  for (const op of operators) {
+    const parts = splitTopLevel(trimmed, op);
+    if (!parts) {
+      continue;
+    }
+    const left = evaluateAffineExpression(parts[0], vars);
+    const right = evaluateAffineExpression(parts[1], vars);
+    if (left === null || right === null) {
+      return null;
+    }
+
+    if (op === ' mod ') {
+      if (right === 0) {
+        return null;
+      }
+      return ((left % right) + right) % right;
+    }
+    if (op === ' ceildiv ') {
+      if (right === 0) {
+        return null;
+      }
+      return Math.floor((left + right - 1) / right);
+    }
+    if (op === ' + ') {
+      return left + right;
+    }
+    if (op === ' * ') {
+      return left * right;
+    }
+  }
+
+  return null;
+}
+
+function directionalHandles(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+): { sourceSide: 'north' | 'south' | 'east' | 'west'; targetSide: 'north' | 'south' | 'east' | 'west' } {
+  if (sourceX === targetX) {
+    if (targetY > sourceY) {
+      return { sourceSide: 'south', targetSide: 'north' };
+    }
+    return { sourceSide: 'north', targetSide: 'south' };
+  }
+
+  if (sourceY === targetY) {
+    if (targetX > sourceX) {
+      return { sourceSide: 'east', targetSide: 'west' };
+    }
+    return { sourceSide: 'west', targetSide: 'east' };
+  }
+
+  const dx = Math.abs(targetX - sourceX);
+  const dy = Math.abs(targetY - sourceY);
+  if (dx >= dy) {
+    return targetX >= sourceX
+      ? { sourceSide: 'east', targetSide: 'west' }
+      : { sourceSide: 'west', targetSide: 'east' };
+  }
+  return targetY >= sourceY
+    ? { sourceSide: 'south', targetSide: 'north' }
+    : { sourceSide: 'north', targetSide: 'south' };
+}
+
+function memoryHandleId(
+  memoryName: string,
+  kind: 'source' | 'target',
+  side: 'north' | 'south' | 'east' | 'west',
+): string {
+  return `${slugify(memoryName)}-${kind}-${side}`;
+}
+
+function splitTopLevel(expr: string, token: string): [string, string] | null {
+  let depth = 0;
+  for (let i = 0; i <= expr.length - token.length; i += 1) {
+    const ch = expr[i];
+    if (ch === '(') {
+      depth += 1;
+      continue;
+    }
+    if (ch === ')') {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 0 && expr.slice(i, i + token.length) === token) {
+      const left = expr.slice(0, i).trim();
+      const right = expr.slice(i + token.length).trim();
+      return [left, right];
+    }
+  }
+  return null;
+}
+
+function isWrappedByOuterParentheses(expr: string): boolean {
+  if (!(expr.startsWith('(') && expr.endsWith(')'))) {
+    return false;
+  }
+  let depth = 0;
+  for (let i = 0; i < expr.length; i += 1) {
+    const ch = expr[i];
+    if (ch === '(') {
+      depth += 1;
+    } else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0 && i < expr.length - 1) {
+        return false;
+      }
+    }
+  }
+  return depth === 0;
+}
+
+function colorForInterCoreEdge(name: string): string {
+  if (name.includes('_x')) {
+    return '#cf7a3d';
+  }
+  if (name.includes('_y')) {
+    return '#2d6aa2';
+  }
+  return '#3e6d89';
 }
 
 function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
@@ -385,6 +790,16 @@ function countBankLeaves(region: GraphMemoryRegion): number | null {
     default:
       return null;
   }
+}
+
+function summarizeCoreMemory(node: ArchitectureGraphNode): CoreMemorySummary {
+  const described = describeNode(node).visualNode;
+  return {
+    name: described.name,
+    summary: described.summary,
+    dimensions: described.dimensions,
+    bankSlots: described.bankSlots,
+  };
 }
 
 function productConcreteSizes(dimensions: GraphDimension[]): number | null {

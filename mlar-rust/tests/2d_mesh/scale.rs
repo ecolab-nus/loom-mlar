@@ -3,12 +3,6 @@ use mlar_rust::*;
 use crate::core_arch::single_core;
 use crate::dimensions::{dim_x, dim_y};
 
-/// Scale a single core to an 8×8 mesh with the "perf" name variant.
-pub fn scaled_mesh() -> Architecture {
-    let core = single_core();
-    core.scale([&dim_x(), &dim_y()]).with_name("2d_mesh_perf")
-}
-
 /// Scale a single core to an 8×8 mesh and add torus interconnects.
 ///
 /// Torus links connect neighboring L1 caches with wraparound:
@@ -18,9 +12,9 @@ pub fn scaled_mesh_torus() -> Architecture {
     let core = single_core();
     let dim_x = dim_x();
     let dim_y = dim_y();
-    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("Tenstorren Wormhole");
+    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
 
-    let scaled_l1 = mesh.get_memory_region("l1").unwrap().clone();
+    let scaled_l1 = mesh.get_memory_region("L1").unwrap().clone();
 
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
@@ -28,7 +22,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_y = Link::builder("l1_torus_y")
+    let torus_y = Link::builder("L1_torus_y")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_y_map)
@@ -41,7 +35,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_x = Link::builder("l1_torus_x")
+    let torus_x = Link::builder("L1_torus_x")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_x_map)

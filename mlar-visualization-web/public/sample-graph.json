@@ -22,10 +22,10 @@
   },
   "nodes": [
     {
-      "id": "mem:l1",
+      "id": "mem:L1",
       "kind": "memory",
-      "name": "l1",
-      "label": "l1 [x=8, y=8, nbank=16]",
+      "name": "L1",
+      "label": "L1 [x=8, y=8, nbank=16]",
       "dimensions": [
         {
           "name": "x",
@@ -62,7 +62,7 @@
           ],
           "elem": {
             "kind": "replicated",
-            "name": "l1",
+            "name": "L1",
             "dimensions": [
               {
                 "name": "nbank",
@@ -85,7 +85,7 @@
           }
         },
         "resource": {
-          "name": "l1",
+          "name": "L1",
           "quantity": 64
         }
       }
@@ -136,7 +136,7 @@
             "resources": [
               {
                 "resource": {
-                  "name": "l1",
+                  "name": "L1",
                   "quantity": 16
                 },
                 "quantity": 4
@@ -198,7 +198,7 @@
             "resources": [
               {
                 "resource": {
-                  "name": "l1",
+                  "name": "L1",
                   "quantity": 16
                 },
                 "quantity": 2
@@ -212,14 +212,14 @@
   ],
   "edges": [
     {
-      "id": "edge:l1_to_matrix_lane:0",
+      "id": "edge:L1_to_matrix_lane:0",
       "kind": "link",
-      "name": "l1_to_matrix_lane",
-      "source": "mem:l1",
+      "name": "L1_to_matrix_lane",
+      "source": "mem:L1",
       "target": "proc:matrix_lane",
-      "source_name": "l1",
+      "source_name": "L1",
       "target_name": "matrix_lane",
-      "label": "l1_to_matrix_lane (512 B/cycle)",
+      "label": "L1_to_matrix_lane (512 B/cycle)",
       "bandwidth": {
         "expr": "512",
         "const_value": 512
@@ -259,14 +259,14 @@
       }
     },
     {
-      "id": "edge:l1_to_vector_lane:1",
+      "id": "edge:L1_to_vector_lane:1",
       "kind": "link",
-      "name": "l1_to_vector_lane",
-      "source": "mem:l1",
+      "name": "L1_to_vector_lane",
+      "source": "mem:L1",
       "target": "proc:vector_lane",
-      "source_name": "l1",
+      "source_name": "L1",
       "target_name": "vector_lane",
-      "label": "l1_to_vector_lane (128 B/cycle)",
+      "label": "L1_to_vector_lane (128 B/cycle)",
       "bandwidth": {
         "expr": "128",
         "const_value": 128
@@ -306,14 +306,14 @@
       }
     },
     {
-      "id": "edge:l1_torus_y:2",
+      "id": "edge:L1_torus_y:2",
       "kind": "link",
-      "name": "l1_torus_y",
-      "source": "mem:l1",
-      "target": "mem:l1",
-      "source_name": "l1",
-      "target_name": "l1",
-      "label": "l1_torus_y (64 B/cycle)",
+      "name": "L1_torus_y",
+      "source": "mem:L1",
+      "target": "mem:L1",
+      "source_name": "L1",
+      "target_name": "L1",
+      "label": "L1_torus_y (64 B/cycle)",
       "bandwidth": {
         "expr": "64",
         "const_value": 64
@@ -353,14 +353,14 @@
       }
     },
     {
-      "id": "edge:l1_torus_x:3",
+      "id": "edge:L1_torus_x:3",
       "kind": "link",
-      "name": "l1_torus_x",
-      "source": "mem:l1",
-      "target": "mem:l1",
-      "source_name": "l1",
-      "target_name": "l1",
-      "label": "l1_torus_x (64 B/cycle)",
+      "name": "L1_torus_x",
+      "source": "mem:L1",
+      "target": "mem:L1",
+      "source_name": "L1",
+      "target_name": "L1",
+      "label": "L1_torus_x (64 B/cycle)",
       "bandwidth": {
         "expr": "64",
         "const_value": 64
@@ -408,10 +408,10 @@
     },
     "nodes": [
       {
-        "id": "mem:l1",
+        "id": "mem:L1",
         "kind": "memory",
-        "name": "l1",
-        "label": "l1 [nbank=16]",
+        "name": "L1",
+        "label": "L1 [nbank=16]",
         "dimensions": [
           {
             "name": "nbank",
@@ -423,7 +423,7 @@
           "type": "memory",
           "region": {
             "kind": "replicated",
-            "name": "l1",
+            "name": "L1",
             "dimensions": [
               {
                 "name": "nbank",
@@ -445,7 +445,7 @@
             }
           },
           "resource": {
-            "name": "l1",
+            "name": "L1",
             "quantity": 16
           }
         }
@@ -470,7 +470,7 @@
             "resources": [
               {
                 "resource": {
-                  "name": "l1",
+                  "name": "L1",
                   "quantity": 16
                 },
                 "quantity": 4
@@ -505,7 +505,7 @@
             "resources": [
               {
                 "resource": {
-                  "name": "l1",
+                  "name": "L1",
                   "quantity": 16
                 },
                 "quantity": 2
@@ -518,14 +518,14 @@
     ],
     "edges": [
       {
-        "id": "edge:l1_to_matrix_lane:0",
+        "id": "edge:L1_to_matrix_lane:0",
         "kind": "link",
-        "name": "l1_to_matrix_lane",
-        "source": "mem:l1",
+        "name": "L1_to_matrix_lane",
+        "source": "mem:L1",
         "target": "proc:matrix_lane",
-        "source_name": "l1",
+        "source_name": "L1",
         "target_name": "matrix_lane",
-        "label": "l1_to_matrix_lane (512 B/cycle)",
+        "label": "L1_to_matrix_lane (512 B/cycle)",
         "bandwidth": {
           "expr": "512",
           "const_value": 512
@@ -540,14 +540,14 @@
         }
       },
       {
-        "id": "edge:l1_to_vector_lane:1",
+        "id": "edge:L1_to_vector_lane:1",
         "kind": "link",
-        "name": "l1_to_vector_lane",
-        "source": "mem:l1",
+        "name": "L1_to_vector_lane",
+        "source": "mem:L1",
         "target": "proc:vector_lane",
-        "source_name": "l1",
+        "source_name": "L1",
         "target_name": "vector_lane",
-        "label": "l1_to_vector_lane (128 B/cycle)",
+        "label": "L1_to_vector_lane (128 B/cycle)",
         "bandwidth": {
           "expr": "128",
           "const_value": 128

@@ -3,11 +3,11 @@ use std::fs;
 use mlar_rust::*;
 
 use crate::memory::l1;
-use crate::scale::{scaled_mesh, scaled_mesh_torus};
+use crate::scale::scaled_mesh_torus;
 
 #[test]
-fn test_2d_mesh_with_perf_models() {
-    let mesh = scaled_mesh();
+fn test_2d_mesh_torus_perf_models() {
+    let mesh = scaled_mesh_torus();
     assert_eq!(mesh.total_processing_elements(), Some(128));
 
     // === Verify perf models and compute semantics survive scaling ===
@@ -109,7 +109,7 @@ fn test_2d_mesh_with_perf_models() {
 
     // === Verify resource requirements ===
     let l1_resource = l1().as_resource();
-    assert_eq!(l1_resource.name, "l1");
+    assert_eq!(l1_resource.name, "L1");
     assert_eq!(l1_resource.quantity, 16);
 
     let mat_resources = mesh
@@ -154,13 +154,13 @@ fn test_2d_mesh_torus() {
 
     // === Verify torus links ===
     let torus_y_link = &mesh.links[2];
-    assert_eq!(torus_y_link.name, "l1_torus_y");
+    assert_eq!(torus_y_link.name, "L1_torus_y");
     assert_eq!(torus_y_link.map.apply(&[0, 0]), vec![0, 1]);
     assert_eq!(torus_y_link.map.apply(&[3, 5]), vec![3, 6]);
     assert_eq!(torus_y_link.map.apply(&[3, 7]), vec![3, 0]); // wraps
 
     let torus_x_link = &mesh.links[3];
-    assert_eq!(torus_x_link.name, "l1_torus_x");
+    assert_eq!(torus_x_link.name, "L1_torus_x");
     assert_eq!(torus_x_link.map.apply(&[0, 0]), vec![1, 0]);
     assert_eq!(torus_x_link.map.apply(&[5, 3]), vec![6, 3]);
     assert_eq!(torus_x_link.map.apply(&[7, 3]), vec![0, 3]); // wraps

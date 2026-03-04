@@ -13,16 +13,34 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { ArchNode } from './components/ArchNode';
+import { CoreArchNode } from './components/CoreArchNode';
 import { CoreGridNode } from './components/CoreGridNode';
 import { IntraCorePanel } from './components/IntraCorePanel';
-import { architectureToFlow, type AnyFlowNode } from './flow';
+import { architectureToFlow, type AnyFlowNode, type FlowConversionResult } from './flow';
 import { loadGraphFromFile, loadGraphFromUrl, parseGraphText } from './runtime-loader';
 
 const nodeTypes: NodeTypes = {
   archNode: ArchNode,
+  coreArchNode: CoreArchNode,
   coreGridNode: CoreGridNode,
 };
 const DEFAULT_GRAPH_URL = '/sample-graph.json';
+
+function parseCoreNodeId(nodeId: string): { x: number; y: number } | null {
+  const parts = nodeId.split('|');
+  if (parts[0] !== 'core') {
+    return null;
+  }
+  if (parts.length < 3) {
+    return null;
+  }
+  const x = Number.parseInt(parts[parts.length - 2], 10);
+  const y = Number.parseInt(parts[parts.length - 1], 10);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { x, y };
+}
 
 function AppInner() {
   const [jsonText, setJsonText] = useState('');
@@ -31,6 +49,7 @@ function AppInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedCore, setSelectedCore] = useState<{ x: number; y: number } | null>(null);
+  const [selectedLegendLinkName, setSelectedLegendLinkName] = useState<string | null>(null);
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -68,10 +87,30 @@ function AppInner() {
 
   const flow = useMemo(() => {
     if (!parsed.graph) {
-      return { nodes: [] as AnyFlowNode[], edges: [] as Edge[] };
+      return {
+        nodes: [] as AnyFlowNode[],
+        edges: [] as Edge[],
+        coreLinkLegend: [],
+      } satisfies FlowConversionResult;
     }
     return architectureToFlow(parsed.graph, onCoreClick);
   }, [parsed.graph, onCoreClick]);
+
+  useEffect(() => {
+    if (flow.coreLinkLegend.length === 0) {
+      setSelectedLegendLinkName(null);
+      return;
+    }
+    const hasSelected = flow.coreLinkLegend.some((entry) => entry.name === selectedLegendLinkName);
+    if (!hasSelected) {
+      setSelectedLegendLinkName(flow.coreLinkLegend[0].name);
+    }
+  }, [flow.coreLinkLegend, selectedLegendLinkName]);
+
+  const selectedLegendLink = useMemo(
+    () => flow.coreLinkLegend.find((entry) => entry.name === selectedLegendLinkName) ?? null,
+    [flow.coreLinkLegend, selectedLegendLinkName],
+  );
 
   const onUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -131,6 +170,12 @@ function AppInner() {
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.15 }}
+            onNodeClick={(_, node) => {
+              const coord = parseCoreNodeId(node.id);
+              if (coord) {
+                setSelectedCore(coord);
+              }
+            }}
           >
             <Controls />
             <MiniMap pannable zoomable />
@@ -155,6 +200,35 @@ function AppInner() {
                 </div>
               </div>
             </Panel>
+            {flow.coreLinkLegend.length > 0 && (
+              <Panel position="top-right">
+                <div className="link-legend">
+                  <h3>Core Links</h3>
+                  {flow.coreLinkLegend.map((entry) => (
+                    <button
+                      type="button"
+                      className={`link-legend-item${
+                        selectedLegendLinkName === entry.name ? ' link-legend-item--active' : ''
+                      }`}
+                      key={entry.name}
+                      onClick={() => setSelectedLegendLinkName(entry.name)}
+                    >
+                      <span className="link-legend-swatch" style={{ background: entry.color }} />
+                      <span>{entry.name}</span>
+                    </button>
+                  ))}
+                  {selectedLegendLink && (
+                    <div className="link-legend-details">
+                      <strong>{selectedLegendLink.name}</strong>
+                      <div>
+                        <span>bandwidth</span>
+                        <code>{selectedLegendLink.bandwidth}</code>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            )}
             {flow.nodes.length === 0 && (
               <Panel position="top-center">
                 <div className="meta-panel">

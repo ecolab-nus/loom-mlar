@@ -15,7 +15,7 @@ pub use affine::{AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelec
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use constraint::ConstraintExpr;
 pub use expr::Expr;
-pub use link::{Endpoint, Link, SharingDomain};
+pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use parse::ParseError;
 pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};

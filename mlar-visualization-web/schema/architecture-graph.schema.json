@@ -96,6 +96,14 @@
           "latency": { "anyOf": [{ "$ref": "#/$defs/expr" }, { "type": "null" }] },
           "constraints": { "type": "string" },
           "sharing": { "type": "string" },
+          "map_relation": {
+            "type": "string",
+            "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many", "unknown"]
+          },
+          "topology": {
+            "type": "string",
+            "enum": ["ring", "general"]
+          },
           "map": {
             "type": "object",
             "required": ["source_dimensions", "target_dimensions", "expressions"],

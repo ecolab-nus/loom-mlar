@@ -9,5 +9,5 @@ pub fn l1() -> MemoryRegion {
         SizeExpr::Const(1024),
     ))
     .replicate(dim_bank().as_slice())
-    .with_name("l1")
+    .with_name("L1")
 }

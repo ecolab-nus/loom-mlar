@@ -1,6 +1,7 @@
 use crate::core::{
     AffineExpr, AffineMap, Architecture, ArchitectureLabel, Dimension, Endpoint, Expr,
-    MemoryRegion, MlirModuleRef, ProcessorElem, Resource, ResourceReq, SharingDomain, SizeExpr,
+    LinkMapRelation, LinkTopology, MemoryRegion, MlirModuleRef, ProcessorElem, Resource,
+    ResourceReq, SharingDomain, SizeExpr,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -81,7 +82,26 @@ pub struct GraphEdge {
     pub latency: Option<GraphExpr>,
     pub constraints: String,
     pub sharing: String,
+    pub map_relation: GraphMapRelation,
+    pub topology: GraphLinkTopology,
     pub map: GraphAffineMap,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphMapRelation {
+    OneToOne,
+    OneToMany,
+    ManyToOne,
+    ManyToMany,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphLinkTopology {
+    Ring,
+    General,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -222,6 +242,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             latency: link.latency.as_ref().map(expr_to_json),
             constraints: link.constraints.to_string(),
             sharing: sharing_to_string(&link.sharing).to_string(),
+            map_relation: link_map_relation_to_json(link.map_relation()),
+            topology: link_topology_to_json(link.topology()),
             map: affine_map_to_json(&link.map),
         });
     }
@@ -402,6 +424,23 @@ fn slugify(value: &str) -> String {
 fn sharing_to_string(sharing: &SharingDomain) -> &'static str {
     match sharing {
         SharingDomain::SharedAcrossAll => "shared_across_all",
+    }
+}
+
+fn link_map_relation_to_json(relation: LinkMapRelation) -> GraphMapRelation {
+    match relation {
+        LinkMapRelation::OneToOne => GraphMapRelation::OneToOne,
+        LinkMapRelation::OneToMany => GraphMapRelation::OneToMany,
+        LinkMapRelation::ManyToOne => GraphMapRelation::ManyToOne,
+        LinkMapRelation::ManyToMany => GraphMapRelation::ManyToMany,
+        LinkMapRelation::Unknown => GraphMapRelation::Unknown,
+    }
+}
+
+fn link_topology_to_json(topology: LinkTopology) -> GraphLinkTopology {
+    match topology {
+        LinkTopology::Ring => GraphLinkTopology::Ring,
+        LinkTopology::General => GraphLinkTopology::General,
     }
 }
 
@@ -637,6 +676,8 @@ fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
             latency: link.latency.as_ref().map(expr_to_json),
             constraints: link.constraints.to_string(),
             sharing: sharing_to_string(&link.sharing).to_string(),
+            map_relation: link_map_relation_to_json(link.map_relation()),
+            topology: link_topology_to_json(link.topology()),
             map: inner_map,
         });
     }
