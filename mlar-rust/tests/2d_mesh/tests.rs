@@ -71,18 +71,36 @@ fn test_2d_mesh_with_perf_models() {
 
                 // vec_max_f32 (index 0): throughput=1024, latency=1
                 let fast_model = proc_perf.get_func_model(0).unwrap();
-                assert_eq!(fast_model.scenarios[0].time_cost.throughput.eval_const(), Some(1024));
-                assert_eq!(fast_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(1));
+                assert_eq!(
+                    fast_model.scenarios[0].time_cost.throughput.eval_const(),
+                    Some(1024)
+                );
+                assert_eq!(
+                    fast_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    Some(1)
+                );
 
                 // vec_exp_f32 (index 1): throughput=128, latency=16
                 let exp_model = proc_perf.get_func_model(1).unwrap();
-                assert_eq!(exp_model.scenarios[0].time_cost.throughput.eval_const(), Some(128));
-                assert_eq!(exp_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(16));
+                assert_eq!(
+                    exp_model.scenarios[0].time_cost.throughput.eval_const(),
+                    Some(128)
+                );
+                assert_eq!(
+                    exp_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    Some(16)
+                );
 
                 // vec_div_f32 (index 5): throughput=256, latency=8
                 let div_model = proc_perf.get_func_model(5).unwrap();
-                assert_eq!(div_model.scenarios[0].time_cost.throughput.eval_const(), Some(256));
-                assert_eq!(div_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(8));
+                assert_eq!(
+                    div_model.scenarios[0].time_cost.throughput.eval_const(),
+                    Some(256)
+                );
+                assert_eq!(
+                    div_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    Some(8)
+                );
             }
             _ => panic!("expected Unit"),
         },
@@ -159,4 +177,20 @@ fn test_2d_mesh_torus() {
     assert!(mesh_dot.contains("{ rank=same; 64; 128; }"));
     assert!(!mesh_dot.contains("cluster_mem_l1"));
     fs::write("2d_mesh_torus.dot", &mesh_dot).expect("Failed to write DOT file");
+}
+
+#[test]
+fn test_export_2d_mesh_torus_graph_json() {
+    let mesh = scaled_mesh_torus();
+    let json = architecture_to_graph_json_string_pretty(&mesh)
+        .expect("graph JSON serialization should succeed");
+
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("serialized JSON should be valid");
+    assert_eq!(value["schema_version"], "mlar.arch-graph.v1");
+    assert_eq!(value["architecture"]["name"], "2d_mesh_torus");
+    assert!(value["nodes"].as_array().is_some_and(|v| !v.is_empty()));
+    assert!(value["edges"].as_array().is_some_and(|v| !v.is_empty()));
+
+    fs::write("2d_mesh_torus.json", &json).expect("Failed to write JSON file");
 }

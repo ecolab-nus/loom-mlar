@@ -36,10 +36,7 @@ pub fn matrix_lane() -> ProcessorElem {
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(1),
                     throughput: Expr::mul(
-                        Expr::div(
-                            Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                            Expr::Const(8192),
-                        ),
+                        Expr::div(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::Const(8192)),
                         Expr::Const(1024),
                     ),
                 },
@@ -48,10 +45,7 @@ pub fn matrix_lane() -> ProcessorElem {
     };
 
     let mat_perf = ProcPerfModel {
-        compute: MlirModuleRef::with_functions(
-            "compute/matrix_lane.mlir",
-            &["matmul_f32"],
-        ),
+        compute: MlirModuleRef::with_functions("compute/matrix_lane.mlir", &["matmul_f32"]),
         func_models: vec![mat_func_perf], // one function: matmul_f32
     };
 

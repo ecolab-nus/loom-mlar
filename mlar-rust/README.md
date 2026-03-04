@@ -26,8 +26,9 @@ src/
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
 │   ├── processor.rs            # Processor, ProcessorElem (Unit/Array/Set)
 │   └── link.rs                 # Link, Endpoint, SharingDomain
-├── architecture.rs             # Architecture, ArchitectureBuilder
-└── visualization.rs            # GraphViz DOT export (expanded instance view)
+└── visualisation/
+    ├── graphviz.rs             # GraphViz DOT export (expanded instance view)
+    └── graph_json.rs           # JSON schema export for web visualization
 ```
 
 ## Core Concepts
@@ -499,6 +500,24 @@ Render with GraphViz:
 dot -Tpng arch.dot -o arch.png
 dot -Tsvg arch.dot -o arch.svg
 ```
+
+Export architecture graphs as JSON for the web UI:
+
+```rust
+let json = architecture_to_graph_json_string_pretty(&arch).unwrap();
+std::fs::write("arch.json", json).unwrap();
+```
+
+Generate a ready-to-render example payload:
+
+```bash
+cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
+cp 2d_mesh_torus.json ../mlar-visualization-web/src/sample-graph.json
+```
+
+Formal schema:
+
+`visualization/architecture-graph.schema.json`
 
 ## Type Reference
 

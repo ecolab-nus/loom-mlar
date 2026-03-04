@@ -6,6 +6,7 @@ Multi-Level Architecture Representation (MLAR) compiler infrastructure.
 
 - **`mlar-mlir/`** - MLIR dialect and transformations for MLAR
 - **`mlar-rust/`** - Rust front-end for MLAR
+- **`mlar-visualization-web/`** - Vite + React Flow prototype web visualization app
 
 ## Overview
 

@@ -123,7 +123,9 @@ impl Processor {
     /// Get compute semantics for this processor.
     /// Checks `perf.compute` first, then falls back to standalone `compute`.
     pub fn compute(&self) -> Option<&MlirModuleRef> {
-        self.perf.as_ref().map(|pm| &pm.compute)
+        self.perf
+            .as_ref()
+            .map(|pm| &pm.compute)
             .or(self.compute.as_ref())
     }
 
@@ -274,7 +276,7 @@ impl From<&ProcessorElem> for ProcessorElem {
 
 #[cfg(test)]
 mod tests {
-    use super::{Processor, ProcessorElem, MlirModuleRef};
+    use super::{MlirModuleRef, Processor, ProcessorElem};
     use crate::core::size_dim::Dimension;
 
     #[test]
@@ -285,7 +287,9 @@ mod tests {
         );
         let proc = Processor::with_compute("matmul_lane", module);
         assert_eq!(proc.name.as_deref(), Some("matmul_lane"));
-        let compute = proc.compute().expect("compute semantics reference should exist");
+        let compute = proc
+            .compute()
+            .expect("compute semantics reference should exist");
         assert_eq!(compute.path, "compute/matmul_kernel.mlir");
         assert_eq!(compute.functions, vec!["matmul_f32", "epilogue_bias"]);
     }

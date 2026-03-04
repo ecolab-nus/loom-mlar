@@ -1,0 +1,239 @@
+:root {
+  --bg0: #f4efe4;
+  --bg1: #e3ecf2;
+  --ink: #13222a;
+  --muted: #5f7079;
+  --memory: #cee6f8;
+  --processor: #d7f3dd;
+  --panel: rgba(255, 255, 255, 0.86);
+  --line: #afc3ce;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: 'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at 15% 15%, #fde9c6 0, transparent 35%),
+    radial-gradient(circle at 85% 0%, #cde7fa 0, transparent 40%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--panel);
+  border: 1px solid #d6e2e8;
+  border-radius: 16px;
+  padding: 0.8rem 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: clamp(1.1rem, 1.5vw, 1.4rem);
+  letter-spacing: 0.01em;
+}
+
+.app-header p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.upload-button {
+  border: 1px solid #a9bdc9;
+  background: #f7fbff;
+  color: #1a3645;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.upload-button input {
+  display: none;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 36vw);
+  gap: 0.85rem;
+}
+
+.canvas-panel,
+.editor-panel {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #d6e2e8;
+  background: var(--panel);
+  min-height: 0;
+}
+
+.canvas-panel {
+  min-height: 560px;
+  animation: fade-slide 300ms ease;
+}
+
+.canvas-panel .react-flow {
+  width: 100%;
+  height: 100%;
+}
+
+.editor-panel {
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.editor-panel h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #2c4b5b;
+}
+
+.editor-panel textarea {
+  flex: 1;
+  min-height: 280px;
+  border: 1px solid #c8dae3;
+  border-radius: 12px;
+  resize: none;
+  font: 500 0.82rem/1.45 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #153241;
+  background: #f6fbff;
+  padding: 0.75rem;
+}
+
+.error-line {
+  margin: 0;
+  color: #9b2634;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.arch-node {
+  min-width: 200px;
+  max-width: 250px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fdfefe;
+  box-shadow: 0 10px 24px rgba(9, 28, 42, 0.08);
+  padding: 0.55rem 0.62rem;
+}
+
+.node-memory {
+  background: linear-gradient(180deg, var(--memory), #f7fcff 50%);
+}
+
+.node-processor {
+  background: linear-gradient(180deg, var(--processor), #f8fff9 50%);
+}
+
+.arch-node-kind {
+  color: #2a4f62;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.arch-node-title {
+  font-size: 0.93rem;
+  font-weight: 700;
+  margin-top: 0.15rem;
+}
+
+.arch-node-summary {
+  margin-top: 0.2rem;
+  color: #37525f;
+  font-size: 0.75rem;
+}
+
+.arch-node-dims {
+  margin-top: 0.45rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.dim-chip {
+  border-radius: 999px;
+  border: 1px solid #9eb7c5;
+  background: rgba(255, 255, 255, 0.75);
+  color: #234656;
+  font-size: 0.67rem;
+  padding: 0.12rem 0.42rem;
+}
+
+.meta-panel {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.55rem 0.68rem;
+  border: 1px solid #bfd1db;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.93);
+  min-width: 180px;
+}
+
+.meta-panel div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.8rem;
+  font-size: 0.78rem;
+}
+
+.meta-panel strong {
+  color: #48626f;
+}
+
+@keyframes fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 980px) {
+  .app-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(50vh, 1fr) minmax(280px, 40vh);
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .canvas-panel {
+    min-height: 420px;
+  }
+}

@@ -1,0 +1,295 @@
+{
+  "schema_version": "mlar.arch-graph.v1",
+  "architecture": {
+    "name": "gpu_tile",
+    "labels": [
+      {
+        "name": "tile",
+        "dimensions": [
+          {
+            "name": "tile_x",
+            "size_expr": "4",
+            "size_const": 4
+          },
+          {
+            "name": "tile_y",
+            "size_expr": "4",
+            "size_const": 4
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "mem:dram",
+      "kind": "memory",
+      "name": "dram",
+      "label": "dram [chan=8]",
+      "dimensions": [
+        {
+          "name": "chan",
+          "size_expr": "8",
+          "size_const": 8
+        }
+      ],
+      "details": {
+        "type": "memory",
+        "region": {
+          "kind": "replicated",
+          "name": "dram",
+          "dimensions": [
+            {
+              "name": "chan",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "elem": {
+            "kind": "bank",
+            "name": null,
+            "capacity_bytes": {
+              "expr": "(256 * DRAM_SIZE)",
+              "const_value": null
+            },
+            "access_granularity": {
+              "expr": "256",
+              "const_value": 256
+            }
+          }
+        },
+        "resource": {
+          "name": "dram",
+          "quantity": 8
+        }
+      }
+    },
+    {
+      "id": "mem:l2",
+      "kind": "memory",
+      "name": "l2",
+      "label": "l2 [chan=8]",
+      "dimensions": [
+        {
+          "name": "chan",
+          "size_expr": "8",
+          "size_const": 8
+        }
+      ],
+      "details": {
+        "type": "memory",
+        "region": {
+          "kind": "replicated",
+          "name": "l2",
+          "dimensions": [
+            {
+              "name": "chan",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "elem": {
+            "kind": "bank",
+            "name": null,
+            "capacity_bytes": {
+              "expr": "(128 * 4096)",
+              "const_value": 524288
+            },
+            "access_granularity": {
+              "expr": "128",
+              "const_value": 128
+            }
+          }
+        },
+        "resource": {
+          "name": "l2",
+          "quantity": 8
+        }
+      }
+    },
+    {
+      "id": "mem:l1",
+      "kind": "memory",
+      "name": "l1",
+      "label": "l1 [warp=64]",
+      "dimensions": [
+        {
+          "name": "warp",
+          "size_expr": "64",
+          "size_const": 64
+        }
+      ],
+      "details": {
+        "type": "memory",
+        "region": {
+          "kind": "replicated",
+          "name": "l1",
+          "dimensions": [
+            {
+              "name": "warp",
+              "size_expr": "64",
+              "size_const": 64
+            }
+          ],
+          "elem": {
+            "kind": "bank",
+            "name": null,
+            "capacity_bytes": {
+              "expr": "(64 * 1024)",
+              "const_value": 65536
+            },
+            "access_granularity": {
+              "expr": "64",
+              "const_value": 64
+            }
+          }
+        },
+        "resource": {
+          "name": "l1",
+          "quantity": 64
+        }
+      }
+    },
+    {
+      "id": "proc:matmul_lane",
+      "kind": "processor",
+      "name": "matmul_lane",
+      "label": "matmul_lane [warp=64]",
+      "dimensions": [
+        {
+          "name": "warp",
+          "size_expr": "64",
+          "size_const": 64
+        }
+      ],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "array",
+          "name": null,
+          "dimensions": [
+            {
+              "name": "warp",
+              "size_expr": "64",
+              "size_const": 64
+            }
+          ],
+          "elem": {
+            "kind": "unit",
+            "name": "matmul_lane",
+            "compute": {
+              "path": "compute/matmul_lane.mlir",
+              "functions": ["matmul_f32"]
+            },
+            "resources": []
+          }
+        },
+        "total_instances": 64
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:dram_to_l2:0",
+      "kind": "link",
+      "name": "dram_to_l2",
+      "source": "mem:dram",
+      "target": "mem:l2",
+      "source_name": "dram",
+      "target_name": "l2",
+      "label": "dram_to_l2 (256 B/cycle)",
+      "bandwidth": {
+        "expr": "256",
+        "const_value": 256
+      },
+      "latency": null,
+      "constraints": "true",
+      "sharing": "shared_across_all",
+      "map": {
+        "source_dimensions": [
+          {
+            "name": "chan",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "target_dimensions": [
+          {
+            "name": "chan",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "expressions": ["chan"]
+      }
+    },
+    {
+      "id": "edge:l2_to_l1:1",
+      "kind": "link",
+      "name": "l2_to_l1",
+      "source": "mem:l2",
+      "target": "mem:l1",
+      "source_name": "l2",
+      "target_name": "l1",
+      "label": "l2_to_l1 (128 B/cycle)",
+      "bandwidth": {
+        "expr": "128",
+        "const_value": 128
+      },
+      "latency": null,
+      "constraints": "true",
+      "sharing": "shared_across_all",
+      "map": {
+        "source_dimensions": [
+          {
+            "name": "chan",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "target_dimensions": [
+          {
+            "name": "warp",
+            "size_expr": "64",
+            "size_const": 64
+          }
+        ],
+        "expressions": ["(chan * 8)"]
+      }
+    },
+    {
+      "id": "edge:l1_to_lane:2",
+      "kind": "link",
+      "name": "l1_to_lane",
+      "source": "mem:l1",
+      "target": "proc:matmul_lane",
+      "source_name": "l1",
+      "target_name": "matmul_lane",
+      "label": "l1_to_lane (64 B/cycle)",
+      "bandwidth": {
+        "expr": "64",
+        "const_value": 64
+      },
+      "latency": null,
+      "constraints": "true",
+      "sharing": "shared_across_all",
+      "map": {
+        "source_dimensions": [
+          {
+            "name": "warp",
+            "size_expr": "64",
+            "size_const": 64
+          }
+        ],
+        "target_dimensions": [
+          {
+            "name": "warp",
+            "size_expr": "64",
+            "size_const": 64
+          }
+        ],
+        "expressions": ["warp"]
+      }
+    }
+  ]
+}

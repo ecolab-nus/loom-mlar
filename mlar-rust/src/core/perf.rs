@@ -155,10 +155,7 @@ impl FuncPerfModel {
         // Collect symbols from each scenario
         for scenario in &self.scenarios {
             scenario.time_cost.fixed_latency.collect_symbols(&mut used);
-            scenario
-                .time_cost
-                .throughput
-                .collect_symbols(&mut used);
+            scenario.time_cost.throughput.collect_symbols(&mut used);
             let constraint_syms = scenario.constraints.free_symbols();
             used.extend(constraint_syms);
         }
@@ -219,7 +216,10 @@ impl ProcPerfModel {
         // Validate each function model
         for (i, fm) in self.func_models.iter().enumerate() {
             if let Err(undeclared) = fm.validate() {
-                let func_name = self.compute.functions.get(i)
+                let func_name = self
+                    .compute
+                    .functions
+                    .get(i)
                     .map(|s| s.as_str())
                     .unwrap_or("<unknown>");
                 return Err(format!(
@@ -278,10 +278,7 @@ mod tests {
                 time_cost: TimeCostExpr {
                     fixed_latency: Expr::Const(8),
                     throughput: Expr::div(
-                        Expr::mul(
-                            Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                            Expr::sym("K"),
-                        ),
+                        Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                         Expr::Const(1024),
                     ),
                 },
@@ -402,38 +399,34 @@ mod tests {
     fn test_proc_perf_model_validate() {
         let good = ProcPerfModel {
             compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
-            func_models: vec![
-                FuncPerfModel {
-                    symbols: vec![Sym::new("N")],
+            func_models: vec![FuncPerfModel {
+                symbols: vec![Sym::new("N")],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![PerfScenario {
                     constraints: ConstraintExpr::True,
-                    scenarios: vec![PerfScenario {
-                        constraints: ConstraintExpr::True,
-                        time_cost: TimeCostExpr {
-                            fixed_latency: Expr::Const(1),
-                            throughput: Expr::sym("N"),
-                        },
-                    }],
-                },
-            ],
+                    time_cost: TimeCostExpr {
+                        fixed_latency: Expr::Const(1),
+                        throughput: Expr::sym("N"),
+                    },
+                }],
+            }],
         };
         assert!(good.validate().is_ok());
 
         // Model with undeclared symbol
         let bad = ProcPerfModel {
             compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
-            func_models: vec![
-                FuncPerfModel {
-                    symbols: vec![],
+            func_models: vec![FuncPerfModel {
+                symbols: vec![],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![PerfScenario {
                     constraints: ConstraintExpr::True,
-                    scenarios: vec![PerfScenario {
-                        constraints: ConstraintExpr::True,
-                        time_cost: TimeCostExpr {
-                            fixed_latency: Expr::Const(0),
-                            throughput: Expr::sym("X"),
-                        },
-                    }],
-                },
-            ],
+                    time_cost: TimeCostExpr {
+                        fixed_latency: Expr::Const(0),
+                        throughput: Expr::sym("X"),
+                    },
+                }],
+            }],
         };
         let err = bad.validate().unwrap_err();
         assert!(err.contains("undeclared symbols"));

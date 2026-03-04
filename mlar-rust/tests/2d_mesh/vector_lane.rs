@@ -55,8 +55,12 @@ pub fn vector_lane() -> ProcessorElem {
         compute: MlirModuleRef::with_functions(
             "compute/vector_lane.mlir",
             &[
-                "vec_max_f32", "vec_exp_f32", "vec_sum_f32",
-                "vec_add_f32", "vec_mul_f32", "vec_div_f32",
+                "vec_max_f32",
+                "vec_exp_f32",
+                "vec_sum_f32",
+                "vec_add_f32",
+                "vec_mul_f32",
+                "vec_div_f32",
             ],
         ),
         func_models: vec![
