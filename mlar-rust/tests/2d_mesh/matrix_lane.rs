@@ -7,7 +7,7 @@ use crate::memory::l1;
 /// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
 /// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
 /// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
-pub fn matrix_lane() -> Processor {
+pub fn matrix_lane() -> ProcessorElem {
     let mat_func_perf = FuncPerfModel {
         symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
         constraints: ConstraintExpr::And(vec![
@@ -55,6 +55,7 @@ pub fn matrix_lane() -> Processor {
         func_models: vec![mat_func_perf], // one function: matmul_f32
     };
 
-    Processor::primitive_with_perf("matrix_lane", mat_perf)
+    Processor::with_perf("matrix_lane", mat_perf)
+        .into_elem()
         .with_resources(vec![ResourceReq::new(l1().as_resource(), 4)])
 }

@@ -24,7 +24,7 @@ src/
 │   ├── perf.rs                 # FuncPerfModel, ProcPerfModel, TimeCostExpr
 │   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
-│   ├── processor.rs            # PrimitiveProc, Processor (Primitive/Replicated/Group)
+│   ├── processor.rs            # Processor, ProcessorElem (Unit/Array/Set)
 │   └── link.rs                 # Link, Endpoint, SharingDomain
 ├── architecture.rs             # Architecture, ArchitectureBuilder
 └── visualization.rs            # GraphViz DOT export (expanded instance view)
@@ -32,9 +32,9 @@ src/
 
 ## Core Concepts
 
-The type system is built around a small number of symmetric abstractions. Memory and processors share the same recursive structure (Bank/Primitive at the leaf, Replicated for homogeneous scaling, Group for heterogeneous composition), and all connectivity is expressed through a single `Link` type with affine maps.
+The type system is built around a small number of symmetric abstractions. Memory and processors share the same recursive structure (Bank/Unit at the leaf, Replicated/Array for homogeneous scaling, Group/Set for heterogeneous composition), and all connectivity is expressed through a single `Link` type with affine maps.
 
-Components are **self-naming**: a `MemoryRegion` carries its name via `.with_name()`, and a `Processor` carries its name from `Processor::primitive("name")`. Builders and endpoints extract names from the data itself -- you never pass a separate name string alongside the object.
+Components are **self-naming**: a `MemoryRegion` carries its name via `.with_name()`, and a `Processor` carries its name from `Processor::new("name")`. Builders and endpoints extract names from the data itself -- you never pass a separate name string alongside the object.
 
 ### 1. Dimensions and Sizes
 
@@ -102,21 +102,21 @@ Names propagate through scaling: when `Architecture::scale()` wraps a named regi
 
 ### 3. Processor Model (recursive `Processor`)
 
-Processors mirror the memory structure with the same three-variant pattern:
+Processors mirror the memory structure with a struct + enum pattern:
 
 ```
-Processor
-├── Primitive(PrimitiveProc)                  -- atomic compute unit
-├── Replicated { name, dims, elem }           -- homogeneous replication
-└── Group { name, parts }                     -- heterogeneous composition
+ProcessorElem
+├── Unit(Processor)                               -- atomic compute unit
+├── Array { name, dims, elem }                    -- homogeneous, indexable multi-dim array
+└── Set { name, parts }                           -- heterogeneous aggregation
 ```
 
-A `PrimitiveProc` carries its name from construction. The name is accessible via `Processor::name()`, which recurses through `Replicated` wrappers:
+A `Processor` carries its name from construction. The name is accessible via `ProcessorElem::name()`, which recurses through `Array` wrappers:
 
 ```rust
 // Structural-only (no cost model)
-let lane = Processor::primitive("matrix_lane");
-assert_eq!(lane.name(), Some("matrix_lane"));
+let lane = Processor::new("matrix_lane");
+assert_eq!(lane.name.as_deref(), Some("matrix_lane"));
 
 // With per-function performance models — ProcPerfModel wraps FuncPerfModel(s)
 let matmul_perf = FuncPerfModel {
@@ -143,7 +143,7 @@ let proc_perf = ProcPerfModel {
     ),
     func_models: vec![matmul_perf],  // one FuncPerfModel per MLIR function
 };
-let lane = Processor::primitive_with_perf("matrix_lane", proc_perf);
+let lane = Processor::with_perf("matrix_lane", proc_perf);
 ```
 
 Replication scales processors across dimensions, just like memory:
@@ -152,10 +152,10 @@ Replication scales processors across dimensions, just like memory:
 let warp_dim = Dimension::new("warp_dim", 32);
 
 // 32 matrix lanes (one per warp)
-let mat_lanes = Processor::primitive("matmul_lane")
+let mat_lanes = Processor::new("matmul_lane")
     .replicate(warp_dim.as_slice());
 
-assert_eq!(mat_lanes.name(), Some("matmul_lane")); // name recurses to Primitive
+assert_eq!(mat_lanes.name(), Some("matmul_lane")); // name recurses to Unit
 assert_eq!(mat_lanes.total_instances(), Some(32));
 ```
 
@@ -298,7 +298,7 @@ let proc_perf = ProcPerfModel {
 };
 assert!(proc_perf.validate().is_ok());
 
-let lane = Processor::primitive_with_perf("vector_lane", proc_perf);
+let lane = Processor::with_perf("vector_lane", proc_perf);
 ```
 
 Use `proc_perf.validate()` to validate all inner function models **and** check function count alignment against the bound `MlirModuleRef`. Use `proc_perf.get_func_model(i)` to access individual function models.
@@ -365,8 +365,8 @@ let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
 .with_name("l1");
 
 // Two processor types (names set at construction)
-let matrix_lane = Processor::primitive("matrix_lane");
-let vector_lane = Processor::primitive("vector_lane");
+let matrix_lane = Processor::new("matrix_lane").into_elem();
+let vector_lane = Processor::new("vector_lane").into_elem();
 
 // All-to-one connectivity: all 16 banks visible to each lane
 let all_to_one = AffineMap::new(
@@ -397,11 +397,11 @@ let cores = core.scale([&dim_x, &dim_y]);
 
 // After scaling:
 // - "l1" is now Replicated[x,y] -> Replicated[nbank] -> Bank
-// - each processor is Replicated[x,y] -> Primitive
+// - each processor is Array[x,y] -> Unit
 // - link maps became identity [x,y] -> [x,y]
 assert_eq!(cores.total_processing_elements(), Some(128)); // 2 lanes x 64 cores
 
-// Name lookup still works through nested Replicated layers
+// Name lookup still works through nested Array layers
 assert_eq!(cores.get_memory_region("l1").unwrap().name(), Some("l1"));
 ```
 
@@ -412,12 +412,12 @@ When `architecture.scale(dims)` is called:
 | Component | Before (single core) | After scaling by [x, y] |
 |-----------|---------------------|------------------------|
 | Memory region "l1" | `Replicated[nbank] -> Bank` | `Replicated[x,y] -> Replicated[nbank] -> Bank` |
-| Processor | `Primitive(lane)` | `Replicated[x,y] -> Primitive(lane)` |
+| Processor | `Unit(lane)` | `Array[x,y] -> Unit(lane)` |
 | Link map | `[nbank] -> []` | `[x,y] -> [x,y]` (identity) |
 
 The link maps are replaced with identity maps on the new dimensions. This captures replication semantics: each core at (x,y) connects to its own L1 at (x,y). The original bank-level connectivity is preserved inside the hierarchical structure.
 
-Names are preserved through scaling because `name()` recurses: the outer `Replicated` added by `scale()` has `name: None`, so `name()` falls through to the inner `Replicated` which carries the original name.
+Names are preserved through scaling because `name()` recurses: the outer `Array` added by `scale()` has `name: None`, so `name()` falls through to the inner element which carries the original name.
 
 ### Full Example: GPU Memory Hierarchy
 
@@ -467,7 +467,7 @@ let l2_to_l1 = Link::builder("L2_to_L1")
     .bandwidth(128).build();
 
 // 32 matrix lanes, one per warp
-let mat_lane = Processor::primitive("matmul_lane")
+let mat_lane = Processor::new("matmul_lane")
     .replicate(warp_dim.as_slice());
 
 let arch = Architecture::builder("GPU")
@@ -521,13 +521,13 @@ dot -Tsvg arch.dot -o arch.svg
 | `IndexSelector` | Partial index: named dimension assignments | `core/affine.rs` |
 | `MemoryBank` | Leaf memory unit (capacity, granularity, optional perf) | `core/memory.rs` |
 | `MemoryRegion` | Recursive: `Bank` / `Replicated { name, dims, elem }` / `Group`; use `.with_name()` and `.name()` | `core/memory.rs` |
-| `PrimitiveProc` | Leaf processor (name, optional perf model) | `core/processor.rs` |
-| `Processor` | Recursive: `Primitive` / `Replicated { name, dims, elem }` / `Group`; name recurses to leaf | `core/processor.rs` |
+| `Processor` | Atomic compute unit (name, optional perf model with compute ref) | `core/processor.rs` |
+| `ProcessorElem` | Recursive: `Unit(Processor)` / `Array { name, dims, elem }` / `Set { name, parts }`; name recurses to leaf | `core/processor.rs` |
 | `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `core/link.rs` |
-| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(Processor)`; name derived from data | `core/link.rs` |
+| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(ProcessorElem)`; name derived from data | `core/link.rs` |
 | `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `core/link.rs` |
-| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<Processor>`, and links | `architecture.rs` |
-| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&proc)` | `architecture.rs` |
+| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<ProcessorElem>`, and links | `architecture.rs` |
+| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `architecture.rs` |
 
 ## Building and Running
 

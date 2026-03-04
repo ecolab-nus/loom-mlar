@@ -1,4 +1,4 @@
-use crate::core::{Dimension, Link, MemoryRegion, Processor};
+use crate::core::{Dimension, Link, MemoryRegion, ProcessorElem};
 
 /// Label describing a parent architecture level introduced by scaling.
 #[derive(Debug, Clone)]
@@ -18,8 +18,8 @@ pub struct Architecture {
     pub name: String,
     /// Memory regions (each should have a name via `.with_name()`)
     pub memory: Vec<MemoryRegion>,
-    /// Processors (each should have a name via `Processor::primitive()` or `.with_name()`)
-    pub processors: Vec<Processor>,
+    /// ProcessorElems (each should have a name via `Processor::new()` or `.with_name()`)
+    pub processors: Vec<ProcessorElem>,
     /// Connectivity links between memory regions and/or processors
     pub links: Vec<Link>,
     /// Hierarchical labels added by `scale()` from outermost to innermost.
@@ -43,14 +43,14 @@ impl Architecture {
     }
 
     /// Look up a named processor.
-    pub fn get_processor(&self, name: &str) -> Option<&Processor> {
+    pub fn get_processor(&self, name: &str) -> Option<&ProcessorElem> {
         self.processors.iter().find(|p| p.name() == Some(name))
     }
 
     /// Scale this architecture by prepending dimensions.
     ///
     /// - Each MemoryRegion is wrapped in Replicated { dims, elem }
-    /// - Each Processor is wrapped in Replicated { dims, elem }
+    /// - Each ProcessorElem is wrapped in Replicated { dims, elem }
     /// - Each Link's affine map is replaced with identity on the new dims
     pub fn scale<'a, I>(self, dims: I) -> Architecture
     where
@@ -117,7 +117,7 @@ impl Architecture {
 pub struct ArchitectureBuilder {
     name: String,
     memory: Vec<MemoryRegion>,
-    processors: Vec<Processor>,
+    processors: Vec<ProcessorElem>,
     links: Vec<Link>,
 }
 
@@ -129,7 +129,7 @@ impl ArchitectureBuilder {
     }
 
     /// Add a processor (borrows and clones; name is extracted from the processor).
-    pub fn processor(mut self, proc: &Processor) -> Self {
+    pub fn processor(mut self, proc: &ProcessorElem) -> Self {
         self.processors.push(proc.clone());
         self
     }

@@ -9,7 +9,7 @@ use crate::memory::l1;
 ///   throughput = 1024, latency = 1
 /// - `vec_exp_f32`: throughput = 128, latency = 16
 /// - `vec_div_f32`: throughput = 256, latency = 8
-pub fn vector_lane() -> Processor {
+pub fn vector_lane() -> ProcessorElem {
     // Common model for fast ops: vec_max, vec_add, vec_sum, vec_mul
     let fast_op = FuncPerfModel {
         symbols: vec![],
@@ -69,6 +69,7 @@ pub fn vector_lane() -> Processor {
         ],
     };
 
-    Processor::primitive_with_perf("vector_lane", vec_perf)
+    Processor::with_perf("vector_lane", vec_perf)
+        .into_elem()
         .with_resources(vec![ResourceReq::new(l1().as_resource(), 2)])
 }

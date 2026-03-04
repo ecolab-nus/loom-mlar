@@ -4,7 +4,7 @@
 
 use crate::core::architecture::{Architecture, ArchitectureLabel};
 use crate::core::{
-    AffineExpr, AffineMap, Dimension, Endpoint, Link, MemoryBank, MemoryRegion, Processor,
+    AffineExpr, AffineMap, Dimension, Endpoint, Link, MemoryBank, MemoryRegion, ProcessorElem,
 };
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -156,7 +156,7 @@ impl ArchVisualizer {
     }
 
     /// Add a processor to the graph, returning its node index
-    fn add_processor(&mut self, proc: &Processor, suggested_name: &str) -> NodeIndex {
+    fn add_processor(&mut self, proc: &ProcessorElem, suggested_name: &str) -> NodeIndex {
         let name = suggested_name.to_string();
 
         if let Some(&idx) = self.processor_nodes.get(&name) {
@@ -356,15 +356,15 @@ fn format_bank_details(bank: &MemoryBank) -> String {
     }
 }
 
-fn collect_all_dims(proc: &Processor) -> Vec<Dimension> {
+fn collect_all_dims(proc: &ProcessorElem) -> Vec<Dimension> {
     match proc {
-        Processor::Primitive(_) => vec![],
-        Processor::Replicated { dims, elem, .. } => {
+        ProcessorElem::Unit(_) => vec![],
+        ProcessorElem::Array { dims, elem, .. } => {
             let mut result = dims.clone();
             result.extend(collect_all_dims(elem));
             result
         }
-        Processor::Group { .. } => vec![],
+        ProcessorElem::Set { .. } => vec![],
     }
 }
 
@@ -850,7 +850,7 @@ where
 fn detect_architecture_grouping(
     arch: &Architecture,
     memory_entities: &[(&MemoryRegion, &str, Vec<Dimension>)],
-    processor_entities: &[(&Processor, &str, Vec<Dimension>)],
+    processor_entities: &[(&ProcessorElem, &str, Vec<Dimension>)],
 ) -> Option<ArchitectureGrouping> {
     let mut all_dims: Vec<&[Dimension]> = memory_entities
         .iter()
@@ -1337,7 +1337,7 @@ fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     out
 }
 
-fn collect_processor_dims(proc: &Processor) -> Vec<Dimension> {
+fn collect_processor_dims(proc: &ProcessorElem) -> Vec<Dimension> {
     proc.all_dims().into_iter().cloned().collect()
 }
 

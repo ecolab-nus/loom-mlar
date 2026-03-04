@@ -13,8 +13,8 @@ fn test_2d_mesh_with_perf_models() {
     // === Verify perf models and compute semantics survive scaling ===
     for proc in &mesh.processors {
         match proc {
-            Processor::Replicated { elem, .. } => match elem.as_ref() {
-                Processor::Primitive(p) => {
+            ProcessorElem::Array { elem, .. } => match elem.as_ref() {
+                ProcessorElem::Unit(p) => {
                     let perf = p.perf.as_ref().expect("perf model should be preserved");
                     assert!(
                         perf.validate().is_ok(),
@@ -32,9 +32,9 @@ fn test_2d_mesh_with_perf_models() {
                         p.name
                     );
                 }
-                _ => panic!("expected Primitive inside Replicated"),
+                _ => panic!("expected Unit inside Array"),
             },
-            _ => panic!("expected Replicated after scaling"),
+            _ => panic!("expected Array after scaling"),
         }
     }
 
@@ -64,8 +64,8 @@ fn test_2d_mesh_with_perf_models() {
     // === Verify per-function perf models for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
-        Processor::Replicated { elem, .. } => match elem.as_ref() {
-            Processor::Primitive(p) => {
+        ProcessorElem::Array { elem, .. } => match elem.as_ref() {
+            ProcessorElem::Unit(p) => {
                 let proc_perf = p.perf.as_ref().expect("perf model");
                 assert_eq!(proc_perf.num_functions(), 6);
 
@@ -84,9 +84,9 @@ fn test_2d_mesh_with_perf_models() {
                 assert_eq!(div_model.scenarios[0].time_cost.throughput.eval_const(), Some(256));
                 assert_eq!(div_model.scenarios[0].time_cost.fixed_latency.eval_const(), Some(8));
             }
-            _ => panic!("expected Primitive"),
+            _ => panic!("expected Unit"),
         },
-        _ => panic!("expected Replicated"),
+        _ => panic!("expected Array"),
     }
 
     // === Verify resource requirements ===

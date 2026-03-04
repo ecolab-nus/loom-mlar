@@ -69,7 +69,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bandwidth(64)
         .build();
 
-    let mat_lane = Processor::primitive("matmul_lane").replicate(warp_dim.as_slice());
+    let mat_lane = Processor::new("matmul_lane").replicate(warp_dim.as_slice());
 
     let rf_to_mat_map = AffineMapTemplate::parse("[warp_dim] -> [warp_dim]: (warp_dim)")
         .expect("invalid affine map")

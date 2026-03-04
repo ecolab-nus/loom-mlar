@@ -19,6 +19,6 @@ pub use link::{Endpoint, Link, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use parse::ParseError;
 pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};
-pub use processor::{MlirModuleRef, PrimitiveProc, Processor};
+pub use processor::{MlirModuleRef, Processor, ProcessorElem};
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};

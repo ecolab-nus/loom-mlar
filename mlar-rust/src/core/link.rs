@@ -2,7 +2,7 @@ use super::affine::AffineMap;
 use super::constraint::ConstraintExpr;
 use super::expr::Expr;
 use super::memory::MemoryRegion;
-use super::processor::Processor;
+use super::processor::ProcessorElem;
 use super::resource::Resource;
 use super::size_dim::Dimension;
 
@@ -11,7 +11,7 @@ use super::size_dim::Dimension;
 #[derive(Clone, Debug)]
 pub enum Endpoint {
     Mem(MemoryRegion),
-    Proc(Processor),
+    Proc(ProcessorElem),
 }
 
 impl Endpoint {
@@ -40,7 +40,7 @@ impl Endpoint {
     }
 
     /// Get the processor if this is a Proc endpoint.
-    pub fn as_processor(&self) -> Option<&Processor> {
+    pub fn as_processor(&self) -> Option<&ProcessorElem> {
         match self {
             Endpoint::Proc(p) => Some(p),
             _ => None,
@@ -66,7 +66,7 @@ pub enum SharingDomain {
 
 /// A connectivity edge between two architecture entities (memory <-> memory, memory <-> processor).
 ///
-/// Endpoints hold the actual `MemoryRegion` or `Processor` values directly.
+/// Endpoints hold the actual `MemoryRegion` or `ProcessorElem` values directly.
 /// Names are derived from the embedded data -- no separate name field needed.
 #[derive(Clone, Debug)]
 pub struct Link {
@@ -145,7 +145,7 @@ impl LinkBuilder {
     }
 
     /// Set the source as a processor (borrows and clones internally).
-    pub fn from_proc(mut self, proc: &Processor) -> Self {
+    pub fn from_proc(mut self, proc: &ProcessorElem) -> Self {
         self.src = Some(Endpoint::Proc(proc.clone()));
         self
     }
@@ -157,7 +157,7 @@ impl LinkBuilder {
     }
 
     /// Set the destination as a processor (borrows and clones internally).
-    pub fn to_proc(mut self, proc: &Processor) -> Self {
+    pub fn to_proc(mut self, proc: &ProcessorElem) -> Self {
         self.dst = Some(Endpoint::Proc(proc.clone()));
         self
     }
