@@ -1,5 +1,5 @@
 pub mod core;
-pub mod visualisation;
+pub mod visualization;
 
 // Re-export commonly used types from core
 pub use core::{
@@ -10,7 +10,7 @@ pub use core::{
 };
 
 // Re-export visualization utilities
-pub use visualisation::graph_json::{
+pub use visualization::graph_json::{
     ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
     architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
 };

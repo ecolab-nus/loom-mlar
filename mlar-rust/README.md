@@ -26,7 +26,7 @@ src/
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
 │   ├── processor.rs            # Processor, ProcessorElem (Unit/Array/Set)
 │   └── link.rs                 # Link, Endpoint, SharingDomain
-└── visualisation/
+└── visualization/
     └── graph_json.rs           # JSON schema export for web visualization
 ```
 
