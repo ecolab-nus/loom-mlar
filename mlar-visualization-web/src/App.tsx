@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Background,
   Controls,
@@ -14,28 +14,46 @@ import '@xyflow/react/dist/style.css';
 
 import { ArchNode } from './components/ArchNode';
 import { architectureToFlow, type ArchFlowNode } from './flow';
-import { parseArchitectureGraph, type ArchitectureGraph } from './schema';
-import sampleGraph from './sample-graph.json';
+import { loadGraphFromFile, loadGraphFromUrl, parseGraphText } from './runtime-loader';
 
 const nodeTypes: NodeTypes = { archNode: ArchNode };
-
-function parseInput(text: string): ArchitectureGraph {
-  return parseArchitectureGraph(JSON.parse(text) as unknown);
-}
+const DEFAULT_GRAPH_URL = '/sample-graph.json';
 
 function AppInner() {
-  const initialText = JSON.stringify(sampleGraph, null, 2);
-  const [jsonText, setJsonText] = useState(initialText);
+  const [jsonText, setJsonText] = useState('');
+  const [sourceUrl, setSourceUrl] = useState(DEFAULT_GRAPH_URL);
+  const [sourceName, setSourceName] = useState('none');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadFromUrl = async (url: string) => {
+    try {
+      const loaded = await loadGraphFromUrl(url);
+      setJsonText(loaded.text);
+      setSourceName(loaded.source);
+      setLoadError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load URL';
+      setLoadError(message);
+    }
+  };
+
+  useEffect(() => {
+    void loadFromUrl(DEFAULT_GRAPH_URL);
+  }, []);
 
   const parsed = useMemo(() => {
+    if (!jsonText.trim()) {
+      return { graph: null, error: loadError ?? 'No JSON loaded yet.' };
+    }
+
     try {
-      const graph = parseInput(jsonText);
-      return { graph, error: null as string | null };
+      const loaded = parseGraphText(jsonText, sourceName);
+      return { graph: loaded.graph, error: null as string | null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid JSON payload';
       return { graph: null, error: message };
     }
-  }, [jsonText]);
+  }, [jsonText, sourceName, loadError]);
 
   const flow = useMemo(() => {
     if (!parsed.graph) {
@@ -50,8 +68,15 @@ function AppInner() {
       return;
     }
 
-    const text = await file.text();
-    setJsonText(text);
+    try {
+      const loaded = await loadGraphFromFile(file);
+      setJsonText(loaded.text);
+      setSourceName(loaded.source);
+      setLoadError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load file';
+      setLoadError(message);
+    }
   };
 
   return (
@@ -59,12 +84,25 @@ function AppInner() {
       <header className="app-header">
         <div>
           <h1>MLAR Graph Flow</h1>
-          <p>React Flow prototype for MLAR JSON schema ({sampleGraph.schema_version})</p>
+          <p>Runtime JSON loader for React Flow (schema: mlar.arch-graph.v1)</p>
         </div>
-        <label className="upload-button">
-          Load JSON
-          <input type="file" accept="application/json" onChange={onUpload} />
-        </label>
+
+        <div className="source-controls">
+          <input
+            className="source-input"
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            spellCheck={false}
+            placeholder="/sample-graph.json"
+          />
+          <button type="button" className="action-button" onClick={() => void loadFromUrl(sourceUrl)}>
+            Load URL
+          </button>
+          <label className="upload-button">
+            Open File
+            <input type="file" accept="application/json" onChange={onUpload} />
+          </label>
+        </div>
       </header>
 
       <main className="app-main">
@@ -84,6 +122,10 @@ function AppInner() {
                 <div>
                   <strong>Architecture</strong>
                   <span>{parsed.graph?.architecture.name ?? 'invalid payload'}</span>
+                </div>
+                <div>
+                  <strong>Source</strong>
+                  <span>{sourceName}</span>
                 </div>
                 <div>
                   <strong>Nodes</strong>
@@ -112,10 +154,14 @@ function AppInner() {
           <h2>Graph JSON</h2>
           <textarea
             value={jsonText}
-            onChange={(event) => setJsonText(event.target.value)}
+            onChange={(event) => {
+              setJsonText(event.target.value);
+              setSourceName('editor');
+              setLoadError(null);
+            }}
             spellCheck={false}
           />
-          {parsed.error && <p className="error-line">{parsed.error}</p>}
+          {(loadError || parsed.error) && <p className="error-line">{loadError ?? parsed.error}</p>}
         </section>
       </main>
     </div>

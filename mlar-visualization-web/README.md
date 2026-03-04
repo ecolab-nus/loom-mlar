@@ -17,6 +17,22 @@ npm run dev
 
 Open the local URL from Vite.
 
+Run on fixed host/port (`127.0.0.1:5173`):
+
+```bash
+cd mlar-visualization-web
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+If your browser is on a different machine, tunnel the port:
+
+```bash
+ssh -L 5173:127.0.0.1:5173 <user>@<remote-host>
+```
+
+Then open `http://127.0.0.1:5173` in your local browser.
+
 ## Use Rust Export Output
 
 From repo root, generate a sample payload:
@@ -24,15 +40,15 @@ From repo root, generate a sample payload:
 ```bash
 cd mlar-rust
 cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cp 2d_mesh_torus.json ../mlar-visualization-web/src/sample-graph.json
+cp 2d_mesh_torus.json ../mlar-visualization-web/public/sample-graph.json
 ```
 
 Then restart or refresh the web app.
 
-You can also upload any JSON file from the UI.
+You can also load any JSON file at runtime from the UI (`Open File`) or by URL path (`Load URL`).
 
 ## Schema
 
 Formal JSON schema file:
 
-`../mlar-rust/visualization/architecture-graph.schema.json`
+`schema/architecture-graph.schema.json`

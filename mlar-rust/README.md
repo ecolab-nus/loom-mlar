@@ -496,12 +496,12 @@ Generate a ready-to-render example payload:
 
 ```bash
 cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cp 2d_mesh_torus.json ../mlar-visualization-web/src/sample-graph.json
+cp 2d_mesh_torus.json ../mlar-visualization-web/public/sample-graph.json
 ```
 
 Formal schema:
 
-`visualization/architecture-graph.schema.json`
+`../mlar-visualization-web/schema/architecture-graph.schema.json`
 
 ## Type Reference
 

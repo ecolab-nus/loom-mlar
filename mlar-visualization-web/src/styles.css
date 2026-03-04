@@ -75,6 +75,34 @@ body {
   display: none;
 }
 
+.source-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.source-input {
+  width: min(34vw, 360px);
+  min-width: 180px;
+  border: 1px solid #b8cdd8;
+  border-radius: 999px;
+  padding: 0.38rem 0.72rem;
+  font: 500 0.84rem/1.25 'JetBrains Mono', ui-monospace, monospace;
+  background: #fcfeff;
+  color: #1e3d4c;
+}
+
+.action-button {
+  border: 1px solid #9cb7c5;
+  background: #e8f4fb;
+  color: #1e4658;
+  border-radius: 999px;
+  padding: 0.42rem 0.78rem;
+  font-weight: 650;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
 .app-main {
   flex: 1;
   min-height: 0;
@@ -231,6 +259,15 @@ body {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .source-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .source-input {
+    width: 100%;
   }
 
   .canvas-panel {
