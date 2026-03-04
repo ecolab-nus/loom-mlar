@@ -1,11 +1,11 @@
 use super::parse::ParseError;
-use crate::core::size_dim::{Dimension, Symbol};
+use crate::core::size_dim::{Dimension, Sym};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum AffineExpr {
     Var(Dimension),
-    Sym(Symbol),
+    Sym(Sym),
     Const(i64),
     Add(Box<AffineExpr>, Box<AffineExpr>),
     MulConst(i64, Box<AffineExpr>),
@@ -21,7 +21,7 @@ impl AffineExpr {
         &self,
         vals: &[i64],
         src_dims: &[Dimension],
-        sym_vals: &HashMap<Symbol, i64>,
+        sym_vals: &HashMap<Sym, i64>,
     ) -> i64 {
         match self {
             AffineExpr::Var(dim) => src_dims
@@ -61,7 +61,7 @@ impl AffineExpr {
         AffineExpr::Var(dim.into())
     }
     pub fn sym(name: impl Into<String>) -> Self {
-        AffineExpr::Sym(Symbol::new(name))
+        AffineExpr::Sym(Sym::new(name))
     }
     pub fn constant(value: i64) -> Self {
         AffineExpr::Const(value)
@@ -107,7 +107,7 @@ impl AffineMap {
             .map(|e| e.eval(vals, &self.src_dims))
             .collect()
     }
-    pub fn apply_with_symbols(&self, vals: &[i64], sym_vals: &HashMap<Symbol, i64>) -> Vec<i64> {
+    pub fn apply_with_symbols(&self, vals: &[i64], sym_vals: &HashMap<Sym, i64>) -> Vec<i64> {
         self.exprs
             .iter()
             .map(|e| e.eval_with_symbols(vals, &self.src_dims, sym_vals))

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::expr::Expr;
 use super::parse::ParseError;
-use super::size_dim::Symbol;
+use super::size_dim::Sym;
 
 /// Constraint expression — composable, evaluable predicate for performance model applicability.
 ///
@@ -125,13 +125,13 @@ impl ConstraintExpr {
     }
 
     /// Collect all symbols referenced in this constraint's expressions.
-    pub fn free_symbols(&self) -> HashSet<Symbol> {
+    pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
         syms
     }
 
-    fn collect_symbols(&self, out: &mut HashSet<Symbol>) {
+    fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             ConstraintExpr::True | ConstraintExpr::False => {}
             ConstraintExpr::And(cs) | ConstraintExpr::Or(cs) => {

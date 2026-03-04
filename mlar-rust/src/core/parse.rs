@@ -15,7 +15,7 @@ use nom::{Finish, IResult, Parser};
 use super::affine::{AffineExpr, AffineExprTemplate, AffineMap, AffineMapTemplate};
 use super::constraint::ConstraintExpr;
 use super::expr::Expr;
-use super::size_dim::{Dimension, Symbol};
+use super::size_dim::{Dimension, Sym};
 
 /// Parse error with position information.
 #[derive(Debug, Clone)]
@@ -202,7 +202,7 @@ fn expr_ident_or_func(input: &str) -> IResult<&str, Expr> {
                 },
             ))
         }
-        _ => Ok((rest, Expr::Sym(Symbol::new(name)))),
+        _ => Ok((rest, Expr::Sym(Sym::new(name)))),
     }
 }
 
@@ -712,7 +712,7 @@ mod tests {
         let dy = Dimension::new_int("y", 8);
         let t = parse_affine_map_template("[x, y] -> [x, y]: (x, (y + 1) mod Y)").unwrap();
         let b = t.bind([&dx, &dy]).unwrap();
-        let s: HashMap<Symbol, i64> = [(Symbol::new("Y"), 8)].into();
+        let s: HashMap<Sym, i64> = [(Sym::new("Y"), 8)].into();
         assert_eq!(b.apply_with_symbols(&[3, 7], &s), vec![3, 0]);
     }
     #[test]

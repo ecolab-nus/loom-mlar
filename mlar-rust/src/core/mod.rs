@@ -21,4 +21,4 @@ pub use parse::ParseError;
 pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};
 pub use processor::{MlirModuleRef, PrimitiveProc, Processor};
 pub use resource::{Resource, ResourceReq};
-pub use size_dim::{Dimension, SizeExpr, Symbol};
+pub use size_dim::{Dimension, SizeExpr, Sym};

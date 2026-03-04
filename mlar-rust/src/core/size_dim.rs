@@ -28,29 +28,29 @@ impl From<String> for DimName {
 
 /// Newtype for symbolic names used in expressions.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Symbol(pub String);
+pub struct Sym(pub String);
 
-impl Symbol {
+impl Sym {
     pub fn new(name: impl Into<String>) -> Self {
-        Symbol(name.into())
+        Sym(name.into())
     }
 }
 
-impl std::fmt::Display for Symbol {
+impl std::fmt::Display for Sym {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl From<&str> for Symbol {
+impl From<&str> for Sym {
     fn from(s: &str) -> Self {
-        Symbol(s.to_string())
+        Sym(s.to_string())
     }
 }
 
-impl From<String> for Symbol {
+impl From<String> for Sym {
     fn from(s: String) -> Self {
-        Symbol(s)
+        Sym(s)
     }
 }
 
@@ -58,7 +58,7 @@ impl From<String> for Symbol {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SizeExpr {
     Const(u64),
-    Sym(Symbol),
+    Sym(Sym),
     Add(Box<SizeExpr>, Box<SizeExpr>),
     Mul(Box<SizeExpr>, Box<SizeExpr>),
 }
@@ -71,7 +71,7 @@ impl SizeExpr {
 
     /// Create a symbolic size
     pub fn sym(name: impl Into<String>) -> Self {
-        SizeExpr::Sym(Symbol::new(name))
+        SizeExpr::Sym(Sym::new(name))
     }
 
     /// Check if this size is a concrete constant
@@ -117,7 +117,7 @@ impl From<usize> for SizeExpr {
 
 impl From<&str> for SizeExpr {
     fn from(name: &str) -> Self {
-        SizeExpr::Sym(Symbol::new(name))
+        SizeExpr::Sym(Sym::new(name))
     }
 }
 

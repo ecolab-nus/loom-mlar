@@ -178,7 +178,7 @@ mod tests {
     fn test_bank_symbolic() {
         let bank = MemoryBank::from_blocks(
             SizeExpr::Const(256),
-            SizeExpr::Sym(crate::core::size_dim::Symbol::new("DRAM_SIZE")),
+            SizeExpr::Sym(crate::core::size_dim::Sym::new("DRAM_SIZE")),
         );
 
         // capacity_bytes is symbolic, can't evaluate to concrete

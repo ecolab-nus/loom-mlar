@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::parse::ParseError;
-use super::size_dim::Symbol;
+use super::size_dim::Sym;
 
 /// General symbolic expression for cost modeling (latency, throughput, bandwidth, etc.).
 ///
@@ -21,7 +21,7 @@ use super::size_dim::Symbol;
 #[derive(Clone, Debug)]
 pub enum Expr {
     Const(i64),
-    Sym(Symbol),
+    Sym(Sym),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
@@ -66,7 +66,7 @@ impl Expr {
     }
 
     pub fn sym(name: impl Into<String>) -> Self {
-        Expr::Sym(Symbol::new(name))
+        Expr::Sym(Sym::new(name))
     }
 
     pub fn add(a: Expr, b: Expr) -> Self {
@@ -115,13 +115,13 @@ impl Expr {
     }
 
     /// Collect all symbols referenced in this expression.
-    pub fn free_symbols(&self) -> HashSet<Symbol> {
+    pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
         syms
     }
 
-    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Symbol>) {
+    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             Expr::Const(_) => {}
             Expr::Sym(s) => {

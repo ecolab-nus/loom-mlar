@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use super::constraint::ConstraintExpr;
 use super::expr::Expr;
 use super::processor::MlirModuleRef;
-use super::size_dim::Symbol;
+use super::size_dim::Sym;
 
 /// A single performance scenario — constraints that select it and cost expressions.
 ///
@@ -52,7 +52,7 @@ pub struct PerfScenario {
 pub struct FuncPerfModel {
     /// The symbols this model depends on. All symbols used in `constraints`,
     /// scenario `constraints`, and `time_cost` must be declared here.
-    pub symbols: Vec<Symbol>,
+    pub symbols: Vec<Sym>,
     /// Global constraints that apply to all scenarios. A scenario is only
     /// applicable when both the global constraints and its own constraints
     /// are satisfied.
@@ -142,8 +142,8 @@ impl FuncPerfModel {
     /// and `time_cost` are declared in `symbols`.
     ///
     /// Returns `Ok(())` if valid, or `Err(undeclared)` with the set of undeclared symbols.
-    pub fn validate(&self) -> Result<(), Vec<Symbol>> {
-        let declared: HashSet<Symbol> = self.symbols.iter().cloned().collect();
+    pub fn validate(&self) -> Result<(), Vec<Sym>> {
+        let declared: HashSet<Sym> = self.symbols.iter().cloned().collect();
 
         let mut used = HashSet::new();
         // Collect symbols from global constraints
@@ -159,7 +159,7 @@ impl FuncPerfModel {
             used.extend(constraint_syms);
         }
 
-        let undeclared: Vec<Symbol> = used.difference(&declared).cloned().collect();
+        let undeclared: Vec<Sym> = used.difference(&declared).cloned().collect();
         if undeclared.is_empty() {
             Ok(())
         } else {
@@ -197,7 +197,7 @@ impl ProcPerfModel {
     ///
     /// Returns `Ok(())` if all function models validate, or
     /// `Err(failures)` with a list of `(func_index, undeclared_symbols)` pairs.
-    pub fn validate(&self) -> Result<(), Vec<(usize, Vec<Symbol>)>> {
+    pub fn validate(&self) -> Result<(), Vec<(usize, Vec<Sym>)>> {
         let mut failures = Vec::new();
         for (i, fm) in self.func_models.iter().enumerate() {
             if let Err(undeclared) = fm.validate() {
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_validate_all_declared() {
         let model = FuncPerfModel {
-            symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+            symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::And(vec![
@@ -290,7 +290,7 @@ mod tests {
     fn test_validate_undeclared() {
         // Declare M and N but use K in cost — should fail.
         let model = FuncPerfModel {
-            symbols: vec![Symbol::new("M"), Symbol::new("N")],
+            symbols: vec![Sym::new("M"), Sym::new("N")],
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
@@ -305,13 +305,13 @@ mod tests {
         };
         let err = model.validate().unwrap_err();
         assert_eq!(err.len(), 1);
-        assert_eq!(err[0], Symbol::new("K"));
+        assert_eq!(err[0], Sym::new("K"));
     }
 
     #[test]
     fn test_total_latency_for() {
         let model = FuncPerfModel {
-            symbols: vec![Symbol::new("N")],
+            symbols: vec![Sym::new("N")],
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
@@ -337,7 +337,7 @@ mod tests {
     fn test_validate_undeclared_in_constraints() {
         // Symbol X used in constraints but not declared
         let model = FuncPerfModel {
-            symbols: vec![Symbol::new("M")],
+            symbols: vec![Sym::new("M")],
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::Ge(Expr::sym("X"), Expr::Const(64)),
@@ -348,13 +348,13 @@ mod tests {
             }],
         };
         let err = model.validate().unwrap_err();
-        assert!(err.contains(&Symbol::new("X")));
+        assert!(err.contains(&Sym::new("X")));
     }
 
     #[test]
     fn test_multi_scenario() {
         let model = FuncPerfModel {
-            symbols: vec![Symbol::new("M"), Symbol::new("N"), Symbol::new("K")],
+            symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
             constraints: ConstraintExpr::True,
             scenarios: vec![
                 // Scenario 0: large inputs
@@ -399,7 +399,7 @@ mod tests {
         let good = ProcPerfModel {
             func_models: vec![
                 FuncPerfModel {
-                    symbols: vec![Symbol::new("N")],
+                    symbols: vec![Sym::new("N")],
                     constraints: ConstraintExpr::True,
                     scenarios: vec![PerfScenario {
                         constraints: ConstraintExpr::True,
