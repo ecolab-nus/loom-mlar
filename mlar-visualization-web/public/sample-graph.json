@@ -1,20 +1,20 @@
 {
   "schema_version": "mlar.arch-graph.v1",
   "architecture": {
-    "name": "gpu_tile",
+    "name": "2d_mesh_torus",
     "labels": [
       {
-        "name": "tile",
+        "name": "core",
         "dimensions": [
           {
-            "name": "tile_x",
-            "size_expr": "4",
-            "size_const": 4
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
           },
           {
-            "name": "tile_y",
-            "size_expr": "4",
-            "size_const": 4
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
           }
         ]
       }
@@ -22,125 +22,65 @@
   },
   "nodes": [
     {
-      "id": "mem:dram",
-      "kind": "memory",
-      "name": "dram",
-      "label": "dram [chan=8]",
-      "dimensions": [
-        {
-          "name": "chan",
-          "size_expr": "8",
-          "size_const": 8
-        }
-      ],
-      "details": {
-        "type": "memory",
-        "region": {
-          "kind": "replicated",
-          "name": "dram",
-          "dimensions": [
-            {
-              "name": "chan",
-              "size_expr": "8",
-              "size_const": 8
-            }
-          ],
-          "elem": {
-            "kind": "bank",
-            "name": null,
-            "capacity_bytes": {
-              "expr": "(256 * DRAM_SIZE)",
-              "const_value": null
-            },
-            "access_granularity": {
-              "expr": "256",
-              "const_value": 256
-            }
-          }
-        },
-        "resource": {
-          "name": "dram",
-          "quantity": 8
-        }
-      }
-    },
-    {
-      "id": "mem:l2",
-      "kind": "memory",
-      "name": "l2",
-      "label": "l2 [chan=8]",
-      "dimensions": [
-        {
-          "name": "chan",
-          "size_expr": "8",
-          "size_const": 8
-        }
-      ],
-      "details": {
-        "type": "memory",
-        "region": {
-          "kind": "replicated",
-          "name": "l2",
-          "dimensions": [
-            {
-              "name": "chan",
-              "size_expr": "8",
-              "size_const": 8
-            }
-          ],
-          "elem": {
-            "kind": "bank",
-            "name": null,
-            "capacity_bytes": {
-              "expr": "(128 * 4096)",
-              "const_value": 524288
-            },
-            "access_granularity": {
-              "expr": "128",
-              "const_value": 128
-            }
-          }
-        },
-        "resource": {
-          "name": "l2",
-          "quantity": 8
-        }
-      }
-    },
-    {
       "id": "mem:l1",
       "kind": "memory",
       "name": "l1",
-      "label": "l1 [warp=64]",
+      "label": "l1 [x=8, y=8, nbank=16]",
       "dimensions": [
         {
-          "name": "warp",
-          "size_expr": "64",
-          "size_const": 64
+          "name": "x",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "y",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "nbank",
+          "size_expr": "16",
+          "size_const": 16
         }
       ],
       "details": {
         "type": "memory",
         "region": {
           "kind": "replicated",
-          "name": "l1",
+          "name": null,
           "dimensions": [
             {
-              "name": "warp",
-              "size_expr": "64",
-              "size_const": 64
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
             }
           ],
           "elem": {
-            "kind": "bank",
-            "name": null,
-            "capacity_bytes": {
-              "expr": "(64 * 1024)",
-              "const_value": 65536
-            },
-            "access_granularity": {
-              "expr": "64",
-              "const_value": 64
+            "kind": "replicated",
+            "name": "l1",
+            "dimensions": [
+              {
+                "name": "nbank",
+                "size_expr": "16",
+                "size_const": 16
+              }
+            ],
+            "elem": {
+              "kind": "bank",
+              "name": null,
+              "capacity_bytes": {
+                "expr": "(128 * 1024)",
+                "const_value": 131072
+              },
+              "access_granularity": {
+                "expr": "128",
+                "const_value": 128
+              }
             }
           }
         },
@@ -151,15 +91,20 @@
       }
     },
     {
-      "id": "proc:matmul_lane",
+      "id": "proc:matrix_lane",
       "kind": "processor",
-      "name": "matmul_lane",
-      "label": "matmul_lane [warp=64]",
+      "name": "matrix_lane",
+      "label": "matrix_lane [x=8, y=8]",
       "dimensions": [
         {
-          "name": "warp",
-          "size_expr": "64",
-          "size_const": 64
+          "name": "x",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "y",
+          "size_expr": "8",
+          "size_const": 8
         }
       ],
       "details": {
@@ -169,19 +114,96 @@
           "name": null,
           "dimensions": [
             {
-              "name": "warp",
-              "size_expr": "64",
-              "size_const": 64
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
             }
           ],
           "elem": {
             "kind": "unit",
-            "name": "matmul_lane",
+            "name": "matrix_lane",
             "compute": {
-              "path": "compute/matmul_lane.mlir",
-              "functions": ["matmul_f32"]
+              "path": "compute/matrix_lane.mlir",
+              "functions": [
+                "matmul_f32"
+              ]
             },
-            "resources": []
+            "resources": [
+              {
+                "resource": {
+                  "name": "l1",
+                  "quantity": 16
+                },
+                "quantity": 4
+              }
+            ]
+          }
+        },
+        "total_instances": 64
+      }
+    },
+    {
+      "id": "proc:vector_lane",
+      "kind": "processor",
+      "name": "vector_lane",
+      "label": "vector_lane [x=8, y=8]",
+      "dimensions": [
+        {
+          "name": "x",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "y",
+          "size_expr": "8",
+          "size_const": 8
+        }
+      ],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "array",
+          "name": null,
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "elem": {
+            "kind": "unit",
+            "name": "vector_lane",
+            "compute": {
+              "path": "compute/vector_lane.mlir",
+              "functions": [
+                "vec_max_f32",
+                "vec_exp_f32",
+                "vec_sum_f32",
+                "vec_add_f32",
+                "vec_mul_f32",
+                "vec_div_f32"
+              ]
+            },
+            "resources": [
+              {
+                "resource": {
+                  "name": "l1",
+                  "quantity": 16
+                },
+                "quantity": 2
+              }
+            ]
           }
         },
         "total_instances": 64
@@ -190,17 +212,17 @@
   ],
   "edges": [
     {
-      "id": "edge:dram_to_l2:0",
+      "id": "edge:l1_to_matrix_lane:0",
       "kind": "link",
-      "name": "dram_to_l2",
-      "source": "mem:dram",
-      "target": "mem:l2",
-      "source_name": "dram",
-      "target_name": "l2",
-      "label": "dram_to_l2 (256 B/cycle)",
+      "name": "l1_to_matrix_lane",
+      "source": "mem:l1",
+      "target": "proc:matrix_lane",
+      "source_name": "l1",
+      "target_name": "matrix_lane",
+      "label": "l1_to_matrix_lane (512 B/cycle)",
       "bandwidth": {
-        "expr": "256",
-        "const_value": 256
+        "expr": "512",
+        "const_value": 512
       },
       "latency": null,
       "constraints": "true",
@@ -208,30 +230,43 @@
       "map": {
         "source_dimensions": [
           {
-            "name": "chan",
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
             "size_expr": "8",
             "size_const": 8
           }
         ],
         "target_dimensions": [
           {
-            "name": "chan",
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
             "size_expr": "8",
             "size_const": 8
           }
         ],
-        "expressions": ["chan"]
+        "expressions": [
+          "x",
+          "y"
+        ]
       }
     },
     {
-      "id": "edge:l2_to_l1:1",
+      "id": "edge:l1_to_vector_lane:1",
       "kind": "link",
-      "name": "l2_to_l1",
-      "source": "mem:l2",
-      "target": "mem:l1",
-      "source_name": "l2",
-      "target_name": "l1",
-      "label": "l2_to_l1 (128 B/cycle)",
+      "name": "l1_to_vector_lane",
+      "source": "mem:l1",
+      "target": "proc:vector_lane",
+      "source_name": "l1",
+      "target_name": "vector_lane",
+      "label": "l1_to_vector_lane (128 B/cycle)",
       "bandwidth": {
         "expr": "128",
         "const_value": 128
@@ -242,30 +277,43 @@
       "map": {
         "source_dimensions": [
           {
-            "name": "chan",
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
             "size_expr": "8",
             "size_const": 8
           }
         ],
         "target_dimensions": [
           {
-            "name": "warp",
-            "size_expr": "64",
-            "size_const": 64
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
           }
         ],
-        "expressions": ["(chan * 8)"]
+        "expressions": [
+          "x",
+          "y"
+        ]
       }
     },
     {
-      "id": "edge:l1_to_lane:2",
+      "id": "edge:l1_torus_y:2",
       "kind": "link",
-      "name": "l1_to_lane",
+      "name": "l1_torus_y",
       "source": "mem:l1",
-      "target": "proc:matmul_lane",
+      "target": "mem:l1",
       "source_name": "l1",
-      "target_name": "matmul_lane",
-      "label": "l1_to_lane (64 B/cycle)",
+      "target_name": "l1",
+      "label": "l1_torus_y (64 B/cycle)",
       "bandwidth": {
         "expr": "64",
         "const_value": 64
@@ -276,20 +324,226 @@
       "map": {
         "source_dimensions": [
           {
-            "name": "warp",
-            "size_expr": "64",
-            "size_const": 64
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
           }
         ],
         "target_dimensions": [
           {
-            "name": "warp",
-            "size_expr": "64",
-            "size_const": 64
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
           }
         ],
-        "expressions": ["warp"]
+        "expressions": [
+          "x",
+          "((y + 1) mod 8)"
+        ]
+      }
+    },
+    {
+      "id": "edge:l1_torus_x:3",
+      "kind": "link",
+      "name": "l1_torus_x",
+      "source": "mem:l1",
+      "target": "mem:l1",
+      "source_name": "l1",
+      "target_name": "l1",
+      "label": "l1_torus_x (64 B/cycle)",
+      "bandwidth": {
+        "expr": "64",
+        "const_value": 64
+      },
+      "latency": null,
+      "constraints": "true",
+      "sharing": "shared_across_all",
+      "map": {
+        "source_dimensions": [
+          {
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "target_dimensions": [
+          {
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "expressions": [
+          "((x + 1) mod 8)",
+          "y"
+        ]
       }
     }
-  ]
+  ],
+  "intra_core": {
+    "schema_version": "mlar.arch-graph.v1",
+    "architecture": {
+      "name": "core",
+      "labels": []
+    },
+    "nodes": [
+      {
+        "id": "mem:l1",
+        "kind": "memory",
+        "name": "l1",
+        "label": "l1",
+        "dimensions": [],
+        "details": {
+          "type": "memory",
+          "region": {
+            "kind": "bank",
+            "name": null,
+            "capacity_bytes": {
+              "expr": "(128 * 1024)",
+              "const_value": 131072
+            },
+            "access_granularity": {
+              "expr": "128",
+              "const_value": 128
+            }
+          },
+          "resource": {
+            "name": "unnamed",
+            "quantity": 131072
+          }
+        }
+      },
+      {
+        "id": "proc:matrix_lane",
+        "kind": "processor",
+        "name": "matrix_lane",
+        "label": "matrix_lane",
+        "dimensions": [],
+        "details": {
+          "type": "processor",
+          "element": {
+            "kind": "unit",
+            "name": "matrix_lane",
+            "compute": {
+              "path": "compute/matrix_lane.mlir",
+              "functions": [
+                "matmul_f32"
+              ]
+            },
+            "resources": [
+              {
+                "resource": {
+                  "name": "l1",
+                  "quantity": 16
+                },
+                "quantity": 4
+              }
+            ]
+          },
+          "total_instances": 1
+        }
+      },
+      {
+        "id": "proc:vector_lane",
+        "kind": "processor",
+        "name": "vector_lane",
+        "label": "vector_lane",
+        "dimensions": [],
+        "details": {
+          "type": "processor",
+          "element": {
+            "kind": "unit",
+            "name": "vector_lane",
+            "compute": {
+              "path": "compute/vector_lane.mlir",
+              "functions": [
+                "vec_max_f32",
+                "vec_exp_f32",
+                "vec_sum_f32",
+                "vec_add_f32",
+                "vec_mul_f32",
+                "vec_div_f32"
+              ]
+            },
+            "resources": [
+              {
+                "resource": {
+                  "name": "l1",
+                  "quantity": 16
+                },
+                "quantity": 2
+              }
+            ]
+          },
+          "total_instances": 1
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:l1_to_matrix_lane:0",
+        "kind": "link",
+        "name": "l1_to_matrix_lane",
+        "source": "mem:l1",
+        "target": "proc:matrix_lane",
+        "source_name": "l1",
+        "target_name": "matrix_lane",
+        "label": "l1_to_matrix_lane (512 B/cycle)",
+        "bandwidth": {
+          "expr": "512",
+          "const_value": 512
+        },
+        "latency": null,
+        "constraints": "true",
+        "sharing": "shared_across_all",
+        "map": {
+          "source_dimensions": [],
+          "target_dimensions": [],
+          "expressions": []
+        }
+      },
+      {
+        "id": "edge:l1_to_vector_lane:1",
+        "kind": "link",
+        "name": "l1_to_vector_lane",
+        "source": "mem:l1",
+        "target": "proc:vector_lane",
+        "source_name": "l1",
+        "target_name": "vector_lane",
+        "label": "l1_to_vector_lane (128 B/cycle)",
+        "bandwidth": {
+          "expr": "128",
+          "const_value": 128
+        },
+        "latency": null,
+        "constraints": "true",
+        "sharing": "shared_across_all",
+        "map": {
+          "source_dimensions": [],
+          "target_dimensions": [],
+          "expressions": []
+        }
+      }
+    ]
+  }
 }

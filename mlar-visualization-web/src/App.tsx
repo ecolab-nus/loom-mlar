@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Background,
   Controls,
@@ -13,10 +13,15 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { ArchNode } from './components/ArchNode';
-import { architectureToFlow, type ArchFlowNode } from './flow';
+import { CoreGridNode } from './components/CoreGridNode';
+import { IntraCorePanel } from './components/IntraCorePanel';
+import { architectureToFlow, type AnyFlowNode } from './flow';
 import { loadGraphFromFile, loadGraphFromUrl, parseGraphText } from './runtime-loader';
 
-const nodeTypes: NodeTypes = { archNode: ArchNode };
+const nodeTypes: NodeTypes = {
+  archNode: ArchNode,
+  coreGridNode: CoreGridNode,
+};
 const DEFAULT_GRAPH_URL = '/sample-graph.json';
 
 function AppInner() {
@@ -25,6 +30,7 @@ function AppInner() {
   const [sourceName, setSourceName] = useState('none');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [selectedCore, setSelectedCore] = useState<{ x: number; y: number } | null>(null);
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -56,12 +62,16 @@ function AppInner() {
     }
   }, [jsonText, sourceName, loadError]);
 
+  const onCoreClick = useCallback((x: number, y: number) => {
+    setSelectedCore({ x, y });
+  }, []);
+
   const flow = useMemo(() => {
     if (!parsed.graph) {
-      return { nodes: [] as ArchFlowNode[], edges: [] as Edge[] };
+      return { nodes: [] as AnyFlowNode[], edges: [] as Edge[] };
     }
-    return architectureToFlow(parsed.graph);
-  }, [parsed.graph]);
+    return architectureToFlow(parsed.graph, onCoreClick);
+  }, [parsed.graph, onCoreClick]);
 
   const onUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -115,7 +125,7 @@ function AppInner() {
 
       <main className={`app-main${isEditorVisible ? ' app-main--editor-open' : ''}`}>
         <section className="canvas-panel">
-          <ReactFlow<ArchFlowNode, Edge>
+          <ReactFlow<AnyFlowNode, Edge>
             nodes={flow.nodes}
             edges={flow.edges}
             nodeTypes={nodeTypes}
@@ -174,6 +184,15 @@ function AppInner() {
           </section>
         )}
       </main>
+
+      {selectedCore && parsed.graph?.intra_core && (
+        <IntraCorePanel
+          coreX={selectedCore.x}
+          coreY={selectedCore.y}
+          intraCoreGraph={parsed.graph.intra_core}
+          onClose={() => setSelectedCore(null)}
+        />
+      )}
     </div>
   );
 }

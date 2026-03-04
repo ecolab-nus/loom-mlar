@@ -19,6 +19,17 @@ export interface ArchFlowNodeData extends Record<string, unknown> {
 
 export type ArchFlowNode = Node<ArchFlowNodeData, 'archNode'>;
 
+export interface GridFlowNodeData extends Record<string, unknown> {
+  archName: string;
+  cols: number;
+  rows: number;
+  onCoreClick?: (x: number, y: number) => void;
+}
+
+export type GridFlowNode = Node<GridFlowNodeData, 'coreGridNode'>;
+
+export type AnyFlowNode = ArchFlowNode | GridFlowNode;
+
 interface LayoutResult {
   levels: Map<string, number>;
   lanes: Map<number, ArchitectureGraphNode[]>;
@@ -27,10 +38,70 @@ interface LayoutResult {
 const LANE_WIDTH = 340;
 const ROW_HEIGHT = 170;
 
-export function architectureToFlow(graph: ArchitectureGraph): {
-  nodes: ArchFlowNode[];
+/**
+ * Detect whether the graph has 2D grid labels (produced by scale()).
+ * Returns { cols, rows } if found, null otherwise.
+ */
+export function detectGridLayout(
+  graph: ArchitectureGraph,
+): { cols: number; rows: number } | null {
+  if (!graph.architecture.labels || graph.architecture.labels.length === 0) {
+    return null;
+  }
+
+  // Collect all label dimensions.
+  const allDims = graph.architecture.labels.flatMap((l) => l.dimensions);
+  if (allDims.length < 2) {
+    return null;
+  }
+
+  // Need at least two concrete dimensions.
+  const concreteDims = allDims.filter((d) => d.size_const !== null);
+  if (concreteDims.length < 2) {
+    return null;
+  }
+
+  // Use first two dimensions as cols × rows.
+  return {
+    cols: concreteDims[0].size_const!,
+    rows: concreteDims[1].size_const!,
+  };
+}
+
+/**
+ * Convert an architecture graph to React Flow nodes/edges.
+ *
+ * When the graph has 2D labels (from scale()), produces a single grid node.
+ * Otherwise falls back to the flat per-node layout.
+ */
+export function architectureToFlow(
+  graph: ArchitectureGraph,
+  onCoreClick?: (x: number, y: number) => void,
+): {
+  nodes: AnyFlowNode[];
   edges: Edge[];
 } {
+  const grid = detectGridLayout(graph);
+
+  if (grid && graph.intra_core) {
+    // Grid mode: single large node showing the 2D array of cores.
+    const gridNode: GridFlowNode = {
+      id: 'core-grid',
+      type: 'coreGridNode',
+      position: { x: 80, y: 80 },
+      data: {
+        archName: graph.architecture.name,
+        cols: grid.cols,
+        rows: grid.rows,
+        onCoreClick,
+      },
+      draggable: true,
+    };
+
+    return { nodes: [gridNode], edges: [] };
+  }
+
+  // Flat mode: existing layout.
   const { levels, lanes } = buildLayout(graph);
 
   const nodes: ArchFlowNode[] = graph.nodes.map((node) => {

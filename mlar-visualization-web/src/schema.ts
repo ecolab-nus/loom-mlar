@@ -116,6 +116,7 @@ export interface ArchitectureGraph {
   };
   nodes: ArchitectureGraphNode[];
   edges: ArchitectureGraphEdge[];
+  intra_core?: ArchitectureGraph;
 }
 
 const SCHEMA_VERSION = 'mlar.arch-graph.v1';

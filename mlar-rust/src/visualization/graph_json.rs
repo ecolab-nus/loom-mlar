@@ -15,6 +15,8 @@ pub struct ArchitectureGraphJson {
     pub architecture: GraphArchitectureMeta,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intra_core: Option<Box<ArchitectureGraphJson>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -224,6 +226,13 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
         });
     }
 
+    // Build intra-core sub-graph when this architecture was produced by scale().
+    let intra_core = if !arch.labels.is_empty() {
+        Some(Box::new(extract_intra_core_graph(arch)))
+    } else {
+        None
+    };
+
     ArchitectureGraphJson {
         schema_version: GRAPH_SCHEMA_VERSION,
         architecture: GraphArchitectureMeta {
@@ -232,6 +241,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
         },
         nodes,
         edges,
+        intra_core,
     }
 }
 
@@ -551,9 +561,186 @@ fn processor_elem_to_json(elem: &ProcessorElem) -> GraphProcessorElem {
     }
 }
 
+/// Extract a single-instance "intra-core" sub-graph from a scaled architecture.
+///
+/// Strips the outermost scaling dimensions from each node and keeps only
+/// intra-core links (those whose affine map is an identity on the scaling
+/// dimensions, meaning src and dst share the same core coordinates).
+fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
+    // Collect all scaling dimension names from labels.
+    let scaling_dim_names: HashSet<String> = arch
+        .labels
+        .iter()
+        .flat_map(|label| label.dims.iter().map(|d| d.name.0.clone()))
+        .collect();
+
+    let num_scaling_dims = scaling_dim_names.len();
+
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut used_ids = HashSet::new();
+    let mut memory_node_ids = HashMap::new();
+    let mut processor_node_ids = HashMap::new();
+
+    // Emit inner (unwrapped) memory nodes.
+    for (idx, region) in arch.memory.iter().enumerate() {
+        let name = named_or_fallback(region.name(), "memory", idx);
+        let inner = unwrap_memory_scaling(region, num_scaling_dims);
+        let id = unique_id(&format!("mem:{}", slugify(&name)), &mut used_ids);
+        memory_node_ids.insert(name.clone(), id.clone());
+        nodes.push(memory_node_from_region(id, &name, &inner));
+    }
+
+    // Emit inner (unwrapped) processor nodes.
+    for (idx, proc) in arch.processors.iter().enumerate() {
+        let name = named_or_fallback(proc.name(), "processor", idx);
+        let inner = unwrap_processor_scaling(proc, num_scaling_dims);
+        let id = unique_id(&format!("proc:{}", slugify(&name)), &mut used_ids);
+        processor_node_ids.insert(name.clone(), id.clone());
+        nodes.push(processor_node_from_elem(id, &name, &inner));
+    }
+
+    // Keep only intra-core edges (identity maps on scaling dims).
+    for (idx, link) in arch.links.iter().enumerate() {
+        if !is_identity_on_scaling_dims(&link.map, &scaling_dim_names) {
+            continue;
+        }
+
+        let source_name = link.src.name().to_string();
+        let target_name = link.dst.name().to_string();
+        let source = memory_node_ids
+            .get(&source_name)
+            .or_else(|| processor_node_ids.get(&source_name))
+            .cloned()
+            .unwrap_or_else(|| format!("unknown:{}", source_name));
+        let target = memory_node_ids
+            .get(&target_name)
+            .or_else(|| processor_node_ids.get(&target_name))
+            .cloned()
+            .unwrap_or_else(|| format!("unknown:{}", target_name));
+
+        // Build the inner edge with the original (pre-scale) affine map.
+        let inner_map = strip_scaling_from_map(&link.map, &scaling_dim_names);
+        let edge_id = unique_id(
+            &format!("edge:{}:{}", slugify(&link.name), idx),
+            &mut used_ids,
+        );
+        let bandwidth = expr_to_json(&link.bandwidth);
+        edges.push(GraphEdge {
+            id: edge_id,
+            kind: GraphEdgeKind::Link,
+            name: link.name.clone(),
+            source,
+            target,
+            source_name,
+            target_name,
+            label: format!("{} ({} B/cycle)", link.name, bandwidth.expr),
+            bandwidth,
+            latency: link.latency.as_ref().map(expr_to_json),
+            constraints: link.constraints.to_string(),
+            sharing: sharing_to_string(&link.sharing).to_string(),
+            map: inner_map,
+        });
+    }
+
+    // Determine the innermost label name for the core architecture name.
+    let core_name = arch
+        .labels
+        .last()
+        .map(|l| l.name.clone())
+        .unwrap_or_else(|| "core".to_string());
+
+    ArchitectureGraphJson {
+        schema_version: GRAPH_SCHEMA_VERSION,
+        architecture: GraphArchitectureMeta {
+            name: core_name,
+            labels: Vec::new(),
+        },
+        nodes,
+        edges,
+        intra_core: None,
+    }
+}
+
+/// Unwrap the outermost N `Replicated` layers from a memory region.
+fn unwrap_memory_scaling(region: &MemoryRegion, layers: usize) -> MemoryRegion {
+    let mut current = region;
+    for _ in 0..layers {
+        match current {
+            MemoryRegion::Replicated { elem, .. } => {
+                current = elem;
+            }
+            other => return other.clone(),
+        }
+    }
+    current.clone()
+}
+
+/// Unwrap the outermost N `Array` layers from a processor element.
+fn unwrap_processor_scaling(elem: &ProcessorElem, layers: usize) -> ProcessorElem {
+    let mut current = elem;
+    for _ in 0..layers {
+        match current {
+            ProcessorElem::Array { elem, .. } => {
+                current = elem;
+            }
+            other => return other.clone(),
+        }
+    }
+    current.clone()
+}
+
+/// Check whether an affine map is an identity on the scaling dimensions.
+///
+/// For an intra-core link, the map produced by `prepend_identity_dims` is
+/// simply the identity `[x, y] -> [x, y]: (x, y)`.  Inter-core links have
+/// non-trivial expressions like `(x, (y+1) mod 8)`.
+fn is_identity_on_scaling_dims(map: &AffineMap, scaling_dims: &HashSet<String>) -> bool {
+    // Check each expression corresponding to a scaling dimension.
+    for (dim, expr) in map.src_dims.iter().zip(map.exprs.iter()) {
+        if !scaling_dims.contains(&dim.name.0) {
+            continue;
+        }
+        // An identity expression for dim "x" is AffineExpr::Var(x).
+        match expr {
+            AffineExpr::Var(v) if v.name.0 == dim.name.0 => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Strip scaling dimensions from an affine map, returning only the
+/// inner (intra-core) portion.
+fn strip_scaling_from_map(map: &AffineMap, scaling_dims: &HashSet<String>) -> GraphAffineMap {
+    let inner_src: Vec<_> = map
+        .src_dims
+        .iter()
+        .filter(|d| !scaling_dims.contains(&d.name.0))
+        .collect();
+    let inner_dst: Vec<_> = map
+        .dst_dims
+        .iter()
+        .filter(|d| !scaling_dims.contains(&d.name.0))
+        .collect();
+    let inner_exprs: Vec<_> = map
+        .src_dims
+        .iter()
+        .zip(map.exprs.iter())
+        .filter(|(d, _)| !scaling_dims.contains(&d.name.0))
+        .map(|(_, e)| format_affine_expr(e))
+        .collect();
+
+    GraphAffineMap {
+        source_dimensions: inner_src.iter().map(|d| dimension_to_json(d)).collect(),
+        target_dimensions: inner_dst.iter().map(|d| dimension_to_json(d)).collect(),
+        expressions: inner_exprs,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::architecture_to_graph_json_value;
+    use super::{architecture_to_graph_json, architecture_to_graph_json_value};
     use crate::core::{
         AffineMap, Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr,
     };
@@ -590,5 +777,60 @@ mod tests {
         assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
         assert_eq!(value["edges"][0]["map"]["expressions"][0], "core");
         assert_eq!(value["edges"][0]["bandwidth"]["const_value"], 128);
+        // No labels → no intra_core
+        assert!(value.get("intra_core").is_none());
+    }
+
+    #[test]
+    fn scaled_architecture_has_intra_core_graph() {
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(64),
+            SizeExpr::Const(512),
+        ))
+        .with_name("l1");
+        let lane = Processor::new("lane").into_elem();
+        let inner_map = AffineMap::new(&[], &[], vec![]);
+
+        let link = Link::builder("l1_to_lane")
+            .from_mem(&l1)
+            .to_proc(&lane)
+            .map(&inner_map)
+            .bandwidth(128)
+            .build();
+
+        let core = Architecture::builder("core")
+            .mem(&l1)
+            .processor(&lane)
+            .link(link)
+            .build();
+
+        let dim_x = Dimension::new_int("x", 4);
+        let dim_y = Dimension::new_int("y", 4);
+        let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
+
+        let graph = architecture_to_graph_json(&mesh);
+
+        // Top-level should have intra_core.
+        assert!(graph.intra_core.is_some());
+        let intra = graph.intra_core.as_ref().unwrap();
+
+        // Intra-core sub-graph has the core name.
+        assert_eq!(intra.architecture.name, "core");
+        assert!(intra.architecture.labels.is_empty());
+
+        // Should have the unwrapped nodes (no Array/Replicated wrappers).
+        assert_eq!(intra.nodes.len(), 2);
+        assert_eq!(intra.edges.len(), 1);
+
+        // The inner nodes should NOT have scaling dimensions.
+        for node in &intra.nodes {
+            assert!(
+                node.dimensions.iter().all(|d| d.name != "x" && d.name != "y"),
+                "intra-core node should not have scaling dimensions"
+            );
+        }
+
+        // Intra-core does not recurse.
+        assert!(intra.intra_core.is_none());
     }
 }
