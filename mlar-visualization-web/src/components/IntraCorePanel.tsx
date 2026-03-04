@@ -21,7 +21,8 @@ interface IntraCorePanelProps {
 const innerNodeTypes: NodeTypes = { archNode: ArchNode };
 
 export function IntraCorePanel({ coreX, coreY, intraCoreGraph, onClose }: IntraCorePanelProps) {
-  const { nodes, edges } = architectureToFlow(intraCoreGraph);
+  const { nodes: rawNodes, edges } = architectureToFlow(intraCoreGraph);
+  const nodes = rawNodes.filter((node): node is ArchFlowNode => node.type === 'archNode');
 
   return (
     <div className="intra-core-overlay" onClick={onClose}>

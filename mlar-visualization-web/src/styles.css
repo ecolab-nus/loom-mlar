@@ -5,6 +5,7 @@
   --muted: #5f7079;
   --memory: #cee6f8;
   --processor: #d7f3dd;
+  --link-block: #ffe7b8;
   --panel: rgba(255, 255, 255, 0.86);
   --line: #afc3ce;
 }
@@ -171,13 +172,13 @@ body {
 /* ── Arch Node (flat view) ─────────────────────────────────── */
 
 .arch-node {
-  min-width: 200px;
-  max-width: 250px;
+  min-width: 180px;
+  max-width: 240px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #fdfefe;
   box-shadow: 0 10px 24px rgba(9, 28, 42, 0.08);
-  padding: 0.55rem 0.62rem;
+  padding: 0.5rem 0.6rem;
 }
 
 .node-memory {
@@ -186,6 +187,13 @@ body {
 
 .node-processor {
   background: linear-gradient(180deg, var(--processor), #f8fff9 50%);
+}
+
+.node-link {
+  background: linear-gradient(180deg, var(--link-block), #fff7df 58%);
+  border-color: #d1a65a;
+  border-style: solid;
+  box-shadow: 0 10px 22px rgba(92, 63, 10, 0.14);
 }
 
 .arch-node-kind {
@@ -222,6 +230,32 @@ body {
   color: #234656;
   font-size: 0.67rem;
   padding: 0.12rem 0.42rem;
+}
+
+.memory-bank-preview {
+  margin-top: 0.46rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.24rem;
+}
+
+.bank-slot {
+  position: relative;
+  min-width: 36px;
+  border-radius: 7px;
+  border: 1px solid #8aafc2;
+  background: rgba(255, 255, 255, 0.84);
+  color: #1f4f65;
+  font-size: 0.64rem;
+  font-weight: 650;
+  text-align: center;
+  padding: 0.15rem 0.34rem;
+}
+
+.bank-slot-overflow {
+  border-style: dashed;
+  color: #3f6677;
+  background: rgba(245, 252, 255, 0.9);
 }
 
 /* ── Core Grid Node ────────────────────────────────────────── */

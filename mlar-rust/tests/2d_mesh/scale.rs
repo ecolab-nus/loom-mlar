@@ -18,7 +18,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let core = single_core();
     let dim_x = dim_x();
     let dim_y = dim_y();
-    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
+    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("Tenstorren Wormhole");
 
     let scaled_l1 = mesh.get_memory_region("l1").unwrap().clone();
 

@@ -411,25 +411,42 @@
         "id": "mem:l1",
         "kind": "memory",
         "name": "l1",
-        "label": "l1",
-        "dimensions": [],
+        "label": "l1 [nbank=16]",
+        "dimensions": [
+          {
+            "name": "nbank",
+            "size_expr": "16",
+            "size_const": 16
+          }
+        ],
         "details": {
           "type": "memory",
           "region": {
-            "kind": "bank",
-            "name": null,
-            "capacity_bytes": {
-              "expr": "(128 * 1024)",
-              "const_value": 131072
-            },
-            "access_granularity": {
-              "expr": "128",
-              "const_value": 128
+            "kind": "replicated",
+            "name": "l1",
+            "dimensions": [
+              {
+                "name": "nbank",
+                "size_expr": "16",
+                "size_const": 16
+              }
+            ],
+            "elem": {
+              "kind": "bank",
+              "name": null,
+              "capacity_bytes": {
+                "expr": "(128 * 1024)",
+                "const_value": 131072
+              },
+              "access_granularity": {
+                "expr": "128",
+                "const_value": 128
+              }
             }
           },
           "resource": {
-            "name": "unnamed",
-            "quantity": 131072
+            "name": "l1",
+            "quantity": 16
           }
         }
       },

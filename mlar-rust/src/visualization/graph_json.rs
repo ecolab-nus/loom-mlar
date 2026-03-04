@@ -574,8 +574,6 @@ fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
         .flat_map(|label| label.dims.iter().map(|d| d.name.0.clone()))
         .collect();
 
-    let num_scaling_dims = scaling_dim_names.len();
-
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut used_ids = HashSet::new();
@@ -585,7 +583,7 @@ fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
     // Emit inner (unwrapped) memory nodes.
     for (idx, region) in arch.memory.iter().enumerate() {
         let name = named_or_fallback(region.name(), "memory", idx);
-        let inner = unwrap_memory_scaling(region, num_scaling_dims);
+        let inner = unwrap_memory_scaling(region, &scaling_dim_names);
         let id = unique_id(&format!("mem:{}", slugify(&name)), &mut used_ids);
         memory_node_ids.insert(name.clone(), id.clone());
         nodes.push(memory_node_from_region(id, &name, &inner));
@@ -594,7 +592,7 @@ fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
     // Emit inner (unwrapped) processor nodes.
     for (idx, proc) in arch.processors.iter().enumerate() {
         let name = named_or_fallback(proc.name(), "processor", idx);
-        let inner = unwrap_processor_scaling(proc, num_scaling_dims);
+        let inner = unwrap_processor_scaling(proc, &scaling_dim_names);
         let id = unique_id(&format!("proc:{}", slugify(&name)), &mut used_ids);
         processor_node_ids.insert(name.clone(), id.clone());
         nodes.push(processor_node_from_elem(id, &name, &inner));
@@ -662,32 +660,34 @@ fn extract_intra_core_graph(arch: &Architecture) -> ArchitectureGraphJson {
     }
 }
 
-/// Unwrap the outermost N `Replicated` layers from a memory region.
-fn unwrap_memory_scaling(region: &MemoryRegion, layers: usize) -> MemoryRegion {
+/// Unwrap outer `Replicated` layers only when they are pure scaling dimensions.
+fn unwrap_memory_scaling(region: &MemoryRegion, scaling_dims: &HashSet<String>) -> MemoryRegion {
     let mut current = region;
-    for _ in 0..layers {
+    loop {
         match current {
-            MemoryRegion::Replicated { elem, .. } => {
+            MemoryRegion::Replicated { dims, elem, .. }
+                if !dims.is_empty() && dims.iter().all(|d| scaling_dims.contains(&d.name.0)) =>
+            {
                 current = elem;
             }
             other => return other.clone(),
         }
     }
-    current.clone()
 }
 
-/// Unwrap the outermost N `Array` layers from a processor element.
-fn unwrap_processor_scaling(elem: &ProcessorElem, layers: usize) -> ProcessorElem {
+/// Unwrap outer `Array` layers only when they are pure scaling dimensions.
+fn unwrap_processor_scaling(elem: &ProcessorElem, scaling_dims: &HashSet<String>) -> ProcessorElem {
     let mut current = elem;
-    for _ in 0..layers {
+    loop {
         match current {
-            ProcessorElem::Array { elem, .. } => {
+            ProcessorElem::Array { dims, elem, .. }
+                if !dims.is_empty() && dims.iter().all(|d| scaling_dims.contains(&d.name.0)) =>
+            {
                 current = elem;
             }
             other => return other.clone(),
         }
     }
-    current.clone()
 }
 
 /// Check whether an affine map is an identity on the scaling dimensions.
@@ -740,7 +740,10 @@ fn strip_scaling_from_map(map: &AffineMap, scaling_dims: &HashSet<String>) -> Gr
 
 #[cfg(test)]
 mod tests {
-    use super::{architecture_to_graph_json, architecture_to_graph_json_value};
+    use super::{
+        GraphMemoryRegion, GraphNodeDetails, architecture_to_graph_json,
+        architecture_to_graph_json_value,
+    };
     use crate::core::{
         AffineMap, Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr,
     };
@@ -783,10 +786,12 @@ mod tests {
 
     #[test]
     fn scaled_architecture_has_intra_core_graph() {
+        let bank_dim = Dimension::new_int("nbank", 16);
         let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
             SizeExpr::Const(64),
             SizeExpr::Const(512),
         ))
+        .replicate(bank_dim.as_slice())
         .with_name("l1");
         let lane = Processor::new("lane").into_elem();
         let inner_map = AffineMap::new(&[], &[], vec![]);
@@ -825,9 +830,28 @@ mod tests {
         // The inner nodes should NOT have scaling dimensions.
         for node in &intra.nodes {
             assert!(
-                node.dimensions.iter().all(|d| d.name != "x" && d.name != "y"),
+                node.dimensions
+                    .iter()
+                    .all(|d| d.name != "x" && d.name != "y"),
                 "intra-core node should not have scaling dimensions"
             );
+        }
+
+        // Non-scaling memory hierarchy (nbank replication) should be preserved.
+        let l1_node = intra
+            .nodes
+            .iter()
+            .find(|n| n.name == "l1")
+            .expect("l1 node should exist");
+        assert!(l1_node.dimensions.iter().any(|d| d.name == "nbank"));
+        match &l1_node.details {
+            GraphNodeDetails::Memory { region, .. } => match region {
+                GraphMemoryRegion::Replicated { dimensions, .. } => {
+                    assert!(dimensions.iter().any(|d| d.name == "nbank"));
+                }
+                _ => panic!("l1 intra-core region should remain replicated by nbank"),
+            },
+            _ => panic!("l1 node should be memory"),
         }
 
         // Intra-core does not recurse.
