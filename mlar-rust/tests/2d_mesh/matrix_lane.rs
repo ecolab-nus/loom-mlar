@@ -48,14 +48,13 @@ pub fn matrix_lane() -> Processor {
     };
 
     let mat_perf = ProcPerfModel {
+        compute: MlirModuleRef::with_functions(
+            "compute/matrix_lane.mlir",
+            &["matmul_f32"],
+        ),
         func_models: vec![mat_func_perf], // one function: matmul_f32
     };
 
-    let mat_compute = MlirModuleRef::with_functions(
-        "compute/matrix_lane.mlir",
-        &["matmul_f32"],
-    );
-
-    Processor::primitive_with_perf_and_compute("matrix_lane", mat_perf, mat_compute)
+    Processor::primitive_with_perf("matrix_lane", mat_perf)
         .with_resources(vec![ResourceReq::new(l1().as_resource(), 4)])
 }

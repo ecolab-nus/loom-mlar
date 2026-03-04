@@ -30,10 +30,10 @@ pub struct PerfScenario {
 /// A vector lane with one scenario:
 ///
 /// ```
-/// use mlar_rust::core::{FuncPerfModel, PerfScenario, TimeCostExpr, ConstraintExpr, Expr, Symbol};
+/// use mlar_rust::core::{FuncPerfModel, PerfScenario, TimeCostExpr, ConstraintExpr, Expr, Sym};
 ///
 /// let model = FuncPerfModel {
-///     symbols: vec![Symbol::new("N")],
+///     symbols: vec![Sym::new("N")],
 ///     constraints: ConstraintExpr::True,
 ///     scenarios: vec![PerfScenario {
 ///         constraints: ConstraintExpr::Divisible {
@@ -62,22 +62,22 @@ pub struct FuncPerfModel {
     pub scenarios: Vec<PerfScenario>,
 }
 
-/// Processor-level performance model — per-function models matching an MLIR module.
+/// Processor-level performance model — per-function models bound to an MLIR module.
 ///
-/// A `ProcPerfModel` contains a list of [`FuncPerfModel`]s, one for each
-/// function in the associated [`MlirModuleRef`]. The models are stored in the
+/// A `ProcPerfModel` owns an [`MlirModuleRef`] and a list of [`FuncPerfModel`]s,
+/// one for each function in the MLIR module. The models are stored in the
 /// **same order** as the functions listed in `MlirModuleRef::functions`.
+///
+/// `validate()` checks both that all function-level symbols are declared **and**
+/// that `func_models.len() == compute.functions.len()`.
 ///
 /// # Example
 ///
 /// ```
 /// use mlar_rust::core::{
 ///     FuncPerfModel, ProcPerfModel, PerfScenario, TimeCostExpr,
-///     ConstraintExpr, Expr, Symbol, MlirModuleRef,
+///     ConstraintExpr, Expr, Sym, MlirModuleRef,
 /// };
-///
-/// // Two functions with different perf characteristics
-/// let mlir = MlirModuleRef::with_functions("compute/ops.mlir", &["fast_op", "slow_op"]);
 ///
 /// let fast = FuncPerfModel {
 ///     symbols: vec![],
@@ -103,14 +103,18 @@ pub struct FuncPerfModel {
 ///     }],
 /// };
 ///
-/// let proc_perf = ProcPerfModel { func_models: vec![fast, slow] };
+/// let proc_perf = ProcPerfModel {
+///     compute: MlirModuleRef::with_functions("compute/ops.mlir", &["fast_op", "slow_op"]),
+///     func_models: vec![fast, slow],
+/// };
 /// assert!(proc_perf.validate().is_ok());
-/// assert!(proc_perf.validate_against(&mlir).is_ok());
 /// ```
 #[derive(Clone, Debug)]
 pub struct ProcPerfModel {
+    /// The MLIR module this processor-level model is bound to.
+    pub compute: MlirModuleRef,
     /// Per-function performance models, in the same order as
-    /// the functions listed in the associated `MlirModuleRef`.
+    /// the functions listed in `compute.functions`.
     pub func_models: Vec<FuncPerfModel>,
 }
 
@@ -186,46 +190,45 @@ impl FuncPerfModel {
 }
 
 impl ProcPerfModel {
-    /// Create a trivial processor-level perf model: no function models.
+    /// Create a trivial processor-level perf model with an empty MLIR module ref.
     pub fn trivial() -> Self {
         ProcPerfModel {
+            compute: MlirModuleRef::new(""),
             func_models: vec![],
         }
     }
 
-    /// Validate all contained function-level models.
+    /// Validate the processor-level performance model.
     ///
-    /// Returns `Ok(())` if all function models validate, or
-    /// `Err(failures)` with a list of `(func_index, undeclared_symbols)` pairs.
-    pub fn validate(&self) -> Result<(), Vec<(usize, Vec<Sym>)>> {
-        let mut failures = Vec::new();
+    /// Checks:
+    /// 1. `func_models.len() == compute.functions.len()` (count alignment)
+    /// 2. Each `FuncPerfModel` has all its symbols declared
+    ///
+    /// Returns `Ok(())` if valid, or `Err(message)` describing the first error found.
+    pub fn validate(&self) -> Result<(), String> {
+        // Check function count alignment
+        let expected = self.compute.functions.len();
+        let actual = self.func_models.len();
+        if actual != expected {
+            return Err(format!(
+                "ProcPerfModel has {} function models but MlirModuleRef '{}' has {} functions",
+                actual, self.compute.path, expected,
+            ));
+        }
+
+        // Validate each function model
         for (i, fm) in self.func_models.iter().enumerate() {
             if let Err(undeclared) = fm.validate() {
-                failures.push((i, undeclared));
+                let func_name = self.compute.functions.get(i)
+                    .map(|s| s.as_str())
+                    .unwrap_or("<unknown>");
+                return Err(format!(
+                    "FuncPerfModel for '{}' (index {}) has undeclared symbols: {:?}",
+                    func_name, i, undeclared,
+                ));
             }
         }
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(failures)
-        }
-    }
-
-    /// Validate that the number of function models matches the number of
-    /// functions in the given `MlirModuleRef`.
-    ///
-    /// Returns `Ok(())` if counts match, or `Err(message)` describing the mismatch.
-    pub fn validate_against(&self, mlir_ref: &MlirModuleRef) -> Result<(), String> {
-        let expected = mlir_ref.functions.len();
-        let actual = self.func_models.len();
-        if actual == expected {
-            Ok(())
-        } else {
-            Err(format!(
-                "ProcPerfModel has {} function models but MlirModuleRef '{}' has {} functions",
-                actual, mlir_ref.path, expected,
-            ))
-        }
+        Ok(())
     }
 
     /// Number of function-level models.
@@ -256,6 +259,7 @@ mod tests {
     fn test_trivial_proc_model() {
         let m = ProcPerfModel::trivial();
         assert_eq!(m.num_functions(), 0);
+        // trivial: 0 func_models, 0 compute.functions → valid
         assert!(m.validate().is_ok());
         assert!(m.get_func_model(0).is_none());
     }
@@ -397,6 +401,7 @@ mod tests {
     #[test]
     fn test_proc_perf_model_validate() {
         let good = ProcPerfModel {
+            compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
             func_models: vec![
                 FuncPerfModel {
                     symbols: vec![Sym::new("N")],
@@ -415,6 +420,7 @@ mod tests {
 
         // Model with undeclared symbol
         let bad = ProcPerfModel {
+            compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
             func_models: vec![
                 FuncPerfModel {
                     symbols: vec![],
@@ -430,22 +436,25 @@ mod tests {
             ],
         };
         let err = bad.validate().unwrap_err();
-        assert_eq!(err.len(), 1);
-        assert_eq!(err[0].0, 0); // first function model failed
+        assert!(err.contains("undeclared symbols"));
     }
 
     #[test]
-    fn test_proc_perf_model_validate_against() {
-        let mlir = MlirModuleRef::with_functions("test.mlir", &["f1", "f2"]);
-
-        let matching = ProcPerfModel {
-            func_models: vec![FuncPerfModel::trivial(), FuncPerfModel::trivial()],
-        };
-        assert!(matching.validate_against(&mlir).is_ok());
-
-        let wrong_count = ProcPerfModel {
+    fn test_proc_perf_model_count_mismatch() {
+        // 2 functions but only 1 model → should fail
+        let mismatch = ProcPerfModel {
+            compute: MlirModuleRef::with_functions("test.mlir", &["f1", "f2"]),
             func_models: vec![FuncPerfModel::trivial()],
         };
-        assert!(wrong_count.validate_against(&mlir).is_err());
+        let err = mismatch.validate().unwrap_err();
+        assert!(err.contains("1 function models"));
+        assert!(err.contains("2 functions"));
+
+        // Matching count → valid
+        let matching = ProcPerfModel {
+            compute: MlirModuleRef::with_functions("test.mlir", &["f1", "f2"]),
+            func_models: vec![FuncPerfModel::trivial(), FuncPerfModel::trivial()],
+        };
+        assert!(matching.validate().is_ok());
     }
 }

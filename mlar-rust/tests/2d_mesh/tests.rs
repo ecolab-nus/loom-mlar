@@ -18,18 +18,12 @@ fn test_2d_mesh_with_perf_models() {
                     let perf = p.perf.as_ref().expect("perf model should be preserved");
                     assert!(
                         perf.validate().is_ok(),
-                        "perf model on {:?} should validate after scaling",
+                        "perf model on {:?} should validate after scaling (including function count)",
                         p.name
                     );
-                    let compute = p.compute.as_ref().expect("compute should be preserved");
                     assert!(
-                        compute.path.ends_with(".mlir"),
+                        perf.compute.path.ends_with(".mlir"),
                         "compute path for {:?} should be an MLIR file",
-                        p.name
-                    );
-                    assert!(
-                        perf.validate_against(compute).is_ok(),
-                        "perf model on {:?} should match compute function count",
                         p.name
                     );
                     assert!(

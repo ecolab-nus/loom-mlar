@@ -138,6 +138,9 @@ let matmul_perf = FuncPerfModel {
     }],
 };
 let proc_perf = ProcPerfModel {
+    compute: MlirModuleRef::with_functions(
+        "compute/matrix_lane.mlir", &["matmul_f32"]
+    ),
     func_models: vec![matmul_perf],  // one FuncPerfModel per MLIR function
 };
 let lane = Processor::primitive_with_perf("matrix_lane", proc_perf);
@@ -264,13 +267,9 @@ Use `model.validate()` to check that all symbols in global constraints, scenario
 
 #### ProcPerfModel
 
-A `ProcPerfModel` groups per-function models and is bound to a processor's `MlirModuleRef`:
+A `ProcPerfModel` owns the `MlirModuleRef` it is bound to, grouping per-function models:
 
 ```rust
-// MLIR module with two functions having different perf characteristics
-let compute = MlirModuleRef::with_functions("compute/vector_lane.mlir",
-    &["vec_add_f32", "vec_exp_f32"]);
-
 let fast_op = FuncPerfModel {
     symbols: vec![], constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
@@ -291,16 +290,18 @@ let slow_op = FuncPerfModel {
     }],
 };
 
+// compute is inside ProcPerfModel — validate() checks func count alignment
 let proc_perf = ProcPerfModel {
-    func_models: vec![fast_op, slow_op],  // same order as MlirModuleRef functions
+    compute: MlirModuleRef::with_functions("compute/vector_lane.mlir",
+        &["vec_add_f32", "vec_exp_f32"]),
+    func_models: vec![fast_op, slow_op],  // same order as compute.functions
 };
 assert!(proc_perf.validate().is_ok());
-assert!(proc_perf.validate_against(&compute).is_ok());
 
-let lane = Processor::primitive_with_perf_and_compute("vector_lane", proc_perf, compute);
+let lane = Processor::primitive_with_perf("vector_lane", proc_perf);
 ```
 
-Use `proc_perf.validate()` to validate all inner function models, `proc_perf.validate_against(&mlir_ref)` to check the function count matches, and `proc_perf.get_func_model(i)` to access individual function models.
+Use `proc_perf.validate()` to validate all inner function models **and** check function count alignment against the bound `MlirModuleRef`. Use `proc_perf.get_func_model(i)` to access individual function models.
 
 The constraint system supports boolean logic (`And`, `Or`, `Not`), comparisons (`Eq`, `Le`, `Lt`, `Ge`, `Gt`), and convenience predicates (`Divisible`, `InRange`). A compiler uses constraints as follows:
 
@@ -510,7 +511,7 @@ dot -Tsvg arch.dot -o arch.svg
 | `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
 | `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
 | `FuncPerfModel` | Per-function: symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
-| `ProcPerfModel` | Processor-level: `Vec<FuncPerfModel>` matching MLIR function order; validate with `validate_against(&MlirModuleRef)` | `core/perf.rs` |
+| `ProcPerfModel` | Processor-level: `MlirModuleRef` + `Vec<FuncPerfModel>`; `validate()` checks function count alignment | `core/perf.rs` |
 | `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
 | `TimeCostExpr` | Symbolic fixed_latency + throughput_latency | `core/perf.rs` |
 | `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |

@@ -35,9 +35,11 @@ impl MlirModuleRef {
 #[derive(Clone, Debug)]
 pub struct PrimitiveProc {
     pub name: Option<String>,
-    /// Optional processor-level performance model. None = structural-only.
+    /// Optional processor-level performance model (includes compute ref). None = structural-only.
     pub perf: Option<ProcPerfModel>,
-    /// Optional external MLIR module reference containing compute semantics.
+    /// Optional standalone MLIR module reference for compute-only processors
+    /// (without a perf model). When `perf` is `Some`, compute is accessed
+    /// via `perf.compute` instead.
     pub compute: Option<MlirModuleRef>,
     /// Resources this processor allocates when executing.
     pub resources: Vec<ResourceReq>,
@@ -75,7 +77,7 @@ impl Processor {
         })
     }
 
-    /// Create a primitive processor with a perf model.
+    /// Create a primitive processor with a perf model (which includes the compute ref).
     pub fn primitive_with_perf(name: impl Into<String>, perf: ProcPerfModel) -> Self {
         Processor::Primitive(PrimitiveProc {
             name: Some(name.into()),
@@ -85,25 +87,11 @@ impl Processor {
         })
     }
 
-    /// Create a primitive processor with compute semantics.
+    /// Create a primitive processor with compute semantics only (no perf model).
     pub fn primitive_with_compute(name: impl Into<String>, compute: MlirModuleRef) -> Self {
         Processor::Primitive(PrimitiveProc {
             name: Some(name.into()),
             perf: None,
-            compute: Some(compute),
-            resources: Vec::new(),
-        })
-    }
-
-    /// Create a primitive processor with perf model and compute semantics.
-    pub fn primitive_with_perf_and_compute(
-        name: impl Into<String>,
-        perf: ProcPerfModel,
-        compute: MlirModuleRef,
-    ) -> Self {
-        Processor::Primitive(PrimitiveProc {
-            name: Some(name.into()),
-            perf: Some(perf),
             compute: Some(compute),
             resources: Vec::new(),
         })
@@ -141,10 +129,16 @@ impl Processor {
     }
 
     /// Get compute semantics for this processor.
+    /// Checks `perf.compute` first (when perf model is present),
+    /// then falls back to standalone `compute` field.
     /// For Replicated, recurses into its element.
     pub fn compute(&self) -> Option<&MlirModuleRef> {
         match self {
-            Processor::Primitive(p) => p.compute.as_ref(),
+            Processor::Primitive(p) => {
+                // Prefer compute from ProcPerfModel if present
+                p.perf.as_ref().map(|pm| &pm.compute)
+                    .or(p.compute.as_ref())
+            }
             Processor::Replicated { elem, .. } => elem.compute(),
             Processor::Group { .. } => None,
         }
