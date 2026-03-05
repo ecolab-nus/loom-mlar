@@ -277,7 +277,7 @@ impl From<&ProcessorElem> for ProcessorElem {
 #[cfg(test)]
 mod tests {
     use super::{MlirModuleRef, Processor, ProcessorElem};
-    use crate::core::size_dim::Dimension;
+    use crate::arch::size_dim::Dimension;
 
     #[test]
     fn processor_with_compute_tracks_external_mlir_module() {

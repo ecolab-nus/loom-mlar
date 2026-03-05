@@ -1,5 +1,5 @@
 use super::parse::ParseError;
-use crate::core::size_dim::{Dimension, Sym};
+use crate::arch::size_dim::{Dimension, Sym};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

@@ -1,8 +1,8 @@
-pub mod core;
+pub mod arch;
 pub mod visualization;
 
 // Re-export commonly used types from core
-pub use core::{
+pub use arch::{
     AffineExpr, AffineMap, AffineMapTemplate, Architecture, ArchitectureBuilder, ArchitectureLabel,
     ConstraintExpr, Dimension, Endpoint, Expr, FuncPerfModel, IndexExpr, IndexSelector, Link,
     MemoryBank, MemoryRegion, MlirModuleRef, ParseError, PerfScenario, ProcPerfModel, Processor,

@@ -1,4 +1,4 @@
-use crate::core::{
+use crate::arch::{
     AffineExpr, AffineMap, Architecture, ArchitectureLabel, Dimension, Endpoint, Expr,
     LinkMapRelation, LinkTopology, MemoryRegion, MlirModuleRef, ProcessorElem, Resource,
     ResourceReq, SharingDomain, SizeExpr,
@@ -792,7 +792,7 @@ mod tests {
         GraphMemoryRegion, GraphNodeDetails, architecture_to_graph_json,
         architecture_to_graph_json_value,
     };
-    use crate::core::{
+    use crate::arch::{
         AffineMap, Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr,
     };
 

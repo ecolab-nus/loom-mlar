@@ -376,7 +376,7 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{Link, LinkMapRelation, LinkTopology};
-    use crate::core::{AffineExpr, AffineMap, Dimension, MemoryBank, MemoryRegion, SizeExpr};
+    use crate::arch::{AffineExpr, AffineMap, Dimension, MemoryBank, MemoryRegion, SizeExpr};
 
     #[test]
     fn classifies_one_to_one_map() {

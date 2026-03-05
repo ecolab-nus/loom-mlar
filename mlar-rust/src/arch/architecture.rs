@@ -1,4 +1,4 @@
-use crate::core::{Dimension, Link, MemoryRegion, ProcessorElem};
+use crate::arch::{Dimension, Link, MemoryRegion, ProcessorElem};
 
 /// Label describing a parent architecture level introduced by scaling.
 #[derive(Debug, Clone)]
