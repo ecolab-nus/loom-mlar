@@ -133,6 +133,28 @@ impl MemoryRegion {
         }
     }
 
+    /// Compute the total size in bytes of this region, recursing through all sub-regions.
+    ///
+    /// Returns `None` if any leaf capacity or replication dimension is symbolic.
+    pub fn total_size_bytes(&self) -> Option<u64> {
+        match self {
+            MemoryRegion::Bank(bank) => bank.capacity_bytes.as_const(),
+            MemoryRegion::Replicated { dims, elem, .. } => {
+                let elem_size = elem.total_size_bytes()?;
+                let multiplier: u64 = dims
+                    .iter()
+                    .map(|d| d.size.as_const())
+                    .try_fold(1u64, |acc, s| s.map(|v| acc * v))?;
+                Some(elem_size * multiplier)
+            }
+            MemoryRegion::Group { parts, .. } => {
+                parts.iter().try_fold(0u64, |acc, p| {
+                    p.total_size_bytes().map(|s| acc + s)
+                })
+            }
+        }
+    }
+
     /// Convert this memory region into a quantitative `Resource`.
     ///
     /// - `Replicated`: quantity = product of replication dimension sizes (e.g. 16 banks).
@@ -188,6 +210,28 @@ mod tests {
             bank.access_granularity.as_ref().and_then(|g| g.as_const()),
             Some(256)
         );
+    }
+
+    #[test]
+    fn test_total_size_bytes() {
+        let dim = Dimension::new_int("nbank", 16);
+        let region = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .replicate(dim.as_slice())
+        .with_name("L1");
+
+        // 16 banks × 128 bytes/block × 1024 blocks = 2 MB
+        assert_eq!(region.total_size_bytes(), Some(16 * 128 * 1024));
+
+        // Single bank
+        let bank = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(4096)));
+        assert_eq!(bank.total_size_bytes(), Some(4096));
+
+        // Symbolic → None
+        let sym_bank = MemoryRegion::bank(MemoryBank::new(SizeExpr::sym("SIZE")));
+        assert_eq!(sym_bank.total_size_bytes(), None);
     }
 
     #[test]

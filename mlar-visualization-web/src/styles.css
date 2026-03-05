@@ -601,6 +601,357 @@ body {
   padding: 0.08rem 0.34rem;
 }
 
+/* ── Clickable memory blocks on core nodes ─────────────────── */
+
+.core-memory-block--clickable {
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.core-memory-block--clickable:hover {
+  background: linear-gradient(180deg, #daeefa 0%, #eef6ff 72%);
+  border-color: #5ea8cc;
+  box-shadow:
+    inset 0 0 0 1px rgba(94, 168, 204, 0.3),
+    0 2px 8px rgba(30, 100, 140, 0.12);
+}
+
+.core-memory-block--clickable:active {
+  background: linear-gradient(180deg, #c8e2f4 0%, #ddf0ff 72%);
+}
+
+/* ── Memory Detail Panel (overlay) ─────────────────────────── */
+
+.memory-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 25, 35, 0.5);
+  backdrop-filter: blur(3px);
+  animation: overlay-in 200ms ease;
+}
+
+.memory-detail-panel {
+  width: min(88vw, 620px);
+  max-height: min(85vh, 640px);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #f8fbfd 0%, #edf4f8 100%);
+  border: 1.5px solid #b3cdd9;
+  box-shadow:
+    0 24px 64px rgba(8, 24, 36, 0.2),
+    0 0 0 1px rgba(150, 190, 210, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: panel-in 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.memory-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #c8dbe5;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.memory-detail-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f2a36;
+}
+
+.memory-detail-header p {
+  margin: 0.1rem 0 0;
+  font-size: 0.76rem;
+  color: #4d7080;
+}
+
+.memory-detail-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #b0c8d4;
+  border-radius: 999px;
+  background: #eaf2f7;
+  color: #2c5060;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 100ms ease;
+}
+
+.memory-detail-close:hover {
+  background: #d4e6ef;
+}
+
+.memory-breadcrumb {
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-wrap: wrap;
+}
+
+.memory-breadcrumb button {
+  border: none;
+  background: none;
+  color: #2d6aa2;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  border-radius: 4px;
+  transition: background 100ms ease;
+}
+
+.memory-breadcrumb button:hover {
+  background: rgba(45, 106, 162, 0.1);
+}
+
+.memory-breadcrumb button:last-child {
+  color: #0f2a36;
+  cursor: default;
+}
+
+.memory-breadcrumb button:last-child:hover {
+  background: none;
+}
+
+.memory-breadcrumb-sep {
+  font-size: 0.68rem;
+  color: #7a9aaa;
+}
+
+.memory-detail-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+/* ── Region display ────────────────────────────────────────── */
+
+.memory-region-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.region-type-badge {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.12rem 0.46rem;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.region-type-bank {
+  background: #cee6f8;
+  color: #1a4a64;
+  border: 1px solid #9cc4dc;
+}
+
+.region-type-replicated {
+  background: #d7f3dd;
+  color: #1a4a2e;
+  border: 1px solid #9cd4aa;
+}
+
+.region-type-group {
+  background: #ffe7b8;
+  color: #5a3a0e;
+  border: 1px solid #d4b06a;
+}
+
+.region-section-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f2a36;
+}
+
+.region-info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.region-dim-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.region-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+}
+
+.region-stat-label {
+  color: #4d7080;
+}
+
+.region-stat-value {
+  font-weight: 700;
+  color: #0f2a36;
+}
+
+.region-children-section {
+  margin-top: 0.2rem;
+}
+
+.region-children-heading {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #395766;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.region-children-note {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #5f7a88;
+  font-size: 0.74rem;
+}
+
+.region-children-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+/* ── Bank properties ───────────────────────────────────────── */
+
+.bank-properties {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #b8d4e2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f0f8ff 0%, #fafcff 100%);
+}
+
+.bank-prop {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.bank-prop-label {
+  font-size: 0.78rem;
+  color: #395766;
+  font-weight: 500;
+}
+
+.bank-prop-value {
+  font: 600 0.76rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #173c4b;
+  background: #eef6fb;
+  border: 1px solid #c8dbe6;
+  border-radius: 7px;
+  padding: 0.1rem 0.4rem;
+}
+
+/* ── Sub-region card (clickable drill-down) ────────────────── */
+
+.sub-region-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #b8cdd8;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f5fafd 100%);
+  padding: 0.55rem 0.7rem;
+  padding-right: 2.2rem;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.sub-region-card:hover {
+  background: linear-gradient(180deg, #edf6fc 0%, #e4f0f8 100%);
+  border-color: #5ea8cc;
+  box-shadow: 0 2px 10px rgba(30, 100, 140, 0.12);
+}
+
+.sub-region-card:active {
+  background: linear-gradient(180deg, #daeefa 0%, #d2e8f4 100%);
+}
+
+.sub-region-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sub-region-card-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #0f2a36;
+}
+
+.sub-region-card-info {
+  font-size: 0.72rem;
+  color: #4d7080;
+}
+
+.sub-region-card-banks {
+  font-size: 0.68rem;
+  color: #395766;
+  font-weight: 600;
+}
+
+.sub-region-card-arrow {
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: #7a9aaa;
+  font-weight: 600;
+}
+
+/* ── Memory node clickable indicator in intra-core view ────── */
+
+.arch-node.node-memory {
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.arch-node.node-memory:hover {
+  border-color: #5ea8cc;
+  box-shadow:
+    0 10px 24px rgba(9, 28, 42, 0.12),
+    0 0 0 2px rgba(94, 168, 204, 0.2);
+}
+
 /* ── Animations ────────────────────────────────────────────── */
 
 @keyframes fade-slide {

@@ -7,8 +7,8 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 
-import type { ArchitectureGraph } from '../schema';
-import { architectureToFlow, type ArchFlowNode } from '../flow';
+import type { ArchitectureGraph, GraphMemoryRegion } from '../schema';
+import { architectureToFlow, type ArchFlowNode, type ArchFlowNodeData } from '../flow';
 import { ArchNode } from './ArchNode';
 
 interface IntraCorePanelProps {
@@ -16,11 +16,18 @@ interface IntraCorePanelProps {
   coreY: number;
   intraCoreGraph: ArchitectureGraph;
   onClose: () => void;
+  onMemoryClick?: (name: string, region: GraphMemoryRegion) => void;
 }
 
 const innerNodeTypes: NodeTypes = { archNode: ArchNode };
 
-export function IntraCorePanel({ coreX, coreY, intraCoreGraph, onClose }: IntraCorePanelProps) {
+export function IntraCorePanel({
+  coreX,
+  coreY,
+  intraCoreGraph,
+  onClose,
+  onMemoryClick,
+}: IntraCorePanelProps) {
   const { nodes: rawNodes, edges } = architectureToFlow(intraCoreGraph);
   const nodes = rawNodes.filter((node): node is ArchFlowNode => node.type === 'archNode');
 
@@ -48,6 +55,12 @@ export function IntraCorePanel({ coreX, coreY, intraCoreGraph, onClose }: IntraC
               fitView
               fitViewOptions={{ padding: 0.25 }}
               proOptions={{ hideAttribution: true }}
+              onNodeClick={(_, node) => {
+                const data = node.data as ArchFlowNodeData;
+                if (data.kind === 'memory' && data.region && onMemoryClick) {
+                  onMemoryClick(data.name, data.region);
+                }
+              }}
             >
               <Controls />
               <Background color="#cddee8" gap={18} size={1} />

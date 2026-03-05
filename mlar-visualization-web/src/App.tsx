@@ -16,8 +16,15 @@ import { ArchNode } from './components/ArchNode';
 import { CoreArchNode } from './components/CoreArchNode';
 import { CoreGridNode } from './components/CoreGridNode';
 import { IntraCorePanel } from './components/IntraCorePanel';
-import { architectureToFlow, type AnyFlowNode, type FlowConversionResult } from './flow';
+import { MemoryDetailPanel } from './components/MemoryDetailPanel';
+import {
+  architectureToFlow,
+  type AnyFlowNode,
+  type ArchFlowNodeData,
+  type FlowConversionResult,
+} from './flow';
 import { loadGraphFromFile, loadGraphFromUrl, parseGraphText } from './runtime-loader';
+import type { GraphMemoryRegion } from './schema';
 
 const nodeTypes: NodeTypes = {
   archNode: ArchNode,
@@ -50,6 +57,10 @@ function AppInner() {
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedCore, setSelectedCore] = useState<{ x: number; y: number } | null>(null);
   const [selectedLegendLinkName, setSelectedLegendLinkName] = useState<string | null>(null);
+  const [selectedMemory, setSelectedMemory] = useState<{
+    name: string;
+    region: GraphMemoryRegion;
+  } | null>(null);
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -85,6 +96,10 @@ function AppInner() {
     setSelectedCore({ x, y });
   }, []);
 
+  const onMemoryClick = useCallback((name: string, region: GraphMemoryRegion) => {
+    setSelectedMemory({ name, region });
+  }, []);
+
   const flow = useMemo(() => {
     if (!parsed.graph) {
       return {
@@ -93,8 +108,8 @@ function AppInner() {
         coreLinkLegend: [],
       } satisfies FlowConversionResult;
     }
-    return architectureToFlow(parsed.graph, onCoreClick);
-  }, [parsed.graph, onCoreClick]);
+    return architectureToFlow(parsed.graph, onCoreClick, onMemoryClick);
+  }, [parsed.graph, onCoreClick, onMemoryClick]);
 
   useEffect(() => {
     if (flow.coreLinkLegend.length === 0) {
@@ -174,6 +189,13 @@ function AppInner() {
               const coord = parseCoreNodeId(node.id);
               if (coord) {
                 setSelectedCore(coord);
+                return;
+              }
+              if (node.type === 'archNode') {
+                const data = node.data as ArchFlowNodeData;
+                if (data.kind === 'memory' && data.region) {
+                  setSelectedMemory({ name: data.name, region: data.region });
+                }
               }
             }}
           >
@@ -265,6 +287,15 @@ function AppInner() {
           coreY={selectedCore.y}
           intraCoreGraph={parsed.graph.intra_core}
           onClose={() => setSelectedCore(null)}
+          onMemoryClick={onMemoryClick}
+        />
+      )}
+
+      {selectedMemory && (
+        <MemoryDetailPanel
+          name={selectedMemory.name}
+          region={selectedMemory.region}
+          onClose={() => setSelectedMemory(null)}
         />
       )}
     </div>

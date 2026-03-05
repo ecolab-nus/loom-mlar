@@ -174,15 +174,18 @@ pub enum GraphMemoryRegion {
         name: Option<String>,
         capacity_bytes: GraphSizeExpr,
         access_granularity: Option<GraphSizeExpr>,
+        total_size_bytes: Option<u64>,
     },
     Replicated {
         name: Option<String>,
         dimensions: Vec<GraphDimension>,
         elem: Box<GraphMemoryRegion>,
+        total_size_bytes: Option<u64>,
     },
     Group {
         name: Option<String>,
         parts: Vec<GraphMemoryRegion>,
+        total_size_bytes: Option<u64>,
     },
 }
 
@@ -563,20 +566,24 @@ fn dedup_dimensions(dims: Vec<Dimension>) -> Vec<Dimension> {
 }
 
 fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
+    let total_size_bytes = region.total_size_bytes();
     match region {
         MemoryRegion::Bank(bank) => GraphMemoryRegion::Bank {
             name: bank.name.clone(),
             capacity_bytes: size_expr_to_json(&bank.capacity_bytes),
             access_granularity: bank.access_granularity.as_ref().map(size_expr_to_json),
+            total_size_bytes,
         },
         MemoryRegion::Replicated { name, dims, elem } => GraphMemoryRegion::Replicated {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
             elem: Box::new(memory_region_to_json(elem)),
+            total_size_bytes,
         },
         MemoryRegion::Group { name, parts } => GraphMemoryRegion::Group {
             name: name.clone(),
             parts: parts.iter().map(memory_region_to_json).collect(),
+            total_size_bytes,
         },
     }
 }

@@ -51,17 +51,20 @@ export type GraphMemoryRegion =
       name: string | null;
       capacity_bytes: { expr: string; const_value: number | null };
       access_granularity: { expr: string; const_value: number | null } | null;
+      total_size_bytes?: number | null;
     }
   | {
       kind: 'replicated';
       name: string | null;
       dimensions: GraphDimension[];
       elem: GraphMemoryRegion;
+      total_size_bytes?: number | null;
     }
   | {
       kind: 'group';
       name: string | null;
       parts: GraphMemoryRegion[];
+      total_size_bytes?: number | null;
     };
 
 export type GraphNodeDetails =

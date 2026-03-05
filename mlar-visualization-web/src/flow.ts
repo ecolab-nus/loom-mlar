@@ -26,6 +26,7 @@ export interface ArchFlowNodeData extends Record<string, unknown> {
   dimensions: GraphDimension[];
   summary: string;
   bankSlots: BankSlot[];
+  region?: GraphMemoryRegion;
 }
 
 export type ArchFlowNode = Node<ArchFlowNodeData, 'archNode'>;
@@ -33,14 +34,14 @@ export type ArchFlowNode = Node<ArchFlowNodeData, 'archNode'>;
 export interface CoreMemorySummary {
   name: string;
   summary: string;
-  dimensions: GraphDimension[];
-  bankSlots: BankSlot[];
+  region?: GraphMemoryRegion;
 }
 
 export interface CoreArchNodeData extends Record<string, unknown> {
   coreX: number;
   coreY: number;
   memories: CoreMemorySummary[];
+  onMemoryClick?: (name: string, region: GraphMemoryRegion) => void;
 }
 
 export type CoreArchFlowNode = Node<CoreArchNodeData, 'coreArchNode'>;
@@ -81,6 +82,7 @@ interface VisualNodeSpec {
   dimensions: GraphDimension[];
   summary: string;
   bankSlots: BankSlot[];
+  region?: GraphMemoryRegion;
 }
 
 interface EndpointStat {
@@ -152,11 +154,12 @@ export function detectGridLayout(
 export function architectureToFlow(
   graph: ArchitectureGraph,
   onCoreClick?: (x: number, y: number) => void,
+  onMemoryClick?: (name: string, region: GraphMemoryRegion) => void,
 ): FlowConversionResult {
   const grid = detectGridLayout(graph);
 
   if (grid && graph.intra_core) {
-    const coreLevel = buildCoreLevelFlow(graph, grid);
+    const coreLevel = buildCoreLevelFlow(graph, grid, onMemoryClick);
     if (coreLevel) {
       return coreLevel;
     }
@@ -199,6 +202,7 @@ export function architectureToFlow(
         dimensions: node.dimensions,
         summary: node.summary,
         bankSlots: node.bankSlots,
+        region: node.region,
       },
       draggable: true,
     };
@@ -214,6 +218,7 @@ export function architectureToFlow(
 function buildCoreLevelFlow(
   graph: ArchitectureGraph,
   grid: { cols: number; rows: number; colDim: string; rowDim: string },
+  onMemoryClick?: (name: string, region: GraphMemoryRegion) => void,
 ): FlowConversionResult | null {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const intraMemoryByName = new Map<string, ArchitectureGraphNode>();
@@ -276,6 +281,7 @@ function buildCoreLevelFlow(
           coreX: x,
           coreY: y,
           memories,
+          onMemoryClick,
         },
         draggable: true,
       });
@@ -682,6 +688,7 @@ function describeNode(node: ArchitectureGraphNode): {
         dimensions: node.dimensions,
         summary,
         bankSlots,
+        region: node.details.region,
       },
       multiplicity: totalBanks,
     };
@@ -761,7 +768,7 @@ function buildBankSlots(totalBanks: number | null): BankSlot[] {
   return slots;
 }
 
-function countBankLeaves(region: GraphMemoryRegion): number | null {
+export function countBankLeaves(region: GraphMemoryRegion): number | null {
   switch (region.kind) {
     case 'bank':
       return 1;
@@ -796,13 +803,77 @@ function summarizeCoreMemory(node: ArchitectureGraphNode): CoreMemorySummary {
   const described = describeNode(node).visualNode;
   return {
     name: described.name,
-    summary: described.summary,
-    dimensions: described.dimensions,
-    bankSlots: described.bankSlots,
+    summary: described.region ? compactRegionSummary(described.region) : described.summary,
+    region: described.region,
   };
 }
 
-function productConcreteSizes(dimensions: GraphDimension[]): number | null {
+function compactRegionSummary(region: GraphMemoryRegion): string {
+  switch (region.kind) {
+    case 'bank': {
+      const size = regionTotalBytes(region);
+      return size !== null ? formatBytesCompact(size) : region.capacity_bytes.expr;
+    }
+    case 'replicated': {
+      const n = productConcreteSizes(region.dimensions);
+      const elemSize = regionTotalBytes(region.elem);
+      if (n !== null && elemSize !== null) {
+        return `${n} × ${formatBytesCompact(elemSize)}`;
+      }
+      const dimStr = region.dimensions.map((d) => `${d.name}=${d.size_expr}`).join(', ');
+      return `replicated [${dimStr}]`;
+    }
+    case 'group': {
+      const total = regionTotalBytes(region);
+      if (total !== null) {
+        return `${region.parts.length} parts, ${formatBytesCompact(total)}`;
+      }
+      return `${region.parts.length} parts`;
+    }
+  }
+}
+
+function regionTotalBytes(region: GraphMemoryRegion): number | null {
+  if (typeof region.total_size_bytes === 'number') {
+    return region.total_size_bytes;
+  }
+  switch (region.kind) {
+    case 'bank':
+      return region.capacity_bytes.const_value;
+    case 'replicated': {
+      const elemSize = regionTotalBytes(region.elem);
+      const multiplier = productConcreteSizes(region.dimensions);
+      return elemSize !== null && multiplier !== null ? elemSize * multiplier : null;
+    }
+    case 'group': {
+      let total = 0;
+      for (const part of region.parts) {
+        const partSize = regionTotalBytes(part);
+        if (partSize === null) return null;
+        total += partSize;
+      }
+      return total;
+    }
+  }
+}
+
+function formatBytesCompact(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    const val = bytes / (1024 * 1024 * 1024);
+    return `${Number.isInteger(val) ? val : val.toFixed(1)} GB`;
+  }
+  if (bytes >= 1024 * 1024) {
+    const val = bytes / (1024 * 1024);
+    return `${Number.isInteger(val) ? val : val.toFixed(1)} MB`;
+  }
+  if (bytes >= 1024) {
+    const val = bytes / 1024;
+    return `${Number.isInteger(val) ? val : val.toFixed(1)} KB`;
+  }
+  return `${bytes} B`;
+}
+
+export function productConcreteSizes(dimensions: GraphDimension[]): number | null {
   let out = 1;
   for (const dim of dimensions) {
     if (dim.size_const === null) {

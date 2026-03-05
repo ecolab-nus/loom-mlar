@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 
-import type { BankSlot, CoreArchNodeData, CoreMemorySummary } from '../flow';
+import type { CoreArchNodeData, CoreMemorySummary } from '../flow';
 
 export function CoreArchNode({ data }: NodeProps) {
   if (!isCoreArchNodeData(data)) {
@@ -12,7 +12,7 @@ export function CoreArchNode({ data }: NodeProps) {
     );
   }
 
-  const { coreX, coreY, memories } = data;
+  const { coreX, coreY, memories, onMemoryClick } = data;
 
   return (
     <div className="core-arch-node">
@@ -24,27 +24,18 @@ export function CoreArchNode({ data }: NodeProps) {
 
       <div className="core-arch-mems">
         {memories.map((memory) => (
-          <div key={`${coreX}-${coreY}-${memory.name}`} className="core-memory-block">
+          <div
+            key={`${coreX}-${coreY}-${memory.name}`}
+            className={`core-memory-block${memory.region ? ' core-memory-block--clickable' : ''}`}
+            onClick={(e) => {
+              if (memory.region && onMemoryClick) {
+                e.stopPropagation();
+                onMemoryClick(memory.name, memory.region);
+              }
+            }}
+          >
             <span className="core-memory-name">{memory.name}</span>
             <div className="core-memory-summary">{memory.summary}</div>
-
-            {memory.dimensions.length > 0 && (
-              <div className="core-memory-dims">
-                {memory.dimensions.map((dim) => (
-                  <span key={`${memory.name}-${dim.name}`} className="dim-chip">
-                    {dim.name}:{dim.size_expr}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {memory.bankSlots.length > 0 && (
-              <div className="memory-bank-preview">
-                {memory.bankSlots.map((slot) => (
-                  <BankSlotChip key={`${memory.name}-${slot.id}`} slot={slot} />
-                ))}
-              </div>
-            )}
 
             <Handle
               type="source"
@@ -122,33 +113,12 @@ function isCoreArchNodeData(value: unknown): value is CoreArchNodeData {
   );
 }
 
-function BankSlotChip({ slot }: { slot: BankSlot }) {
-  const slotClass = slot.isOverflow ? 'bank-slot bank-slot-overflow' : 'bank-slot';
-  const title =
-    slot.hiddenCount !== null
-      ? `Hidden banks: ${slot.hiddenCount}`
-      : slot.isOverflow
-        ? 'More banks'
-        : `Bank ${slot.label}`;
-
-  return (
-    <div className={slotClass} title={title}>
-      <span>{slot.label}</span>
-    </div>
-  );
-}
-
 function isCoreMemorySummary(value: unknown): value is CoreMemorySummary {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const mem = value as Partial<CoreMemorySummary>;
-  return (
-    typeof mem.name === 'string' &&
-    typeof mem.summary === 'string' &&
-    Array.isArray(mem.dimensions) &&
-    Array.isArray(mem.bankSlots)
-  );
+  return typeof mem.name === 'string' && typeof mem.summary === 'string';
 }
 
 function slugify(value: string): string {
