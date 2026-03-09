@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::parse::ParseError;
 use crate::arch::size_dim::Sym;
 
@@ -18,7 +20,7 @@ use crate::arch::size_dim::Sym;
 /// let e = Expr::parse("M * N / 64").unwrap();
 /// let e: Expr = "min(M, 1024) + N".parse().unwrap();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Expr {
     Const(i64),
     Sym(Sym),
@@ -28,6 +30,28 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Min(Box<Expr>, Box<Expr>),
     Max(Box<Expr>, Box<Expr>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Expr;
+
+    #[test]
+    fn expr_json_round_trip() {
+        let expr = Expr::parse("min(M * N / 64, 1024)").expect("expression should parse");
+        let json = serde_json::to_string(&expr).expect("expression should serialize");
+        let decoded: Expr = serde_json::from_str(&json).expect("expression should deserialize");
+
+        assert_eq!(decoded.to_string(), expr.to_string());
+    }
+
+    #[test]
+    fn expr_json_shape_example() {
+        let expr = Expr::add(Expr::constant(2), Expr::sym("K"));
+        let json = serde_json::to_value(&expr).expect("expression should serialize");
+
+        assert_eq!(json, serde_json::json!({"Add":[{"Const":2},{"Sym":"K"}]}));
+    }
 }
 
 impl Expr {

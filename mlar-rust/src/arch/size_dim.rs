@@ -27,7 +27,7 @@ impl From<String> for DimName {
 }
 
 /// Newtype for symbolic names used in expressions.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Sym(pub String);
 
 impl Sym {

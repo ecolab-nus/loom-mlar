@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::expr::Expr;
 use super::parse::ParseError;
 use crate::arch::size_dim::Sym;
@@ -21,7 +23,7 @@ use crate::arch::size_dim::Sym;
 /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
 /// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConstraintExpr {
     /// Always true
     True,
@@ -52,6 +54,41 @@ pub enum ConstraintExpr {
         lo: Expr,
         hi: Expr,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConstraintExpr;
+
+    #[test]
+    fn constraint_json_round_trip() {
+        let constraint = ConstraintExpr::parse("(M >= 256 || N >= 256) && divisible(K, 16)")
+            .expect("constraint should parse");
+        let json = serde_json::to_string(&constraint).expect("constraint should serialize");
+        println!("json: {}", json);
+        let decoded: ConstraintExpr =
+            serde_json::from_str(&json).expect("constraint should deserialize");
+
+        assert_eq!(decoded.to_string(), constraint.to_string());
+    }
+
+    #[test]
+    fn constraint_json_shape_example() {
+        let constraint = ConstraintExpr::parse("in_range(M, 1, 1024)")
+            .expect("constraint should parse");
+        let json = serde_json::to_value(&constraint).expect("constraint should serialize");
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "InRange":{
+                    "x":{"Sym":"M"},
+                    "lo":{"Const":1},
+                    "hi":{"Const":1024}
+                }
+            })
+        );
+    }
 }
 
 impl ConstraintExpr {
