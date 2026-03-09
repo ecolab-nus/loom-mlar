@@ -24,7 +24,7 @@ src/
 │   ├── perf.rs                 # FuncPerfModel, ProcPerfModel, TimeCostExpr
 │   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
-│   ├── processor.rs            # Processor, ProcessorElem (Unit/Array/Set)
+│   ├── processor.rs            # Processor, Processors (Unit/Array/Set)
 │   └── link.rs                 # Link, Endpoint, SharingDomain
 └── visualization/
     └── graph_json.rs           # JSON schema export for web visualization
@@ -105,13 +105,13 @@ Names propagate through scaling: when `Architecture::scale()` wraps a named regi
 Processors mirror the memory structure with a struct + enum pattern:
 
 ```
-ProcessorElem
+Processors
 ├── Unit(Processor)                               -- atomic compute unit
 ├── Array { name, dims, elem }                    -- homogeneous, indexable multi-dim array
 └── Set { name, parts }                           -- heterogeneous aggregation
 ```
 
-A `Processor` carries its name from construction. The name is accessible via `ProcessorElem::name()`, which recurses through `Array` wrappers:
+A `Processor` carries its name from construction. The name is accessible via `Processors::name()`, which recurses through `Array` wrappers:
 
 ```rust
 // Structural-only (no cost model)
@@ -164,7 +164,7 @@ assert_eq!(mat_lanes.total_instances(), Some(32));
 
 All connectivity between architecture entities is expressed through a single `Link` type. A link connects two endpoints (memory or processor) with an affine map describing the regular connection pattern, plus bandwidth and optional constraints.
 
-Endpoints hold the actual `MemoryRegion` or `ProcessorElem` objects directly. Names are derived from the data -- you just pass a reference:
+Endpoints hold the actual `MemoryRegion` or `Processors` objects directly. Names are derived from the data -- you just pass a reference:
 
 ```rust
 // Memory-to-memory link
@@ -184,7 +184,7 @@ let rf_to_lane = Link::builder("RF_to_MatLane")
     .build();
 ```
 
-The `Endpoint` enum is simply `Mem(MemoryRegion)` or `Proc(ProcessorElem)`, with `name()` delegating to the inner data.
+The `Endpoint` enum is simply `Mem(MemoryRegion)` or `Proc(Processors)`, with `name()` delegating to the inner data.
 
 ### 5. Affine Maps
 
@@ -332,7 +332,7 @@ An `Architecture` stores components directly -- names live inside the data:
 pub struct Architecture {
     pub name: String,
     pub memory: Vec<MemoryRegion>,    // each carries its own name via .name()
-    pub processors: Vec<ProcessorElem>,   // each carries its own name via .name()
+    pub processors: Vec<Processors>,   // each carries its own name via .name()
     pub links: Vec<Link>,             // connectivity
 }
 ```
@@ -532,11 +532,11 @@ Formal schema:
 | `MemoryBank` | Leaf memory unit (capacity, granularity, optional perf) | `core/memory.rs` |
 | `MemoryRegion` | Recursive: `Bank` / `Replicated { name, dims, elem }` / `Group`; use `.with_name()` and `.name()` | `core/memory.rs` |
 | `Processor` | Atomic compute unit (name, optional perf model with compute ref) | `core/processor.rs` |
-| `ProcessorElem` | Recursive: `Unit(Processor)` / `Array { name, dims, elem }` / `Set { name, parts }`; name recurses to leaf | `core/processor.rs` |
+| `Processors` | Recursive: `Unit(Processor)` / `Array { name, dims, elem }` / `Set { name, parts }`; name recurses to leaf | `core/processor.rs` |
 | `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `core/link.rs` |
-| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(ProcessorElem)`; name derived from data | `core/link.rs` |
+| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(Processors)`; name derived from data | `core/link.rs` |
 | `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `core/link.rs` |
-| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<ProcessorElem>`, and links | `core/architecture.rs` |
+| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<Processors>`, and links | `core/architecture.rs` |
 | `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `core/architecture.rs` |
 
 ## Building and Running

@@ -1,6 +1,6 @@
 use crate::arch::{
     Architecture, ArchitectureLabel, Dimension, Endpoint, LinkMapRelation, LinkTopology,
-    MemoryRegion, MlirModuleRef, ProcessorElem, Resource, ResourceReq, SharingDomain, SizeExpr,
+    MemoryRegion, MlirModuleRef, Processors, Resource, ResourceReq, SharingDomain, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use serde::Serialize;
@@ -57,7 +57,7 @@ pub enum GraphNodeDetails {
         resource: GraphResource,
     },
     Processor {
-        element: GraphProcessorElem,
+        element: GraphProcessors,
         total_instances: Option<u64>,
     },
 }
@@ -151,7 +151,7 @@ pub struct GraphMlirModuleRef {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum GraphProcessorElem {
+pub enum GraphProcessors {
     Unit {
         name: Option<String>,
         compute: Option<GraphMlirModuleRef>,
@@ -160,11 +160,11 @@ pub enum GraphProcessorElem {
     Array {
         name: Option<String>,
         dimensions: Vec<GraphDimension>,
-        elem: Box<GraphProcessorElem>,
+        elem: Box<GraphProcessors>,
     },
     Set {
         name: Option<String>,
-        parts: Vec<GraphProcessorElem>,
+        parts: Vec<GraphProcessors>,
     },
 }
 
@@ -355,7 +355,7 @@ fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> Gra
     }
 }
 
-fn processor_node_from_elem(id: String, name: &str, elem: &ProcessorElem) -> GraphNode {
+fn processor_node_from_elem(id: String, name: &str, elem: &Processors) -> GraphNode {
     let dimensions = dedup_dimensions(collect_processor_dims(elem))
         .iter()
         .map(dimension_to_json)
@@ -367,7 +367,7 @@ fn processor_node_from_elem(id: String, name: &str, elem: &ProcessorElem) -> Gra
         label: node_label(name, &dimensions),
         dimensions,
         details: GraphNodeDetails::Processor {
-            element: processor_elem_to_json(elem),
+            element: processors_to_json(elem),
             total_instances: elem.total_instances(),
         },
     }
@@ -538,15 +538,15 @@ fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     }
 }
 
-fn collect_processor_dims(elem: &ProcessorElem) -> Vec<Dimension> {
+fn collect_processor_dims(elem: &Processors) -> Vec<Dimension> {
     match elem {
-        ProcessorElem::Unit(_) => Vec::new(),
-        ProcessorElem::Array { dims, elem, .. } => {
+        Processors::Unit(_) => Vec::new(),
+        Processors::Array { dims, elem, .. } => {
             let mut out = dims.clone();
             out.extend(collect_processor_dims(elem));
             out
         }
-        ProcessorElem::Set { parts, .. } => {
+        Processors::Set { parts, .. } => {
             let mut out = Vec::new();
             for part in parts {
                 out.extend(collect_processor_dims(part));
@@ -590,21 +590,21 @@ fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
     }
 }
 
-fn processor_elem_to_json(elem: &ProcessorElem) -> GraphProcessorElem {
+fn processors_to_json(elem: &Processors) -> GraphProcessors {
     match elem {
-        ProcessorElem::Unit(proc) => GraphProcessorElem::Unit {
+        Processors::Unit(proc) => GraphProcessors::Unit {
             name: proc.name.clone(),
             compute: proc.compute().map(mlir_module_to_json),
             resources: proc.resources.iter().map(resource_req_to_json).collect(),
         },
-        ProcessorElem::Array { name, dims, elem } => GraphProcessorElem::Array {
+        Processors::Array { name, dims, elem } => GraphProcessors::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
-            elem: Box::new(processor_elem_to_json(elem)),
+            elem: Box::new(processors_to_json(elem)),
         },
-        ProcessorElem::Set { name, parts } => GraphProcessorElem::Set {
+        Processors::Set { name, parts } => GraphProcessors::Set {
             name: name.clone(),
-            parts: parts.iter().map(processor_elem_to_json).collect(),
+            parts: parts.iter().map(processors_to_json).collect(),
         },
     }
 }
@@ -726,11 +726,11 @@ fn unwrap_memory_scaling(region: &MemoryRegion, scaling_dims: &HashSet<String>) 
 }
 
 /// Unwrap outer `Array` layers only when they are pure scaling dimensions.
-fn unwrap_processor_scaling(elem: &ProcessorElem, scaling_dims: &HashSet<String>) -> ProcessorElem {
+fn unwrap_processor_scaling(elem: &Processors, scaling_dims: &HashSet<String>) -> Processors {
     let mut current = elem;
     loop {
         match current {
-            ProcessorElem::Array { dims, elem, .. }
+            Processors::Array { dims, elem, .. }
                 if !dims.is_empty() && dims.iter().all(|d| scaling_dims.contains(&d.name.0)) =>
             {
                 current = elem;

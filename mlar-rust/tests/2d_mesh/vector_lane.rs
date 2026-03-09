@@ -11,7 +11,7 @@ use crate::memory::l1;
 ///   throughput = 1024, latency = 1
 /// - `vec_exp_f32`: throughput = 128, latency = 16
 /// - `vec_div_f32`: throughput = 256, latency = 8
-pub fn vector_lane() -> ProcessorElem {
+pub fn vector_lane() -> Processors {
     // Common model for fast ops: vec_max, vec_add, vec_sum, vec_mul.
     // These tests use constant costs (independent of L).
     let fast_op = FuncPerfModel {

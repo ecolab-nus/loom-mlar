@@ -296,8 +296,8 @@ fn find_matching_delimiter(
 /// (which includes the MLIR compute reference), and resource requirements.
 ///
 /// Processors can be recursively aggregated into:
-/// - [`ProcessorElem::Array`] — homogeneous, indexable multi-dimensional array
-/// - [`ProcessorElem::Set`] — heterogeneous aggregation of different processors
+/// - [`Processors::Array`] — homogeneous, indexable multi-dimensional array
+/// - [`Processors::Set`] — heterogeneous aggregation of different processors
 #[derive(Clone, Debug)]
 pub struct Processor {
     pub name: Option<String>,
@@ -320,19 +320,19 @@ pub struct Processor {
 /// This mirrors the `MemoryRegion` structure: `Bank`/`Unit` at the leaf,
 /// `Replicated`/`Array` for homogeneous scaling, `Group`/`Set` for heterogeneous composition.
 #[derive(Clone, Debug)]
-pub enum ProcessorElem {
+pub enum Processors {
     /// Leaf: a single processor
     Unit(Processor),
     /// Homogeneous array: indexable multi-dimensional array of processors
     Array {
         name: Option<String>,
         dims: Vec<Dimension>,
-        elem: Box<ProcessorElem>,
+        elem: Box<Processors>,
     },
     /// Heterogeneous set of different processor elements
     Set {
         name: Option<String>,
-        parts: Vec<ProcessorElem>,
+        parts: Vec<Processors>,
     },
 }
 
@@ -389,28 +389,28 @@ impl Processor {
     }
 
     /// Wrap this processor in an Array with the given dimensions.
-    pub fn replicate(self, dims: &[Dimension]) -> ProcessorElem {
-        ProcessorElem::Array {
+    pub fn replicate(self, dims: &[Dimension]) -> Processors {
+        Processors::Array {
             name: None,
             dims: dims.to_vec(),
-            elem: Box::new(ProcessorElem::Unit(self)),
+            elem: Box::new(Processors::Unit(self)),
         }
     }
 
-    /// Convert this processor into a `ProcessorElem::Unit`.
-    pub fn into_elem(self) -> ProcessorElem {
-        ProcessorElem::Unit(self)
+    /// Convert this processor into a `Processors::Unit`.
+    pub fn into_elem(self) -> Processors {
+        Processors::Unit(self)
     }
 }
 
-impl ProcessorElem {
+impl Processors {
     /// Get the name of this processor element.
     /// For Array, returns its own name if set, otherwise recurses into elem.
     pub fn name(&self) -> Option<&str> {
         match self {
-            ProcessorElem::Unit(p) => p.name.as_deref(),
-            ProcessorElem::Array { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
-            ProcessorElem::Set { name, .. } => name.as_deref(),
+            Processors::Unit(p) => p.name.as_deref(),
+            Processors::Array { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
+            Processors::Set { name, .. } => name.as_deref(),
         }
     }
 
@@ -418,9 +418,9 @@ impl ProcessorElem {
     /// For Array, recurses into its element.
     pub fn compute(&self) -> Option<&MlirModuleRef> {
         match self {
-            ProcessorElem::Unit(p) => p.compute(),
-            ProcessorElem::Array { elem, .. } => elem.compute(),
-            ProcessorElem::Set { .. } => None,
+            Processors::Unit(p) => p.compute(),
+            Processors::Array { elem, .. } => elem.compute(),
+            Processors::Set { .. } => None,
         }
     }
 
@@ -428,16 +428,16 @@ impl ProcessorElem {
     /// For Array, recurses into its element.
     pub fn resources(&self) -> &[ResourceReq] {
         match self {
-            ProcessorElem::Unit(p) => &p.resources,
-            ProcessorElem::Array { elem, .. } => elem.resources(),
-            ProcessorElem::Set { .. } => &[],
+            Processors::Unit(p) => &p.resources,
+            Processors::Array { elem, .. } => elem.resources(),
+            Processors::Set { .. } => &[],
         }
     }
 
     /// Wrap this processor element in an Array with the given dimensions.
     /// Accepts a slice reference; clones internally.
     pub fn replicate(self, dims: &[Dimension]) -> Self {
-        ProcessorElem::Array {
+        Processors::Array {
             name: None,
             dims: dims.to_vec(),
             elem: Box::new(self),
@@ -447,16 +447,16 @@ impl ProcessorElem {
     /// Set the name at the current level (builder-style, consumes self).
     pub fn with_name(self, n: impl Into<String>) -> Self {
         match self {
-            ProcessorElem::Unit(mut p) => {
+            Processors::Unit(mut p) => {
                 p.name = Some(n.into());
-                ProcessorElem::Unit(p)
+                Processors::Unit(p)
             }
-            ProcessorElem::Array { dims, elem, .. } => ProcessorElem::Array {
+            Processors::Array { dims, elem, .. } => Processors::Array {
                 name: Some(n.into()),
                 dims,
                 elem,
             },
-            ProcessorElem::Set { parts, .. } => ProcessorElem::Set {
+            Processors::Set { parts, .. } => Processors::Set {
                 name: Some(n.into()),
                 parts,
             },
@@ -466,9 +466,9 @@ impl ProcessorElem {
     /// Set resource requirements on a Unit processor (builder-style).
     pub fn with_resources(self, resources: Vec<ResourceReq>) -> Self {
         match self {
-            ProcessorElem::Unit(mut p) => {
+            Processors::Unit(mut p) => {
                 p.resources = resources;
-                ProcessorElem::Unit(p)
+                Processors::Unit(p)
             }
             other => other, // no-op for non-Unit variants
         }
@@ -477,7 +477,7 @@ impl ProcessorElem {
     /// Get the outermost dimensions (empty for Unit).
     pub fn dims(&self) -> &[Dimension] {
         match self {
-            ProcessorElem::Array { dims, .. } => dims,
+            Processors::Array { dims, .. } => dims,
             _ => &[],
         }
     }
@@ -486,8 +486,8 @@ impl ProcessorElem {
     /// Returns None if any dimension has a symbolic size.
     pub fn total_instances(&self) -> Option<u64> {
         match self {
-            ProcessorElem::Unit(_) => Some(1),
-            ProcessorElem::Array { dims, elem, .. } => {
+            Processors::Unit(_) => Some(1),
+            Processors::Array { dims, elem, .. } => {
                 let outer: u64 = dims
                     .iter()
                     .map(|d| d.size.as_const())
@@ -497,7 +497,7 @@ impl ProcessorElem {
                 let inner = elem.total_instances()?;
                 Some(outer * inner)
             }
-            ProcessorElem::Set { parts, .. } => {
+            Processors::Set { parts, .. } => {
                 let mut total = 0u64;
                 for p in parts {
                     total += p.total_instances()?;
@@ -510,32 +510,32 @@ impl ProcessorElem {
     /// Collect all outermost dimension indices (flattened from nested Arrays).
     pub fn all_dims(&self) -> Vec<&Dimension> {
         match self {
-            ProcessorElem::Unit(_) => vec![],
-            ProcessorElem::Array { dims, elem, .. } => {
+            Processors::Unit(_) => vec![],
+            Processors::Array { dims, elem, .. } => {
                 let mut result: Vec<&Dimension> = dims.iter().collect();
                 result.extend(elem.all_dims());
                 result
             }
-            ProcessorElem::Set { .. } => vec![],
+            Processors::Set { .. } => vec![],
         }
     }
 }
 
-impl From<Processor> for ProcessorElem {
+impl From<Processor> for Processors {
     fn from(p: Processor) -> Self {
-        ProcessorElem::Unit(p)
+        Processors::Unit(p)
     }
 }
 
-impl From<&ProcessorElem> for ProcessorElem {
-    fn from(p: &ProcessorElem) -> Self {
+impl From<&Processors> for Processors {
+    fn from(p: &Processors) -> Self {
         p.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, Processor, ProcessorElem};
+    use super::{MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, Processor, Processors};
     use crate::arch::size_dim::Dimension;
 
     #[test]
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn processor_into_elem() {
         let p = Processor::new("test");
-        let elem: ProcessorElem = p.into();
+        let elem: Processors = p.into();
         assert_eq!(elem.name(), Some("test"));
     }
 

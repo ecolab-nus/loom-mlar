@@ -13,7 +13,7 @@ pub use memory::{MemoryBank, MemoryRegion};
 pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};
 pub use processor::{
     MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, MlirTensorSymbolBinding, Processor,
-    ProcessorElem,
+    Processors,
 };
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};

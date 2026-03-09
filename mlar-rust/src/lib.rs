@@ -7,7 +7,7 @@ pub mod visualization;
 pub use arch::{
     Architecture, ArchitectureBuilder, ArchitectureLabel, Dimension, Endpoint, FuncPerfModel, Link,
     MLIRFuncRef, MLIRModuleRef, MemoryBank, MemoryRegion, MlirFuncRef, MlirModuleRef,
-    MlirTensorSymbolBinding, PerfScenario, ProcPerfModel, Processor, ProcessorElem, Resource,
+    MlirTensorSymbolBinding, PerfScenario, ProcPerfModel, Processor, Processors, Resource,
     ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr,
 };
 
