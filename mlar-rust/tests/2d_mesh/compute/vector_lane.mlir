@@ -12,10 +12,14 @@ module @vector_lane {
 
 // out[i] = max(a[i], b[i])
 func.func @vec_max_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %b: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
+  loom.bind %a, (%L)
+  loom.bind %b, (%L)
+  loom.bind %out, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -35,9 +39,12 @@ func.func @vec_max_f32(
 
 // out[i] = exp(a[i])
 func.func @vec_exp_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
+  loom.bind %a, (%L)
+  loom.bind %out, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -56,9 +63,11 @@ func.func @vec_exp_f32(
 
 // scalar = sum(a[i])
 func.func @vec_sum_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %init: tensor<f32>
 ) -> tensor<f32> {
+  loom.bind %a, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -77,10 +86,14 @@ func.func @vec_sum_f32(
 
 // out[i] = a[i] + b[i]
 func.func @vec_add_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %b: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
+  loom.bind %a, (%L)
+  loom.bind %b, (%L)
+  loom.bind %out, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -100,10 +113,14 @@ func.func @vec_add_f32(
 
 // out[i] = a[i] * b[i]
 func.func @vec_mul_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %b: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
+  loom.bind %a, (%L)
+  loom.bind %b, (%L)
+  loom.bind %out, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -123,10 +140,14 @@ func.func @vec_mul_f32(
 
 // out[i] = a[i] / b[i]
 func.func @vec_div_f32(
+    %L: loom.sym,
     %a: tensor<?xf32>,
     %b: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
+  loom.bind %a, (%L)
+  loom.bind %b, (%L)
+  loom.bind %out, (%L)
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
