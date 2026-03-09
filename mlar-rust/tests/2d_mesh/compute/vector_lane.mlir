@@ -7,10 +7,14 @@
 //   - element-wise addition
 //   - element-wise multiplication
 //   - element-wise division
+//
+// Symbol convention:
+//   - %L: logical vector length
+//   - rank-1 tensors are bound to (%L) via `loom.bind`
 
 module @vector_lane {
 
-// out[i] = max(a[i], b[i])
+// out[i] = max(a[i], b[i]), for i in [0, L)
 func.func @vec_max_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,
@@ -37,7 +41,7 @@ func.func @vec_max_f32(
   return %result : tensor<?xf32>
 }
 
-// out[i] = exp(a[i])
+// out[i] = exp(a[i]), for i in [0, L)
 func.func @vec_exp_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,
@@ -61,7 +65,7 @@ func.func @vec_exp_f32(
   return %result : tensor<?xf32>
 }
 
-// scalar = sum(a[i])
+// scalar = sum(a[i]) for i in [0, L)
 func.func @vec_sum_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,
@@ -84,7 +88,7 @@ func.func @vec_sum_f32(
   return %result : tensor<f32>
 }
 
-// out[i] = a[i] + b[i]
+// out[i] = a[i] + b[i], for i in [0, L)
 func.func @vec_add_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,
@@ -111,7 +115,7 @@ func.func @vec_add_f32(
   return %result : tensor<?xf32>
 }
 
-// out[i] = a[i] * b[i]
+// out[i] = a[i] * b[i], for i in [0, L)
 func.func @vec_mul_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,
@@ -138,7 +142,7 @@ func.func @vec_mul_f32(
   return %result : tensor<?xf32>
 }
 
-// out[i] = a[i] / b[i]
+// out[i] = a[i] / b[i], for i in [0, L)
 func.func @vec_div_f32(
     %L: loom.sym,
     %a: tensor<?xf32>,

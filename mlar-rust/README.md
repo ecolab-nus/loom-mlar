@@ -119,6 +119,8 @@ let lane = Processor::new("matrix_lane");
 assert_eq!(lane.name.as_deref(), Some("matrix_lane"));
 
 // With per-function performance models — ProcPerfModel wraps FuncPerfModel(s)
+// Symbols should align with symbolic MLIR args in compute/matrix_lane.mlir:
+// @matmul_f32(%M: loom.sym, %N: loom.sym, %K: loom.sym, ...)
 let matmul_perf = FuncPerfModel {
     symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
     constraints: ConstraintExpr::True,
@@ -271,26 +273,30 @@ A `ProcPerfModel` owns the `MlirModuleRef` it is bound to, grouping per-function
 
 ```rust
 let fast_op = FuncPerfModel {
-    symbols: vec![], constraints: ConstraintExpr::True,
+    symbols: vec![Sym::new("L")], constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::True,
         time_cost: TimeCostExpr {
-            fixed_latency: Expr::Const(1), throughput: Expr::Const(1024),
+            fixed_latency: Expr::Const(1),
+            throughput: Expr::div(Expr::sym("L"), Expr::Const(4)),
         },
     }],
 };
 
 let slow_op = FuncPerfModel {
-    symbols: vec![], constraints: ConstraintExpr::True,
+    symbols: vec![Sym::new("L")], constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::True,
         time_cost: TimeCostExpr {
-            fixed_latency: Expr::Const(16), throughput: Expr::Const(128),
+            fixed_latency: Expr::Const(16),
+            throughput: Expr::div(Expr::sym("L"), Expr::Const(16)),
         },
     }],
 };
 
 // compute is inside ProcPerfModel — validate() checks func count alignment
+// In compute/vector_lane.mlir these functions use a leading %L: loom.sym and
+// bind vector tensor dimensions with `loom.bind`.
 let proc_perf = ProcPerfModel {
     compute: MlirModuleRef::with_functions("compute/vector_lane.mlir",
         &["vec_add_f32", "vec_exp_f32"]),

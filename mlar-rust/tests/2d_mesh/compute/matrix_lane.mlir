@@ -2,6 +2,9 @@
 //
 // C[M, N] = A[M, K] * B[K, N]
 //
+// M, N, K are symbolic function arguments (`loom.sym`), then `loom.bind`
+// ties each tensor dimension to those symbols.
+//
 // This is the canonical matmul expressed in the linalg-on-tensors dialect.
 
 module @matrix_lane {
