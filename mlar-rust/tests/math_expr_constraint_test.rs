@@ -37,7 +37,7 @@ fn test_constraint_expr_a_and_b_or_c_and_d_with_expr_terms() {
 #[test]
 fn test_expr_nested_if_then_else_with_nested_constraints_and_exprs() {
     let e = Expr::parse(
-        "IF ((M + N) >= 128 && divisible(K, 16)) (IF (P < Q) max(P, Q), else min(P, Q)) + T, else IF (R > 0) (A + B) * 2, else 0",
+        "IF ((M + N) >= 128 && divisible(K, 16)) {(IF (P < Q) {max(P, Q)} ELSE {min(P, Q)}) + T} ELSE {IF (R > 0) {(A + B) * 2} ELSE {0}}",
     )
     .expect("expression should parse");
 

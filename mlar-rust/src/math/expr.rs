@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn expr_if_else_json_shape_example() {
-        let expr = Expr::parse("if (1 < 2) 7 else 9").expect("expression should parse");
+        let expr = Expr::parse("IF (1 < 2) {7} ELSE {9}").expect("expression should parse");
         let json = serde_json::to_value(&expr).expect("expression should serialize");
 
         assert_eq!(
@@ -92,7 +92,8 @@ mod tests {
 
     #[test]
     fn expr_if_else_free_symbols() {
-        let expr = Expr::parse("IF (M >= 256) N + 1, else K + 2").expect("expression should parse");
+        let expr =
+            Expr::parse("IF (M >= 256) {N + 1} ELSE {K + 2}").expect("expression should parse");
         let syms = expr.free_symbols();
         let expected: HashSet<Sym> = [Sym::new("M"), Sym::new("N"), Sym::new("K")]
             .into_iter()
@@ -114,7 +115,7 @@ impl Expr {
     /// atom      := INT | IDENT
     ///            | 'min' '(' expr ',' expr ')'
     ///            | 'max' '(' expr ',' expr ')'
-    ///            | 'if' '(' constraint ')' expr (','?) 'else' expr
+    ///            | 'if' '(' constraint ')' '{' expr '}' 'ELSE' '{' expr '}'
     ///            | '(' expr ')'
     /// ```
     ///
@@ -252,7 +253,7 @@ impl std::fmt::Display for Expr {
                 cond,
                 then_expr,
                 else_expr,
-            } => write!(f, "if ({}) {} else {}", cond, then_expr, else_expr),
+            } => write!(f, "IF ({}) {{{}}} ELSE {{{}}}", cond, then_expr, else_expr),
         }
     }
 }
