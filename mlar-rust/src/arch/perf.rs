@@ -264,6 +264,20 @@ mod tests {
     }
 
     #[test]
+    fn test_proc_perf_model_from_mlir_module_ref() {
+        let compute = MlirModuleRef::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
+            .expect("matrix_lane.mlir should parse");
+        assert_eq!(compute.module_name.as_deref(), Some("matrix_lane"));
+        assert_eq!(compute.functions, vec!["matmul_f32"]);
+
+        let proc = ProcPerfModel {
+            func_models: vec![FuncPerfModel::trivial()],
+            compute,
+        };
+        assert!(proc.validate().is_ok());
+    }
+
+    #[test]
     fn test_validate_all_declared() {
         let model = FuncPerfModel {
             symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],

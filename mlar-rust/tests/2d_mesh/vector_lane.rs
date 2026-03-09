@@ -55,17 +55,8 @@ pub fn vector_lane() -> ProcessorElem {
     // Function order matches MlirModuleRef:
     // vec_max_f32, vec_exp_f32, vec_sum_f32, vec_add_f32, vec_mul_f32, vec_div_f32
     let vec_perf = ProcPerfModel {
-        compute: MlirModuleRef::with_functions(
-            "compute/vector_lane.mlir",
-            &[
-                "vec_max_f32",
-                "vec_exp_f32",
-                "vec_sum_f32",
-                "vec_add_f32",
-                "vec_mul_f32",
-                "vec_div_f32",
-            ],
-        ),
+        compute: MlirModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+            .expect("tests/2d_mesh/compute/vector_lane.mlir should parse"),
         func_models: vec![
             fast_op.clone(), // vec_max_f32
             exp_op,          // vec_exp_f32

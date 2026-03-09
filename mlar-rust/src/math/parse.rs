@@ -574,10 +574,12 @@ mod tests {
     }
     #[test]
     fn expr_if_else_symbolic_cond() {
-        assert!(parse_expr("IF (M >= 4) {11} ELSE {22}")
-            .unwrap()
-            .eval_const()
-            .is_none());
+        assert!(
+            parse_expr("IF (M >= 4) {11} ELSE {22}")
+                .unwrap()
+                .eval_const()
+                .is_none()
+        );
     }
     #[test]
     fn expr_symbolic() {

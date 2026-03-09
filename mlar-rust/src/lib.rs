@@ -1,13 +1,14 @@
 pub mod arch;
 pub mod math;
-pub mod visualization;
 pub mod schedule;
+pub mod visualization;
 
 // Re-export commonly used architecture types
 pub use arch::{
     Architecture, ArchitectureBuilder, ArchitectureLabel, Dimension, Endpoint, FuncPerfModel, Link,
-    MemoryBank, MemoryRegion, MlirModuleRef, PerfScenario, ProcPerfModel, Processor, ProcessorElem,
-    Resource, ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr,
+    MLIRFuncRef, MLIRModuleRef, MemoryBank, MemoryRegion, MlirFuncRef, MlirModuleRef,
+    MlirTensorSymbolBinding, PerfScenario, ProcPerfModel, Processor, ProcessorElem, Resource,
+    ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr,
 };
 
 // Re-export commonly used math types

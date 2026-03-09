@@ -14,7 +14,10 @@ fn test_constraint_expr_a_and_b_or_c_and_d_with_expr_terms() {
         serde_json::from_str(&json).expect("constraint should deserialize");
     assert_eq!(decoded.to_string(), c.to_string());
     let shape = serde_json::to_value(&c).expect("constraint should serialize to value");
-    assert!(shape.get("Or").is_some(), "expected top-level Or JSON variant");
+    assert!(
+        shape.get("Or").is_some(),
+        "expected top-level Or JSON variant"
+    );
 
     match &c {
         ConstraintExpr::Or(parts) => {
@@ -25,7 +28,10 @@ fn test_constraint_expr_a_and_b_or_c_and_d_with_expr_terms() {
         _ => panic!("expected top-level OR for `A && B || C && D`"),
     }
 
-    assert!(c.eval_const().is_none(), "symbolic constraint should not fold");
+    assert!(
+        c.eval_const().is_none(),
+        "symbolic constraint should not fold"
+    );
 
     let expected: HashSet<Sym> = ["M", "N", "K", "P", "Q", "R", "S"]
         .into_iter()
@@ -52,7 +58,9 @@ fn test_expr_nested_if_then_else_with_nested_constraints_and_exprs() {
     );
 
     if let Expr::IfElse {
-        then_expr, else_expr, ..
+        then_expr,
+        else_expr,
+        ..
     } = &e
     {
         assert!(matches!(then_expr.as_ref(), Expr::Add(_, _)));
@@ -66,7 +74,10 @@ fn test_expr_nested_if_then_else_with_nested_constraints_and_exprs() {
         .map(Sym::new)
         .collect();
     assert_eq!(e.free_symbols(), expected);
-    assert!(e.eval_const().is_none(), "symbolic expression should not fold");
+    assert!(
+        e.eval_const().is_none(),
+        "symbolic expression should not fold"
+    );
 
     let reparsed = Expr::parse(&e.to_string()).expect("display output should parse");
     assert_eq!(reparsed.free_symbols(), expected);

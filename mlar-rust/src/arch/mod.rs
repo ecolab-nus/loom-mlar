@@ -11,6 +11,9 @@ pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};
-pub use processor::{MlirModuleRef, Processor, ProcessorElem};
+pub use processor::{
+    MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, MlirTensorSymbolBinding, Processor,
+    ProcessorElem,
+};
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};

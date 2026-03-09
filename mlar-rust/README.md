@@ -119,7 +119,7 @@ let lane = Processor::new("matrix_lane");
 assert_eq!(lane.name.as_deref(), Some("matrix_lane"));
 
 // With per-function performance models — ProcPerfModel wraps FuncPerfModel(s)
-// Symbols should align with symbolic MLIR args in compute/matrix_lane.mlir:
+// Symbols should align with symbolic MLIR args in tests/2d_mesh/compute/matrix_lane.mlir:
 // @matmul_f32(%M: loom.sym, %N: loom.sym, %K: loom.sym, ...)
 let matmul_perf = FuncPerfModel {
     symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
@@ -140,9 +140,8 @@ let matmul_perf = FuncPerfModel {
     }],
 };
 let proc_perf = ProcPerfModel {
-    compute: MlirModuleRef::with_functions(
-        "compute/matrix_lane.mlir", &["matmul_f32"]
-    ),
+    compute: MlirModuleRef::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
+        .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse"),
     func_models: vec![matmul_perf],  // one FuncPerfModel per MLIR function
 };
 let lane = Processor::with_perf("matrix_lane", proc_perf);
@@ -214,7 +213,7 @@ The expression language supports the quasi-affine subset: `Var`, `Const`, `Add`,
 Performance models use a **two-level hierarchy** to support different performance characteristics for different functions within the same processor:
 
 - **`FuncPerfModel`** (function-level): declares symbols, global constraints, and scenario-based costs for a single function. This is the atomic performance model unit.
-- **`ProcPerfModel`** (processor-level): wraps a list of `FuncPerfModel`s, one per function in the associated `MlirModuleRef`. The function models are stored in the **same order** as the functions listed in `MlirModuleRef::functions`.
+- **`ProcPerfModel`** (processor-level): wraps a list of `FuncPerfModel`s, one per function in the associated `MlirModuleRef`. The function models are stored in the **same order** as the functions listed in `MlirModuleRef::functions` (typically populated from `MlirModuleRef::from_mlir`).
 
 #### FuncPerfModel
 
@@ -295,17 +294,19 @@ let slow_op = FuncPerfModel {
 };
 
 // compute is inside ProcPerfModel — validate() checks func count alignment
-// In compute/vector_lane.mlir these functions use a leading %L: loom.sym and
+// In tests/2d_mesh/compute/vector_lane.mlir these functions use a leading %L: loom.sym and
 // bind vector tensor dimensions with `loom.bind`.
 let proc_perf = ProcPerfModel {
-    compute: MlirModuleRef::with_functions("compute/vector_lane.mlir",
-        &["vec_add_f32", "vec_exp_f32"]),
+    compute: MlirModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        .expect("tests/2d_mesh/compute/vector_lane.mlir should parse"),
     func_models: vec![fast_op, slow_op],  // same order as compute.functions
 };
 assert!(proc_perf.validate().is_ok());
 
 let lane = Processor::with_perf("vector_lane", proc_perf);
 ```
+
+`MlirModuleRef::from_mlir(...)` records `module_name`, parsed function names, and per-function symbol/tensor bindings from `loom.sym` and `loom.bind`.
 
 Use `proc_perf.validate()` to validate all inner function models **and** check function count alignment against the bound `MlirModuleRef`. Use `proc_perf.get_func_model(i)` to access individual function models.
 

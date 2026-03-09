@@ -145,6 +145,7 @@ pub struct GraphResourceReq {
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphMlirModuleRef {
     pub path: String,
+    pub module_name: Option<String>,
     pub functions: Vec<String>,
 }
 
@@ -478,6 +479,7 @@ fn resource_req_to_json(req: &ResourceReq) -> GraphResourceReq {
 fn mlir_module_to_json(module: &MlirModuleRef) -> GraphMlirModuleRef {
     GraphMlirModuleRef {
         path: module.path.clone(),
+        module_name: module.module_name.clone(),
         functions: module.functions.clone(),
     }
 }
@@ -792,7 +794,9 @@ mod tests {
         GraphMemoryRegion, GraphNodeDetails, architecture_to_graph_json,
         architecture_to_graph_json_value,
     };
-    use crate::arch::{Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr};
+    use crate::arch::{
+        Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr,
+    };
     use crate::math::AffineMap;
 
     #[test]

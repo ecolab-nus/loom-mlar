@@ -147,11 +147,9 @@ impl MemoryRegion {
                     .try_fold(1u64, |acc, s| s.map(|v| acc * v))?;
                 Some(elem_size * multiplier)
             }
-            MemoryRegion::Group { parts, .. } => {
-                parts.iter().try_fold(0u64, |acc, p| {
-                    p.total_size_bytes().map(|s| acc + s)
-                })
-            }
+            MemoryRegion::Group { parts, .. } => parts
+                .iter()
+                .try_fold(0u64, |acc, p| p.total_size_bytes().map(|s| acc + s)),
         }
     }
 

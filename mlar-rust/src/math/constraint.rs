@@ -74,8 +74,8 @@ mod tests {
 
     #[test]
     fn constraint_json_shape_example() {
-        let constraint = ConstraintExpr::parse("in_range(M, 1, 1024)")
-            .expect("constraint should parse");
+        let constraint =
+            ConstraintExpr::parse("in_range(M, 1, 1024)").expect("constraint should parse");
         let json = serde_json::to_value(&constraint).expect("constraint should serialize");
 
         assert_eq!(

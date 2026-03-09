@@ -44,15 +44,29 @@ fn test_2d_mesh_torus_perf_models() {
         .expect("matrix_lane should exist")
         .compute()
         .expect("matrix_lane should have compute");
-    assert_eq!(mat_compute.path, "compute/matrix_lane.mlir");
+    assert_eq!(mat_compute.path, "tests/2d_mesh/compute/matrix_lane.mlir");
+    assert_eq!(mat_compute.module_name.as_deref(), Some("matrix_lane"));
     assert_eq!(mat_compute.functions, vec!["matmul_f32"]);
+    assert_eq!(mat_compute.function_refs.len(), 1);
+    assert_eq!(mat_compute.function_refs[0].name, "matmul_f32");
+    assert_eq!(
+        mat_compute.function_refs[0].symbols,
+        vec![Sym::new("M"), Sym::new("N"), Sym::new("K")]
+    );
+    assert_eq!(
+        mat_compute.function_refs[0].tensor_args,
+        vec!["A", "B", "C"]
+    );
+    assert_eq!(mat_compute.function_refs[0].tensor_symbol_bindings.len(), 3);
 
     let vec_compute = mesh
         .get_processor("vector_lane")
         .expect("vector_lane should exist")
         .compute()
         .expect("vector_lane should have compute");
-    assert_eq!(vec_compute.path, "compute/vector_lane.mlir");
+    assert_eq!(vec_compute.path, "tests/2d_mesh/compute/vector_lane.mlir");
+    assert_eq!(vec_compute.module_name.as_deref(), Some("vector_lane"));
+    assert_eq!(vec_compute.function_refs.len(), 6);
     assert_eq!(vec_compute.functions.len(), 6);
     assert!(vec_compute.functions.contains(&"vec_max_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_exp_f32".to_string()));
@@ -60,6 +74,11 @@ fn test_2d_mesh_torus_perf_models() {
     assert!(vec_compute.functions.contains(&"vec_add_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_mul_f32".to_string()));
     assert!(vec_compute.functions.contains(&"vec_div_f32".to_string()));
+    assert_eq!(vec_compute.function_refs[0].symbols, vec![Sym::new("L")]);
+    assert_eq!(
+        vec_compute.function_refs[0].tensor_symbol_bindings[0].symbols,
+        vec![Sym::new("L")]
+    );
 
     // === Verify per-function perf models for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");

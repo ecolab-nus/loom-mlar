@@ -45,7 +45,8 @@ pub fn matrix_lane() -> ProcessorElem {
     };
 
     let mat_perf = ProcPerfModel {
-        compute: MlirModuleRef::with_functions("compute/matrix_lane.mlir", &["matmul_f32"]),
+        compute: MlirModuleRef::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
+            .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse"),
         func_models: vec![mat_func_perf], // one function: matmul_f32
     };
 
