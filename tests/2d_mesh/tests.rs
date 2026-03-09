@@ -203,5 +203,7 @@ fn test_export_2d_mesh_torus_graph_json() {
     assert!(value["nodes"].as_array().is_some_and(|v| !v.is_empty()));
     assert!(value["edges"].as_array().is_some_and(|v| !v.is_empty()));
 
-    fs::write("2d_mesh_torus.json", &json).expect("Failed to write JSON file");
+    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/2d_mesh/2d_mesh_torus.json");
+    fs::write(out_path, &json).expect("Failed to write JSON file");
 }
