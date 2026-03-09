@@ -4,9 +4,9 @@
 use std::collections::HashMap;
 
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1};
+use nom::bytes::complete::{tag, tag_no_case, take_while, take_while1};
 use nom::character::complete::{i64 as nom_i64, multispace0};
-use nom::combinator::{all_consuming, map, recognize};
+use nom::combinator::{all_consuming, map, opt, recognize};
 use nom::error::ErrorKind;
 use nom::multi::{fold_many0, separated_list0, separated_list1};
 use nom::sequence::delimited;
@@ -177,10 +177,23 @@ fn expr_unary(input: &str) -> IResult<&str, Expr> {
 fn expr_atom(input: &str) -> IResult<&str, Expr> {
     alt((
         map(ws(nom_i64), Expr::Const),
+        expr_if_else,
         expr_ident_or_func,
         delimited(ws(tag("(")), expr_top, ws(tag(")"))),
     ))
     .parse(input)
+}
+
+fn expr_if_else(input: &str) -> IResult<&str, Expr> {
+    let (rest, _) = ws(tag_no_case("if")).parse(input)?;
+    let (rest, _) = ws(tag("(")).parse(rest)?;
+    let (rest, cond) = ws(constraint_top).parse(rest)?;
+    let (rest, _) = ws(tag(")")).parse(rest)?;
+    let (rest, then_expr) = ws(expr_top).parse(rest)?;
+    let (rest, _) = ws(opt(tag(","))).parse(rest)?;
+    let (rest, _) = ws(tag_no_case("else")).parse(rest)?;
+    let (rest, else_expr) = ws(expr_top).parse(rest)?;
+    Ok((rest, Expr::if_then_else(cond, then_expr, else_expr)))
 }
 
 fn expr_ident_or_func(input: &str) -> IResult<&str, Expr> {
@@ -541,6 +554,27 @@ mod tests {
     #[test]
     fn expr_nested_fn() {
         assert_eq!(parse_expr("min(max(1,5),3)").unwrap().eval_const(), Some(3));
+    }
+    #[test]
+    fn expr_if_else_uppercase() {
+        assert_eq!(
+            parse_expr("IF (8 >= 4) 11, else 22").unwrap().eval_const(),
+            Some(11)
+        );
+    }
+    #[test]
+    fn expr_if_else_lowercase_no_comma() {
+        assert_eq!(
+            parse_expr("if (1 < 0) 11 else 22").unwrap().eval_const(),
+            Some(22)
+        );
+    }
+    #[test]
+    fn expr_if_else_symbolic_cond() {
+        assert!(parse_expr("IF (M >= 4) 11, else 22")
+            .unwrap()
+            .eval_const()
+            .is_none());
     }
     #[test]
     fn expr_symbolic() {

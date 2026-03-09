@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
+use super::constraint::ConstraintExpr;
 use super::parse::ParseError;
 use crate::arch::size_dim::Sym;
 
@@ -30,11 +31,20 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Min(Box<Expr>, Box<Expr>),
     Max(Box<Expr>, Box<Expr>),
+    IfElse {
+        cond: Box<ConstraintExpr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+    },
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use super::ConstraintExpr;
     use super::Expr;
+    use crate::arch::size_dim::Sym;
 
     #[test]
     fn expr_json_round_trip() {
@@ -52,6 +62,43 @@ mod tests {
 
         assert_eq!(json, serde_json::json!({"Add":[{"Const":2},{"Sym":"K"}]}));
     }
+
+    #[test]
+    fn expr_if_else_json_shape_example() {
+        let expr = Expr::parse("if (1 < 2) 7 else 9").expect("expression should parse");
+        let json = serde_json::to_value(&expr).expect("expression should serialize");
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "IfElse": {
+                    "cond": {"Lt":[{"Const":1},{"Const":2}]},
+                    "then_expr": {"Const":7},
+                    "else_expr": {"Const":9}
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn expr_if_else_eval_const() {
+        let expr = Expr::if_then_else(
+            ConstraintExpr::parse("8 >= 4").expect("constraint should parse"),
+            Expr::constant(11),
+            Expr::constant(22),
+        );
+        assert_eq!(expr.eval_const(), Some(11));
+    }
+
+    #[test]
+    fn expr_if_else_free_symbols() {
+        let expr = Expr::parse("IF (M >= 256) N + 1, else K + 2").expect("expression should parse");
+        let syms = expr.free_symbols();
+        let expected: HashSet<Sym> = [Sym::new("M"), Sym::new("N"), Sym::new("K")]
+            .into_iter()
+            .collect();
+        assert_eq!(syms, expected);
+    }
 }
 
 impl Expr {
@@ -67,6 +114,7 @@ impl Expr {
     /// atom      := INT | IDENT
     ///            | 'min' '(' expr ',' expr ')'
     ///            | 'max' '(' expr ',' expr ')'
+    ///            | 'if' '(' constraint ')' expr (','?) 'else' expr
     ///            | '(' expr ')'
     /// ```
     ///
@@ -117,6 +165,14 @@ impl Expr {
         Expr::Max(Box::new(a), Box::new(b))
     }
 
+    pub fn if_then_else(cond: ConstraintExpr, then_expr: Expr, else_expr: Expr) -> Self {
+        Expr::IfElse {
+            cond: Box::new(cond),
+            then_expr: Box::new(then_expr),
+            else_expr: Box::new(else_expr),
+        }
+    }
+
     /// Try to evaluate the expression to a concrete i64, if all leaves are constants.
     pub fn eval_const(&self) -> Option<i64> {
         match self {
@@ -135,6 +191,14 @@ impl Expr {
             }
             Expr::Min(a, b) => Some(a.eval_const()?.min(b.eval_const()?)),
             Expr::Max(a, b) => Some(a.eval_const()?.max(b.eval_const()?)),
+            Expr::IfElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => match cond.eval_const()? {
+                true => then_expr.eval_const(),
+                false => else_expr.eval_const(),
+            },
         }
     }
 
@@ -160,6 +224,15 @@ impl Expr {
                 a.collect_symbols(out);
                 b.collect_symbols(out);
             }
+            Expr::IfElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
+                cond.collect_symbols(out);
+                then_expr.collect_symbols(out);
+                else_expr.collect_symbols(out);
+            }
         }
     }
 }
@@ -175,6 +248,11 @@ impl std::fmt::Display for Expr {
             Expr::Div(a, b) => write!(f, "({} / {})", a, b),
             Expr::Min(a, b) => write!(f, "min({}, {})", a, b),
             Expr::Max(a, b) => write!(f, "max({}, {})", a, b),
+            Expr::IfElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => write!(f, "if ({}) {} else {}", cond, then_expr, else_expr),
         }
     }
 }

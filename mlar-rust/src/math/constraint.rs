@@ -168,7 +168,7 @@ impl ConstraintExpr {
         syms
     }
 
-    fn collect_symbols(&self, out: &mut HashSet<Sym>) {
+    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             ConstraintExpr::True | ConstraintExpr::False => {}
             ConstraintExpr::And(cs) | ConstraintExpr::Or(cs) => {
