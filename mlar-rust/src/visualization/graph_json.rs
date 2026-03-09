@@ -1,8 +1,8 @@
 use crate::arch::{
-    AffineExpr, AffineMap, Architecture, ArchitectureLabel, Dimension, Endpoint, Expr,
-    LinkMapRelation, LinkTopology, MemoryRegion, MlirModuleRef, ProcessorElem, Resource,
-    ResourceReq, SharingDomain, SizeExpr,
+    Architecture, ArchitectureLabel, Dimension, Endpoint, LinkMapRelation, LinkTopology,
+    MemoryRegion, MlirModuleRef, ProcessorElem, Resource, ResourceReq, SharingDomain, SizeExpr,
 };
+use crate::math::{AffineExpr, AffineMap, Expr};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -792,9 +792,8 @@ mod tests {
         GraphMemoryRegion, GraphNodeDetails, architecture_to_graph_json,
         architecture_to_graph_json_value,
     };
-    use crate::arch::{
-        AffineMap, Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr,
-    };
+    use crate::arch::{Architecture, Dimension, Link, MemoryBank, MemoryRegion, Processor, SizeExpr};
+    use crate::math::AffineMap;
 
     #[test]
     fn serializes_architecture_graph_schema() {

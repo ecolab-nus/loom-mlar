@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
-use super::constraint::ConstraintExpr;
-use super::expr::Expr;
 use super::processor::MlirModuleRef;
 use super::size_dim::Sym;
+use crate::math::{ConstraintExpr, Expr};
 
 /// A single performance scenario — constraints that select it and cost expressions.
 ///
@@ -30,7 +29,7 @@ pub struct PerfScenario {
 /// A vector lane with one scenario:
 ///
 /// ```
-/// use mlar_rust::core::{FuncPerfModel, PerfScenario, TimeCostExpr, ConstraintExpr, Expr, Sym};
+/// use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, Sym, TimeCostExpr};
 ///
 /// let model = FuncPerfModel {
 ///     symbols: vec![Sym::new("N")],
@@ -74,9 +73,9 @@ pub struct FuncPerfModel {
 /// # Example
 ///
 /// ```
-/// use mlar_rust::core::{
-///     FuncPerfModel, ProcPerfModel, PerfScenario, TimeCostExpr,
-///     ConstraintExpr, Expr, Sym, MlirModuleRef,
+/// use mlar_rust::{
+///     ConstraintExpr, Expr, FuncPerfModel, MlirModuleRef, PerfScenario, ProcPerfModel, Sym,
+///     TimeCostExpr,
 /// };
 ///
 /// let fast = FuncPerfModel {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::expr::Expr;
 use super::parse::ParseError;
-use super::size_dim::Sym;
+use crate::arch::size_dim::Sym;
 
 /// Constraint expression — composable, evaluable predicate for performance model applicability.
 ///
@@ -16,7 +16,7 @@ use super::size_dim::Sym;
 /// Constraints can be parsed from human-readable strings:
 ///
 /// ```
-/// use mlar_rust::core::ConstraintExpr;
+/// use mlar_rust::math::ConstraintExpr;
 ///
 /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
 /// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
@@ -75,7 +75,7 @@ impl ConstraintExpr {
     /// # Examples
     ///
     /// ```
-    /// use mlar_rust::core::ConstraintExpr;
+    /// use mlar_rust::math::ConstraintExpr;
     ///
     /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
     /// let c = ConstraintExpr::parse("divisible(M, 16) && in_range(N, 1, 1024)").unwrap();

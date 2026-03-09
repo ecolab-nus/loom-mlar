@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::parse::ParseError;
-use super::size_dim::Sym;
+use crate::arch::size_dim::Sym;
 
 /// General symbolic expression for cost modeling (latency, throughput, bandwidth, etc.).
 ///
@@ -13,7 +13,7 @@ use super::size_dim::Sym;
 /// Expressions can be parsed from human-readable strings:
 ///
 /// ```
-/// use mlar_rust::core::Expr;
+/// use mlar_rust::math::Expr;
 ///
 /// let e = Expr::parse("M * N / 64").unwrap();
 /// let e: Expr = "min(M, 1024) + N".parse().unwrap();
@@ -49,7 +49,7 @@ impl Expr {
     /// # Examples
     ///
     /// ```
-    /// use mlar_rust::core::Expr;
+    /// use mlar_rust::math::Expr;
     ///
     /// let e = Expr::parse("M * N / 64").unwrap();
     /// let e = Expr::parse("min(M, 1024) + N").unwrap();

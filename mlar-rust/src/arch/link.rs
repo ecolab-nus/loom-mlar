@@ -1,10 +1,8 @@
-use super::affine::{AffineExpr, AffineMap};
-use super::constraint::ConstraintExpr;
-use super::expr::Expr;
 use super::memory::MemoryRegion;
 use super::processor::ProcessorElem;
 use super::resource::Resource;
 use super::size_dim::Dimension;
+use crate::math::{AffineExpr, AffineMap, ConstraintExpr, Expr};
 use std::collections::HashSet;
 
 /// An endpoint of a Link — holds the actual memory region or processor.
@@ -376,7 +374,8 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{Link, LinkMapRelation, LinkTopology};
-    use crate::arch::{AffineExpr, AffineMap, Dimension, MemoryBank, MemoryRegion, SizeExpr};
+    use crate::arch::{Dimension, MemoryBank, MemoryRegion, SizeExpr};
+    use crate::math::{AffineExpr, AffineMap};
 
     #[test]
     fn classifies_one_to_one_map() {
