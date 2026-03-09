@@ -42,6 +42,7 @@ fn test_expr_nested_if_then_else_with_nested_constraints_and_exprs() {
     .expect("expression should parse");
 
     let json = serde_json::to_string(&e).expect("expression should serialize");
+    println!("json: {}", json);
     let decoded: Expr = serde_json::from_str(&json).expect("expression should deserialize");
     assert_eq!(decoded.to_string(), e.to_string());
     let shape = serde_json::to_value(&e).expect("expression should serialize to value");
