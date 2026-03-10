@@ -5,7 +5,13 @@ Prototype web GUI for MLAR architectures using Vite + React + `@xyflow/react`.
 ## What It Renders
 
 The app expects a JSON document in the `mlar.arch-graph.v1` format exported by `mlar-rust`.
-It validates the payload shape, computes a simple layered layout, and renders graph nodes/links in React Flow.
+It validates payload shape, computes a layered layout, and renders graph nodes/links in React Flow.
+
+Processor nodes include functionality metadata exported from Rust:
+
+- functionality module name
+- functionality source path and MLIR module name (if present)
+- operation list (`ops`)
 
 ## Run
 

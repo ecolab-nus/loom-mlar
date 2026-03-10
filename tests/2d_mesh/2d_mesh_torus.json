@@ -130,10 +130,11 @@
           "elem": {
             "kind": "unit",
             "name": "matrix_lane",
-            "compute": {
-              "path": "tests/2d_mesh/compute/matrix_lane.mlir",
-              "module_name": "matrix_lane",
-              "functions": [
+            "functionality": {
+              "name": "matrix_lane",
+              "source_path": "tests/2d_mesh/compute/matrix_lane.mlir",
+              "source_mlir_module_name": "matrix_lane",
+              "ops": [
                 "matmul_f32"
               ]
             },
@@ -188,10 +189,11 @@
           "elem": {
             "kind": "unit",
             "name": "vector_lane",
-            "compute": {
-              "path": "tests/2d_mesh/compute/vector_lane.mlir",
-              "module_name": "vector_lane",
-              "functions": [
+            "functionality": {
+              "name": "vector_lane",
+              "source_path": "tests/2d_mesh/compute/vector_lane.mlir",
+              "source_mlir_module_name": "vector_lane",
+              "ops": [
                 "vec_max_f32",
                 "vec_exp_f32",
                 "vec_sum_f32",
@@ -476,10 +478,11 @@
           "element": {
             "kind": "unit",
             "name": "matrix_lane",
-            "compute": {
-              "path": "tests/2d_mesh/compute/matrix_lane.mlir",
-              "module_name": "matrix_lane",
-              "functions": [
+            "functionality": {
+              "name": "matrix_lane",
+              "source_path": "tests/2d_mesh/compute/matrix_lane.mlir",
+              "source_mlir_module_name": "matrix_lane",
+              "ops": [
                 "matmul_f32"
               ]
             },
@@ -507,10 +510,11 @@
           "element": {
             "kind": "unit",
             "name": "vector_lane",
-            "compute": {
-              "path": "tests/2d_mesh/compute/vector_lane.mlir",
-              "module_name": "vector_lane",
-              "functions": [
+            "functionality": {
+              "name": "vector_lane",
+              "source_path": "tests/2d_mesh/compute/vector_lane.mlir",
+              "source_mlir_module_name": "vector_lane",
+              "ops": [
                 "vec_max_f32",
                 "vec_exp_f32",
                 "vec_sum_f32",

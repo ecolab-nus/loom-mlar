@@ -7,13 +7,13 @@ pub mod resource;
 pub mod size_dim;
 
 // Re-export commonly used types
+pub use crate::mlir::{
+    MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, MlirTensorSymbolBinding,
+};
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
-pub use perf::{FuncPerfModel, PerfScenario, ProcPerfModel, TimeCostExpr};
-pub use processor::{
-    MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, MlirTensorSymbolBinding, Processor,
-    Processors,
-};
+pub use perf::{FuncPerfModel, PerfScenario, TimeCostExpr};
+pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};

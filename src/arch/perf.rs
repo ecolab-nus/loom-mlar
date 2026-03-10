@@ -1,14 +1,10 @@
 use std::collections::HashSet;
 
-use super::processor::MlirModuleRef;
 use super::size_dim::Sym;
 use crate::math::{ConstraintExpr, Expr};
+use crate::schedule::Op;
 
 /// A single performance scenario — constraints that select it and cost expressions.
-///
-/// Scenarios are composed into a [`FuncPerfModel`] which shares a single set of
-/// symbols across all scenarios. A scenario is selected when its `constraints`
-/// are satisfied; the corresponding `time_cost` gives the cost expressions.
 #[derive(Clone, Debug)]
 pub struct PerfScenario {
     /// Constraints under which this scenario applies.
@@ -19,34 +15,8 @@ pub struct PerfScenario {
 
 /// Per-function performance model — explicit symbol declarations and scenario-based costs.
 ///
-/// A `FuncPerfModel` declares the symbols it depends on (e.g. vector length N)
-/// and is composed of a set of [`PerfScenario`]s. All scenarios share the same
-/// `symbols`. Each scenario is selected based on its constraints, and provides
-/// its own cost expressions.
-///
-/// # Example
-///
-/// A vector lane with one scenario:
-///
-/// ```
-/// use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, Sym, TimeCostExpr};
-///
-/// let model = FuncPerfModel {
-///     symbols: vec![Sym::new("N")],
-///     constraints: ConstraintExpr::True,
-///     scenarios: vec![PerfScenario {
-///         constraints: ConstraintExpr::Divisible {
-///             x: Expr::sym("N"),
-///             by: Expr::Const(32),
-///         },
-///         time_cost: TimeCostExpr {
-///             fixed_latency: Expr::Const(2),
-///             throughput: Expr::div(Expr::sym("N"), Expr::Const(32)),
-///         },
-///     }],
-/// };
-/// assert!(model.validate().is_ok());
-/// ```
+/// This model is intentionally independent from MLIR and operation metadata.
+/// It can be linked with an [`Op`] later (see `validate_for_op`).
 #[derive(Clone, Debug)]
 pub struct FuncPerfModel {
     /// The symbols this model depends on. All symbols used in `constraints`,
@@ -61,68 +31,9 @@ pub struct FuncPerfModel {
     pub scenarios: Vec<PerfScenario>,
 }
 
-/// Processor-level performance model — per-function models bound to an MLIR module.
-///
-/// A `ProcPerfModel` owns an [`MlirModuleRef`] and a list of [`FuncPerfModel`]s,
-/// one for each function in the MLIR module. The models are stored in the
-/// **same order** as the functions listed in `MlirModuleRef::functions`.
-///
-/// `validate()` checks both that all function-level symbols are declared **and**
-/// that `func_models.len() == compute.functions.len()`.
-///
-/// # Example
-///
-/// ```
-/// use mlar_rust::{
-///     ConstraintExpr, Expr, FuncPerfModel, MlirModuleRef, PerfScenario, ProcPerfModel, Sym,
-///     TimeCostExpr,
-/// };
-///
-/// let fast = FuncPerfModel {
-///     symbols: vec![],
-///     constraints: ConstraintExpr::True,
-///     scenarios: vec![PerfScenario {
-///         constraints: ConstraintExpr::True,
-///         time_cost: TimeCostExpr {
-///             fixed_latency: Expr::Const(1),
-///             throughput: Expr::Const(1024),
-///         },
-///     }],
-/// };
-///
-/// let slow = FuncPerfModel {
-///     symbols: vec![],
-///     constraints: ConstraintExpr::True,
-///     scenarios: vec![PerfScenario {
-///         constraints: ConstraintExpr::True,
-///         time_cost: TimeCostExpr {
-///             fixed_latency: Expr::Const(16),
-///             throughput: Expr::Const(128),
-///         },
-///     }],
-/// };
-///
-/// let proc_perf = ProcPerfModel {
-///     compute: MlirModuleRef::with_functions("compute/ops.mlir", &["fast_op", "slow_op"]),
-///     func_models: vec![fast, slow],
-/// };
-/// assert!(proc_perf.validate().is_ok());
-/// ```
-#[derive(Clone, Debug)]
-pub struct ProcPerfModel {
-    /// The MLIR module this processor-level model is bound to.
-    pub compute: MlirModuleRef,
-    /// Per-function performance models, in the same order as
-    /// the functions listed in `compute.functions`.
-    pub func_models: Vec<FuncPerfModel>,
-}
-
 /// Cost expression — fixed startup latency and throughput-dependent latency.
 ///
 /// Total latency = `fixed_latency + throughput_latency`.
-///
-/// - `fixed_latency`: constant overhead (pipeline fill, setup), independent of data volume.
-/// - `throughput_latency`: scales with workload size (e.g. `M * N * K / 1024`).
 #[derive(Clone, Debug)]
 pub struct TimeCostExpr {
     /// Fixed startup latency (cycles), independent of data volume.
@@ -144,30 +55,20 @@ impl FuncPerfModel {
     /// Validate that all symbols in global `constraints`, scenario `constraints`,
     /// and `time_cost` are declared in `symbols`.
     ///
-    /// Returns `Ok(())` if valid, or `Err(undeclared)` with the set of undeclared symbols.
+    /// Returns `Ok(())` if valid, or `Err(undeclared)` with undeclared symbols.
     pub fn validate(&self) -> Result<(), Vec<Sym>> {
-        let declared: HashSet<Sym> = self.symbols.iter().cloned().collect();
-
-        let mut used = HashSet::new();
-        // Collect symbols from global constraints
-        used.extend(self.constraints.free_symbols());
-        // Collect symbols from each scenario
-        for scenario in &self.scenarios {
-            scenario.time_cost.fixed_latency.collect_symbols(&mut used);
-            scenario.time_cost.throughput.collect_symbols(&mut used);
-            let constraint_syms = scenario.constraints.free_symbols();
-            used.extend(constraint_syms);
-        }
-
-        let undeclared: Vec<Sym> = used.difference(&declared).cloned().collect();
-        if undeclared.is_empty() {
-            Ok(())
-        } else {
-            Err(undeclared)
-        }
+        self.validate_with_extra_symbols(HashSet::new())
     }
 
-    /// Total latency for a specific scenario: fixed_latency + throughput_latency.
+    /// Validate this model when linked to a specific operation interface.
+    ///
+    /// In addition to model-local symbol usage, this checks symbols referenced
+    /// by `op` input/output symbolic shapes.
+    pub fn validate_for_op(&self, op: &Op) -> Result<(), Vec<Sym>> {
+        self.validate_with_extra_symbols(op.shape_symbols())
+    }
+
+    /// Total latency for a specific scenario: fixed + throughput term.
     ///
     /// Returns `None` if `scenario` is out of range.
     pub fn total_latency_for(&self, scenario: usize) -> Option<Expr> {
@@ -183,67 +84,30 @@ impl FuncPerfModel {
     pub fn num_scenarios(&self) -> usize {
         self.scenarios.len()
     }
-}
 
-impl ProcPerfModel {
-    /// Create a trivial processor-level perf model with an empty MLIR module ref.
-    pub fn trivial() -> Self {
-        ProcPerfModel {
-            compute: MlirModuleRef::new(""),
-            func_models: vec![],
-        }
-    }
+    fn validate_with_extra_symbols(&self, mut used: HashSet<Sym>) -> Result<(), Vec<Sym>> {
+        let declared: HashSet<Sym> = self.symbols.iter().cloned().collect();
 
-    /// Validate the processor-level performance model.
-    ///
-    /// Checks:
-    /// 1. `func_models.len() == compute.functions.len()` (count alignment)
-    /// 2. Each `FuncPerfModel` has all its symbols declared
-    ///
-    /// Returns `Ok(())` if valid, or `Err(message)` describing the first error found.
-    pub fn validate(&self) -> Result<(), String> {
-        // Check function count alignment
-        let expected = self.compute.functions.len();
-        let actual = self.func_models.len();
-        if actual != expected {
-            return Err(format!(
-                "ProcPerfModel has {} function models but MlirModuleRef '{}' has {} functions",
-                actual, self.compute.path, expected,
-            ));
+        used.extend(self.constraints.free_symbols());
+        for scenario in &self.scenarios {
+            scenario.time_cost.fixed_latency.collect_symbols(&mut used);
+            scenario.time_cost.throughput.collect_symbols(&mut used);
+            used.extend(scenario.constraints.free_symbols());
         }
 
-        // Validate each function model
-        for (i, fm) in self.func_models.iter().enumerate() {
-            if let Err(undeclared) = fm.validate() {
-                let func_name = self
-                    .compute
-                    .functions
-                    .get(i)
-                    .map(|s| s.as_str())
-                    .unwrap_or("<unknown>");
-                return Err(format!(
-                    "FuncPerfModel for '{}' (index {}) has undeclared symbols: {:?}",
-                    func_name, i, undeclared,
-                ));
-            }
+        let undeclared: Vec<Sym> = used.difference(&declared).cloned().collect();
+        if undeclared.is_empty() {
+            Ok(())
+        } else {
+            Err(undeclared)
         }
-        Ok(())
-    }
-
-    /// Number of function-level models.
-    pub fn num_functions(&self) -> usize {
-        self.func_models.len()
-    }
-
-    /// Get a function-level model by index.
-    pub fn get_func_model(&self, index: usize) -> Option<&FuncPerfModel> {
-        self.func_models.get(index)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schedule::{Op, OpShape};
 
     #[test]
     fn test_trivial_func_model() {
@@ -252,29 +116,6 @@ mod tests {
         assert!(m.validate().is_ok());
         assert_eq!(m.num_scenarios(), 0);
         assert!(m.total_latency_for(0).is_none());
-    }
-
-    #[test]
-    fn test_trivial_proc_model() {
-        let m = ProcPerfModel::trivial();
-        assert_eq!(m.num_functions(), 0);
-        // trivial: 0 func_models, 0 compute.functions → valid
-        assert!(m.validate().is_ok());
-        assert!(m.get_func_model(0).is_none());
-    }
-
-    #[test]
-    fn test_proc_perf_model_from_mlir_module_ref() {
-        let compute = MlirModuleRef::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
-            .expect("matrix_lane.mlir should parse");
-        assert_eq!(compute.module_name.as_deref(), Some("matrix_lane"));
-        assert_eq!(compute.functions, vec!["matmul_f32"]);
-
-        let proc = ProcPerfModel {
-            func_models: vec![FuncPerfModel::trivial()],
-            compute,
-        };
-        assert!(proc.validate().is_ok());
     }
 
     #[test]
@@ -302,7 +143,6 @@ mod tests {
 
     #[test]
     fn test_validate_undeclared() {
-        // Declare M and N but use K in cost — should fail.
         let model = FuncPerfModel {
             symbols: vec![Sym::new("M"), Sym::new("N")],
             constraints: ConstraintExpr::True,
@@ -335,132 +175,25 @@ mod tests {
                 },
             }],
         };
-        // Can't eval_const because N is symbolic, but structure should be Add(8, N)
         let total = model.total_latency_for(0).unwrap();
         assert!(total.eval_const().is_none());
-
-        // Out-of-range returns None
         assert!(model.total_latency_for(1).is_none());
-
-        // Trivial model has no scenarios
-        let trivial = FuncPerfModel::trivial();
-        assert!(trivial.total_latency_for(0).is_none());
     }
 
     #[test]
-    fn test_validate_undeclared_in_constraints() {
-        // Symbol X used in constraints but not declared
+    fn test_validate_with_op_symbol_requirements() {
         let model = FuncPerfModel {
-            symbols: vec![Sym::new("M")],
+            symbols: vec![],
             constraints: ConstraintExpr::True,
-            scenarios: vec![PerfScenario {
-                constraints: ConstraintExpr::Ge(Expr::sym("X"), Expr::Const(64)),
-                time_cost: TimeCostExpr {
-                    fixed_latency: Expr::Const(0),
-                    throughput: Expr::sym("M"),
-                },
-            }],
+            scenarios: vec![],
         };
-        let err = model.validate().unwrap_err();
-        assert!(err.contains(&Sym::new("X")));
-    }
+        let op = Op::new(
+            "vec_add_f32",
+            vec![OpShape::new("a", vec![Sym::new("L")])],
+            vec![OpShape::new("out", vec![Sym::new("L")])],
+        );
 
-    #[test]
-    fn test_multi_scenario() {
-        let model = FuncPerfModel {
-            symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
-            constraints: ConstraintExpr::True,
-            scenarios: vec![
-                // Scenario 0: large inputs
-                PerfScenario {
-                    constraints: ConstraintExpr::And(vec![
-                        ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(128)),
-                        ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
-                    ]),
-                    time_cost: TimeCostExpr {
-                        fixed_latency: Expr::Const(8),
-                        throughput: Expr::div(
-                            Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                            Expr::Const(1024),
-                        ),
-                    },
-                },
-                // Scenario 1: small inputs
-                PerfScenario {
-                    constraints: ConstraintExpr::And(vec![
-                        ConstraintExpr::Lt(Expr::sym("M"), Expr::Const(128)),
-                        ConstraintExpr::Lt(Expr::sym("N"), Expr::Const(128)),
-                    ]),
-                    time_cost: TimeCostExpr {
-                        fixed_latency: Expr::Const(4),
-                        throughput: Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                    },
-                },
-            ],
-        };
-        assert!(model.validate().is_ok());
-        assert_eq!(model.num_scenarios(), 2);
-
-        // Both scenarios return Some
-        assert!(model.total_latency_for(0).is_some());
-        assert!(model.total_latency_for(1).is_some());
-        // Out of range
-        assert!(model.total_latency_for(2).is_none());
-    }
-
-    #[test]
-    fn test_proc_perf_model_validate() {
-        let good = ProcPerfModel {
-            compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
-            func_models: vec![FuncPerfModel {
-                symbols: vec![Sym::new("N")],
-                constraints: ConstraintExpr::True,
-                scenarios: vec![PerfScenario {
-                    constraints: ConstraintExpr::True,
-                    time_cost: TimeCostExpr {
-                        fixed_latency: Expr::Const(1),
-                        throughput: Expr::sym("N"),
-                    },
-                }],
-            }],
-        };
-        assert!(good.validate().is_ok());
-
-        // Model with undeclared symbol
-        let bad = ProcPerfModel {
-            compute: MlirModuleRef::with_functions("test.mlir", &["f1"]),
-            func_models: vec![FuncPerfModel {
-                symbols: vec![],
-                constraints: ConstraintExpr::True,
-                scenarios: vec![PerfScenario {
-                    constraints: ConstraintExpr::True,
-                    time_cost: TimeCostExpr {
-                        fixed_latency: Expr::Const(0),
-                        throughput: Expr::sym("X"),
-                    },
-                }],
-            }],
-        };
-        let err = bad.validate().unwrap_err();
-        assert!(err.contains("undeclared symbols"));
-    }
-
-    #[test]
-    fn test_proc_perf_model_count_mismatch() {
-        // 2 functions but only 1 model → should fail
-        let mismatch = ProcPerfModel {
-            compute: MlirModuleRef::with_functions("test.mlir", &["f1", "f2"]),
-            func_models: vec![FuncPerfModel::trivial()],
-        };
-        let err = mismatch.validate().unwrap_err();
-        assert!(err.contains("1 function models"));
-        assert!(err.contains("2 functions"));
-
-        // Matching count → valid
-        let matching = ProcPerfModel {
-            compute: MlirModuleRef::with_functions("test.mlir", &["f1", "f2"]),
-            func_models: vec![FuncPerfModel::trivial(), FuncPerfModel::trivial()],
-        };
-        assert!(matching.validate().is_ok());
+        let err = model.validate_for_op(&op).unwrap_err();
+        assert_eq!(err, vec![Sym::new("L")]);
     }
 }

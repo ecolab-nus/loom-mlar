@@ -8,6 +8,9 @@ use crate::memory::l1;
 /// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
 /// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
 pub fn matrix_lane() -> Processors {
+    let functionality = Module::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
+        .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse");
+
     let mat_func_perf = FuncPerfModel {
         symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
         constraints: ConstraintExpr::And(vec![
@@ -16,7 +19,6 @@ pub fn matrix_lane() -> Processors {
             ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(32)),
         ]),
         scenarios: vec![
-            // Scenario 1: large M*N (≥ 8192)
             PerfScenario {
                 constraints: ConstraintExpr::Ge(
                     Expr::mul(Expr::sym("M"), Expr::sym("N")),
@@ -27,7 +29,6 @@ pub fn matrix_lane() -> Processors {
                     throughput: Expr::Const(1024),
                 },
             },
-            // Scenario 2: small M*N (≤ 8192)
             PerfScenario {
                 constraints: ConstraintExpr::Le(
                     Expr::mul(Expr::sym("M"), Expr::sym("N")),
@@ -44,13 +45,8 @@ pub fn matrix_lane() -> Processors {
         ],
     };
 
-    let mat_perf = ProcPerfModel {
-        compute: MlirModuleRef::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
-            .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse"),
-        func_models: vec![mat_func_perf], // one function: matmul_f32
-    };
-
-    Processor::with_perf("matrix_lane", mat_perf)
+    Processor::from_module("matrix_lane", functionality, vec![mat_func_perf])
+        .expect("matrix_lane processor should link functionality and perf")
         .into_elem()
         .with_resources(vec![ResourceReq::new(l1().as_resource(), 4)])
 }

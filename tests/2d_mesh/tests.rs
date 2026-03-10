@@ -10,20 +10,22 @@ fn test_2d_mesh_torus_perf_models() {
     let mesh = scaled_mesh_torus();
     assert_eq!(mesh.total_processing_elements(), Some(128));
 
-    // === Verify perf models and compute semantics survive scaling ===
+    // === Verify processor functionality + per-function models survive scaling ===
     for proc in &mesh.processors {
         match proc {
             Processors::Array { elem, .. } => match elem.as_ref() {
                 Processors::Unit(p) => {
-                    let perf = p.perf.as_ref().expect("perf model should be preserved");
                     assert!(
-                        perf.validate().is_ok(),
-                        "perf model on {:?} should validate after scaling (including function count)",
+                        p.validate().is_ok(),
+                        "processor {:?} should validate after scaling",
                         p.name
                     );
                     assert!(
-                        perf.compute.path.ends_with(".mlir"),
-                        "compute path for {:?} should be an MLIR file",
+                        p.functionality
+                            .source
+                            .as_ref()
+                            .is_some_and(|s| s.path.ends_with(".mlir")),
+                        "functionality source for {:?} should point to MLIR",
                         p.name
                     );
                     assert!(
@@ -38,86 +40,85 @@ fn test_2d_mesh_torus_perf_models() {
         }
     }
 
-    // === Verify specific compute references ===
-    let mat_compute = mesh
+    // === Verify matrix-lane functionality extracted from MLIR ===
+    let mat_module = mesh
         .get_processor("matrix_lane")
         .expect("matrix_lane should exist")
-        .compute()
-        .expect("matrix_lane should have compute");
-    assert_eq!(mat_compute.path, "tests/2d_mesh/compute/matrix_lane.mlir");
-    assert_eq!(mat_compute.module_name.as_deref(), Some("matrix_lane"));
-    assert_eq!(mat_compute.functions, vec!["matmul_f32"]);
-    assert_eq!(mat_compute.function_refs.len(), 1);
-    assert_eq!(mat_compute.function_refs[0].name, "matmul_f32");
+        .functionality()
+        .expect("matrix_lane should have functionality");
     assert_eq!(
-        mat_compute.function_refs[0].symbols,
-        vec![Sym::new("M"), Sym::new("N"), Sym::new("K")]
+        mat_module.source.as_ref().map(|s| s.path.as_str()),
+        Some("tests/2d_mesh/compute/matrix_lane.mlir")
+    );
+    assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
+    assert_eq!(mat_module.ops.len(), 1);
+    assert_eq!(mat_module.ops[0].name, "matmul_f32");
+    assert_eq!(
+        mat_module.ops[0].input_shapes,
+        vec![
+            OpShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
+            OpShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
+        ]
     );
     assert_eq!(
-        mat_compute.function_refs[0].tensor_args,
-        vec!["A", "B", "C"]
+        mat_module.ops[0].output_shapes,
+        vec![OpShape::new("C", vec![Sym::new("M"), Sym::new("N")])]
     );
-    assert_eq!(mat_compute.function_refs[0].tensor_symbol_bindings.len(), 3);
 
-    let vec_compute = mesh
+    // === Verify vector-lane functionality extracted from MLIR ===
+    let vec_module = mesh
         .get_processor("vector_lane")
         .expect("vector_lane should exist")
-        .compute()
-        .expect("vector_lane should have compute");
-    assert_eq!(vec_compute.path, "tests/2d_mesh/compute/vector_lane.mlir");
-    assert_eq!(vec_compute.module_name.as_deref(), Some("vector_lane"));
-    assert_eq!(vec_compute.function_refs.len(), 6);
-    assert_eq!(vec_compute.functions.len(), 6);
-    assert!(vec_compute.functions.contains(&"vec_max_f32".to_string()));
-    assert!(vec_compute.functions.contains(&"vec_exp_f32".to_string()));
-    assert!(vec_compute.functions.contains(&"vec_sum_f32".to_string()));
-    assert!(vec_compute.functions.contains(&"vec_add_f32".to_string()));
-    assert!(vec_compute.functions.contains(&"vec_mul_f32".to_string()));
-    assert!(vec_compute.functions.contains(&"vec_div_f32".to_string()));
-    assert_eq!(vec_compute.function_refs[0].symbols, vec![Sym::new("L")]);
+        .functionality()
+        .expect("vector_lane should have functionality");
     assert_eq!(
-        vec_compute.function_refs[0].tensor_symbol_bindings[0].symbols,
-        vec![Sym::new("L")]
+        vec_module.source.as_ref().map(|s| s.path.as_str()),
+        Some("tests/2d_mesh/compute/vector_lane.mlir")
     );
+    assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
+    assert_eq!(vec_module.ops.len(), 6);
+    let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
+    assert!(op_names.contains(&"vec_max_f32"));
+    assert!(op_names.contains(&"vec_exp_f32"));
+    assert!(op_names.contains(&"vec_sum_f32"));
+    assert!(op_names.contains(&"vec_add_f32"));
+    assert!(op_names.contains(&"vec_mul_f32"));
+    assert!(op_names.contains(&"vec_div_f32"));
 
-    // === Verify per-function perf models for vector lane ===
+    // === Verify per-function perf bindings for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
         Processors::Array { elem, .. } => match elem.as_ref() {
             Processors::Unit(p) => {
-                let proc_perf = p.perf.as_ref().expect("perf model");
-                assert_eq!(proc_perf.num_functions(), 6);
+                assert_eq!(p.functions.len(), 6);
 
-                // vec_max_f32 (index 0): throughput=1024, latency=1
-                let fast_model = proc_perf.get_func_model(0).unwrap();
+                let fast = p.get_function("vec_max_f32").expect("vec_max_f32 binding");
                 assert_eq!(
-                    fast_model.scenarios[0].time_cost.throughput.eval_const(),
+                    fast.perf.scenarios[0].time_cost.throughput.eval_const(),
                     Some(1024)
                 );
                 assert_eq!(
-                    fast_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    fast.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
                     Some(1)
                 );
 
-                // vec_exp_f32 (index 1): throughput=128, latency=16
-                let exp_model = proc_perf.get_func_model(1).unwrap();
+                let exp = p.get_function("vec_exp_f32").expect("vec_exp_f32 binding");
                 assert_eq!(
-                    exp_model.scenarios[0].time_cost.throughput.eval_const(),
+                    exp.perf.scenarios[0].time_cost.throughput.eval_const(),
                     Some(128)
                 );
                 assert_eq!(
-                    exp_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    exp.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
                     Some(16)
                 );
 
-                // vec_div_f32 (index 5): throughput=256, latency=8
-                let div_model = proc_perf.get_func_model(5).unwrap();
+                let div = p.get_function("vec_div_f32").expect("vec_div_f32 binding");
                 assert_eq!(
-                    div_model.scenarios[0].time_cost.throughput.eval_const(),
+                    div.perf.scenarios[0].time_cost.throughput.eval_const(),
                     Some(256)
                 );
                 assert_eq!(
-                    div_model.scenarios[0].time_cost.fixed_latency.eval_const(),
+                    div.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
                     Some(8)
                 );
             }
@@ -203,7 +204,7 @@ fn test_export_2d_mesh_torus_graph_json() {
     assert!(value["nodes"].as_array().is_some_and(|v| !v.is_empty()));
     assert!(value["edges"].as_array().is_some_and(|v| !v.is_empty()));
 
-    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/2d_mesh/2d_mesh_torus.json");
+    let out_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.json");
     fs::write(out_path, &json).expect("Failed to write JSON file");
 }

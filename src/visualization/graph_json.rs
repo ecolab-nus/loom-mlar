@@ -1,8 +1,9 @@
 use crate::arch::{
     Architecture, ArchitectureLabel, Dimension, Endpoint, LinkMapRelation, LinkTopology,
-    MemoryRegion, MlirModuleRef, Processors, Resource, ResourceReq, SharingDomain, SizeExpr,
+    MemoryRegion, Processors, Resource, ResourceReq, SharingDomain, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
+use crate::schedule::Module;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -143,10 +144,11 @@ pub struct GraphResourceReq {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GraphMlirModuleRef {
-    pub path: String,
-    pub module_name: Option<String>,
-    pub functions: Vec<String>,
+pub struct GraphFunctionalityModule {
+    pub name: Option<String>,
+    pub source_path: Option<String>,
+    pub source_mlir_module_name: Option<String>,
+    pub ops: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -154,7 +156,7 @@ pub struct GraphMlirModuleRef {
 pub enum GraphProcessors {
     Unit {
         name: Option<String>,
-        compute: Option<GraphMlirModuleRef>,
+        functionality: GraphFunctionalityModule,
         resources: Vec<GraphResourceReq>,
     },
     Array {
@@ -476,11 +478,15 @@ fn resource_req_to_json(req: &ResourceReq) -> GraphResourceReq {
     }
 }
 
-fn mlir_module_to_json(module: &MlirModuleRef) -> GraphMlirModuleRef {
-    GraphMlirModuleRef {
-        path: module.path.clone(),
-        module_name: module.module_name.clone(),
-        functions: module.functions.clone(),
+fn functionality_to_json(module: &Module) -> GraphFunctionalityModule {
+    GraphFunctionalityModule {
+        name: module.name.clone(),
+        source_path: module.source.as_ref().map(|s| s.path.clone()),
+        source_mlir_module_name: module
+            .source
+            .as_ref()
+            .and_then(|s| s.mlir_module_name.clone()),
+        ops: module.ops.iter().map(|op| op.name.clone()).collect(),
     }
 }
 
@@ -594,7 +600,7 @@ fn processors_to_json(elem: &Processors) -> GraphProcessors {
     match elem {
         Processors::Unit(proc) => GraphProcessors::Unit {
             name: proc.name.clone(),
-            compute: proc.compute().map(mlir_module_to_json),
+            functionality: functionality_to_json(&proc.functionality),
             resources: proc.resources.iter().map(resource_req_to_json).collect(),
         },
         Processors::Array { name, dims, elem } => GraphProcessors::Array {
