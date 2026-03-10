@@ -16,17 +16,25 @@ A Rust implementation of the Multi-Level Architecture Representation (MLAR) for 
 ```
 src/
 ├── lib.rs                      # Public API and re-exports
-├── core/
-│   ├── mod.rs                  # Core module re-exports
+├── arch/
+│   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # DimName, Sym, SizeExpr, Dimension
-│   ├── expr.rs                 # General symbolic Expr (for cost modeling)
-│   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
 │   ├── perf.rs                 # FuncPerfModel, ProcPerfModel, TimeCostExpr
-│   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
 │   ├── memory.rs               # MemoryBank, MemoryRegion (Bank/Replicated/Group)
 │   ├── processor.rs            # Processor, Processors (Unit/Array/Set)
-│   └── link.rs                 # Link, Endpoint, SharingDomain
+│   ├── link.rs                 # Link, Endpoint, SharingDomain
+│   ├── architecture.rs         # Architecture, ArchitectureBuilder
+│   └── resource.rs             # Resource and resource requests
+├── math/
+│   ├── mod.rs                  # Math-domain re-exports
+│   ├── expr.rs                 # General symbolic Expr (for cost modeling)
+│   ├── constraint.rs           # ConstraintExpr (for perf model applicability)
+│   ├── affine.rs               # AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector
+│   └── parse.rs                # Parsers for symbolic and affine syntax
+├── schedule/
+│   └── mod.rs                  # Scheduling namespace
 └── visualization/
+    ├── mod.rs                  # Visualization re-exports
     └── graph_json.rs           # JSON schema export for web visualization
 ```
 
@@ -490,7 +498,7 @@ This produces the hierarchy: DRAM[4] -> L2[4] -> L1[32] -> RF[32] -> MatLane[32]
 ## Visualization
 
 The Rust side exports architecture JSON consumed by the React web app in
-`../mlar-visualization-web/` (Vite + `@xyflow/react`).
+`tools/web-visualization/` (Vite + `@xyflow/react`).
 
 Export architecture graphs as JSON for the web UI:
 
@@ -503,41 +511,41 @@ Generate a ready-to-render example payload:
 
 ```bash
 cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cp 2d_mesh_torus.json ../mlar-visualization-web/public/sample-graph.json
+cp tests/2d_mesh/2d_mesh_torus.json tools/web-visualization/public/sample-graph.json
 ```
 
 Formal schema:
 
-`../mlar-visualization-web/schema/architecture-graph.schema.json`
+`tools/web-visualization/schema/architecture-graph.schema.json`
 
 ## Type Reference
 
 | Type | Description | Module |
 |------|-------------|--------|
-| `DimName` | Newtype for dimension names (inside `Dimension.name`) | `core/size_dim.rs` |
-| `Sym` | Newtype for symbolic names in expressions | `core/size_dim.rs` |
-| `SizeExpr` | Concrete, symbolic, or arithmetic size | `core/size_dim.rs` |
-| `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `core/size_dim.rs` |
-| `Expr` | General symbolic expression (for cost modeling) | `core/expr.rs` |
-| `ConstraintExpr` | Boolean constraint over `Expr` values | `core/constraint.rs` |
-| `FuncPerfModel` | Per-function: symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `core/perf.rs` |
-| `ProcPerfModel` | Processor-level: `MlirModuleRef` + `Vec<FuncPerfModel>`; `validate()` checks function count alignment | `core/perf.rs` |
-| `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `core/perf.rs` |
-| `TimeCostExpr` | Symbolic fixed_latency + throughput | `core/perf.rs` |
-| `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `core/affine.rs` |
-| `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `core/affine.rs` |
-| `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `core/affine.rs` |
-| `IndexExpr` | Index tuple: one affine expression per dimension | `core/affine.rs` |
-| `IndexSelector` | Partial index: named dimension assignments | `core/affine.rs` |
-| `MemoryBank` | Leaf memory unit (capacity, granularity, optional perf) | `core/memory.rs` |
-| `MemoryRegion` | Recursive: `Bank` / `Replicated { name, dims, elem }` / `Group`; use `.with_name()` and `.name()` | `core/memory.rs` |
-| `Processor` | Atomic compute unit (name, optional perf model with compute ref) | `core/processor.rs` |
-| `Processors` | Recursive: `Unit(Processor)` / `Array { name, dims, elem }` / `Set { name, parts }`; name recurses to leaf | `core/processor.rs` |
-| `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `core/link.rs` |
-| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(Processors)`; name derived from data | `core/link.rs` |
-| `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `core/link.rs` |
-| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<Processors>`, and links | `core/architecture.rs` |
-| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `core/architecture.rs` |
+| `DimName` | Newtype for dimension names (inside `Dimension.name`) | `src/arch/size_dim.rs` |
+| `Sym` | Newtype for symbolic names in expressions | `src/arch/size_dim.rs` |
+| `SizeExpr` | Concrete, symbolic, or arithmetic size | `src/arch/size_dim.rs` |
+| `Dimension` | Named axis with a size (`name: DimName`, `size: SizeExpr`); use `.as_slice()` for single-dim slices | `src/arch/size_dim.rs` |
+| `Expr` | General symbolic expression (for cost modeling) | `src/math/expr.rs` |
+| `ConstraintExpr` | Boolean constraint over `Expr` values | `src/math/constraint.rs` |
+| `FuncPerfModel` | Per-function: symbols + global constraints + `Vec<PerfScenario>` for scenario-based cost modeling | `src/arch/perf.rs` |
+| `ProcPerfModel` | Processor-level: `MlirModuleRef` + `Vec<FuncPerfModel>`; `validate()` checks function count alignment | `src/arch/perf.rs` |
+| `PerfScenario` | Constraints + `TimeCostExpr` for a single scenario | `src/arch/perf.rs` |
+| `TimeCostExpr` | Symbolic fixed_latency + throughput | `src/arch/perf.rs` |
+| `AffineExpr` | Quasi-affine expression (`Var(Dimension)`, `Const`, `Add`, `MulConst`, `Mod`, `CeilDiv`) | `src/math/affine.rs` |
+| `AffineMap` | Map from src dims to dst dims via affine expressions; constructor takes `&[Dimension]` slices | `src/math/affine.rs` |
+| `AffineMapTemplate` | Unbound affine map (parse once, bind to different dimensions) | `src/math/affine.rs` |
+| `IndexExpr` | Index tuple: one affine expression per dimension | `src/math/affine.rs` |
+| `IndexSelector` | Partial index: named dimension assignments | `src/math/affine.rs` |
+| `MemoryBank` | Leaf memory unit (capacity, granularity, optional perf) | `src/arch/memory.rs` |
+| `MemoryRegion` | Recursive: `Bank` / `Replicated { name, dims, elem }` / `Group`; use `.with_name()` and `.name()` | `src/arch/memory.rs` |
+| `Processor` | Atomic compute unit (name, optional perf model with compute ref) | `src/arch/processor.rs` |
+| `Processors` | Recursive: `Unit(Processor)` / `Array { name, dims, elem }` / `Set { name, parts }`; name recurses to leaf | `src/arch/processor.rs` |
+| `Link` | Connectivity edge with affine map, bandwidth, constraints; endpoints hold actual data | `src/arch/link.rs` |
+| `Endpoint` | Link endpoint: `Mem(MemoryRegion)` or `Proc(Processors)`; name derived from data | `src/arch/link.rs` |
+| `SharingDomain` | Bandwidth sharing semantics (e.g., `SharedAcrossAll`) | `src/arch/link.rs` |
+| `Architecture` | Top-level container: `Vec<MemoryRegion>`, `Vec<Processors>`, and links | `src/arch/architecture.rs` |
+| `ArchitectureBuilder` | Fluent builder for `Architecture`; `.mem(&region)`, `.processor(&elem)` | `src/arch/architecture.rs` |
 
 ## Building and Running
 

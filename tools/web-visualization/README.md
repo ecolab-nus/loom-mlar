@@ -9,8 +9,10 @@ It validates the payload shape, computes a simple layered layout, and renders gr
 
 ## Run
 
+From repo root:
+
 ```bash
-cd mlar-visualization-web
+cd tools/web-visualization
 npm install
 npm run dev
 ```
@@ -20,7 +22,7 @@ Open the local URL from Vite.
 Run on fixed host/port (`127.0.0.1:5173`):
 
 ```bash
-cd mlar-visualization-web
+cd tools/web-visualization
 npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
@@ -38,9 +40,8 @@ Then open `http://127.0.0.1:5173` in your local browser.
 From repo root, generate a sample payload:
 
 ```bash
-cd mlar-rust
 cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cp 2d_mesh_torus.json ../mlar-visualization-web/public/sample-graph.json
+cp tests/2d_mesh/2d_mesh_torus.json tools/web-visualization/public/sample-graph.json
 ```
 
 Then restart or refresh the web app.
