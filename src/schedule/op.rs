@@ -5,14 +5,14 @@ use crate::mlir::MlirFuncRef;
 
 /// Symbolic shape of one tensor operand in an operation call.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct OpShape {
+pub struct TensorShape {
     /// Tensor operand name, without `%`.
     pub tensor: String,
     /// Symbolic dimensions for this tensor (in-order), from `loom.bind`.
     pub symbols: Vec<Sym>,
 }
 
-impl OpShape {
+impl TensorShape {
     pub fn new(tensor: impl Into<String>, symbols: Vec<Sym>) -> Self {
         Self {
             tensor: tensor.into(),
@@ -30,16 +30,16 @@ pub struct Op {
     /// Function symbol name (e.g. `vec_add_f32`).
     pub name: String,
     /// Symbolic shapes for tensor inputs.
-    pub input_shapes: Vec<OpShape>,
+    pub input_shapes: Vec<TensorShape>,
     /// Symbolic shapes for tensor outputs.
-    pub output_shapes: Vec<OpShape>,
+    pub output_shapes: Vec<TensorShape>,
 }
 
 impl Op {
     pub fn new(
         name: impl Into<String>,
-        input_shapes: Vec<OpShape>,
-        output_shapes: Vec<OpShape>,
+        input_shapes: Vec<TensorShape>,
+        output_shapes: Vec<TensorShape>,
     ) -> Self {
         Self {
             name: name.into(),
@@ -70,7 +70,7 @@ impl Op {
                 .get(tensor.as_str())
                 .map(|syms| syms.to_vec())
                 .unwrap_or_default();
-            let op_shape = OpShape::new(tensor.clone(), shape);
+            let op_shape = TensorShape::new(tensor.clone(), shape);
 
             if output_tensors.contains(tensor.as_str()) {
                 output_shapes.push(op_shape);
@@ -98,7 +98,7 @@ impl Op {
 
 #[cfg(test)]
 mod tests {
-    use super::{Op, OpShape};
+    use super::{Op, TensorShape};
     use crate::arch::Sym;
     use crate::mlir::MlirFuncRef;
 
@@ -127,13 +127,13 @@ func.func @vec_add_f32(
         assert_eq!(
             op.input_shapes,
             vec![
-                OpShape::new("a", vec![Sym::new("L")]),
-                OpShape::new("b", vec![Sym::new("L")]),
+                TensorShape::new("a", vec![Sym::new("L")]),
+                TensorShape::new("b", vec![Sym::new("L")]),
             ]
         );
         assert_eq!(
             op.output_shapes,
-            vec![OpShape::new("out", vec![Sym::new("L")])]
+            vec![TensorShape::new("out", vec![Sym::new("L")])]
         );
     }
 }

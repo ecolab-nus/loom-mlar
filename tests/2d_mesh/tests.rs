@@ -56,13 +56,13 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(
         mat_module.ops[0].input_shapes,
         vec![
-            OpShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
-            OpShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
+            TensorShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
+            TensorShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
         ]
     );
     assert_eq!(
         mat_module.ops[0].output_shapes,
-        vec![OpShape::new("C", vec![Sym::new("M"), Sym::new("N")])]
+        vec![TensorShape::new("C", vec![Sym::new("M"), Sym::new("N")])]
     );
 
     // === Verify vector-lane functionality extracted from MLIR ===

@@ -310,7 +310,7 @@ mod tests {
     use super::{FunctionProcessor, Processor, ProcessorSet};
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
-    use crate::schedule::{Module, Op, OpShape};
+    use crate::schedule::{Module, Op, TensorShape};
     use crate::{Expr, FuncPerfModel, Sym, TimeCostExpr};
 
     #[test]
@@ -318,8 +318,8 @@ mod tests {
         let fp = FunctionProcessor::new(
             Op::new(
                 "vec_add_f32",
-                vec![OpShape::new("a", vec![Sym::new("L")])],
-                vec![OpShape::new("out", vec![Sym::new("L")])],
+                vec![TensorShape::new("a", vec![Sym::new("L")])],
+                vec![TensorShape::new("out", vec![Sym::new("L")])],
             ),
             FuncPerfModel {
                 symbols: vec![],

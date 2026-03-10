@@ -35,7 +35,7 @@ src/
 │   └── refs.rs                 # MlirModuleRef, MlirFuncRef, bindings
 ├── schedule/
 │   ├── mod.rs                  # Scheduling-domain re-exports
-│   ├── op.rs                   # Op, OpShape
+│   ├── op.rs                   # Op, TensorShape
 │   └── module.rs               # Module, ModuleSource
 └── visualization/
     ├── mod.rs                  # Visualization re-exports
@@ -48,7 +48,7 @@ Functionality is modeled explicitly in `schedule`:
 
 - `Module`: set of supported operations
 - `Op`: one callable function interface
-- `OpShape`: symbolic tensor shape binding per input or output tensor
+- `TensorShape`: symbolic tensor shape binding per input or output tensor
 
 `Module` and `Op` correspond to MLIR module/function semantics:
 
@@ -70,15 +70,15 @@ assert!(module.op("vec_add_f32").is_some());
 ### Build manually
 
 ```rust
-use mlar_rust::{Op, OpShape, Sym};
+use mlar_rust::{Op, TensorShape, Sym};
 
 let matmul = Op::new(
     "matmul_f32",
     vec![
-        OpShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
-        OpShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
+        TensorShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
+        TensorShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
     ],
-    vec![OpShape::new("C", vec![Sym::new("M"), Sym::new("N")])],
+    vec![TensorShape::new("C", vec![Sym::new("M"), Sym::new("N")])],
 );
 ```
 
@@ -250,7 +250,7 @@ Web UI lives in `tools/web-visualization/`.
 | `ConstraintExpr` | Boolean constraints over expressions | `src/math/constraint.rs` |
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
 | `MlirModuleRef`, `MlirFuncRef` | Parsed MLIR references | `src/mlir/refs.rs` |
-| `OpShape`, `Op`, `Module` | Functionality interface model | `src/schedule/*.rs` |
+| `TensorShape`, `Op`, `Module` | Functionality interface model | `src/schedule/*.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCostExpr` | Function-level performance model | `src/arch/perf.rs` |
 | `FunctionProcessor` | One op + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-op bindings | `src/arch/processor.rs` |

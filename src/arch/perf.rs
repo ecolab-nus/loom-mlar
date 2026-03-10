@@ -107,7 +107,7 @@ impl FuncPerfModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schedule::{Op, OpShape};
+    use crate::schedule::{Op, TensorShape};
 
     #[test]
     fn test_trivial_func_model() {
@@ -189,8 +189,8 @@ mod tests {
         };
         let op = Op::new(
             "vec_add_f32",
-            vec![OpShape::new("a", vec![Sym::new("L")])],
-            vec![OpShape::new("out", vec![Sym::new("L")])],
+            vec![TensorShape::new("a", vec![Sym::new("L")])],
+            vec![TensorShape::new("out", vec![Sym::new("L")])],
         );
 
         let err = model.validate_for_op(&op).unwrap_err();

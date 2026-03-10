@@ -17,7 +17,7 @@ pub use math::{
     AffineExpr, AffineMap, AffineMapTemplate, ConstraintExpr, Expr, IndexExpr, IndexSelector,
     ParseError,
 };
-pub use schedule::{Module, ModuleSource, Op, OpShape};
+pub use schedule::{Module, ModuleSource, Op, TensorShape};
 
 // Re-export visualization utilities
 pub use visualization::graph_json::{
