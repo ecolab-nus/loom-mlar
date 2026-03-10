@@ -7,8 +7,9 @@ pub mod resource;
 pub mod size_dim;
 
 // Re-export commonly used types
-pub use crate::mlir::{
-    MLIRFuncRef, MLIRModuleRef, MlirFuncRef, MlirModuleRef, MlirTensorSymbolBinding,
+pub use crate::schedule::{
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
+    MlirTensorSymbolBinding,
 };
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};

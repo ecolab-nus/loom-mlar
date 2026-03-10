@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+use super::{MlirFunc, MlirModule};
 use crate::arch::{FunctionProcessor, Processor, TimeExpr};
-use crate::mlir::{MlirFuncRef, MlirModuleRef};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Schedule {
     Parallel {
         schedules: Vec<Schedule>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        mlir_ref: Option<MlirModuleRef>,
+        mlir_ref: Option<MlirModule>,
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<Processor>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -17,14 +17,14 @@ pub enum Schedule {
     Sequential {
         schedules: Vec<Schedule>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        mlir_ref: Option<MlirModuleRef>,
+        mlir_ref: Option<MlirModule>,
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<Processor>,
         #[serde(skip_serializing_if = "Option::is_none")]
         time: Option<TimeExpr>,
     },
-    Ops {
-        mlir_ref: MlirFuncRef,
+    Func {
+        func: MlirFunc,
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<FunctionProcessor>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,13 +39,12 @@ mod tests {
     use crate::FuncPerfModel;
     use crate::FunctionProcessor;
     use crate::Processor;
-    use crate::mlir::MlirModuleRef;
-    use crate::schedule::Op;
+    use crate::schedule::{MlirFunc, MlirModule};
     use serde_json::json;
 
     #[test]
     fn schedule_serializes_and_deserializes() {
-        let module = MlirModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let module = MlirModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
             .expect("vector_lane MLIR should parse");
         let add_func = module
             .function_refs
@@ -59,28 +58,30 @@ mod tests {
             .find(|func| func.name == "vec_mul_f32")
             .cloned()
             .expect("vec_mul_f32 should exist");
-        let mul_module = MlirModuleRef::with_functions(
+        let mul_module = MlirModule::with_functions(
             module
                 .path
                 .as_deref()
                 .expect("from_mlir should set module path"),
             &["vec_mul_f32"],
         );
-        let add_fp = FunctionProcessor::new(Op::named("vec_add_f32"), FuncPerfModel::trivial());
-        let mul_fp = FunctionProcessor::new(Op::named("vec_mul_f32"), FuncPerfModel::trivial());
+        let add_fp =
+            FunctionProcessor::new(MlirFunc::named("vec_add_f32"), FuncPerfModel::trivial());
+        let mul_fp =
+            FunctionProcessor::new(MlirFunc::named("vec_mul_f32"), FuncPerfModel::trivial());
         let mesh_proc = Processor::with_functions("mesh", vec![add_fp.clone(), mul_fp.clone()]);
         let lane_proc = Processor::with_functions("lane", vec![mul_fp.clone()]);
 
         let schedule = Schedule::Sequential {
             schedules: vec![
-                Schedule::Ops {
-                    mlir_ref: add_func,
+                Schedule::Func {
+                    func: add_func,
                     processor: Some(add_fp),
                     time: Some(Expr::Const(100)),
                 },
                 Schedule::Parallel {
-                    schedules: vec![Schedule::Ops {
-                        mlir_ref: mul_func,
+                    schedules: vec![Schedule::Func {
+                        func: mul_func,
                         processor: Some(mul_fp),
                         time: None,
                     }],
@@ -102,11 +103,11 @@ mod tests {
         assert_eq!(value["Sequential"]["processor"]["name"], json!("mesh"));
         assert_eq!(value["Sequential"]["time"], json!({"Const": 150}));
         assert_eq!(
-            value["Sequential"]["schedules"][0]["Ops"]["mlir_ref"]["name"],
+            value["Sequential"]["schedules"][0]["Func"]["func"]["name"],
             json!("vec_add_f32")
         );
         assert_eq!(
-            value["Sequential"]["schedules"][0]["Ops"]["processor"]["op"]["name"],
+            value["Sequential"]["schedules"][0]["Func"]["processor"]["func"]["name"],
             json!("vec_add_f32")
         );
         assert_eq!(
@@ -118,7 +119,7 @@ mod tests {
             json!("lane")
         );
         assert!(
-            value["Sequential"]["schedules"][1]["Parallel"]["schedules"][0]["Ops"]
+            value["Sequential"]["schedules"][1]["Parallel"]["schedules"][0]["Func"]
                 .get("time")
                 .is_none()
         );
@@ -131,7 +132,7 @@ mod tests {
 
     #[test]
     fn schedule_serializes_and_deserializes_with_absent_optional_fields() {
-        let func = MlirModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let func = MlirModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
             .expect("vector_lane MLIR should parse")
             .function_refs
             .into_iter()
@@ -140,8 +141,8 @@ mod tests {
 
         let schedule = Schedule::Sequential {
             schedules: vec![Schedule::Parallel {
-                schedules: vec![Schedule::Ops {
-                    mlir_ref: func,
+                schedules: vec![Schedule::Func {
+                    func: func,
                     processor: None,
                     time: None,
                 }],
@@ -155,7 +156,6 @@ mod tests {
         };
 
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
-        println!("value: {}", value);
         let seq = value["Sequential"]
             .as_object()
             .expect("Sequential payload should be an object");
@@ -170,9 +170,9 @@ mod tests {
         assert!(!par.contains_key("processor"));
         assert!(!par.contains_key("time"));
 
-        let op = value["Sequential"]["schedules"][0]["Parallel"]["schedules"][0]["Ops"]
+        let op = value["Sequential"]["schedules"][0]["Parallel"]["schedules"][0]["Func"]
             .as_object()
-            .expect("Ops payload should be an object");
+            .expect("Func payload should be an object");
         assert!(!op.contains_key("processor"));
         assert!(!op.contains_key("time"));
 

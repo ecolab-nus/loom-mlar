@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::size_dim::Sym;
 use crate::math::{ConstraintExpr, Expr};
-use crate::schedule::Op;
+use crate::schedule::MlirFunc;
 
 /// A single performance scenario — constraints that select it and cost expressions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -18,7 +18,7 @@ pub struct PerfScenario {
 /// Per-function performance model — explicit symbol declarations and scenario-based costs.
 ///
 /// This model is intentionally independent from MLIR and operation metadata.
-/// It can be linked with an [`Op`] later (see `validate_for_op`).
+/// It can be linked with an [`MlirFunc`] later (see `validate_for_func`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FuncPerfModel {
     /// The symbols this model depends on. All symbols used in `constraints`,
@@ -65,12 +65,12 @@ impl FuncPerfModel {
         self.validate_with_extra_symbols(HashSet::new())
     }
 
-    /// Validate this model when linked to a specific operation interface.
+    /// Validate this model when linked to a specific function interface.
     ///
     /// In addition to model-local symbol usage, this checks symbols referenced
-    /// by `op` input/output symbolic shapes.
-    pub fn validate_for_op(&self, op: &Op) -> Result<(), Vec<Sym>> {
-        self.validate_with_extra_symbols(op.shape_symbols())
+    /// by `func` tensor symbol bindings.
+    pub fn validate_for_func(&self, func: &MlirFunc) -> Result<(), Vec<Sym>> {
+        self.validate_with_extra_symbols(func.shape_symbols())
     }
 
     /// Total latency for a specific scenario: fixed + throughput term.
@@ -112,7 +112,8 @@ impl FuncPerfModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schedule::{Op, TensorShape};
+    use crate::schedule::MlirFunc;
+    use crate::schedule::{MlirFuncDetails, MlirTensorSymbolBinding};
 
     #[test]
     fn test_trivial_func_model() {
@@ -192,13 +193,26 @@ mod tests {
             constraints: ConstraintExpr::True,
             scenarios: vec![],
         };
-        let op = Op::new(
-            "vec_add_f32",
-            vec![TensorShape::new("a", vec![Sym::new("L")])],
-            vec![TensorShape::new("out", vec![Sym::new("L")])],
-        );
+        let op = MlirFunc {
+            name: "vec_add_f32".into(),
+            symbols: vec!["L".into()],
+            mlir_details: Some(MlirFuncDetails {
+                tensor_args: vec!["a".into(), "out".into()],
+                output_tensors: vec!["out".into()],
+                tensor_symbol_bindings: vec![
+                    MlirTensorSymbolBinding {
+                        tensor: "a".into(),
+                        symbols: vec!["L".into()],
+                    },
+                    MlirTensorSymbolBinding {
+                        tensor: "out".into(),
+                        symbols: vec!["L".into()],
+                    },
+                ],
+            }),
+        };
 
-        let err = model.validate_for_op(&op).unwrap_err();
+        let err = model.validate_for_func(&op).unwrap_err();
         assert_eq!(err, vec![Sym::new("L")]);
     }
 }

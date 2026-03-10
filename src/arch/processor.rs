@@ -1,36 +1,38 @@
 use super::perf::FuncPerfModel;
 use super::resource::ResourceReq;
 use super::size_dim::Dimension;
-use crate::schedule::{Module, Op};
+use crate::schedule::{MlirFunc, Module};
 use serde::{Deserialize, Serialize};
 
-/// One function-capable execution unit: operation interface + performance model.
+/// One function-capable execution unit: function interface + performance model.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionProcessor {
-    pub op: Op,
+    pub func: MlirFunc,
     pub perf: FuncPerfModel,
 }
 
 impl FunctionProcessor {
-    pub fn new(op: Op, perf: FuncPerfModel) -> Self {
-        Self { op, perf }
+    pub fn new(func: MlirFunc, perf: FuncPerfModel) -> Self {
+        Self { func, perf }
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        self.perf.validate_for_op(&self.op).map_err(|undeclared| {
-            format!(
-                "FunctionProcessor for op '{}' has undeclared symbols: {:?}",
-                self.op.name, undeclared
-            )
-        })
+        self.perf
+            .validate_for_func(&self.func)
+            .map_err(|undeclared| {
+                format!(
+                    "FunctionProcessor for function '{}' has undeclared symbols: {:?}",
+                    self.func.name, undeclared
+                )
+            })
     }
 }
 
 /// Processor — the atomic compute unit that executes a functionality module.
 ///
 /// A processor is described by:
-/// - `functionality`: set of supported operations (module-level interface)
-/// - `functions`: per-operation performance bindings (`FunctionProcessor`)
+/// - `functionality`: set of supported functions (module-level interface)
+/// - `functions`: per-function performance bindings (`FunctionProcessor`)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Processor {
     pub name: Option<String>,
@@ -74,7 +76,7 @@ impl Processor {
 
     /// Create a processor from pre-linked function processors.
     pub fn with_functions(name: impl Into<String>, functions: Vec<FunctionProcessor>) -> Self {
-        let functionality = Module::unnamed(functions.iter().map(|fp| fp.op.clone()).collect());
+        let functionality = Module::unnamed(functions.iter().map(|fp| fp.func.clone()).collect());
         Processor {
             name: Some(name.into()),
             functionality,
@@ -83,7 +85,7 @@ impl Processor {
         }
     }
 
-    /// Build a processor by linking one perf model per module op (in-order).
+    /// Build a processor by linking one perf model per module function (in-order).
     pub fn from_module(
         name: impl Into<String>,
         functionality: Module,
@@ -102,7 +104,7 @@ impl Processor {
             .iter()
             .cloned()
             .zip(perf_models)
-            .map(|(op, perf)| FunctionProcessor::new(op, perf))
+            .map(|(func, perf)| FunctionProcessor::new(func, perf))
             .collect();
 
         let processor = Processor {
@@ -144,12 +146,12 @@ impl Processor {
             .zip(self.functionality.ops.iter())
             .enumerate()
         {
-            if fp.op.name != op.name {
+            if fp.func.name != op.name {
                 return Err(format!(
-                    "Processor '{}' function index {} binds op '{}' but functionality expects '{}'",
+                    "Processor '{}' function index {} binds function '{}' but functionality expects '{}'",
                     self.name.as_deref().unwrap_or("<unnamed>"),
                     idx,
-                    fp.op.name,
+                    fp.func.name,
                     op.name
                 ));
             }
@@ -158,8 +160,8 @@ impl Processor {
         Ok(())
     }
 
-    pub fn get_function(&self, op_name: &str) -> Option<&FunctionProcessor> {
-        self.functions.iter().find(|fp| fp.op.name == op_name)
+    pub fn get_function(&self, func_name: &str) -> Option<&FunctionProcessor> {
+        self.functions.iter().find(|fp| fp.func.name == func_name)
     }
 
     /// Wrap this processor in an Array with the given dimensions.
@@ -311,17 +313,30 @@ mod tests {
     use super::{FunctionProcessor, Processor, ProcessorSet};
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
-    use crate::schedule::{Module, Op, TensorShape};
-    use crate::{Expr, FuncPerfModel, Sym, TimeCostExpr};
+    use crate::schedule::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Module};
+    use crate::{Expr, FuncPerfModel, TimeCostExpr};
 
     #[test]
     fn function_processor_validates_symbols_against_op_shapes() {
         let fp = FunctionProcessor::new(
-            Op::new(
-                "vec_add_f32",
-                vec![TensorShape::new("a", vec![Sym::new("L")])],
-                vec![TensorShape::new("out", vec![Sym::new("L")])],
-            ),
+            MlirFunc {
+                name: "vec_add_f32".into(),
+                symbols: vec!["L".into()],
+                mlir_details: Some(MlirFuncDetails {
+                    tensor_args: vec!["a".into(), "out".into()],
+                    output_tensors: vec!["out".into()],
+                    tensor_symbol_bindings: vec![
+                        MlirTensorSymbolBinding {
+                            tensor: "a".into(),
+                            symbols: vec!["L".into()],
+                        },
+                        MlirTensorSymbolBinding {
+                            tensor: "out".into(),
+                            symbols: vec!["L".into()],
+                        },
+                    ],
+                }),
+            },
             FuncPerfModel {
                 symbols: vec![],
                 constraints: ConstraintExpr::True,
@@ -335,7 +350,7 @@ mod tests {
 
     #[test]
     fn processor_from_module_links_per_op_perf() {
-        let module = Module::new("toy", vec![Op::named("f1"), Op::named("f2")]);
+        let module = Module::new("toy", vec![MlirFunc::named("f1"), MlirFunc::named("f2")]);
 
         let p = Processor::from_module(
             "proc",
@@ -363,7 +378,7 @@ mod tests {
     #[test]
     fn replicated_processor_recurses_functionality() {
         let fp = FunctionProcessor::new(
-            Op::named("f"),
+            MlirFunc::named("f"),
             FuncPerfModel {
                 symbols: vec![],
                 constraints: ConstraintExpr::True,

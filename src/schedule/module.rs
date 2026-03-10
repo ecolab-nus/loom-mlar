@@ -1,7 +1,6 @@
-use crate::mlir::MlirModuleRef;
 use serde::{Deserialize, Serialize};
 
-use super::Op;
+use super::{MlirFunc, MlirModule};
 
 /// Provenance metadata for a functionality module.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -20,11 +19,11 @@ pub struct Module {
     /// Optional provenance when created from MLIR.
     pub source: Option<ModuleSource>,
     /// Functions exposed by this module.
-    pub ops: Vec<Op>,
+    pub ops: Vec<MlirFunc>,
 }
 
 impl Module {
-    pub fn new(name: impl Into<String>, ops: Vec<Op>) -> Self {
+    pub fn new(name: impl Into<String>, ops: Vec<MlirFunc>) -> Self {
         Self {
             name: Some(name.into()),
             source: None,
@@ -32,7 +31,7 @@ impl Module {
         }
     }
 
-    pub fn unnamed(ops: Vec<Op>) -> Self {
+    pub fn unnamed(ops: Vec<MlirFunc>) -> Self {
         Self {
             name: None,
             source: None,
@@ -40,7 +39,7 @@ impl Module {
         }
     }
 
-    pub fn from_mlir_ref(mlir: &MlirModuleRef) -> Self {
+    pub fn from_mlir_ref(mlir: &MlirModule) -> Self {
         let module_name = if mlir.module_name.is_empty() {
             None
         } else {
@@ -53,20 +52,16 @@ impl Module {
                 path: path.clone(),
                 mlir_module_name: module_name.clone(),
             }),
-            ops: mlir
-                .function_refs
-                .iter()
-                .map(Op::from_mlir_func_ref)
-                .collect(),
+            ops: mlir.function_refs.clone(),
         }
     }
 
     pub fn from_mlir(path: impl Into<String>) -> Result<Self, String> {
-        let mlir = MlirModuleRef::from_mlir(path)?;
+        let mlir = MlirModule::from_mlir(path)?;
         Ok(Self::from_mlir_ref(&mlir))
     }
 
-    pub fn op(&self, name: &str) -> Option<&Op> {
+    pub fn op(&self, name: &str) -> Option<&MlirFunc> {
         self.ops.iter().find(|op| op.name == name)
     }
 }

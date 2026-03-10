@@ -30,12 +30,9 @@ src/
 │   ├── constraint.rs           # Boolean constraints
 │   ├── affine.rs               # Affine maps and index expressions
 │   └── parse.rs                # Parsers
-├── mlir/
-│   ├── mod.rs                  # MLIR-domain re-exports
-│   └── refs.rs                 # MlirModuleRef, MlirFuncRef, bindings
 ├── schedule/
 │   ├── mod.rs                  # Scheduling-domain re-exports
-│   ├── op.rs                   # Op, TensorShape
+│   ├── op.rs                   # MlirModule, MlirFunc, MlirFuncDetails, MLIR parser
 │   └── module.rs               # Module, ModuleSource
 └── visualization/
     ├── mod.rs                  # Visualization re-exports
@@ -46,11 +43,10 @@ src/
 
 Functionality is modeled explicitly in `schedule`:
 
-- `Module`: set of supported operations
-- `Op`: one callable function interface
-- `TensorShape`: symbolic tensor shape binding per input or output tensor
+- `Module`: set of supported functions
+- `MlirFunc`: one callable function interface
 
-`Module` and `Op` correspond to MLIR module/function semantics:
+`Module` and `MlirFunc` correspond to MLIR module/function semantics:
 
 - `loom.sym` declares symbols
 - `loom.bind` maps tensor dims to symbols
@@ -70,16 +66,30 @@ assert!(module.op("vec_add_f32").is_some());
 ### Build manually
 
 ```rust
-use mlar_rust::{Op, TensorShape, Sym};
+use mlar_rust::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Sym};
 
-let matmul = Op::new(
-    "matmul_f32",
-    vec![
-        TensorShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
-        TensorShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
-    ],
-    vec![TensorShape::new("C", vec![Sym::new("M"), Sym::new("N")])],
-);
+let matmul = MlirFunc {
+    name: "matmul_f32".into(),
+    symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
+    mlir_details: Some(MlirFuncDetails {
+        tensor_args: vec!["A".into(), "B".into(), "C".into()],
+        output_tensors: vec!["C".into()],
+        tensor_symbol_bindings: vec![
+            MlirTensorSymbolBinding {
+                tensor: "A".into(),
+                symbols: vec![Sym::new("M"), Sym::new("K")],
+            },
+            MlirTensorSymbolBinding {
+                tensor: "B".into(),
+                symbols: vec![Sym::new("K"), Sym::new("N")],
+            },
+            MlirTensorSymbolBinding {
+                tensor: "C".into(),
+                symbols: vec![Sym::new("M"), Sym::new("N")],
+            },
+        ],
+    }),
+};
 ```
 
 ## Performance Model
@@ -110,14 +120,14 @@ assert!(perf.validate().is_ok());
 Useful helpers:
 
 - `validate()`: all used symbols are declared
-- `validate_for_op(&Op)`: validate symbols against the linked op interface
+- `validate_for_func(&MlirFunc)`: validate symbols against linked tensor-symbol bindings
 - `num_scenarios()` and `total_latency_for(i)`
 
 ## Linking Functionality and Performance
 
 `FunctionProcessor` is the per-function link point:
 
-- `op: Op`
+- `func: MlirFunc`
 - `perf: FuncPerfModel`
 
 `Processor` then groups:
@@ -128,7 +138,7 @@ Useful helpers:
 
 ### Preferred constructor
 
-Use `Processor::from_module` to bind one perf model per op (in order):
+Use `Processor::from_module` to bind one perf model per function (in order):
 
 ```rust
 use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, Sym, TimeCostExpr};
@@ -219,15 +229,23 @@ let link = Link::builder("l1_to_vector")
 
 Build with `Architecture::builder(...)`, then optionally scale with `architecture.scale([&dim_x, &dim_y])`.
 
-## MLIR References
+## MLIR Types
 
-Raw MLIR extraction types are under `src/mlir/refs.rs`:
+Raw MLIR extraction and parsing types are under `src/schedule/op.rs`:
 
-- `MlirModuleRef`
-- `MlirFuncRef`
+- `MlirModule`
+- `MlirFunc`
+- `MlirFuncDetails`
 - `MlirTensorSymbolBinding`
 
-These are useful for parsing and inspection. Scheduling functionality should use `Module`/`Op`.
+`MlirFunc` is intentionally lightweight (`name`, `symbols`) and keeps tensor-specific metadata under:
+
+- `mlir_details: Option<MlirFuncDetails>`
+- `MlirFuncDetails.tensor_args`
+- `MlirFuncDetails.output_tensors`
+- `MlirFuncDetails.tensor_symbol_bindings`
+
+These are useful for parsing and inspection, and are also the canonical function interface types used by processors and schedules.
 
 ## Visualization
 
@@ -249,11 +267,11 @@ Web UI lives in `tools/web-visualization/`.
 | `Expr` | Symbolic arithmetic expression | `src/math/expr.rs` |
 | `ConstraintExpr` | Boolean constraints over expressions | `src/math/constraint.rs` |
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
-| `MlirModuleRef`, `MlirFuncRef` | Parsed MLIR references | `src/mlir/refs.rs` |
-| `TensorShape`, `Op`, `Module` | Functionality interface model | `src/schedule/*.rs` |
+| `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
+| `Module` | Functionality module model | `src/schedule/module.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCostExpr` | Function-level performance model | `src/arch/perf.rs` |
-| `FunctionProcessor` | One op + one perf binding | `src/arch/processor.rs` |
-| `Processor` | Atomic processor with functionality and per-op bindings | `src/arch/processor.rs` |
+| `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
+| `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `ProcessorSet` / `Processors` | Recursive processor composition | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
 | `Link`, `Endpoint` | Connectivity edges and endpoints | `src/arch/link.rs` |

@@ -53,16 +53,37 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
     assert_eq!(mat_module.ops.len(), 1);
     assert_eq!(mat_module.ops[0].name, "matmul_f32");
+    let matmul_details = mat_module.ops[0]
+        .mlir_details
+        .as_ref()
+        .expect("matmul_f32 should include MLIR details");
     assert_eq!(
-        mat_module.ops[0].input_shapes,
+        matmul_details
+            .tensor_symbol_bindings
+            .iter()
+            .filter(|binding| binding.tensor != "C")
+            .cloned()
+            .collect::<Vec<_>>(),
         vec![
-            TensorShape::new("A", vec![Sym::new("M"), Sym::new("K")]),
-            TensorShape::new("B", vec![Sym::new("K"), Sym::new("N")]),
+            MlirTensorSymbolBinding {
+                tensor: "A".into(),
+                symbols: vec![Sym::new("M"), Sym::new("K")],
+            },
+            MlirTensorSymbolBinding {
+                tensor: "B".into(),
+                symbols: vec![Sym::new("K"), Sym::new("N")],
+            },
         ]
     );
+    assert_eq!(matmul_details.output_tensors, vec!["C".to_string()]);
     assert_eq!(
-        mat_module.ops[0].output_shapes,
-        vec![TensorShape::new("C", vec![Sym::new("M"), Sym::new("N")])]
+        matmul_details
+            .tensor_symbol_bindings
+            .iter()
+            .find(|binding| binding.tensor == "C")
+            .expect("C binding should exist")
+            .symbols,
+        vec![Sym::new("M"), Sym::new("N")]
     );
 
     // === Verify vector-lane functionality extracted from MLIR ===

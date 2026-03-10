@@ -59,3 +59,8 @@ You can also load any JSON file at runtime from the UI (`Open File`) or by URL p
 Formal JSON schema file:
 
 `schema/architecture-graph.schema.json`
+
+Rust source note:
+- The MLIR extraction layer in `mlar-rust` now uses `MlirModule`, `MlirFunc`, and `MlirFuncDetails`.
+- Tensor-level metadata is optional on functions (`mlir_details`).
+- These types live in `src/schedule/op.rs` (no separate `src/mlir` module).
