@@ -1,9 +1,10 @@
 use std::fs;
 
 use crate::arch::Sym;
+use serde::{Deserialize, Serialize};
 
 /// Relationship extracted from `loom.bind` in an MLIR function body.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirTensorSymbolBinding {
     /// Tensor SSA argument name, without `%`.
     pub tensor: String,
@@ -12,7 +13,7 @@ pub struct MlirTensorSymbolBinding {
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirFuncRef {
     /// Function symbol name (e.g. `matmul_f32`).
     pub name: String,
@@ -31,11 +32,11 @@ pub struct MlirFuncRef {
 /// The referenced `.mlir` file is expected to contain one module with one or
 /// more linalg functions. `functions` can optionally restrict which symbols
 /// in that module are used for this processor.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirModuleRef {
-    pub path: String,
+    pub path: Option<String>,
     /// Module symbol name, when parsed from MLIR text (`module @name`).
-    pub module_name: Option<String>,
+    pub module_name: String,
     pub functions: Vec<String>,
     /// Full per-function references, when parsed from MLIR text.
     pub function_refs: Vec<MlirFuncRef>,
@@ -45,8 +46,8 @@ impl MlirModuleRef {
     /// Reference an external `.mlir` module, with no function filtering.
     pub fn new(path: impl Into<String>) -> Self {
         Self {
-            path: path.into(),
-            module_name: None,
+            path: Some(path.into()),
+            module_name: String::new(),
             functions: Vec::new(),
             function_refs: Vec::new(),
         }
@@ -55,8 +56,8 @@ impl MlirModuleRef {
     /// Reference an external `.mlir` module and an explicit list of function symbols.
     pub fn with_functions(path: impl Into<String>, functions: &[impl AsRef<str>]) -> Self {
         Self {
-            path: path.into(),
-            module_name: None,
+            path: Some(path.into()),
+            module_name: String::new(),
             functions: functions.iter().map(|f| f.as_ref().to_string()).collect(),
             function_refs: Vec::new(),
         }
@@ -78,8 +79,8 @@ impl MlirModuleRef {
         let functions = function_refs.iter().map(|f| f.name.clone()).collect();
 
         Ok(Self {
-            path,
-            module_name: Some(module_name),
+            path: Some(path),
+            module_name,
             functions,
             function_refs,
         })
@@ -380,8 +381,11 @@ mod tests {
     fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
         let module = MlirModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
             .expect("vector_lane.mlir should parse");
-        assert_eq!(module.path, "tests/2d_mesh/compute/vector_lane.mlir");
-        assert_eq!(module.module_name.as_deref(), Some("vector_lane"));
+        assert_eq!(
+            module.path.as_deref(),
+            Some("tests/2d_mesh/compute/vector_lane.mlir")
+        );
+        assert_eq!(module.module_name, "vector_lane");
         assert_eq!(module.functions.len(), 6);
         assert_eq!(module.function_refs.len(), 6);
         assert!(module.functions.contains(&"vec_max_f32".to_string()));
@@ -390,7 +394,7 @@ mod tests {
         // Uppercase alias naming is also supported.
         let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
             .expect("alias constructor should parse");
-        assert_eq!(alias_module.module_name.as_deref(), Some("vector_lane"));
+        assert_eq!(alias_module.module_name, "vector_lane");
     }
 
     #[test]

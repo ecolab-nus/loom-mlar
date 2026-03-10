@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::arch::Sym;
 use crate::mlir::MlirFuncRef;
 
 /// Symbolic shape of one tensor operand in an operation call.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TensorShape {
     /// Tensor operand name, without `%`.
     pub tensor: String,
@@ -25,7 +27,7 @@ impl TensorShape {
 ///
 /// `input_shapes` and `output_shapes` encode symbolic tensor dimensions using
 /// symbols declared by the function (`loom.sym`) and bindings (`loom.bind`).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Op {
     /// Function symbol name (e.g. `vec_add_f32`).
     pub name: String,

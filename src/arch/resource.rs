@@ -8,7 +8,7 @@
 ///   number of instances (product of replication dimensions).
 /// - For a `MemoryRegion::Bank`, `quantity` is the capacity in bytes.
 /// - For a `Link`, `quantity` is the bandwidth.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Resource {
     /// Human-readable identifier, derived from the component's name
     pub name: String,
@@ -29,7 +29,7 @@ impl Resource {
 ///
 /// Built from a `Resource` (obtained via `as_resource()`), ensuring a
 /// structural connection to the underlying architecture component.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ResourceReq {
     /// The resource pool this requirement draws from
     pub resource: Resource,

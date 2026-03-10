@@ -1,9 +1,10 @@
 use crate::mlir::MlirModuleRef;
+use serde::{Deserialize, Serialize};
 
 use super::Op;
 
 /// Provenance metadata for a functionality module.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ModuleSource {
     /// Source MLIR file path used to build this functionality module.
     pub path: String,
@@ -12,7 +13,7 @@ pub struct ModuleSource {
 }
 
 /// Functionality module: a named set of operation interfaces.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Module {
     /// Logical module name.
     pub name: Option<String>,
@@ -40,11 +41,17 @@ impl Module {
     }
 
     pub fn from_mlir_ref(mlir: &MlirModuleRef) -> Self {
+        let module_name = if mlir.module_name.is_empty() {
+            None
+        } else {
+            Some(mlir.module_name.clone())
+        };
+
         Self {
-            name: mlir.module_name.clone(),
-            source: Some(ModuleSource {
-                path: mlir.path.clone(),
-                mlir_module_name: mlir.module_name.clone(),
+            name: module_name.clone(),
+            source: mlir.path.as_ref().map(|path| ModuleSource {
+                path: path.clone(),
+                mlir_module_name: module_name.clone(),
             }),
             ops: mlir
                 .function_refs

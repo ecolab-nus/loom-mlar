@@ -9,7 +9,7 @@ pub use arch::{
     Architecture, ArchitectureBuilder, ArchitectureLabel, Dimension, Endpoint, FuncPerfModel,
     FunctionProcessor, Link, MLIRFuncRef, MLIRModuleRef, MemoryBank, MemoryRegion, MlirFuncRef,
     MlirModuleRef, MlirTensorSymbolBinding, PerfScenario, Processor, ProcessorSet, Processors,
-    Resource, ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr,
+    Resource, ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr, TimeExpr,
 };
 
 // Re-export commonly used math types
@@ -17,7 +17,7 @@ pub use math::{
     AffineExpr, AffineMap, AffineMapTemplate, ConstraintExpr, Expr, IndexExpr, IndexSelector,
     ParseError,
 };
-pub use schedule::{Module, ModuleSource, Op, TensorShape};
+pub use schedule::{Module, ModuleSource, Op, Schedule, TensorShape};
 
 // Re-export visualization utilities
 pub use visualization::graph_json::{

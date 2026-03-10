@@ -2,9 +2,10 @@ use super::perf::FuncPerfModel;
 use super::resource::ResourceReq;
 use super::size_dim::Dimension;
 use crate::schedule::{Module, Op};
+use serde::{Deserialize, Serialize};
 
 /// One function-capable execution unit: operation interface + performance model.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionProcessor {
     pub op: Op,
     pub perf: FuncPerfModel,
@@ -30,7 +31,7 @@ impl FunctionProcessor {
 /// A processor is described by:
 /// - `functionality`: set of supported operations (module-level interface)
 /// - `functions`: per-operation performance bindings (`FunctionProcessor`)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Processor {
     pub name: Option<String>,
     pub functionality: Module,

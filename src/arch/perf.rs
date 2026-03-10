@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::size_dim::Sym;
 use crate::math::{ConstraintExpr, Expr};
 use crate::schedule::Op;
 
 /// A single performance scenario — constraints that select it and cost expressions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerfScenario {
     /// Constraints under which this scenario applies.
     pub constraints: ConstraintExpr,
@@ -17,7 +19,7 @@ pub struct PerfScenario {
 ///
 /// This model is intentionally independent from MLIR and operation metadata.
 /// It can be linked with an [`Op`] later (see `validate_for_op`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FuncPerfModel {
     /// The symbols this model depends on. All symbols used in `constraints`,
     /// scenario `constraints`, and `time_cost` must be declared here.
@@ -34,13 +36,16 @@ pub struct FuncPerfModel {
 /// Cost expression — fixed startup latency and throughput-dependent latency.
 ///
 /// Total latency = `fixed_latency + throughput_latency`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeCostExpr {
     /// Fixed startup latency (cycles), independent of data volume.
     pub fixed_latency: Expr,
     /// Throughput-dependent latency (cycles), scales with workload size.
     pub throughput: Expr,
 }
+
+/// Symbolic schedule time expression.
+pub type TimeExpr = Expr;
 
 impl FuncPerfModel {
     /// Create a trivial perf model: no symbols, no scenarios.

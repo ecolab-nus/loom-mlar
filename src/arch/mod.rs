@@ -13,7 +13,7 @@ pub use crate::mlir::{
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
 pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};
 pub use memory::{MemoryBank, MemoryRegion};
-pub use perf::{FuncPerfModel, PerfScenario, TimeCostExpr};
+pub use perf::{FuncPerfModel, PerfScenario, TimeCostExpr, TimeExpr};
 pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
 pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};
