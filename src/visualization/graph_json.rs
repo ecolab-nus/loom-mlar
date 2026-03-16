@@ -198,7 +198,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
     } else {
         synthetic_graph = ArchGraph {
             name: arch.name().unwrap_or("architecture").to_string(),
-            nodes: vec![ArchNode::from_architecture("arch:0", arch)],
+            nodes: vec![ArchNode::from_architecture(arch)],
             edges: Vec::new(),
         };
         &synthetic_graph

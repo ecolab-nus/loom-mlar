@@ -335,19 +335,19 @@ mod tests {
 
     #[test]
     fn builder_accepts_custom_nodes() {
-        let router = ArchNode::from_router("router:3", &Router::new("crossbar"));
+        let router = ArchNode::from_router(&Router::new("crossbar"));
         let arch: Architecture = ArchGraph::builder("mesh").node(&router).build().into();
         let graph = arch.as_graph().expect("builder must create graph");
-        assert!(graph.nodes.iter().any(|n| n.id == "router:3"));
+        assert!(graph.nodes.iter().any(|n| n.id == "router::crossbar"));
     }
 
     #[test]
     fn builder_accepts_custom_edges() {
-        let edge = ArchEdge::new("edge:0", "arch:0", "arch:1");
+        let edge = ArchEdge::new("arch::foo", "arch::bar");
         let arch: Architecture = ArchGraph::builder("mesh").edge(&edge).build().into();
         let graph = arch.as_graph().expect("builder must create graph");
         assert_eq!(graph.edges.len(), 1);
-        assert_eq!(graph.edges[0].id, "edge:0");
+        assert_eq!(graph.edges[0].id, "edge::foo_to_bar");
     }
 
     #[test]
@@ -362,5 +362,42 @@ mod tests {
             .expect("router node ID should be available");
         let router = graph.get_node(&router_id).expect("router node must exist");
         assert_eq!(router.name, "router");
+    }
+
+    #[test]
+    fn auto_generated_ids_use_component_names() {
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+        let lane = Processor::new("lane").into_elem();
+        let graph: Architecture = ArchGraph::builder("core")
+            .mem(&l1)
+            .processor(&lane)
+            .router(&Router::new("xbar"))
+            .build()
+            .into();
+        let graph = graph.as_graph().expect("must build graph");
+
+        assert!(graph.get_node("mem::L1").is_some());
+        assert!(graph.get_node("arch::lane").is_some());
+        assert!(graph.get_node("router::xbar").is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate ID")]
+    fn builder_rejects_duplicate_node_ids() {
+        let r1 = Router::new("dup");
+        let r2 = Router::new("dup");
+        ArchGraph::builder("bad")
+            .router(&r1)
+            .router(&r2)
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate ID")]
+    fn graph_rejects_duplicate_node_ids() {
+        let mut graph = ArchGraph::new("bad");
+        let r = Router::new("r");
+        graph.add_router(&r);
+        graph.add_router(&r);
     }
 }
