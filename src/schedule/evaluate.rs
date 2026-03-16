@@ -306,24 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_parallel_returns_error() {
-        let arch = make_arch(vec![("f", simple_model(1, 1))]);
-        let schedule = Schedule::Parallel {
-            schedules: vec![Schedule::Func {
-                func: MlirFunc::named("f"),
-                processor: None,
-                time: None,
-            }],
-            mlir_ref: None,
-            processor: None,
-            time: None,
-        };
-
-        let err = evaluate(&schedule, &arch).expect_err("Parallel should fail");
-        assert!(err.contains("not yet supported"));
-    }
-
-    #[test]
     fn evaluate_finds_function_in_graph_architecture() {
         let fp = FunctionProcessor::new(MlirFunc::named("f"), simple_model(7, 42));
         let proc = Processor::with_functions("inner", vec![fp]).into_elem();

@@ -91,7 +91,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .build()
         .into();
     let arch = core
-        .replicate(&[])
+        .scale(&[] as &[Dimension])
         .with_name("GPU")
         .with_connectivity(vec![dram_to_l2, l2_to_l1, l1_to_rf, rf_to_mat]);
 

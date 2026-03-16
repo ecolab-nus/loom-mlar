@@ -178,7 +178,7 @@ impl Endpoint {
     fn replicate(self, dims: &[Dimension]) -> Self {
         match self {
             Endpoint::Mem(region) => Endpoint::Mem(region.replicate(dims)),
-            Endpoint::Proc(processor) => Endpoint::Proc(processor.replicate(dims)),
+            Endpoint::Proc(processor) => Endpoint::Proc(processor.scale(dims)),
         }
     }
 }

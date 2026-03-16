@@ -702,7 +702,7 @@ mod tests {
             .build()
             .into();
         let arch = arch
-            .replicate(core_dim.as_slice())
+            .scale(core_dim.as_slice())
             .with_connectivity(vec![link]);
         let value = architecture_to_graph_json_value(&arch);
         assert_eq!(value["schema_version"], "mlar.arch-graph.v1");

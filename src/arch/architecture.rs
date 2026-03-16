@@ -33,7 +33,7 @@ pub enum Architecture {
 
 impl Architecture {
     /// Build an explicit graph architecture from parts.
-    pub fn graph(graph: ArchGraph) -> Self {
+    pub fn from_graph(graph: ArchGraph) -> Self {
         Architecture::Graph(graph)
     }
 
@@ -106,8 +106,13 @@ impl Architecture {
     where
         I: IntoIterator<Item = &'a Dimension>,
     {
-        let dims: Vec<Dimension> = dims.into_iter().cloned().collect();
-        self.replicate(&dims)
+        Architecture::Array {
+            name: None,
+            dims: dims.into_iter().cloned().collect(),
+            elem: Box::new(self),
+            connectivity: Vec::new(),
+            interface: None,
+        }
     }
 
     /// Get the name for this architecture value.
@@ -125,17 +130,6 @@ impl Architecture {
             Architecture::Unit(p) => Some(&p.functionality),
             Architecture::Array { elem, .. } => elem.functionality(),
             Architecture::Graph(_) => None,
-        }
-    }
-
-    /// Wrap this architecture in an Array with the given dimensions.
-    pub fn replicate(self, dims: &[Dimension]) -> Self {
-        Architecture::Array {
-            name: None,
-            dims: dims.to_vec(),
-            elem: Box::new(self),
-            connectivity: Vec::new(),
-            interface: None,
         }
     }
 
