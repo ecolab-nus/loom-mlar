@@ -195,7 +195,7 @@ mod tests {
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
     use crate::schedule::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Module};
-    use crate::{Expr, FuncPerfModel, TimeCostExpr};
+    use crate::{Expr, FuncPerfModel, SimpleTimeCost, TimeCost};
 
     #[test]
     fn function_processor_validates_symbols_against_op_shapes() {
@@ -265,10 +265,11 @@ mod tests {
                 constraints: ConstraintExpr::True,
                 scenarios: vec![crate::PerfScenario {
                     constraints: ConstraintExpr::True,
-                    time_cost: TimeCostExpr {
+                    time_cost: TimeCost::Simple(SimpleTimeCost {
                         fixed_latency: Expr::Const(1),
+                        volume: Expr::Const(1),
                         throughput: Expr::Const(1),
-                    },
+                    }),
                 }],
             },
         );

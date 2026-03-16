@@ -26,10 +26,11 @@ pub fn vector_lane() -> Processors {
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
-                time_cost: TimeCostExpr {
+                time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(fixed_latency),
+                    volume: Expr::sym("L"),
                     throughput: Expr::Const(throughput),
-                },
+                }),
             }],
         }
     };

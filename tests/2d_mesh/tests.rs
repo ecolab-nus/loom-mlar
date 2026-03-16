@@ -120,34 +120,19 @@ fn test_2d_mesh_torus_perf_models() {
             assert_eq!(p.functions.len(), 6);
 
             let fast = p.get_function("vec_max_f32").expect("vec_max_f32 binding");
-            assert_eq!(
-                fast.perf.scenarios[0].time_cost.throughput.eval_const(),
-                Some(1024)
-            );
-            assert_eq!(
-                fast.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                Some(1)
-            );
+            let fast_cost = fast.perf.scenarios[0].time_cost.as_simple().expect("Simple");
+            assert_eq!(fast_cost.throughput.eval_const(), Some(1024));
+            assert_eq!(fast_cost.fixed_latency.eval_const(), Some(1));
 
             let exp = p.get_function("vec_exp_f32").expect("vec_exp_f32 binding");
-            assert_eq!(
-                exp.perf.scenarios[0].time_cost.throughput.eval_const(),
-                Some(128)
-            );
-            assert_eq!(
-                exp.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                Some(16)
-            );
+            let exp_cost = exp.perf.scenarios[0].time_cost.as_simple().expect("Simple");
+            assert_eq!(exp_cost.throughput.eval_const(), Some(128));
+            assert_eq!(exp_cost.fixed_latency.eval_const(), Some(16));
 
             let div = p.get_function("vec_div_f32").expect("vec_div_f32 binding");
-            assert_eq!(
-                div.perf.scenarios[0].time_cost.throughput.eval_const(),
-                Some(256)
-            );
-            assert_eq!(
-                div.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                Some(8)
-            );
+            let div_cost = div.perf.scenarios[0].time_cost.as_simple().expect("Simple");
+            assert_eq!(div_cost.throughput.eval_const(), Some(256));
+            assert_eq!(div_cost.fixed_latency.eval_const(), Some(8));
         }
         _ => panic!("expected Unit"),
     }
@@ -240,38 +225,44 @@ fn test_export_2d_mesh_torus_graph_json() {
 }
 
 /// Evaluate a sequential schedule of different vector-lane instructions
-/// against the single-core architecture.
+/// against the single-core architecture, using `ScheduleWithSymMap` to map
+/// the MLIR symbol `L` to the expression `BM * BN`.
 ///
 /// Schedule: vec_add_f32 → vec_exp_f32 → vec_mul_f32 → vec_div_f32
 ///
-/// Each vector function has a single scenario with `True` constraints, so
-/// the Cartesian product yields exactly one combined scenario whose costs
-/// are the element-wise sums of the individual costs:
-///   fixed_latency = 1 + 16 + 1 + 8 = 26
-///   throughput    = 1024 + 128 + 1024 + 256 = 2432
+/// Before substitution the per-function costs are:
+///   vec_add_f32: 1 + L/1024
+///   vec_exp_f32: 16 + L/128
+///   vec_mul_f32: 1 + L/1024
+///   vec_div_f32: 8 + L/256
+///   total(L)   = 26 + L/1024 + L/128 + L/1024 + L/256
+///
+/// After L → BM*BN the expressions use `BM` and `BN` instead.
+///   total(BM,BN) = 26 + (BM*BN)/1024 + (BM*BN)/128 + (BM*BN)/1024 + (BM*BN)/256
 #[test]
 fn test_evaluate_vector_lane_sequential_schedule() {
     let core = crate::core_arch::single_core();
 
+    let l_sym = vec![Sym::new("L")];
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::named("vec_add_f32"),
+                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::named("vec_exp_f32"),
+                func: MlirFunc::with_symbols("vec_exp_f32", l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::named("vec_mul_f32"),
+                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::named("vec_div_f32"),
+                func: MlirFunc::with_symbols("vec_div_f32", l_sym.clone()),
                 processor: None,
                 time: None,
             },
@@ -281,33 +272,185 @@ fn test_evaluate_vector_lane_sequential_schedule() {
         time: None,
     };
 
-    let scenarios = evaluate(&schedule, &core).expect("sequential vector schedule should evaluate");
+    let mut sym_map = SymbolicMapping::new();
+    sym_map.insert(
+        Sym::new("L"),
+        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
+    );
+
+    let input = ScheduleWithSymMap::new(schedule, sym_map);
+    let scenarios =
+        evaluate_with_sym_map(&input, &core).expect("sequential vector schedule should evaluate");
 
     // 1 scenario per function → 1×1×1×1 = 1 combined scenario
     assert_eq!(scenarios.len(), 1);
 
     let s = &scenarios[0];
-    assert_eq!(s.time_cost.fixed_latency.eval_const(), Some(1 + 16 + 1 + 8));
-    assert_eq!(
-        s.time_cost.throughput.eval_const(),
-        Some(1024 + 128 + 1024 + 256)
+    assert!(s.time_cost.as_concrete().is_some(), "evaluated scenario should be Concrete");
+
+    let expr = s.time_cost.to_expr();
+
+    // L should have been replaced — only BM and BN remain.
+    let free = expr.free_symbols();
+    assert!(
+        !free.contains(&Sym::new("L")),
+        "L should have been substituted away, but symbols are: {:?}",
+        free
     );
+    assert!(
+        free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")),
+        "BM and BN should appear after substitution, but symbols are: {:?}",
+        free
+    );
+
+    // BM=0, BN=0 → L=0, only fixed latencies: 1 + 16 + 1 + 8 = 26
+    let at_0x0 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(0)),
+        (Sym::new("BN"), Expr::Const(0)),
+    ]);
+    assert_eq!(at_0x0.eval_const(), Some(1 + 16 + 1 + 8));
+
+    // BM=32, BN=32 → L=1024:
+    //   (1 + 1024/1024) + (16 + 1024/128) + (1 + 1024/1024) + (8 + 1024/256)
+    //   = 2 + 24 + 2 + 12 = 40
+    let at_32x32 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ]);
+    assert_eq!(at_32x32.eval_const(), Some(40));
 
     // All individual constraints are True, so the fused constraint must also
     // evaluate to true.
     assert_eq!(s.constraints.eval_const(), Some(true));
 
-    // PerfScenarios round-trips through JSON.
+    // --- sym_map is preserved in the output PerfScenarios ---
+    let preserved_map = scenarios.sym_map.as_ref().expect("sym_map should be present");
+    assert_eq!(preserved_map.entries.len(), 1);
+    assert_eq!(preserved_map.entries[0].0, Sym::new("L"));
+
+    // PerfScenarios (including sym_map) round-trips through JSON.
     let json = serde_json::to_string(&scenarios).expect("PerfScenarios should serialize");
+    println!("{}", json);
     let decoded: PerfScenarios =
         serde_json::from_str(&json).expect("PerfScenarios should deserialize");
     assert_eq!(decoded.len(), scenarios.len());
-    assert_eq!(
-        decoded[0].time_cost.fixed_latency.eval_const(),
-        scenarios[0].time_cost.fixed_latency.eval_const()
+
+    let decoded_map = decoded.sym_map.as_ref().expect("decoded sym_map should be present");
+    assert_eq!(decoded_map.entries.len(), 1);
+    assert_eq!(decoded_map.entries[0].0, Sym::new("L"));
+
+    let decoded_at_32x32 = decoded[0].time_cost.to_expr().substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ]);
+    assert_eq!(decoded_at_32x32.eval_const(), at_32x32.eval_const());
+}
+
+/// Evaluate a `ScheduleWithSymMap` that maps the MLIR symbol `L` to `BM * BN`.
+///
+/// The vector-lane functions all reference `L` in their cost expressions.
+/// After `evaluate_with_sym_map`, every occurrence of `L` should be replaced
+/// by `BM * BN`, and the mapping should be preserved in the returned
+/// `PerfScenarios`.
+///
+/// Schedule: vec_add_f32 → vec_mul_f32
+///   vec_add_f32: fixed=1, volume=L, throughput=1024  → 1 + L/1024
+///   vec_mul_f32: fixed=1, volume=L, throughput=1024  → 1 + L/1024
+///   total(L) = 2 + 2*L/1024
+///
+/// After substitution L → BM*BN:
+///   total(BM, BN) = 2 + 2*(BM*BN)/1024
+#[test]
+fn test_evaluate_with_sym_map() {
+    let core = crate::core_arch::single_core();
+
+    let l_sym = vec![Sym::new("L")];
+    let schedule = Schedule::Sequential {
+        schedules: vec![
+            Schedule::Func {
+                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
+                processor: None,
+                time: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
+                processor: None,
+                time: None,
+            },
+        ],
+        mlir_ref: None,
+        processor: None,
+        time: None,
+    };
+
+    let mut sym_map = SymbolicMapping::new();
+    sym_map.insert(
+        Sym::new("L"),
+        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
     );
-    assert_eq!(
-        decoded[0].time_cost.throughput.eval_const(),
-        scenarios[0].time_cost.throughput.eval_const()
+
+    let input = ScheduleWithSymMap::new(schedule, sym_map);
+    let scenarios =
+        evaluate_with_sym_map(&input, &core).expect("evaluate_with_sym_map should succeed");
+
+    assert_eq!(scenarios.len(), 1);
+
+    // --- Verify that the sym_map is preserved ---
+    let preserved_map = scenarios.sym_map.as_ref().expect("sym_map should be present");
+    assert_eq!(preserved_map.entries.len(), 1);
+    assert_eq!(preserved_map.entries[0].0, Sym::new("L"));
+
+    // --- Verify symbol substitution: L should no longer appear ---
+    let s = &scenarios[0];
+    assert!(
+        s.time_cost.as_concrete().is_some(),
+        "evaluated scenario should be Concrete"
     );
+    let expr = s.time_cost.to_expr();
+    let free = expr.free_symbols();
+    assert!(
+        !free.contains(&Sym::new("L")),
+        "L should have been substituted away, but symbols are: {:?}",
+        free
+    );
+    assert!(
+        free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")),
+        "BM and BN should appear after substitution, but symbols are: {:?}",
+        free
+    );
+
+    // --- Verify concrete evaluation ---
+    // With BM=32, BN=32 → L=1024:
+    //   total = (1 + 1024/1024) + (1 + 1024/1024) = 2 + 2 = 4
+    let at_32x32 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ]);
+    assert_eq!(at_32x32.eval_const(), Some(4));
+
+    // With BM=0, BN=0 → L=0, only fixed latencies: 1 + 1 = 2
+    let at_0x0 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(0)),
+        (Sym::new("BN"), Expr::Const(0)),
+    ]);
+    assert_eq!(at_0x0.eval_const(), Some(2));
+
+    // Constraints remain True (all vector-lane scenarios have True constraints).
+    assert_eq!(s.constraints.eval_const(), Some(true));
+
+    // --- JSON round-trip preserves sym_map ---
+    let json = serde_json::to_string(&scenarios).expect("PerfScenarios should serialize");
+    println!("{}", json);
+    let decoded: PerfScenarios =
+        serde_json::from_str(&json).expect("PerfScenarios should deserialize");
+    assert_eq!(decoded.len(), scenarios.len());
+    let decoded_map = decoded.sym_map.as_ref().expect("decoded sym_map should be present");
+    assert_eq!(decoded_map.entries.len(), 1);
+    assert_eq!(decoded_map.entries[0].0, Sym::new("L"));
+
+    let decoded_at_32x32 = decoded[0].time_cost.to_expr().substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ]);
+    assert_eq!(decoded_at_32x32.eval_const(), at_32x32.eval_const());
 }

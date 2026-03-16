@@ -17,17 +17,16 @@
 //!
 //! 2. **Sequential**: recursively evaluate every sub-schedule, then fold the
 //!    scenario vectors via Cartesian product — for each pair of scenarios the
-//!    [`TimeCostExpr`] fields are summed and constraints are composed with AND.
-
-use serde::{Deserialize, Serialize};
+//!    concrete time-cost expressions are summed and constraints are composed
+//!    with AND.
 
 use crate::arch::architecture::Architecture;
 use crate::arch::graph::ArchNodeComponent;
-use crate::arch::perf::{FuncPerfModel, PerfScenario, PerfScenarios, TimeCostExpr};
+use crate::arch::perf::{FuncPerfModel, PerfScenario, PerfScenarios, TimeCost};
 use crate::arch::processor::FunctionProcessor;
 use crate::math::constraint::ConstraintExpr;
 use crate::math::expr::Expr;
-use crate::schedule::schedule::{Schedule, ScheduleWithSymMap, SymbolicMapping};
+use crate::schedule::schedule::{Schedule, ScheduleWithSymMap};
 
 /// Evaluate a schedule's performance on the given architecture.
 ///
@@ -43,44 +42,28 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<PerfScenario
     evaluate_inner(schedule, arch).map(PerfScenarios::new)
 }
 
-/// Evaluation result that bundles the per-scenario performance data with the
-/// symbolic mapping that was applied during evaluation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PerfResult {
-    pub scenarios: Vec<PerfScenario>,
-    pub sym_map: SymbolicMapping,
-}
-
-impl PerfResult {
-    pub fn new(scenarios: Vec<PerfScenario>, sym_map: SymbolicMapping) -> Self {
-        Self { scenarios, sym_map }
-    }
-}
-
 /// Evaluate a [`ScheduleWithSymMap`] against the given architecture.
 ///
 /// This works like [`evaluate`] but additionally applies the symbolic mapping
 /// from `input.sym_map`: every symbol that appears in a mapping entry is
 /// replaced by its corresponding expression in every [`PerfScenario`]
-/// (constraints and time-cost expressions alike).  The mapping is also
-/// preserved in the returned [`PerfResult`].
+/// (constraints and time-cost expressions alike).  The mapping is preserved
+/// in the returned [`PerfScenarios`] so the relationship remains available
+/// even after substitution.
 pub fn evaluate_with_sym_map(
     input: &ScheduleWithSymMap,
     arch: &Architecture,
-) -> Result<PerfResult, String> {
+) -> Result<PerfScenarios, String> {
     let raw = evaluate_inner(&input.schedule, arch)?;
     let mappings = input.sym_map.as_slice();
     let substituted = raw
         .into_iter()
         .map(|s| PerfScenario {
             constraints: s.constraints.substitute(mappings),
-            time_cost: TimeCostExpr {
-                fixed_latency: s.time_cost.fixed_latency.substitute(mappings),
-                throughput: s.time_cost.throughput.substitute(mappings),
-            },
+            time_cost: s.time_cost.substitute(mappings),
         })
         .collect();
-    Ok(PerfResult::new(substituted, input.sym_map.clone()))
+    Ok(PerfScenarios::with_sym_map(substituted, input.sym_map.clone()))
 }
 
 fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfScenario>, String> {
@@ -96,10 +79,7 @@ fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfSc
         Schedule::Sequential { schedules, .. } => {
             let identity = vec![PerfScenario {
                 constraints: ConstraintExpr::True,
-                time_cost: TimeCostExpr {
-                    fixed_latency: Expr::Const(0),
-                    throughput: Expr::Const(0),
-                },
+                time_cost: TimeCost::Concrete(Expr::Const(0)),
             }];
 
             schedules.iter().try_fold(identity, |acc, sub| {
@@ -120,15 +100,16 @@ fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfSc
     }
 }
 
-/// Fuse a [`FuncPerfModel`]'s global constraints into each scenario,
-/// producing the final per-function scenario vector.
+/// Fuse a [`FuncPerfModel`]'s global constraints into each scenario and
+/// concretize [`SimpleTimeCost`] into [`TimeCost::Concrete`], producing the
+/// final per-function scenario vector ready for combination.
 fn fuse_model_scenarios(model: &FuncPerfModel) -> Vec<PerfScenario> {
     model
         .scenarios
         .iter()
         .map(|scenario| PerfScenario {
             constraints: and_constraints(&model.constraints, &scenario.constraints),
-            time_cost: scenario.time_cost.clone(),
+            time_cost: TimeCost::Concrete(scenario.time_cost.to_expr()),
         })
         .collect()
 }
@@ -144,24 +125,18 @@ fn and_constraints(a: &ConstraintExpr, b: &ConstraintExpr) -> ConstraintExpr {
 
 /// Cartesian product of two scenario vectors.
 ///
-/// For every (l, r) pair the time costs are summed element-wise and the
-/// constraints are composed with AND.
+/// For every (l, r) pair the concrete time-cost expressions are summed and
+/// the constraints are composed with AND.
 fn cartesian_combine(left: &[PerfScenario], right: &[PerfScenario]) -> Vec<PerfScenario> {
     let mut result = Vec::with_capacity(left.len() * right.len());
     for l in left {
         for r in right {
             result.push(PerfScenario {
                 constraints: and_constraints(&l.constraints, &r.constraints),
-                time_cost: TimeCostExpr {
-                    fixed_latency: Expr::add(
-                        l.time_cost.fixed_latency.clone(),
-                        r.time_cost.fixed_latency.clone(),
-                    ),
-                    throughput: Expr::add(
-                        l.time_cost.throughput.clone(),
-                        r.time_cost.throughput.clone(),
-                    ),
-                },
+                time_cost: TimeCost::Concrete(Expr::add(
+                    l.time_cost.to_expr(),
+                    r.time_cost.to_expr(),
+                )),
             });
         }
     }
@@ -192,16 +167,21 @@ mod tests {
     use crate::arch::processor::Processor;
     use crate::schedule::MlirFunc;
 
-    fn simple_model(fixed: i64, throughput: i64) -> FuncPerfModel {
+    use crate::arch::perf::SimpleTimeCost;
+
+    /// Helper: single-scenario model with concrete volume and throughput = 1,
+    /// so concretized total = `fixed + volume`.
+    fn simple_model(fixed: i64, volume: i64) -> FuncPerfModel {
         FuncPerfModel {
             symbols: vec![],
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
-                time_cost: TimeCostExpr {
+                time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(fixed),
-                    throughput: Expr::Const(throughput),
-                },
+                    volume: Expr::Const(volume),
+                    throughput: Expr::Const(1),
+                }),
             }],
         }
     }
@@ -213,17 +193,19 @@ mod tests {
             scenarios: vec![
                 PerfScenario {
                     constraints: ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(256)),
-                    time_cost: TimeCostExpr {
+                    time_cost: TimeCost::Simple(SimpleTimeCost {
                         fixed_latency: Expr::Const(10),
-                        throughput: Expr::Const(100),
-                    },
+                        volume: Expr::Const(100),
+                        throughput: Expr::Const(1),
+                    }),
                 },
                 PerfScenario {
                     constraints: ConstraintExpr::Lt(Expr::sym("N"), Expr::Const(256)),
-                    time_cost: TimeCostExpr {
+                    time_cost: TimeCost::Simple(SimpleTimeCost {
                         fixed_latency: Expr::Const(5),
-                        throughput: Expr::Const(50),
-                    },
+                        volume: Expr::Const(50),
+                        throughput: Expr::Const(1),
+                    }),
                 },
             ],
         }
@@ -248,8 +230,8 @@ mod tests {
 
         let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
         assert_eq!(scenarios.len(), 1);
-        assert_eq!(scenarios[0].time_cost.fixed_latency.eval_const(), Some(10));
-        assert_eq!(scenarios[0].time_cost.throughput.eval_const(), Some(200));
+        assert!(scenarios[0].time_cost.as_concrete().is_some());
+        assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(10 + 200));
     }
 
     #[test]
@@ -278,8 +260,10 @@ mod tests {
 
         let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
         assert_eq!(scenarios.len(), 1);
-        assert_eq!(scenarios[0].time_cost.fixed_latency.eval_const(), Some(30));
-        assert_eq!(scenarios[0].time_cost.throughput.eval_const(), Some(300));
+        assert_eq!(
+            scenarios[0].time_cost.to_expr().eval_const(),
+            Some((10 + 100) + (20 + 200))
+        );
     }
 
     #[test]
@@ -311,21 +295,13 @@ mod tests {
         assert_eq!(scenarios.len(), 2);
 
         assert_eq!(
-            scenarios[0].time_cost.fixed_latency.eval_const(),
-            Some(10 + 1)
-        );
-        assert_eq!(
-            scenarios[0].time_cost.throughput.eval_const(),
-            Some(100 + 1)
+            scenarios[0].time_cost.to_expr().eval_const(),
+            Some((10 + 100) + (1 + 1))
         );
 
         assert_eq!(
-            scenarios[1].time_cost.fixed_latency.eval_const(),
-            Some(5 + 1)
-        );
-        assert_eq!(
-            scenarios[1].time_cost.throughput.eval_const(),
-            Some(50 + 1)
+            scenarios[1].time_cost.to_expr().eval_const(),
+            Some((5 + 50) + (1 + 1))
         );
     }
 
@@ -361,8 +337,10 @@ mod tests {
 
         let scenarios = evaluate(&schedule, &arch).expect("should find f in graph");
         assert_eq!(scenarios.len(), 1);
-        assert_eq!(scenarios[0].time_cost.fixed_latency.eval_const(), Some(7));
-        assert_eq!(scenarios[0].time_cost.throughput.eval_const(), Some(42));
+        assert_eq!(
+            scenarios[0].time_cost.to_expr().eval_const(),
+            Some(7 + 42)
+        );
     }
 
     #[test]
@@ -377,7 +355,6 @@ mod tests {
 
         let scenarios = evaluate(&schedule, &arch).expect("empty sequential should work");
         assert_eq!(scenarios.len(), 1);
-        assert_eq!(scenarios[0].time_cost.fixed_latency.eval_const(), Some(0));
-        assert_eq!(scenarios[0].time_cost.throughput.eval_const(), Some(0));
+        assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(0));
     }
 }

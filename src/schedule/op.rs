@@ -106,6 +106,16 @@ impl MlirFunc {
         }
     }
 
+    /// Construct a function with explicit symbol declarations but no
+    /// tensor-level metadata.
+    pub fn with_symbols(name: impl Into<String>, symbols: Vec<Sym>) -> Self {
+        Self {
+            name: name.into(),
+            symbols,
+            mlir_details: None,
+        }
+    }
+
     /// Collect all symbols referenced by tensor bindings.
     pub fn shape_symbols(&self) -> HashSet<Sym> {
         let mut out = HashSet::new();
