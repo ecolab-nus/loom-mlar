@@ -1,13 +1,13 @@
 /// A named, quantitative resource pool derived from an architecture component.
 ///
-/// Created via `as_resource()` on `MemoryRegion` or `Link`, establishing a
+/// Created via `as_resource()` on `MemoryRegion` or `ScaleOutNetwork`, establishing a
 /// structural (not string-based) link between resources and the components
 /// they represent.
 ///
 /// - For a `MemoryRegion::Replicated` (e.g. 16 banks), `quantity` is the
 ///   number of instances (product of replication dimensions).
 /// - For a `MemoryRegion::Bank`, `quantity` is the capacity in bytes.
-/// - For a `Link`, `quantity` is the bandwidth.
+/// - For a `ScaleOutNetwork`, `quantity` is the bandwidth.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Resource {
     /// Human-readable identifier, derived from the component's name

@@ -5,7 +5,135 @@ use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, ConstraintExpr, Expr};
 use std::collections::HashSet;
 
-/// An endpoint of a Link — holds the actual memory region or processor.
+/// Router endpoint target.
+#[derive(Clone, Debug)]
+pub enum RouterEndpointTarget {
+    MemRef(String),
+    ProcRef(String),
+    RouterRef(String),
+}
+
+/// One router endpoint.
+#[derive(Clone, Debug)]
+pub struct RouterEndpoint {
+    pub name: String,
+    pub target: RouterEndpointTarget,
+}
+
+impl RouterEndpoint {
+    pub fn from_mem_ref(name: impl Into<String>, mem_ref: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            target: RouterEndpointTarget::MemRef(mem_ref.into()),
+        }
+    }
+
+    pub fn from_proc_ref(name: impl Into<String>, proc_ref: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            target: RouterEndpointTarget::ProcRef(proc_ref.into()),
+        }
+    }
+
+    pub fn from_router_ref(name: impl Into<String>, router_ref: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            target: RouterEndpointTarget::RouterRef(router_ref.into()),
+        }
+    }
+}
+
+/// One side of a router. Endpoints on the same side cannot directly exchange data.
+#[derive(Clone, Debug)]
+pub struct RouterSide {
+    pub name: String,
+    pub endpoints: Vec<RouterEndpoint>,
+}
+
+impl RouterSide {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            endpoints: Vec::new(),
+        }
+    }
+
+    pub fn endpoint(mut self, endpoint: RouterEndpoint) -> Self {
+        self.endpoints.push(endpoint);
+        self
+    }
+
+    /// Expand a memory region into one endpoint per concrete leaf bank.
+    pub fn from_memory_region_banks(
+        name: impl Into<String>,
+        region: &MemoryRegion,
+        mem_ref: impl Into<String>,
+    ) -> Self {
+        let mut side = Self::new(name);
+        let mem_ref = mem_ref.into();
+        let leaf_count = memory_leaf_count(region).unwrap_or(1).min(1024) as usize;
+        for idx in 0..leaf_count {
+            side = side.endpoint(RouterEndpoint::from_mem_ref(
+                format!("bank{idx}"),
+                mem_ref.clone(),
+            ));
+        }
+        side
+    }
+}
+
+/// General router component: multiple sides, each with multiple endpoints.
+#[derive(Clone, Debug)]
+pub struct Router {
+    pub name: String,
+    pub sides: Vec<RouterSide>,
+}
+
+impl Router {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            sides: Vec::new(),
+        }
+    }
+
+    pub fn side(mut self, side: RouterSide) -> Self {
+        self.sides.push(side);
+        self
+    }
+
+    pub fn total_endpoints(&self) -> usize {
+        self.sides.iter().map(|s| s.endpoints.len()).sum()
+    }
+
+    pub fn side_count(&self) -> usize {
+        self.sides.len()
+    }
+}
+
+fn memory_leaf_count(region: &MemoryRegion) -> Option<u64> {
+    match region {
+        MemoryRegion::Bank(_) => Some(1),
+        MemoryRegion::Replicated { dims, elem, .. } => {
+            let mult: u64 = dims
+                .iter()
+                .map(|d| d.size.as_const())
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .product();
+            Some(mult * memory_leaf_count(elem)?)
+        }
+        MemoryRegion::Group { parts, .. } => {
+            let mut total = 0u64;
+            for part in parts {
+                total += memory_leaf_count(part)?;
+            }
+            Some(total)
+        }
+    }
+}
+
+/// An endpoint of a scale-out network.
 /// The name is derived from the embedded data via `.name()`.
 #[derive(Clone, Debug)]
 pub enum Endpoint {
@@ -56,7 +184,7 @@ impl Endpoint {
     }
 }
 
-/// Bandwidth-sharing semantics for a Link.
+/// Bandwidth-sharing semantics for a scale-out network.
 #[derive(Clone, Debug)]
 pub enum SharingDomain {
     /// Bandwidth is shared across all concurrent users of this link.
@@ -85,7 +213,7 @@ pub enum LinkTopology {
 /// Endpoints hold the actual `MemoryRegion` or `Processors` values directly.
 /// Names are derived from the embedded data -- no separate name field needed.
 #[derive(Clone, Debug)]
-pub struct Link {
+pub struct ScaleOutNetwork {
     /// Display/debug name (e.g. "DRAM_to_L2")
     pub name: String,
     pub src: Endpoint,
@@ -102,10 +230,10 @@ pub struct Link {
     pub sharing: SharingDomain,
 }
 
-impl Link {
-    /// Start building a Link with a name.
-    pub fn builder(name: impl Into<String>) -> LinkBuilder {
-        LinkBuilder {
+impl ScaleOutNetwork {
+    /// Start building a scale-out network with a name.
+    pub fn builder(name: impl Into<String>) -> ScaleOutNetworkBuilder {
+        ScaleOutNetworkBuilder {
             name: name.into(),
             src: None,
             dst: None,
@@ -120,7 +248,7 @@ impl Link {
     /// Prepend identity dimensions to this link's affine map and scale the endpoints.
     /// Used during Architecture::scale().
     pub fn prepend_identity_dims(self, dims: &[Dimension]) -> Self {
-        Link {
+        ScaleOutNetwork {
             name: self.name,
             src: self.src.replicate(dims),
             dst: self.dst.replicate(dims),
@@ -193,8 +321,8 @@ impl Link {
     }
 }
 
-/// Builder for ergonomic Link construction.
-pub struct LinkBuilder {
+/// Builder for ergonomic scale-out network construction.
+pub struct ScaleOutNetworkBuilder {
     name: String,
     src: Option<Endpoint>,
     dst: Option<Endpoint>,
@@ -205,7 +333,7 @@ pub struct LinkBuilder {
     sharing: SharingDomain,
 }
 
-impl LinkBuilder {
+impl ScaleOutNetworkBuilder {
     /// Set the source as a memory region (borrows and clones internally).
     pub fn from_mem(mut self, region: &MemoryRegion) -> Self {
         self.src = Some(Endpoint::Mem(region.clone()));
@@ -263,8 +391,8 @@ impl LinkBuilder {
         self
     }
 
-    pub fn build(self) -> Link {
-        let link = Link {
+    pub fn build(self) -> ScaleOutNetwork {
+        let link = ScaleOutNetwork {
             name: self.name,
             src: self.src.expect("src endpoint must be set"),
             dst: self.dst.expect("dst endpoint must be set"),
@@ -373,7 +501,7 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, LinkMapRelation, LinkTopology};
+    use super::{LinkMapRelation, LinkTopology, ScaleOutNetwork};
     use crate::arch::{Dimension, MemoryBank, MemoryRegion, SizeExpr};
     use crate::math::{AffineExpr, AffineMap};
 
@@ -389,7 +517,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = Link::builder("torus")
+        let link = ScaleOutNetwork::builder("torus")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)
@@ -412,7 +540,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = Link::builder("reduce")
+        let link = ScaleOutNetwork::builder("reduce")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)
@@ -446,7 +574,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = Link::builder("ring")
+        let link = ScaleOutNetwork::builder("ring")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)

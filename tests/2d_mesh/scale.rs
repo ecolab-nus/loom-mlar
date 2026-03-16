@@ -12,9 +12,14 @@ pub fn scaled_mesh_torus() -> Architecture {
     let core = single_core();
     let dim_x = dim_x();
     let dim_y = dim_y();
-    let mut mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
+    let mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
 
-    let scaled_l1 = mesh.get_memory_region("L1").unwrap().clone();
+    let scaled_l1 = mesh
+        .get_memory_region("L1")
+        .expect("scaled mesh should contain L1")
+        .clone()
+        .replicate(&[dim_x.clone(), dim_y.clone()])
+        .with_name("L1");
 
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
@@ -22,7 +27,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_y = Link::builder("L1_torus_y")
+    let torus_y = ScaleOutNetwork::builder("L1_torus_y")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_y_map)
@@ -35,14 +40,12 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_x = Link::builder("L1_torus_x")
+    let torus_x = ScaleOutNetwork::builder("L1_torus_x")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_x_map)
         .bandwidth(64)
         .build();
 
-    mesh.links.push(torus_y);
-    mesh.links.push(torus_x);
-    mesh
+    mesh.with_connectivity(vec![torus_y, torus_x])
 }

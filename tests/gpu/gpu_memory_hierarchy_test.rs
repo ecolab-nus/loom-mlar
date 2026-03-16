@@ -37,7 +37,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&dram_dim])
         .expect("failed to bind affine map");
 
-    let dram_to_l2 = Link::builder("DRAM_to_L2")
+    let dram_to_l2 = ScaleOutNetwork::builder("DRAM_to_L2")
         .from_mem(&dram)
         .to_mem(&l2)
         .map(&dram_to_l2_map)
@@ -49,7 +49,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&dram_dim, &warp_dim])
         .expect("failed to bind affine map");
 
-    let l2_to_l1 = Link::builder("L2_to_L1")
+    let l2_to_l1 = ScaleOutNetwork::builder("L2_to_L1")
         .from_mem(&l2)
         .to_mem(&l1)
         .map(&l2_to_l1_map)
@@ -61,7 +61,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&warp_dim])
         .expect("failed to bind affine map");
 
-    let l1_to_rf = Link::builder("L1_to_RF")
+    let l1_to_rf = ScaleOutNetwork::builder("L1_to_RF")
         .from_mem(&l1)
         .to_mem(&rf)
         .map(&l1_to_rf_map)
@@ -75,31 +75,35 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&warp_dim])
         .expect("failed to bind affine map");
 
-    let rf_to_mat = Link::builder("RF_to_MatLane")
+    let rf_to_mat = ScaleOutNetwork::builder("RF_to_MatLane")
         .from_mem(&rf)
         .to_proc(&mat_lane)
         .map(&rf_to_mat_map)
         .bandwidth(64)
         .build();
 
-    let arch = Architecture::builder("GPU")
+    let core = Architecture::builder("GPU_core")
         .mem(&dram)
         .mem(&l2)
         .mem(&l1)
         .mem(&rf)
         .processor(&mat_lane)
-        .link(dram_to_l2)
-        .link(l2_to_l1)
-        .link(l1_to_rf)
-        .link(rf_to_mat)
         .build();
+    let arch = core
+        .replicate(&[])
+        .with_name("GPU")
+        .with_connectivity(vec![dram_to_l2, l2_to_l1, l1_to_rf, rf_to_mat]);
 
-    assert_eq!(arch.name, "GPU");
-    assert_eq!(arch.links.len(), 4);
-    assert_eq!(arch.links[0].name, "DRAM_to_L2");
-    assert_eq!(arch.links[1].name, "L2_to_L1");
-    assert_eq!(arch.links[2].name, "L1_to_RF");
-    assert_eq!(arch.links[3].name, "RF_to_MatLane");
+    assert_eq!(arch.name(), Some("GPU"));
+    let connectivity = match &arch {
+        Architecture::Array { connectivity, .. } => connectivity,
+        _ => panic!("GPU architecture should be array-wrapped for connectivity"),
+    };
+    assert_eq!(connectivity.len(), 4);
+    assert_eq!(connectivity[0].name, "DRAM_to_L2");
+    assert_eq!(connectivity[1].name, "L2_to_L1");
+    assert_eq!(connectivity[2].name, "L1_to_RF");
+    assert_eq!(connectivity[3].name, "RF_to_MatLane");
 
     arch
 }

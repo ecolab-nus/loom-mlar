@@ -5,9 +5,11 @@ pub mod visualization;
 
 // Re-export commonly used architecture types
 pub use arch::{
-    Architecture, ArchitectureBuilder, ArchitectureLabel, Dimension, Endpoint, FuncPerfModel,
-    FunctionProcessor, Link, MemoryBank, MemoryRegion, PerfScenario, Processor, ProcessorSet,
-    Processors, Resource, ResourceReq, SharingDomain, SizeExpr, Sym, TimeCostExpr, TimeExpr,
+    ArchEdge, ArchGraph, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
+    ArchitectureBuilder, Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank,
+    MemoryRegion, PerfScenario, Processor, ProcessorSet, Processors, Resource, ResourceReq, Router,
+    RouterEndpoint, RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SizeExpr,
+    Sym, TimeCostExpr, TimeExpr,
 };
 
 // Re-export commonly used math types

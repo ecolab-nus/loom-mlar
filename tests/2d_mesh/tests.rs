@@ -11,32 +11,45 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(mesh.total_processing_elements(), Some(128));
 
     // === Verify processor functionality + per-function models survive scaling ===
-    for proc in &mesh.processors {
+    let core_graph = match &mesh {
+        Architecture::Array { elem, .. } => match elem.as_ref() {
+            Architecture::Graph(graph) => graph,
+            _ => panic!("expected core graph as array element"),
+        },
+        _ => panic!("expected scaled mesh to be an Array"),
+    };
+    let proc_nodes: Vec<&Architecture> = core_graph
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.component {
+            ArchNodeComponent::Architecture(arch) => Some(arch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(proc_nodes.len(), 2);
+    for proc in proc_nodes {
         match proc {
-            Processors::Array { elem, .. } => match elem.as_ref() {
-                Processors::Unit(p) => {
-                    assert!(
-                        p.validate().is_ok(),
-                        "processor {:?} should validate after scaling",
-                        p.name
-                    );
-                    assert!(
-                        p.functionality
-                            .source
-                            .as_ref()
-                            .is_some_and(|s| s.path.ends_with(".mlir")),
-                        "functionality source for {:?} should point to MLIR",
-                        p.name
-                    );
-                    assert!(
-                        !p.resources.is_empty(),
-                        "resources on {:?} should be preserved after scaling",
-                        p.name
-                    );
-                }
-                _ => panic!("expected Unit inside Array"),
-            },
-            _ => panic!("expected Array after scaling"),
+            Processors::Unit(p) => {
+                assert!(
+                    p.validate().is_ok(),
+                    "processor {:?} should validate after scaling",
+                    p.name
+                );
+                assert!(
+                    p.functionality
+                        .source
+                        .as_ref()
+                        .is_some_and(|s| s.path.ends_with(".mlir")),
+                    "functionality source for {:?} should point to MLIR",
+                    p.name
+                );
+                assert!(
+                    !p.resources.is_empty(),
+                    "resources on {:?} should be preserved after scaling",
+                    p.name
+                );
+            }
+            _ => panic!("expected Unit processor nodes"),
         }
     }
 
@@ -109,43 +122,40 @@ fn test_2d_mesh_torus_perf_models() {
     // === Verify per-function perf bindings for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
-        Processors::Array { elem, .. } => match elem.as_ref() {
-            Processors::Unit(p) => {
-                assert_eq!(p.functions.len(), 6);
+        Processors::Unit(p) => {
+            assert_eq!(p.functions.len(), 6);
 
-                let fast = p.get_function("vec_max_f32").expect("vec_max_f32 binding");
-                assert_eq!(
-                    fast.perf.scenarios[0].time_cost.throughput.eval_const(),
-                    Some(1024)
-                );
-                assert_eq!(
-                    fast.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                    Some(1)
-                );
+            let fast = p.get_function("vec_max_f32").expect("vec_max_f32 binding");
+            assert_eq!(
+                fast.perf.scenarios[0].time_cost.throughput.eval_const(),
+                Some(1024)
+            );
+            assert_eq!(
+                fast.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
+                Some(1)
+            );
 
-                let exp = p.get_function("vec_exp_f32").expect("vec_exp_f32 binding");
-                assert_eq!(
-                    exp.perf.scenarios[0].time_cost.throughput.eval_const(),
-                    Some(128)
-                );
-                assert_eq!(
-                    exp.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                    Some(16)
-                );
+            let exp = p.get_function("vec_exp_f32").expect("vec_exp_f32 binding");
+            assert_eq!(
+                exp.perf.scenarios[0].time_cost.throughput.eval_const(),
+                Some(128)
+            );
+            assert_eq!(
+                exp.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
+                Some(16)
+            );
 
-                let div = p.get_function("vec_div_f32").expect("vec_div_f32 binding");
-                assert_eq!(
-                    div.perf.scenarios[0].time_cost.throughput.eval_const(),
-                    Some(256)
-                );
-                assert_eq!(
-                    div.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
-                    Some(8)
-                );
-            }
-            _ => panic!("expected Unit"),
-        },
-        _ => panic!("expected Array"),
+            let div = p.get_function("vec_div_f32").expect("vec_div_f32 binding");
+            assert_eq!(
+                div.perf.scenarios[0].time_cost.throughput.eval_const(),
+                Some(256)
+            );
+            assert_eq!(
+                div.perf.scenarios[0].time_cost.fixed_latency.eval_const(),
+                Some(8)
+            );
+        }
+        _ => panic!("expected Unit"),
     }
 
     // === Verify resource requirements ===
@@ -175,32 +185,57 @@ fn test_2d_mesh_torus() {
     let mesh = scaled_mesh_torus();
 
     // === Verify topology ===
-    assert_eq!(mesh.name, "2d_mesh_torus");
-    assert_eq!(mesh.processors.len(), 2);
-    assert_eq!(mesh.memory.len(), 1);
-    assert_eq!(mesh.links.len(), 4); // 2 intra-core + 2 torus
+    assert_eq!(mesh.name(), Some("2d_mesh_torus"));
+    let (dims, connectivity, elem) = match &mesh {
+        Architecture::Array {
+            dims,
+            connectivity,
+            elem,
+            ..
+        } => (dims, connectivity, elem),
+        _ => panic!("scaled mesh should be Array"),
+    };
+    assert_eq!(connectivity.len(), 2); // only torus scale-out networks
+    match elem.as_ref() {
+        Architecture::Graph(graph) => {
+            assert!(
+                graph.nodes.iter().any(|n| n.name == "core_router"),
+                "scaled mesh should retain router node"
+            );
+            assert_eq!(
+                graph
+                    .nodes
+                    .iter()
+                    .filter(|n| matches!(n.component, ArchNodeComponent::MemoryRegion(_)))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                graph
+                    .nodes
+                    .iter()
+                    .filter(|n| matches!(n.component, ArchNodeComponent::Architecture(_)))
+                    .count(),
+                2
+            );
+        }
+        _ => panic!("array element should be graph"),
+    }
 
     assert_eq!(mesh.total_processing_elements(), Some(128));
-
-    assert_eq!(mesh.labels.len(), 1);
-    assert_eq!(mesh.labels[0].name, "core");
     assert_eq!(
-        mesh.labels[0]
-            .dims
-            .iter()
-            .map(|d| d.name.0.as_str())
-            .collect::<Vec<_>>(),
+        dims.iter().map(|d| d.name.0.as_str()).collect::<Vec<_>>(),
         vec!["x", "y"]
     );
 
     // === Verify torus links ===
-    let torus_y_link = &mesh.links[2];
+    let torus_y_link = &connectivity[0];
     assert_eq!(torus_y_link.name, "L1_torus_y");
     assert_eq!(torus_y_link.map.apply(&[0, 0]), vec![0, 1]);
     assert_eq!(torus_y_link.map.apply(&[3, 5]), vec![3, 6]);
     assert_eq!(torus_y_link.map.apply(&[3, 7]), vec![3, 0]); // wraps
 
-    let torus_x_link = &mesh.links[3];
+    let torus_x_link = &connectivity[1];
     assert_eq!(torus_x_link.name, "L1_torus_x");
     assert_eq!(torus_x_link.map.apply(&[0, 0]), vec![1, 0]);
     assert_eq!(torus_x_link.map.apply(&[5, 3]), vec![6, 3]);

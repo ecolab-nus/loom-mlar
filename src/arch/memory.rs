@@ -9,7 +9,7 @@ pub struct MemoryBank {
     /// Total capacity in bytes (can be a symbolic expression, e.g. Mul(block_size, num_blocks))
     pub capacity_bytes: SizeExpr,
     /// Optional access granularity (block size) for cost analysis
-    pub access_granularity: Option<SizeExpr>,
+    pub block_size: Option<SizeExpr>,
     /// Optional performance model (access cost characteristics)
     pub perf: Option<FuncPerfModel>,
 }
@@ -22,7 +22,7 @@ impl MemoryBank {
         Self {
             name: None,
             capacity_bytes,
-            access_granularity: Some(block_size),
+            block_size: Some(block_size),
             perf: None,
         }
     }
@@ -32,7 +32,7 @@ impl MemoryBank {
         Self {
             name: None,
             capacity_bytes,
-            access_granularity: None,
+            block_size: None,
             perf: None,
         }
     }
@@ -189,7 +189,7 @@ mod tests {
         // capacity_bytes should be Mul(1024, 4)
         assert_eq!(bank.capacity_bytes.as_const(), Some(4096));
         assert_eq!(
-            bank.access_granularity.as_ref().and_then(|g| g.as_const()),
+            bank.block_size.as_ref().and_then(|g| g.as_const()),
             Some(1024)
         );
     }
@@ -205,7 +205,7 @@ mod tests {
         assert!(bank.capacity_bytes.as_const().is_none());
         // access_granularity is concrete
         assert_eq!(
-            bank.access_granularity.as_ref().and_then(|g| g.as_const()),
+            bank.block_size.as_ref().and_then(|g| g.as_const()),
             Some(256)
         );
     }

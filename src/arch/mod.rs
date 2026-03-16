@@ -1,5 +1,6 @@
 pub mod architecture;
-pub mod link;
+pub mod graph;
+pub mod links;
 pub mod memory;
 pub mod perf;
 pub mod processor;
@@ -11,8 +12,12 @@ pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
     MlirTensorSymbolBinding,
 };
-pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureLabel};
-pub use link::{Endpoint, Link, LinkMapRelation, LinkTopology, SharingDomain};
+pub use architecture::{Architecture, ArchitectureBuilder};
+pub use graph::{ArchEdge, ArchGraph, ArchGraphNode, ArchNode, ArchNodeComponent};
+pub use links::{
+    Endpoint, LinkMapRelation, LinkTopology, Router, RouterEndpoint, RouterEndpointTarget,
+    RouterSide, ScaleOutNetwork, SharingDomain,
+};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use perf::{FuncPerfModel, PerfScenario, TimeCostExpr, TimeExpr};
 pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};

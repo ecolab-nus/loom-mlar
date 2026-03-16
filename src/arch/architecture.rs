@@ -1,153 +1,470 @@
-use crate::arch::{Dimension, Link, MemoryRegion, Processors};
+use super::graph::{ArchEdge, ArchGraph, ArchNode, ArchNodeComponent};
+use super::links::{Router, ScaleOutNetwork};
+use super::memory::MemoryRegion;
+use super::processor::Processor;
+use super::resource::ResourceReq;
+use super::size_dim::Dimension;
+use crate::schedule::Module;
+use std::ops::{Deref, DerefMut};
 
-/// Label describing a parent architecture level introduced by scaling.
-#[derive(Debug, Clone)]
-pub struct ArchitectureLabel {
-    /// Parent architecture name (e.g., "core")
-    pub name: String,
-    /// Dimensions introduced when scaling that parent architecture
-    pub dims: Vec<Dimension>,
-}
-
-/// Represents the complete hardware architecture.
+/// Unified recursive architecture description.
 ///
-/// Memory regions and processors carry their own names (via `.name()`).
-/// All connectivity is expressed through `Link`s.
-#[derive(Debug)]
-pub struct Architecture {
-    pub name: String,
-    /// Memory regions (each should have a name via `.with_name()`)
-    pub memory: Vec<MemoryRegion>,
-    /// Processorss (each should have a name via `Processor::new()` or `.with_name()`)
-    pub processors: Vec<Processors>,
-    /// Connectivity links between memory regions and/or processors
-    pub links: Vec<Link>,
-    /// Hierarchical labels added by `scale()` from outermost to innermost.
-    pub labels: Vec<ArchitectureLabel>,
+/// `Architecture` replaces the former split between processor sets and
+/// top-level architecture:
+/// - `Unit`: atomic processor
+/// - `Array`: homogeneous scaling-out of a sub-architecture
+/// - `Graph`: explicit graph architecture (`ArchGraph`)
+#[derive(Debug, Clone)]
+pub enum Architecture {
+    /// Leaf: a single processor.
+    Unit(Processor),
+    /// Homogeneous array of an architecture.
+    Array {
+        name: Option<String>,
+        dims: Vec<Dimension>,
+        elem: Box<Architecture>,
+        /// Connectivity among array instances.
+        connectivity: Vec<ScaleOutNetwork>,
+        /// Placeholder for outside-facing access interface.
+        interface: Option<String>,
+    },
+    /// Explicit graph architecture.
+    Graph(ArchGraph),
 }
 
 impl Architecture {
-    /// Create a new architecture builder
+    /// Create a graph architecture builder.
     pub fn builder(name: impl Into<String>) -> ArchitectureBuilder {
         ArchitectureBuilder {
             name: name.into(),
-            memory: Vec::new(),
-            processors: Vec::new(),
-            links: Vec::new(),
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            mem_count: 0,
+            arch_count: 0,
+            router_count: 0,
         }
     }
 
-    /// Look up a named memory region.
-    pub fn get_memory_region(&self, name: &str) -> Option<&MemoryRegion> {
-        self.memory.iter().find(|r| r.name() == Some(name))
+    /// Build an explicit graph architecture from parts.
+    pub fn graph(graph: ArchGraph) -> Self {
+        Architecture::Graph(graph)
     }
 
-    /// Look up a named processor.
-    pub fn get_processor(&self, name: &str) -> Option<&Processors> {
-        self.processors.iter().find(|p| p.name() == Some(name))
+    /// Access this value as a graph architecture.
+    pub fn as_graph(&self) -> Option<&ArchGraph> {
+        match self {
+            Architecture::Graph(graph) => Some(graph),
+            _ => None,
+        }
+    }
+
+    /// Mutable access to graph architecture.
+    pub fn as_graph_mut(&mut self) -> Option<&mut ArchGraph> {
+        match self {
+            Architecture::Graph(graph) => Some(graph),
+            _ => None,
+        }
+    }
+
+    /// Look up a named memory region (graph architecture only).
+    pub fn get_memory_region(&self, name: &str) -> Option<&MemoryRegion> {
+        match self {
+            Architecture::Graph(graph) => {
+                graph.nodes.iter().find_map(|node| match &node.component {
+                    ArchNodeComponent::MemoryRegion(region) if region.name() == Some(name) => {
+                        Some(region)
+                    }
+                    _ => None,
+                })
+            }
+            Architecture::Array { elem, .. } => elem.get_memory_region(name),
+            Architecture::Unit(_) => None,
+        }
+    }
+
+    /// Look up a named processor architecture.
+    ///
+    /// For graph architectures this searches architecture nodes.
+    /// For array/unit architectures this recursively searches itself.
+    pub fn get_processor(&self, name: &str) -> Option<&Architecture> {
+        match self {
+            Architecture::Graph(graph) => {
+                for node in &graph.nodes {
+                    if let ArchNodeComponent::Architecture(arch) = &node.component {
+                        if arch.name() == Some(name) {
+                            return Some(arch);
+                        }
+                        if let Some(found) = arch.get_processor(name) {
+                            return Some(found);
+                        }
+                    }
+                }
+                None
+            }
+            Architecture::Unit(_) => self.name().filter(|n| *n == name).map(|_| self),
+            Architecture::Array { elem, .. } => {
+                if self.name() == Some(name) {
+                    Some(self)
+                } else {
+                    elem.get_processor(name)
+                }
+            }
+        }
     }
 
     /// Scale this architecture by prepending dimensions.
     ///
-    /// - Each MemoryRegion is wrapped in Replicated { dims, elem }
-    /// - Each Processors is wrapped in Replicated { dims, elem }
-    /// - Each Link's affine map is replaced with identity on the new dims
+    /// Wraps the architecture in an outer `Array`.
     pub fn scale<'a, I>(self, dims: I) -> Architecture
     where
         I: IntoIterator<Item = &'a Dimension>,
     {
         let dims: Vec<Dimension> = dims.into_iter().cloned().collect();
-        let Architecture {
-            name,
-            memory,
-            processors,
-            links,
-            mut labels,
-        } = self;
+        self.replicate(&dims)
+    }
 
-        let memory = memory
-            .into_iter()
-            .map(|region| region.replicate(&dims))
-            .collect();
-
-        let processors = processors
-            .into_iter()
-            .map(|proc| proc.replicate(&dims))
-            .collect();
-
-        let links = links
-            .into_iter()
-            .map(|link| link.prepend_identity_dims(&dims))
-            .collect();
-
-        if !dims.is_empty() {
-            labels.push(ArchitectureLabel {
-                name: name.clone(),
-                dims: dims.clone(),
-            });
-        }
-
-        Architecture {
-            name,
-            memory,
-            processors,
-            links,
-            labels,
+    /// Get the name for this architecture value.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Architecture::Unit(p) => p.name.as_deref(),
+            Architecture::Array { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
+            Architecture::Graph(graph) => Some(graph.name.as_str()),
         }
     }
 
-    /// Set a new name (builder-style, consumes self).
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
+    /// Get functionality if this architecture is (or contains) a unit processor.
+    pub fn functionality(&self) -> Option<&Module> {
+        match self {
+            Architecture::Unit(p) => Some(&p.functionality),
+            Architecture::Array { elem, .. } => elem.functionality(),
+            Architecture::Graph(_) => None,
+        }
     }
 
-    /// Get total number of processing elements across all processors.
-    /// Returns None if any dimension is symbolic.
+    /// Get resource requirements for this architecture.
+    pub fn resources(&self) -> &[ResourceReq] {
+        match self {
+            Architecture::Unit(p) => &p.resources,
+            Architecture::Array { elem, .. } => elem.resources(),
+            Architecture::Graph(_) => &[],
+        }
+    }
+
+    /// Wrap this architecture in an Array with the given dimensions.
+    pub fn replicate(self, dims: &[Dimension]) -> Self {
+        Architecture::Array {
+            name: None,
+            dims: dims.to_vec(),
+            elem: Box::new(self),
+            connectivity: Vec::new(),
+            interface: None,
+        }
+    }
+
+    /// Set the name at the current level (builder-style, consumes self).
+    pub fn with_name(self, n: impl Into<String>) -> Self {
+        match self {
+            Architecture::Unit(mut p) => {
+                p.name = Some(n.into());
+                Architecture::Unit(p)
+            }
+            Architecture::Array {
+                dims,
+                elem,
+                connectivity,
+                interface,
+                ..
+            } => Architecture::Array {
+                name: Some(n.into()),
+                dims,
+                elem,
+                connectivity,
+                interface,
+            },
+            Architecture::Graph(mut graph) => {
+                graph.name = n.into();
+                Architecture::Graph(graph)
+            }
+        }
+    }
+
+    /// Set resource requirements on a Unit processor (builder-style).
+    pub fn with_resources(self, resources: Vec<ResourceReq>) -> Self {
+        match self {
+            Architecture::Unit(mut p) => {
+                p.resources = resources;
+                Architecture::Unit(p)
+            }
+            other => other,
+        }
+    }
+
+    /// Set explicit array connectivity.
+    pub fn with_connectivity(self, connectivity: Vec<ScaleOutNetwork>) -> Self {
+        match self {
+            Architecture::Array {
+                name,
+                dims,
+                elem,
+                interface,
+                ..
+            } => Architecture::Array {
+                name,
+                dims,
+                elem,
+                connectivity,
+                interface,
+            },
+            other => other,
+        }
+    }
+
+    /// Set placeholder outside-facing interface for array architectures.
+    pub fn with_interface(self, interface: impl Into<String>) -> Self {
+        match self {
+            Architecture::Array {
+                name,
+                dims,
+                elem,
+                connectivity,
+                ..
+            } => Architecture::Array {
+                name,
+                dims,
+                elem,
+                connectivity,
+                interface: Some(interface.into()),
+            },
+            other => other,
+        }
+    }
+
+    /// Get the outermost dimensions (empty for Unit/Graph).
+    pub fn dims(&self) -> &[Dimension] {
+        match self {
+            Architecture::Array { dims, .. } => dims,
+            _ => &[],
+        }
+    }
+
+    /// Compute total number of instances.
+    ///
+    /// Returns `None` if any dimension has symbolic size.
+    pub fn total_instances(&self) -> Option<u64> {
+        match self {
+            Architecture::Unit(_) => Some(1),
+            Architecture::Array { dims, elem, .. } => {
+                let outer: u64 = dims
+                    .iter()
+                    .map(|d| d.size.as_const())
+                    .collect::<Option<Vec<_>>>()?
+                    .into_iter()
+                    .product();
+                let inner = elem.total_instances()?;
+                Some(outer * inner)
+            }
+            Architecture::Graph(graph) => {
+                let mut total = 0u64;
+                for node in &graph.nodes {
+                    if let ArchNodeComponent::Architecture(arch) = &node.component {
+                        total += arch.total_instances()?;
+                    }
+                }
+                Some(total)
+            }
+        }
+    }
+
+    /// Collect all dimensions recursively.
+    pub fn all_dims(&self) -> Vec<&Dimension> {
+        match self {
+            Architecture::Unit(_) => vec![],
+            Architecture::Array { dims, elem, .. } => {
+                let mut result: Vec<&Dimension> = dims.iter().collect();
+                result.extend(elem.all_dims());
+                result
+            }
+            Architecture::Graph(graph) => {
+                let mut result = Vec::new();
+                for node in &graph.nodes {
+                    if let ArchNodeComponent::Architecture(arch) = &node.component {
+                        result.extend(arch.all_dims());
+                    }
+                }
+                result
+            }
+        }
+    }
+
+    /// Get total number of processing elements.
+    ///
+    /// For graph architectures this sums all graph processors.
     pub fn total_processing_elements(&self) -> Option<u64> {
-        let mut total = 0u64;
-        for proc in &self.processors {
-            total += proc.total_instances()?;
-        }
-        Some(total)
+        self.total_instances()
     }
 }
 
-/// Builder for constructing an Architecture.
+impl Deref for Architecture {
+    type Target = ArchGraph;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Architecture::Graph(graph) => graph,
+            _ => panic!("Architecture is not Graph; use as_graph()/as_graph_mut()"),
+        }
+    }
+}
+
+impl DerefMut for Architecture {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Architecture::Graph(graph) => graph,
+            _ => panic!("Architecture is not Graph; use as_graph()/as_graph_mut()"),
+        }
+    }
+}
+
+impl From<ArchGraph> for Architecture {
+    fn from(graph: ArchGraph) -> Self {
+        Architecture::Graph(graph)
+    }
+}
+
+/// Builder for constructing graph-style `Architecture::Graph`.
 pub struct ArchitectureBuilder {
     name: String,
-    memory: Vec<MemoryRegion>,
-    processors: Vec<Processors>,
-    links: Vec<Link>,
+    nodes: Vec<ArchNode>,
+    edges: Vec<ArchEdge>,
+    mem_count: usize,
+    arch_count: usize,
+    router_count: usize,
 }
 
 impl ArchitectureBuilder {
-    /// Add a memory region (borrows and clones; name is extracted from the region).
+    /// Add a memory region (borrows and clones).
     pub fn mem(mut self, region: &MemoryRegion) -> Self {
-        self.memory.push(region.clone());
+        self.nodes.push(ArchNode::from_memory_region(
+            format!("mem:{}", self.mem_count),
+            region,
+        ));
+        self.mem_count += 1;
         self
     }
 
-    /// Add a processor (borrows and clones; name is extracted from the processor).
-    pub fn processor(mut self, proc: &Processors) -> Self {
-        self.processors.push(proc.clone());
+    /// Add a processor architecture (borrows and clones).
+    pub fn processor(mut self, proc: &Architecture) -> Self {
+        self.nodes.push(ArchNode::from_architecture(
+            format!("arch:{}", self.arch_count),
+            proc,
+        ));
+        self.arch_count += 1;
         self
     }
 
-    /// Add a connectivity link.
-    pub fn link(mut self, link: Link) -> Self {
-        self.links.push(link);
+    /// Graph architectures are node-only; scale-out links belong to `Architecture::Array`.
+    pub fn link(self, _link: ScaleOutNetwork) -> Self {
         self
     }
 
-    /// Build the Architecture.
+    /// Add a router node.
+    pub fn router(mut self, router: &Router) -> Self {
+        let node_id = format!("router:{}", self.router_count);
+        self.nodes.push(ArchNode::from_router(node_id, router));
+        self.router_count += 1;
+        self
+    }
+
+    /// Add a pre-built abstract graph node.
+    pub fn node(mut self, node: &ArchNode) -> Self {
+        self.nodes.push(node.clone());
+        self
+    }
+
+    /// Add a pre-built abstract graph edge.
+    pub fn edge(mut self, edge: &ArchEdge) -> Self {
+        self.edges.push(edge.clone());
+        self
+    }
+
+    /// Build the graph architecture.
     pub fn build(self) -> Architecture {
-        Architecture {
+        let graph = ArchGraph {
             name: self.name,
-            memory: self.memory,
-            processors: self.processors,
-            links: self.links,
-            labels: Vec::new(),
-        }
+            nodes: self.nodes,
+            edges: self.edges,
+        };
+        Architecture::Graph(graph)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Architecture;
+    use crate::arch::{
+        ArchEdge, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor, Router,
+        SizeExpr,
+    };
+
+    #[test]
+    fn arch_graph_builder_materializes_memory_and_architecture_nodes() {
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("l1");
+        let lane = Processor::new("lane").into_elem();
+        let graph = Architecture::builder("core")
+            .mem(&l1)
+            .processor(&lane)
+            .router(&Router::new("router"))
+            .build();
+        let graph = graph.as_graph().expect("must build graph");
+
+        assert_eq!(graph.nodes.len(), 3);
+        assert!(graph.edges.is_empty());
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| matches!(n.component, ArchNodeComponent::MemoryRegion(_)))
+        );
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| matches!(n.component, ArchNodeComponent::Architecture(_)))
+        );
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| matches!(n.component, ArchNodeComponent::Router(_)))
+        );
+    }
+
+    #[test]
+    fn builder_accepts_custom_nodes() {
+        let router = ArchNode::from_router("router:3", &Router::new("crossbar"));
+        let arch = Architecture::builder("mesh").node(&router).build();
+        let graph = arch.as_graph().expect("builder must create graph");
+        assert!(graph.nodes.iter().any(|n| n.id == "router:3"));
+    }
+
+    #[test]
+    fn builder_accepts_custom_edges() {
+        let edge = ArchEdge::new("edge:0", "arch:0", "arch:1");
+        let arch = Architecture::builder("mesh").edge(&edge).build();
+        let graph = arch.as_graph().expect("builder must create graph");
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.edges[0].id, "edge:0");
+    }
+
+    #[test]
+    fn graph_supports_node_lookup_by_id() {
+        let arch = Architecture::builder("mesh")
+            .router(&Router::new("router"))
+            .build();
+        let graph = arch.as_graph().expect("builder must create graph");
+        let router_id = graph
+            .router_ref("router")
+            .expect("router node ID should be available");
+        let router = graph.get_node(&router_id).expect("router node must exist");
+        assert_eq!(router.name, "router");
     }
 }
