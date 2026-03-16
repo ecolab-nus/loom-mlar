@@ -1,5 +1,5 @@
 use super::architecture::Architecture;
-use super::links::Router;
+use super::links::{Router, ScaleOutNetwork};
 use super::memory::MemoryRegion;
 use super::processor::Processor;
 
@@ -189,5 +189,83 @@ impl ArchGraph {
             .iter()
             .find(|node| node.name == name && kind_check(&node.component))
             .map(|node| node.id.clone())
+    }
+
+    /// Create a builder for constructing an `ArchGraph`.
+    pub fn builder(name: impl Into<String>) -> ArchGraphBuilder {
+        ArchGraphBuilder {
+            name: name.into(),
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            mem_count: 0,
+            arch_count: 0,
+            router_count: 0,
+        }
+    }
+}
+
+/// Builder for constructing an `ArchGraph`.
+pub struct ArchGraphBuilder {
+    name: String,
+    nodes: Vec<ArchNode>,
+    edges: Vec<ArchEdge>,
+    mem_count: usize,
+    arch_count: usize,
+    router_count: usize,
+}
+
+impl ArchGraphBuilder {
+    /// Add a memory region (borrows and clones).
+    pub fn mem(mut self, region: &MemoryRegion) -> Self {
+        self.nodes.push(ArchNode::from_memory_region(
+            format!("mem:{}", self.mem_count),
+            region,
+        ));
+        self.mem_count += 1;
+        self
+    }
+
+    /// Add a processor architecture (borrows and clones).
+    pub fn processor(mut self, proc: &Architecture) -> Self {
+        self.nodes.push(ArchNode::from_architecture(
+            format!("arch:{}", self.arch_count),
+            proc,
+        ));
+        self.arch_count += 1;
+        self
+    }
+
+    /// Graph architectures are node-only; scale-out links belong to `Architecture::Array`.
+    pub fn link(self, _link: ScaleOutNetwork) -> Self {
+        self
+    }
+
+    /// Add a router node.
+    pub fn router(mut self, router: &Router) -> Self {
+        let node_id = format!("router:{}", self.router_count);
+        self.nodes.push(ArchNode::from_router(node_id, router));
+        self.router_count += 1;
+        self
+    }
+
+    /// Add a pre-built abstract graph node.
+    pub fn node(mut self, node: &ArchNode) -> Self {
+        self.nodes.push(node.clone());
+        self
+    }
+
+    /// Add a pre-built abstract graph edge.
+    pub fn edge(mut self, edge: &ArchEdge) -> Self {
+        self.edges.push(edge.clone());
+        self
+    }
+
+    /// Build the `ArchGraph`.
+    pub fn build(self) -> ArchGraph {
+        ArchGraph {
+            name: self.name,
+            nodes: self.nodes,
+            edges: self.edges,
+        }
     }
 }

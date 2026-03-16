@@ -12,8 +12,8 @@ pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
     MlirTensorSymbolBinding,
 };
-pub use architecture::{Architecture, ArchitectureBuilder};
-pub use graph::{ArchEdge, ArchGraph, ArchGraphNode, ArchNode, ArchNodeComponent};
+pub use architecture::Architecture;
+pub use graph::{ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent};
 pub use links::{
     Endpoint, LinkMapRelation, LinkTopology, Router, RouterEndpoint, RouterEndpointTarget,
     RouterSide, ScaleOutNetwork, SharingDomain,

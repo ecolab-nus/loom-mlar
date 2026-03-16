@@ -1,5 +1,5 @@
-use super::graph::{ArchEdge, ArchGraph, ArchNode, ArchNodeComponent};
-use super::links::{Router, ScaleOutNetwork};
+use super::graph::{ArchGraph, ArchNodeComponent};
+use super::links::ScaleOutNetwork;
 use super::memory::MemoryRegion;
 use super::processor::Processor;
 use super::resource::ResourceReq;
@@ -33,18 +33,6 @@ pub enum Architecture {
 }
 
 impl Architecture {
-    /// Create a graph architecture builder.
-    pub fn builder(name: impl Into<String>) -> ArchitectureBuilder {
-        ArchitectureBuilder {
-            name: name.into(),
-            nodes: Vec::new(),
-            edges: Vec::new(),
-            mem_count: 0,
-            arch_count: 0,
-            router_count: 0,
-        }
-    }
-
     /// Build an explicit graph architecture from parts.
     pub fn graph(graph: ArchGraph) -> Self {
         Architecture::Graph(graph)
@@ -330,90 +318,24 @@ impl From<ArchGraph> for Architecture {
     }
 }
 
-/// Builder for constructing graph-style `Architecture::Graph`.
-pub struct ArchitectureBuilder {
-    name: String,
-    nodes: Vec<ArchNode>,
-    edges: Vec<ArchEdge>,
-    mem_count: usize,
-    arch_count: usize,
-    router_count: usize,
-}
-
-impl ArchitectureBuilder {
-    /// Add a memory region (borrows and clones).
-    pub fn mem(mut self, region: &MemoryRegion) -> Self {
-        self.nodes.push(ArchNode::from_memory_region(
-            format!("mem:{}", self.mem_count),
-            region,
-        ));
-        self.mem_count += 1;
-        self
-    }
-
-    /// Add a processor architecture (borrows and clones).
-    pub fn processor(mut self, proc: &Architecture) -> Self {
-        self.nodes.push(ArchNode::from_architecture(
-            format!("arch:{}", self.arch_count),
-            proc,
-        ));
-        self.arch_count += 1;
-        self
-    }
-
-    /// Graph architectures are node-only; scale-out links belong to `Architecture::Array`.
-    pub fn link(self, _link: ScaleOutNetwork) -> Self {
-        self
-    }
-
-    /// Add a router node.
-    pub fn router(mut self, router: &Router) -> Self {
-        let node_id = format!("router:{}", self.router_count);
-        self.nodes.push(ArchNode::from_router(node_id, router));
-        self.router_count += 1;
-        self
-    }
-
-    /// Add a pre-built abstract graph node.
-    pub fn node(mut self, node: &ArchNode) -> Self {
-        self.nodes.push(node.clone());
-        self
-    }
-
-    /// Add a pre-built abstract graph edge.
-    pub fn edge(mut self, edge: &ArchEdge) -> Self {
-        self.edges.push(edge.clone());
-        self
-    }
-
-    /// Build the graph architecture.
-    pub fn build(self) -> Architecture {
-        let graph = ArchGraph {
-            name: self.name,
-            nodes: self.nodes,
-            edges: self.edges,
-        };
-        Architecture::Graph(graph)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Architecture;
     use crate::arch::{
-        ArchEdge, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor, Router,
-        SizeExpr,
+        ArchEdge, ArchGraph, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor,
+        Router, SizeExpr,
     };
 
     #[test]
     fn arch_graph_builder_materializes_memory_and_architecture_nodes() {
         let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("l1");
         let lane = Processor::new("lane").into_elem();
-        let graph = Architecture::builder("core")
+        let graph: Architecture = ArchGraph::builder("core")
             .mem(&l1)
             .processor(&lane)
             .router(&Router::new("router"))
-            .build();
+            .build()
+            .into();
         let graph = graph.as_graph().expect("must build graph");
 
         assert_eq!(graph.nodes.len(), 3);
@@ -441,7 +363,7 @@ mod tests {
     #[test]
     fn builder_accepts_custom_nodes() {
         let router = ArchNode::from_router("router:3", &Router::new("crossbar"));
-        let arch = Architecture::builder("mesh").node(&router).build();
+        let arch: Architecture = ArchGraph::builder("mesh").node(&router).build().into();
         let graph = arch.as_graph().expect("builder must create graph");
         assert!(graph.nodes.iter().any(|n| n.id == "router:3"));
     }
@@ -449,7 +371,7 @@ mod tests {
     #[test]
     fn builder_accepts_custom_edges() {
         let edge = ArchEdge::new("edge:0", "arch:0", "arch:1");
-        let arch = Architecture::builder("mesh").edge(&edge).build();
+        let arch: Architecture = ArchGraph::builder("mesh").edge(&edge).build().into();
         let graph = arch.as_graph().expect("builder must create graph");
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.edges[0].id, "edge:0");
@@ -457,9 +379,10 @@ mod tests {
 
     #[test]
     fn graph_supports_node_lookup_by_id() {
-        let arch = Architecture::builder("mesh")
+        let arch: Architecture = ArchGraph::builder("mesh")
             .router(&Router::new("router"))
-            .build();
+            .build()
+            .into();
         let graph = arch.as_graph().expect("builder must create graph");
         let router_id = graph
             .router_ref("router")

@@ -12,11 +12,12 @@ pub fn single_core() -> Architecture {
     let matrix_lane = matrix_lane();
     let vector_lane = vector_lane();
 
-    let mut core = Architecture::builder("core")
+    let mut core: Architecture = ArchGraph::builder("core")
         .mem(&l1)
         .processor(&matrix_lane)
         .processor(&vector_lane)
-        .build();
+        .build()
+        .into();
 
     let graph = core
         .as_graph_mut()

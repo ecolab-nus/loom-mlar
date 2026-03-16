@@ -48,7 +48,7 @@ fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfSc
         // execution (e.g. max, overlap, resource contention) which is
         // out of scope for the current design.
         Schedule::Parallel { .. } => {
-            Err("Parallel schedule evaluation is not yet supported".to_string())
+            unimplemented!("Parallel schedule evaluation is not yet supported");
         }
 
         Schedule::Sequential { schedules, .. } => {
@@ -145,6 +145,7 @@ fn find_function_processor<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arch::graph::ArchGraph;
     use crate::arch::perf::FuncPerfModel;
     use crate::arch::processor::Processor;
     use crate::schedule::MlirFunc;
@@ -339,7 +340,7 @@ mod tests {
     fn evaluate_finds_function_in_graph_architecture() {
         let fp = FunctionProcessor::new(MlirFunc::named("f"), simple_model(7, 42));
         let proc = Processor::with_functions("inner", vec![fp]).into_elem();
-        let arch = Architecture::builder("top").processor(&proc).build();
+        let arch: Architecture = ArchGraph::builder("top").processor(&proc).build().into();
 
         let schedule = Schedule::Func {
             func: MlirFunc::named("f"),

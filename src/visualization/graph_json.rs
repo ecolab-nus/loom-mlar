@@ -702,7 +702,8 @@ fn processors_to_json(elem: &Processors) -> GraphProcessors {
 mod tests {
     use super::{architecture_to_graph_json, architecture_to_graph_json_value};
     use crate::arch::{
-        Architecture, Dimension, MemoryBank, MemoryRegion, Processor, ScaleOutNetwork, SizeExpr,
+        ArchGraph, Architecture, Dimension, MemoryBank, MemoryRegion, Processor, ScaleOutNetwork,
+        SizeExpr,
     };
     use crate::math::AffineMap;
 
@@ -725,10 +726,11 @@ mod tests {
             .bandwidth(128)
             .build();
 
-        let arch = Architecture::builder("unit")
+        let arch: Architecture = ArchGraph::builder("unit")
             .mem(&l1)
             .processor(&lane)
-            .build();
+            .build()
+            .into();
         let arch = arch
             .replicate(core_dim.as_slice())
             .with_connectivity(vec![link]);
@@ -753,10 +755,11 @@ mod tests {
         .with_name("l1");
         let lane = Processor::new("lane").into_elem();
 
-        let core = Architecture::builder("core")
+        let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
             .processor(&lane)
-            .build();
+            .build()
+            .into();
 
         let dim_x = Dimension::new_int("x", 4);
         let dim_y = Dimension::new_int("y", 4);

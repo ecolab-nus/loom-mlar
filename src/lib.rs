@@ -5,8 +5,8 @@ pub mod visualization;
 
 // Re-export commonly used architecture types
 pub use arch::{
-    ArchEdge, ArchGraph, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
-    ArchitectureBuilder, Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank,
+    ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
+    Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank,
     MemoryRegion, PerfScenario, PerfScenarios, Processor, ProcessorSet, Processors, Resource,
     ResourceReq, Router,
     RouterEndpoint, RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SizeExpr,

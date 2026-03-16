@@ -82,13 +82,14 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bandwidth(64)
         .build();
 
-    let core = Architecture::builder("GPU_core")
+    let core: Architecture = ArchGraph::builder("GPU_core")
         .mem(&dram)
         .mem(&l2)
         .mem(&l1)
         .mem(&rf)
         .processor(&mat_lane)
-        .build();
+        .build()
+        .into();
     let arch = core
         .replicate(&[])
         .with_name("GPU")
