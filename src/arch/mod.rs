@@ -4,7 +4,6 @@ pub mod links;
 pub mod memory;
 pub mod perf;
 pub mod processor;
-pub mod resource;
 pub mod size_dim;
 
 // Re-export commonly used types
@@ -21,5 +20,4 @@ pub use links::{
 pub use memory::{MemoryBank, MemoryRegion};
 pub use perf::{FuncPerfModel, PerfScenario, PerfScenarios, TimeCostExpr, TimeExpr};
 pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
-pub use resource::{Resource, ResourceReq};
 pub use size_dim::{Dimension, SizeExpr, Sym};

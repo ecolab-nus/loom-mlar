@@ -7,8 +7,7 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
     Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank,
-    MemoryRegion, PerfScenario, PerfScenarios, Processor, ProcessorSet, Processors, Resource,
-    ResourceReq, Router,
+    MemoryRegion, PerfScenario, PerfScenarios, Processor, ProcessorSet, Processors, Router,
     RouterEndpoint, RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SizeExpr,
     Sym, TimeCostExpr, TimeExpr,
 };

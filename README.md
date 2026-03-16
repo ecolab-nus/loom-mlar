@@ -23,7 +23,6 @@ src/
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── link.rs                 # Link, Endpoint, SharingDomain
 │   ├── architecture.rs         # Architecture, ArchitectureBuilder
-│   └── resource.rs             # Resource and resource requests
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
 │   ├── expr.rs                 # Symbolic arithmetic expressions
@@ -134,7 +133,6 @@ Useful helpers:
 
 - `functionality: Module`
 - `functions: Vec<FunctionProcessor>`
-- `resources: Vec<ResourceReq>`
 
 ### Preferred constructor
 

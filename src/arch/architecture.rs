@@ -2,7 +2,6 @@ use super::graph::{ArchGraph, ArchNodeComponent};
 use super::links::ScaleOutNetwork;
 use super::memory::MemoryRegion;
 use super::processor::Processor;
-use super::resource::ResourceReq;
 use super::size_dim::Dimension;
 use crate::schedule::Module;
 use std::ops::{Deref, DerefMut};
@@ -129,15 +128,6 @@ impl Architecture {
         }
     }
 
-    /// Get resource requirements for this architecture.
-    pub fn resources(&self) -> &[ResourceReq] {
-        match self {
-            Architecture::Unit(p) => &p.resources,
-            Architecture::Array { elem, .. } => elem.resources(),
-            Architecture::Graph(_) => &[],
-        }
-    }
-
     /// Wrap this architecture in an Array with the given dimensions.
     pub fn replicate(self, dims: &[Dimension]) -> Self {
         Architecture::Array {
@@ -173,17 +163,6 @@ impl Architecture {
                 graph.name = n.into();
                 Architecture::Graph(graph)
             }
-        }
-    }
-
-    /// Set resource requirements on a Unit processor (builder-style).
-    pub fn with_resources(self, resources: Vec<ResourceReq>) -> Self {
-        match self {
-            Architecture::Unit(mut p) => {
-                p.resources = resources;
-                Architecture::Unit(p)
-            }
-            other => other,
         }
     }
 

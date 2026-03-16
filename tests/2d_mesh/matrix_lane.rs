@@ -1,7 +1,5 @@
 use mlar_rust::*;
 
-use crate::memory::l1;
-
 /// Matrix lane processor with matmul performance model (M, N, K symbols).
 ///
 /// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
@@ -48,5 +46,4 @@ pub fn matrix_lane() -> Processors {
     Processor::from_module("matrix_lane", functionality, vec![mat_func_perf])
         .expect("matrix_lane processor should link functionality and perf")
         .into_elem()
-        .with_resources(vec![ResourceReq::new(l1().as_resource(), 4)])
 }

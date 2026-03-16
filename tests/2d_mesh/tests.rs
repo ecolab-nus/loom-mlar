@@ -2,7 +2,6 @@ use std::fs;
 
 use mlar_rust::*;
 
-use crate::memory::l1;
 use crate::scale::scaled_mesh_torus;
 
 #[test]
@@ -41,11 +40,6 @@ fn test_2d_mesh_torus_perf_models() {
                         .as_ref()
                         .is_some_and(|s| s.path.ends_with(".mlir")),
                     "functionality source for {:?} should point to MLIR",
-                    p.name
-                );
-                assert!(
-                    !p.resources.is_empty(),
-                    "resources on {:?} should be preserved after scaling",
                     p.name
                 );
             }
@@ -158,26 +152,6 @@ fn test_2d_mesh_torus_perf_models() {
         _ => panic!("expected Unit"),
     }
 
-    // === Verify resource requirements ===
-    let l1_resource = l1().as_resource();
-    assert_eq!(l1_resource.name, "L1");
-    assert_eq!(l1_resource.quantity, 16);
-
-    let mat_resources = mesh
-        .get_processor("matrix_lane")
-        .expect("matrix_lane should exist")
-        .resources();
-    assert_eq!(mat_resources.len(), 1);
-    assert_eq!(mat_resources[0].resource, l1_resource);
-    assert_eq!(mat_resources[0].quantity, 4);
-
-    let vec_resources = mesh
-        .get_processor("vector_lane")
-        .expect("vector_lane should exist")
-        .resources();
-    assert_eq!(vec_resources.len(), 1);
-    assert_eq!(vec_resources[0].resource, l1_resource);
-    assert_eq!(vec_resources[0].quantity, 2);
 }
 
 #[test]

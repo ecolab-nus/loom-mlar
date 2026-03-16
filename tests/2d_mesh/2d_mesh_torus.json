@@ -114,10 +114,6 @@
             "total_size_bytes": 2097152
           },
           "total_size_bytes": 134217728
-        },
-        "resource": {
-          "name": "L1",
-          "quantity": 64
         }
       }
     }

@@ -11,16 +11,6 @@ export interface GraphExpr {
   const_value: number | null;
 }
 
-export interface GraphResource {
-  name: string;
-  quantity: number;
-}
-
-export interface GraphResourceReq {
-  resource: GraphResource;
-  quantity: number;
-}
-
 export interface GraphMlirModuleRef {
   path: string;
   functions: string[];
@@ -31,7 +21,6 @@ export type GraphProcessorElem =
       kind: 'unit';
       name: string | null;
       compute: GraphMlirModuleRef | null;
-      resources: GraphResourceReq[];
     }
   | {
       kind: 'array';
@@ -71,7 +60,6 @@ export type GraphNodeDetails =
   | {
       type: 'memory';
       region: GraphMemoryRegion;
-      resource: GraphResource;
     }
   | {
       type: 'processor';

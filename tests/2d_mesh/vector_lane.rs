@@ -1,7 +1,5 @@
 use mlar_rust::*;
 
-use crate::memory::l1;
-
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
@@ -45,5 +43,4 @@ pub fn vector_lane() -> Processors {
     Processor::from_module("vector_lane", functionality, perf_models)
         .expect("vector_lane processor should link functionality and perf")
         .into_elem()
-        .with_resources(vec![ResourceReq::new(l1().as_resource(), 2)])
 }

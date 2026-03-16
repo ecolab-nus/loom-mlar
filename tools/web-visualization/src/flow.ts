@@ -1000,9 +1000,6 @@ function summarizeArchitectureNode(node: ArchitectureGraphNode): string {
       ? `instances=${node.details.total_instances}`
       : 'instances=symbolic';
   }
-  if (node.kind === 'memory' && node.details.type === 'memory') {
-    return `resource=${node.details.resource.quantity}`;
-  }
   return '';
 }
 
@@ -1010,11 +1007,10 @@ function summarizeMemoryNode(node: ArchitectureGraphNode, totalBanks: number | n
   if (node.kind !== 'memory' || node.details.type !== 'memory') {
     return summarizeArchitectureNode(node);
   }
-  const resource = node.details.resource.quantity;
   if (totalBanks === null) {
-    return `resource=${resource}, banks=symbolic`;
+    return `banks=symbolic`;
   }
-  return `resource=${resource}, banks=${totalBanks}`;
+  return `banks=${totalBanks}`;
 }
 
 function edgeToFlow(edge: VisualEdgeSpec): Edge {

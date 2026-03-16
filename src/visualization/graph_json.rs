@@ -1,6 +1,6 @@
 use crate::arch::{
     ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, Endpoint, LinkMapRelation,
-    LinkTopology, MemoryRegion, Processors, Resource, ResourceReq, Router, SharingDomain, SizeExpr,
+    LinkTopology, MemoryRegion, Processors, Router, SharingDomain, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
@@ -56,7 +56,6 @@ pub struct GraphNode {
 pub enum GraphNodeDetails {
     Memory {
         region: GraphMemoryRegion,
-        resource: GraphResource,
     },
     Processor {
         element: GraphProcessors,
@@ -143,18 +142,6 @@ pub struct GraphAffineMap {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GraphResource {
-    pub name: String,
-    pub quantity: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphResourceReq {
-    pub resource: GraphResource,
-    pub quantity: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct GraphFunctionalityModule {
     pub name: Option<String>,
     pub source_path: Option<String>,
@@ -168,7 +155,6 @@ pub enum GraphProcessors {
     Unit {
         name: Option<String>,
         functionality: GraphFunctionalityModule,
-        resources: Vec<GraphResourceReq>,
     },
     Array {
         name: Option<String>,
@@ -409,7 +395,6 @@ fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> Gra
         dimensions,
         details: GraphNodeDetails::Memory {
             region: memory_region_to_json(region),
-            resource: resource_to_json(&region.as_resource()),
         },
     }
 }
@@ -538,20 +523,6 @@ fn size_expr_to_json(expr: &SizeExpr) -> GraphSizeExpr {
     }
 }
 
-fn resource_to_json(resource: &Resource) -> GraphResource {
-    GraphResource {
-        name: resource.name.clone(),
-        quantity: resource.quantity,
-    }
-}
-
-fn resource_req_to_json(req: &ResourceReq) -> GraphResourceReq {
-    GraphResourceReq {
-        resource: resource_to_json(&req.resource),
-        quantity: req.quantity,
-    }
-}
-
 fn functionality_to_json(module: &Module) -> GraphFunctionalityModule {
     GraphFunctionalityModule {
         name: module.name.clone(),
@@ -677,7 +648,6 @@ fn processors_to_json(elem: &Processors) -> GraphProcessors {
         Processors::Unit(proc) => GraphProcessors::Unit {
             name: proc.name.clone(),
             functionality: functionality_to_json(&proc.functionality),
-            resources: proc.resources.iter().map(resource_req_to_json).collect(),
         },
         Processors::Array {
             name, dims, elem, ..

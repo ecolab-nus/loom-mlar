@@ -1,6 +1,5 @@
 use super::architecture::Architecture;
 use super::perf::FuncPerfModel;
-use super::resource::ResourceReq;
 use super::size_dim::Dimension;
 use crate::schedule::{MlirFunc, Module};
 use serde::{Deserialize, Serialize};
@@ -45,8 +44,6 @@ pub struct Processor {
     /// Optional named output ports for data egress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<String>>,
-    /// Resources this processor allocates when executing.
-    pub resources: Vec<ResourceReq>,
 }
 
 /// Backward-compatible aliases for architecture-as-processor usage.
@@ -62,7 +59,6 @@ impl Processor {
             functions: Vec::new(),
             inputs: None,
             outputs: None,
-            resources: Vec::new(),
         }
     }
 
@@ -75,7 +71,6 @@ impl Processor {
             functions,
             inputs: None,
             outputs: None,
-            resources: Vec::new(),
         }
     }
 
@@ -107,7 +102,6 @@ impl Processor {
             functions,
             inputs: None,
             outputs: None,
-            resources: Vec::new(),
         };
         processor.validate()?;
         Ok(processor)
@@ -116,12 +110,6 @@ impl Processor {
     /// Set the name (builder-style, consumes self).
     pub fn with_name(mut self, n: impl Into<String>) -> Self {
         self.name = Some(n.into());
-        self
-    }
-
-    /// Set resource requirements (builder-style, consumes self).
-    pub fn with_resources(mut self, resources: Vec<ResourceReq>) -> Self {
-        self.resources = resources;
         self
     }
 
