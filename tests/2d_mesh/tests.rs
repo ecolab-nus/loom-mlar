@@ -264,3 +264,76 @@ fn test_export_2d_mesh_torus_graph_json() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.json");
     fs::write(out_path, &json).expect("Failed to write JSON file");
 }
+
+/// Evaluate a sequential schedule of different vector-lane instructions
+/// against the single-core architecture.
+///
+/// Schedule: vec_add_f32 → vec_exp_f32 → vec_mul_f32 → vec_div_f32
+///
+/// Each vector function has a single scenario with `True` constraints, so
+/// the Cartesian product yields exactly one combined scenario whose costs
+/// are the element-wise sums of the individual costs:
+///   fixed_latency = 1 + 16 + 1 + 8 = 26
+///   throughput    = 1024 + 128 + 1024 + 256 = 2432
+#[test]
+fn test_evaluate_vector_lane_sequential_schedule() {
+    let core = crate::core_arch::single_core();
+
+    let schedule = Schedule::Sequential {
+        schedules: vec![
+            Schedule::Func {
+                func: MlirFunc::named("vec_add_f32"),
+                processor: None,
+                time: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::named("vec_exp_f32"),
+                processor: None,
+                time: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::named("vec_mul_f32"),
+                processor: None,
+                time: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::named("vec_div_f32"),
+                processor: None,
+                time: None,
+            },
+        ],
+        mlir_ref: None,
+        processor: None,
+        time: None,
+    };
+
+    let scenarios = evaluate(&schedule, &core).expect("sequential vector schedule should evaluate");
+
+    // 1 scenario per function → 1×1×1×1 = 1 combined scenario
+    assert_eq!(scenarios.len(), 1);
+
+    let s = &scenarios[0];
+    assert_eq!(s.time_cost.fixed_latency.eval_const(), Some(1 + 16 + 1 + 8));
+    assert_eq!(
+        s.time_cost.throughput.eval_const(),
+        Some(1024 + 128 + 1024 + 256)
+    );
+
+    // All individual constraints are True, so the fused constraint must also
+    // evaluate to true.
+    assert_eq!(s.constraints.eval_const(), Some(true));
+
+    // PerfScenarios round-trips through JSON.
+    let json = serde_json::to_string(&scenarios).expect("PerfScenarios should serialize");
+    let decoded: PerfScenarios =
+        serde_json::from_str(&json).expect("PerfScenarios should deserialize");
+    assert_eq!(decoded.len(), scenarios.len());
+    assert_eq!(
+        decoded[0].time_cost.fixed_latency.eval_const(),
+        scenarios[0].time_cost.fixed_latency.eval_const()
+    );
+    assert_eq!(
+        decoded[0].time_cost.throughput.eval_const(),
+        scenarios[0].time_cost.throughput.eval_const()
+    );
+}

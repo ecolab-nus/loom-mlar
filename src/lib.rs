@@ -7,7 +7,8 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchGraph, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
     ArchitectureBuilder, Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank,
-    MemoryRegion, PerfScenario, Processor, ProcessorSet, Processors, Resource, ResourceReq, Router,
+    MemoryRegion, PerfScenario, PerfScenarios, Processor, ProcessorSet, Processors, Resource,
+    ResourceReq, Router,
     RouterEndpoint, RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SizeExpr,
     Sym, TimeCostExpr, TimeExpr,
 };
@@ -19,7 +20,7 @@ pub use math::{
 };
 pub use schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
-    MlirTensorSymbolBinding, Module, ModuleSource, Schedule,
+    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, evaluate,
 };
 
 // Re-export visualization utilities

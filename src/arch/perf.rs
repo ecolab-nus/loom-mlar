@@ -44,6 +44,58 @@ pub struct TimeCostExpr {
     pub throughput: Expr,
 }
 
+/// A collection of [`PerfScenario`]s — the result of evaluating a schedule.
+///
+/// Each entry represents one feasible scenario with its own constraints and
+/// cost expressions. When a sequential schedule is evaluated, the Cartesian
+/// product of per-function scenarios produces this vector.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PerfScenarios(pub Vec<PerfScenario>);
+
+impl PerfScenarios {
+    pub fn new(scenarios: Vec<PerfScenario>) -> Self {
+        Self(scenarios)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, PerfScenario> {
+        self.0.iter()
+    }
+}
+
+impl std::ops::Index<usize> for PerfScenarios {
+    type Output = PerfScenario;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IntoIterator for PerfScenarios {
+    type Item = PerfScenario;
+    type IntoIter = std::vec::IntoIter<PerfScenario>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a PerfScenarios {
+    type Item = &'a PerfScenario;
+    type IntoIter = std::slice::Iter<'a, PerfScenario>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 /// Symbolic schedule time expression.
 pub type TimeExpr = Expr;
 
