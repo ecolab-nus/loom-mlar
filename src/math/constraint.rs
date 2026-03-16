@@ -168,6 +168,45 @@ impl ConstraintExpr {
         syms
     }
 
+    /// Return a new constraint with every symbol replaced according to `mappings`,
+    /// delegating leaf substitution to [`Expr::substitute`].
+    pub fn substitute(&self, mappings: &[(Sym, Expr)]) -> ConstraintExpr {
+        match self {
+            ConstraintExpr::True | ConstraintExpr::False => self.clone(),
+            ConstraintExpr::And(cs) => {
+                ConstraintExpr::And(cs.iter().map(|c| c.substitute(mappings)).collect())
+            }
+            ConstraintExpr::Or(cs) => {
+                ConstraintExpr::Or(cs.iter().map(|c| c.substitute(mappings)).collect())
+            }
+            ConstraintExpr::Not(c) => ConstraintExpr::Not(Box::new(c.substitute(mappings))),
+            ConstraintExpr::Eq(a, b) => {
+                ConstraintExpr::Eq(a.substitute(mappings), b.substitute(mappings))
+            }
+            ConstraintExpr::Le(a, b) => {
+                ConstraintExpr::Le(a.substitute(mappings), b.substitute(mappings))
+            }
+            ConstraintExpr::Lt(a, b) => {
+                ConstraintExpr::Lt(a.substitute(mappings), b.substitute(mappings))
+            }
+            ConstraintExpr::Ge(a, b) => {
+                ConstraintExpr::Ge(a.substitute(mappings), b.substitute(mappings))
+            }
+            ConstraintExpr::Gt(a, b) => {
+                ConstraintExpr::Gt(a.substitute(mappings), b.substitute(mappings))
+            }
+            ConstraintExpr::Divisible { x, by } => ConstraintExpr::Divisible {
+                x: x.substitute(mappings),
+                by: by.substitute(mappings),
+            },
+            ConstraintExpr::InRange { x, lo, hi } => ConstraintExpr::InRange {
+                x: x.substitute(mappings),
+                lo: lo.substitute(mappings),
+                hi: hi.substitute(mappings),
+            },
+        }
+    }
+
     pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             ConstraintExpr::True | ConstraintExpr::False => {}

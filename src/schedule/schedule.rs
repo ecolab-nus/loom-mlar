@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::{MlirFunc, MlirModule};
-use crate::arch::{FunctionProcessor, Processor, TimeExpr};
+use crate::arch::{FunctionProcessor, Processor, Sym, TimeExpr};
+use crate::math::Expr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Schedule {
@@ -30,6 +31,67 @@ pub enum Schedule {
         #[serde(skip_serializing_if = "Option::is_none")]
         time: Option<TimeExpr>,
     },
+}
+
+/// Maps MLIR symbols to symbolic expressions.
+///
+/// For example, one can record that the MLIR symbol `L` should be replaced by
+/// the expression `BM * BN` during evaluation. Each entry is a `(Sym, Expr)`
+/// pair where `Sym` is the original MLIR symbol and `Expr` is its replacement.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SymbolicMapping {
+    pub entries: Vec<(Sym, Expr)>,
+}
+
+impl SymbolicMapping {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn with_entries(entries: Vec<(Sym, Expr)>) -> Self {
+        Self { entries }
+    }
+
+    /// Insert a mapping from `symbol` to `expr`.
+    pub fn insert(&mut self, symbol: Sym, expr: Expr) {
+        self.entries.push((symbol, expr));
+    }
+
+    /// Look up the expression mapped to `symbol`, if any.
+    pub fn get(&self, symbol: &Sym) -> Option<&Expr> {
+        self.entries
+            .iter()
+            .find(|(s, _)| s == symbol)
+            .map(|(_, e)| e)
+    }
+
+    /// View the mapping entries as a slice, suitable for passing to
+    /// [`Expr::substitute`] and [`ConstraintExpr::substitute`].
+    pub fn as_slice(&self) -> &[(Sym, Expr)] {
+        &self.entries
+    }
+}
+
+impl Default for SymbolicMapping {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A [`Schedule`] bundled with a [`SymbolicMapping`] that records how MLIR
+/// symbols should be rewritten to new symbolic expressions during evaluation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ScheduleWithSymMap {
+    pub schedule: Schedule,
+    pub sym_map: SymbolicMapping,
+}
+
+impl ScheduleWithSymMap {
+    pub fn new(schedule: Schedule, sym_map: SymbolicMapping) -> Self {
+        Self { schedule, sym_map }
+    }
 }
 
 #[cfg(test)]

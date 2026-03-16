@@ -19,13 +19,15 @@
 //!    scenario vectors via Cartesian product — for each pair of scenarios the
 //!    [`TimeCostExpr`] fields are summed and constraints are composed with AND.
 
+use serde::{Deserialize, Serialize};
+
 use crate::arch::architecture::Architecture;
 use crate::arch::graph::ArchNodeComponent;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, PerfScenarios, TimeCostExpr};
 use crate::arch::processor::FunctionProcessor;
 use crate::math::constraint::ConstraintExpr;
 use crate::math::expr::Expr;
-use crate::schedule::schedule::Schedule;
+use crate::schedule::schedule::{Schedule, ScheduleWithSymMap, SymbolicMapping};
 
 /// Evaluate a schedule's performance on the given architecture.
 ///
@@ -39,6 +41,46 @@ use crate::schedule::schedule::Schedule;
 /// - A `Func` whose name cannot be found in `arch` returns an error.
 pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<PerfScenarios, String> {
     evaluate_inner(schedule, arch).map(PerfScenarios::new)
+}
+
+/// Evaluation result that bundles the per-scenario performance data with the
+/// symbolic mapping that was applied during evaluation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PerfResult {
+    pub scenarios: Vec<PerfScenario>,
+    pub sym_map: SymbolicMapping,
+}
+
+impl PerfResult {
+    pub fn new(scenarios: Vec<PerfScenario>, sym_map: SymbolicMapping) -> Self {
+        Self { scenarios, sym_map }
+    }
+}
+
+/// Evaluate a [`ScheduleWithSymMap`] against the given architecture.
+///
+/// This works like [`evaluate`] but additionally applies the symbolic mapping
+/// from `input.sym_map`: every symbol that appears in a mapping entry is
+/// replaced by its corresponding expression in every [`PerfScenario`]
+/// (constraints and time-cost expressions alike).  The mapping is also
+/// preserved in the returned [`PerfResult`].
+pub fn evaluate_with_sym_map(
+    input: &ScheduleWithSymMap,
+    arch: &Architecture,
+) -> Result<PerfResult, String> {
+    let raw = evaluate_inner(&input.schedule, arch)?;
+    let mappings = input.sym_map.as_slice();
+    let substituted = raw
+        .into_iter()
+        .map(|s| PerfScenario {
+            constraints: s.constraints.substitute(mappings),
+            time_cost: TimeCostExpr {
+                fixed_latency: s.time_cost.fixed_latency.substitute(mappings),
+                throughput: s.time_cost.throughput.substitute(mappings),
+            },
+        })
+        .collect();
+    Ok(PerfResult::new(substituted, input.sym_map.clone()))
 }
 
 fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfScenario>, String> {

@@ -210,6 +210,34 @@ impl Expr {
         syms
     }
 
+    /// Return a new expression with every `Sym(s)` replaced by its image in
+    /// `mappings`, leaving unmatched symbols untouched.
+    pub fn substitute(&self, mappings: &[(Sym, Expr)]) -> Expr {
+        match self {
+            Expr::Const(_) => self.clone(),
+            Expr::Sym(s) => mappings
+                .iter()
+                .find(|(sym, _)| sym == s)
+                .map(|(_, expr)| expr.clone())
+                .unwrap_or_else(|| self.clone()),
+            Expr::Add(a, b) => Expr::add(a.substitute(mappings), b.substitute(mappings)),
+            Expr::Sub(a, b) => Expr::sub(a.substitute(mappings), b.substitute(mappings)),
+            Expr::Mul(a, b) => Expr::mul(a.substitute(mappings), b.substitute(mappings)),
+            Expr::Div(a, b) => Expr::div(a.substitute(mappings), b.substitute(mappings)),
+            Expr::Min(a, b) => Expr::min(a.substitute(mappings), b.substitute(mappings)),
+            Expr::Max(a, b) => Expr::max(a.substitute(mappings), b.substitute(mappings)),
+            Expr::IfElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => Expr::if_then_else(
+                cond.substitute(mappings),
+                then_expr.substitute(mappings),
+                else_expr.substitute(mappings),
+            ),
+        }
+    }
+
     pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             Expr::Const(_) => {}
