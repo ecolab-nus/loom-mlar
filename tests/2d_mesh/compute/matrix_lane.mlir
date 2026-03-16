@@ -17,9 +17,9 @@ func.func @matmul_f32(
     %B: tensor<?x?xf32>,
     %C: tensor<?x?xf32>
 ) -> tensor<?x?xf32> {
-  loom.bind %A, (%M, %K)
-  loom.bind %B, (%K, %N)
-  loom.bind %C, (%M, %N)
+  loom.bind %A, [%M, %K]
+  loom.bind %B, [%K, %N]
+  loom.bind %C, [%M, %N]
   %result = linalg.matmul
       ins(%A, %B : tensor<?x?xf32>, tensor<?x?xf32>)
       outs(%C : tensor<?x?xf32>) -> tensor<?x?xf32>
