@@ -1,4 +1,5 @@
 pub mod arch;
+pub mod evaluator;
 pub mod math;
 pub mod schedule;
 pub mod visualization;
@@ -27,4 +28,9 @@ pub use schedule::{
 pub use visualization::graph_json::{
     ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
     architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
+};
+
+// Re-export evaluator utilities
+pub use evaluator::{
+    EvaluatorInput, generate_evaluator_binary, run_evaluator, run_evaluator_from_json,
 };

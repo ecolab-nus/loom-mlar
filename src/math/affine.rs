@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use super::parse::ParseError;
 use crate::arch::size_dim::{Dimension, Sym};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AffineExpr {
     Var(Dimension),
     Sym(Sym),
@@ -83,7 +85,7 @@ impl AffineExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AffineMap {
     pub src_dims: Vec<Dimension>,
     pub dst_dims: Vec<Dimension>,

@@ -15,14 +15,16 @@ A Rust implementation of the Multi-Level Architecture Representation (MLAR) for 
 ```text
 src/
 ├── lib.rs                      # Public API and re-exports
+├── evaluator.rs                # Binary evaluator generation (run_evaluator, generate_evaluator_binary)
 ├── arch/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
-│   ├── perf.rs                 # FuncPerfModel, PerfScenario, TimeCostExpr
+│   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
 │   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet
 │   ├── memory.rs               # MemoryBank, MemoryRegion
-│   ├── link.rs                 # Link, Endpoint, SharingDomain
-│   ├── architecture.rs         # Architecture, ArchitectureBuilder
+│   ├── links.rs                # ScaleOutNetwork, Router, Endpoint, SharingDomain
+│   ├── graph.rs                # ArchGraph, ArchNode, ArchNodeComponent, ArchEdge
+│   └── architecture.rs         # Architecture (recursive enum: Unit | Array | Graph)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
 │   ├── expr.rs                 # Symbolic arithmetic expressions
@@ -31,6 +33,8 @@ src/
 │   └── parse.rs                # Parsers
 ├── schedule/
 │   ├── mod.rs                  # Scheduling-domain re-exports
+│   ├── schedule.rs             # Schedule, ScheduleWithSymMap, SymbolicMapping
+│   ├── evaluate.rs             # evaluate(), evaluate_with_sym_map()
 │   ├── op.rs                   # MlirModule, MlirFunc, MlirFuncDetails, MLIR parser
 │   └── module.rs               # Module, ModuleSource
 └── visualization/
@@ -267,13 +271,178 @@ Web UI lives in `tools/web-visualization/`.
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
 | `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
 | `Module` | Functionality module model | `src/schedule/module.rs` |
-| `FuncPerfModel`, `PerfScenario`, `TimeCostExpr` | Function-level performance model | `src/arch/perf.rs` |
+| `Schedule`, `ScheduleWithSymMap` | Schedule tree and symbol mapping | `src/schedule/schedule.rs` |
+| `FuncPerfModel`, `PerfScenario`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
+| `PerfScenarios` | Evaluation result (scenarios + sym_map) | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `ProcessorSet` / `Processors` | Recursive processor composition | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
-| `Link`, `Endpoint` | Connectivity edges and endpoints | `src/arch/link.rs` |
-| `Architecture`, `ArchitectureBuilder` | Top-level architecture container | `src/arch/architecture.rs` |
+| `ScaleOutNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
+| `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style architecture description | `src/arch/graph.rs` |
+| `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
+| `run_evaluator`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
+
+## Evaluator Binary Generation
+
+MLAR can produce **standalone evaluator binaries** for any architecture.
+External (non-Rust) tools invoke the binary, pass a schedule as JSON on
+**stdin**, and receive performance scenarios as JSON on **stdout**.
+
+### Protocol
+
+```text
+stdin  →  ScheduleWithSymMap JSON  (or bare Schedule JSON)
+stdout ←  PerfScenarios JSON
+```
+
+### Three ways to create an evaluator binary
+
+#### 1. `mlar_evaluator!` macro
+
+Create a binary target with a one-liner. The architecture is built in Rust
+code and compiled into the binary.
+
+```rust
+// src/bin/eval_my_arch.rs
+use mlar_rust::mlar_evaluator;
+
+fn build_arch() -> mlar_rust::Architecture {
+    // ... construct your architecture ...
+}
+
+mlar_evaluator!(build_arch());
+```
+
+Build with `cargo build --release --bin eval_my_arch`.
+
+#### 2. `run_evaluator()` library function
+
+Call from your own `main()` for full control over setup and error handling:
+
+```rust
+fn main() {
+    let arch = build_architecture();
+    if let Err(e) = mlar_rust::run_evaluator(&arch) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+}
+```
+
+#### 3. `generate_evaluator_binary()` — fully programmatic
+
+Takes a runtime `Architecture` value, serializes it to JSON, compiles a
+self-contained binary, and returns the path. Requires a Rust toolchain on
+`$PATH`.
+
+```rust
+use std::path::Path;
+use mlar_rust::generate_evaluator_binary;
+
+let arch = build_architecture();
+let binary = generate_evaluator_binary(
+    &arch,
+    "my_arch_eval",
+    Path::new("output/"),
+).expect("binary generation should succeed");
+// `binary` is now the path to the compiled executable
+```
+
+The generated binary embeds the architecture JSON — no external files
+needed at runtime.
+
+### Usage from external tools
+
+Once you have an evaluator binary (e.g. `eval_core`), any language can
+call it:
+
+**Shell:**
+
+```bash
+echo '{ "schedule": ..., "sym_map": ... }' | ./eval_core
+```
+
+**Python:**
+
+```python
+import subprocess, json
+
+schedule_input = {
+    "schedule": {
+        "Sequential": {
+            "schedules": [
+                {"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"]}}},
+                {"Func": {"func": {"name": "vec_mul_f32", "symbols": ["L"]}}},
+            ]
+        }
+    },
+    "sym_map": {
+        "entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]
+    },
+}
+
+result = subprocess.run(
+    ["./eval_core"],
+    input=json.dumps(schedule_input),
+    capture_output=True, text=True, check=True,
+)
+perf_scenarios = json.loads(result.stdout)
+```
+
+### Input format
+
+The binary accepts two JSON formats:
+
+- **`ScheduleWithSymMap`** — has `schedule` and `sym_map` fields. The
+  `sym_map` records symbol substitutions (e.g. MLIR symbol `L` → `BM * BN`)
+  that are applied during evaluation.
+- **Bare `Schedule`** — just the schedule tree, no symbol substitutions.
+
+### Output format
+
+The output is a `PerfScenarios` JSON object:
+
+```json
+{
+  "scenarios": [
+    {
+      "constraints": "True",
+      "time_cost": { "Concrete": { "Add": [{"Const": 1}, {"Div": [{"Sym": "L"}, {"Const": 1024}]}] } }
+    }
+  ],
+  "sym_map": {
+    "entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]
+  }
+}
+```
+
+Each scenario contains:
+
+- `constraints` — a boolean constraint expression describing when this
+  scenario applies.
+- `time_cost` — a symbolic `Concrete` expression for the total cycle cost.
+
+The optional `sym_map` preserves any substitutions that were applied.
+
+### Example: 2D mesh core architecture
+
+The `tests/2d_mesh/` directory includes a complete example. The test
+`test_generate_core_evaluator_binary` builds the single-core architecture
+(matrix lane + vector lane + L1 memory + router) and generates an evaluator
+binary under `tests/2d_mesh/evaluators/`:
+
+```bash
+# Generate the binary (runs the test that calls generate_evaluator_binary)
+cargo test test_generate_core_evaluator_binary
+
+# Use the generated binary
+echo '{"schedule":{"Sequential":{"schedules":[
+  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"]}}},
+  {"Func":{"func":{"name":"vec_exp_f32","symbols":["L"]}}}
+]}},"sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}' \
+  | ./tests/2d_mesh/evaluators/eval_core
+```
 
 ## Build and Test
 

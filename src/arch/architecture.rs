@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use super::graph::{ArchGraph, ArchNodeComponent};
 use super::links::ScaleOutNetwork;
 use super::memory::MemoryRegion;
@@ -13,7 +15,7 @@ use std::ops::{Deref, DerefMut};
 /// - `Unit`: atomic processor
 /// - `Array`: homogeneous scaling-out of a sub-architecture
 /// - `Graph`: explicit graph architecture (`ArchGraph`)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Architecture {
     /// Leaf: a single processor.
     Unit(Processor),

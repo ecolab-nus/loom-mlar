@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use super::architecture::Architecture;
 use super::links::{Router, ScaleOutNetwork};
 use super::memory::MemoryRegion;
@@ -5,7 +7,7 @@ use super::processor::Processor;
 use std::collections::HashSet;
 
 /// Abstract node payload for architecture graph nodes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArchNodeComponent {
     Architecture(Architecture),
     MemoryRegion(MemoryRegion),
@@ -23,7 +25,7 @@ impl ArchNodeComponent {
 }
 
 /// Abstract architecture graph node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchNode {
     pub id: String,
     pub name: String,
@@ -70,7 +72,7 @@ impl ArchNode {
 pub type ArchGraphNode = ArchNode;
 
 /// Directed edge between two architecture graph nodes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchEdge {
     pub id: String,
     pub source: String,
@@ -94,7 +96,7 @@ impl ArchEdge {
 }
 
 /// Graph-style architecture description.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchGraph {
     pub name: String,
     pub nodes: Vec<ArchGraphNode>,

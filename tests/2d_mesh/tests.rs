@@ -1,4 +1,6 @@
 use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 use mlar_rust::*;
 
@@ -453,4 +455,86 @@ fn test_evaluate_with_sym_map() {
         (Sym::new("BN"), Expr::Const(32)),
     ]);
     assert_eq!(decoded_at_32x32.eval_const(), at_32x32.eval_const());
+}
+
+/// Generate a standalone evaluator binary for the single-core architecture,
+/// then verify it produces correct PerfScenarios when invoked externally.
+#[test]
+fn test_generate_core_evaluator_binary() {
+    let core = crate::core_arch::single_core();
+
+    let output_dir =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let binary = generate_evaluator_binary(&core, "eval_core", &output_dir)
+        .expect("binary generation should succeed");
+
+    assert!(binary.exists(), "generated binary should exist at {binary:?}");
+
+    let l_sym = vec![Sym::new("L")];
+    let schedule = Schedule::Sequential {
+        schedules: vec![
+            Schedule::Func {
+                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
+                processor: None,
+                time: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
+                processor: None,
+                time: None,
+            },
+        ],
+        mlir_ref: None,
+        processor: None,
+        time: None,
+    };
+    let mut sym_map = SymbolicMapping::new();
+    sym_map.insert(
+        Sym::new("L"),
+        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
+    );
+    let input = ScheduleWithSymMap::new(schedule, sym_map);
+    let input_json = serde_json::to_string(&input).expect("input should serialize");
+
+    let output = Command::new(&binary)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(input_json.as_bytes())
+                .unwrap();
+            child.wait_with_output()
+        })
+        .expect("binary should execute");
+
+    assert!(
+        output.status.success(),
+        "binary exited with error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let scenarios: PerfScenarios =
+        serde_json::from_slice(&output.stdout).expect("binary output should be valid JSON");
+
+    assert_eq!(scenarios.len(), 1);
+    let expr = scenarios[0].time_cost.to_expr();
+    let free = expr.free_symbols();
+    assert!(!free.contains(&Sym::new("L")));
+    assert!(free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")));
+
+    // BM=32, BN=32 → L=1024:
+    //   vec_add_f32: 1 + 1024/1024 = 2
+    //   vec_mul_f32: 1 + 1024/1024 = 2
+    //   total = 4
+    let at_32x32 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ]);
+    assert_eq!(at_32x32.eval_const(), Some(4));
 }

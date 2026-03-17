@@ -21,3 +21,7 @@ target
 #.idea/
 
 *.png
+
+# Generated evaluator binaries (keep the folder via .gitkeep)
+tests/2d_mesh/evaluators/*
+!tests/2d_mesh/evaluators/.gitkeep

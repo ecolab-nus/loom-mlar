@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// Newtype for dimension names — stable identifier for a replication axis.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DimName(pub String);
 
 impl DimName {
@@ -27,7 +29,7 @@ impl From<String> for DimName {
 }
 
 /// Newtype for symbolic names used in expressions.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Sym(pub String);
 
 impl Sym {
@@ -55,7 +57,7 @@ impl From<String> for Sym {
 }
 
 /// Represents a size that can be concrete, symbolic, or an arithmetic expression.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SizeExpr {
     Const(u64),
     Sym(Sym),
@@ -133,7 +135,7 @@ impl std::fmt::Display for SizeExpr {
 }
 
 /// Represents a dimension — a named axis of homogeneous replication.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Dimension {
     pub name: DimName,
     pub size: SizeExpr,

@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use super::perf::FuncPerfModel;
 use super::size_dim::{Dimension, SizeExpr};
 
 /// Atomic unit of memory — a single bank with capacity and optional perf model.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MemoryBank {
     pub name: Option<String>,
     /// Total capacity in bytes (can be a symbolic expression, e.g. Mul(block_size, num_blocks))
@@ -54,7 +56,7 @@ impl MemoryBank {
 /// * `Bank` is the atomic leaf unit.
 /// * `Replicated` represents homogeneous replication along dimensions.
 /// * `Group` is explicit grouping/concatenation of heterogeneous parts.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MemoryRegion {
     /// Leaf: a single memory bank
     Bank(MemoryBank),

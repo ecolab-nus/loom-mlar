@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use super::memory::MemoryRegion;
 use super::processor::Processors;
 use super::size_dim::Dimension;
@@ -5,7 +7,7 @@ use crate::math::{AffineExpr, AffineMap, ConstraintExpr, Expr};
 use std::collections::HashSet;
 
 /// Router endpoint target.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RouterEndpointTarget {
     MemRef(String),
     ProcRef(String),
@@ -13,7 +15,7 @@ pub enum RouterEndpointTarget {
 }
 
 /// One router endpoint.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RouterEndpoint {
     pub name: String,
     pub target: RouterEndpointTarget,
@@ -43,7 +45,7 @@ impl RouterEndpoint {
 }
 
 /// One side of a router. Endpoints on the same side cannot directly exchange data.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RouterSide {
     pub name: String,
     pub endpoints: Vec<RouterEndpoint>,
@@ -82,7 +84,7 @@ impl RouterSide {
 }
 
 /// General router component: multiple sides, each with multiple endpoints.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Router {
     pub name: String,
     pub sides: Vec<RouterSide>,
@@ -134,7 +136,7 @@ fn memory_leaf_count(region: &MemoryRegion) -> Option<u64> {
 
 /// An endpoint of a scale-out network.
 /// The name is derived from the embedded data via `.name()`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Endpoint {
     Mem(MemoryRegion),
     Proc(Processors),
@@ -184,14 +186,14 @@ impl Endpoint {
 }
 
 /// Bandwidth-sharing semantics for a scale-out network.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SharingDomain {
     /// Bandwidth is shared across all concurrent users of this link.
     SharedAcrossAll,
 }
 
 /// Relation between map source and destination domains.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkMapRelation {
     OneToOne,
     OneToMany,
@@ -201,7 +203,7 @@ pub enum LinkMapRelation {
 }
 
 /// Topological classification of a link map.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkTopology {
     Ring,
     General,
@@ -211,7 +213,7 @@ pub enum LinkTopology {
 ///
 /// Endpoints hold the actual `MemoryRegion` or `Processors` values directly.
 /// Names are derived from the embedded data -- no separate name field needed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScaleOutNetwork {
     /// Display/debug name (e.g. "DRAM_to_L2")
     pub name: String,
