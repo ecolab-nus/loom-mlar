@@ -313,7 +313,7 @@ fn test_evaluate_vector_lane_sequential_schedule() {
         ],
         mlir_ref: None,
         processor: None,
-        time: None,
+        scenarios: None,
     };
 
     let result = evaluate(&schedule, &core).expect("sequential vector schedule should evaluate");
@@ -436,7 +436,7 @@ fn test_evaluate_with_sym_map() {
         ],
         mlir_ref: None,
         processor: None,
-        time: None,
+        scenarios: None,
     };
 
     let result = evaluate(&schedule, &core).expect("evaluate should succeed");
@@ -567,7 +567,7 @@ fn test_generate_core_evaluator_binary() {
         ],
         mlir_ref: None,
         processor: None,
-        time: None,
+        scenarios: None,
     };
     let input_json = serde_json::to_string(&schedule).expect("input should serialize");
 

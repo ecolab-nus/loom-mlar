@@ -275,7 +275,7 @@ Web UI lives in `tools/web-visualization/`.
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
 | `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
 | `Module` | Functionality module model | `src/schedule/module.rs` |
-| `Schedule` | Schedule tree (Func carries per-func scenarios) | `src/schedule/schedule.rs` |
+| `Schedule` | Schedule tree (all nodes carry scenarios after evaluation) | `src/schedule/schedule.rs` |
 | `SymbolicMapping` | Per-function symbol substitution mapping | `src/schedule/schedule.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
@@ -292,7 +292,7 @@ Web UI lives in `tools/web-visualization/`.
 MLAR can produce **standalone evaluator binaries** for any architecture.
 External (non-Rust) tools invoke the binary, pass a `Schedule` as JSON on
 **stdin**, and receive the evaluated `Schedule` (with `scenarios` filled on
-each `Func` node) as JSON on **stdout**.
+every node — `Func`, `Sequential`, and `Parallel`) as JSON on **stdout**.
 
 ### Protocol
 
@@ -411,8 +411,13 @@ The `sym_map` records per-invocation symbol substitutions (e.g. MLIR symbol
 
 ### Output format
 
-The output is the same `Schedule` JSON with each `Func` node's `scenarios`
-field filled in:
+The output is the same `Schedule` JSON with `scenarios` filled on every node:
+
+- **Func**: scenarios come from the architecture's performance model (one
+  scenario per `PerfScenario` in the `FuncPerfModel`).
+- **Sequential**: scenarios are the **cartesian product** of all sub-schedule
+  scenarios — time costs are summed and constraints are AND-ed.
+- **Parallel**: not yet supported (panics).
 
 ```json
 {"Func": {
@@ -430,8 +435,10 @@ field filled in:
 Each scenario contains:
 
 - `constraints` — a boolean constraint expression describing when this
-  scenario applies.
-- `time_cost` — a symbolic `Concrete` expression for the per-function cycle cost.
+  scenario applies. For combined (Sequential) scenarios, constraints from
+  each sub-schedule are joined with AND.
+- `time_cost` — a symbolic `Concrete` expression for the cycle cost. For
+  combined scenarios, this is the sum of all sub-schedule costs.
 
 ### Example: 2D mesh core architecture
 
@@ -504,15 +511,35 @@ Example output (pretty-printed):
           ]
         }
       }
+    ],
+    "scenarios": [
+      {
+        "constraints": "True",
+        "time_cost": {
+          "Concrete": {
+            "Add": [
+              {"Add": [{"Const": 1}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}]},
+              {"Add": [{"Const": 16}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 128}]}]}
+            ]
+          }
+        }
+      }
     ]
   }
 }
 ```
 
-Each `Func` node now has `scenarios` filled in. The `time_cost` is a symbolic
-expression: `vec_add_f16` costs `1 + (BM * BN) / 1024` cycles (fixed latency 1,
-throughput 1024), while `vec_exp_f16` costs `16 + (BM * BN) / 128` cycles
-(fixed latency 16, throughput 128).
+Every node now has `scenarios` filled in. Each leaf `Func` carries its own
+per-function scenarios, and the `Sequential` node carries the **cartesian
+product** of all sub-schedule scenarios. In this example both functions have a
+single `True`-constrained scenario, so the Sequential has one combined
+scenario whose `time_cost` is the sum:
+`(1 + (BM*BN)/1024) + (16 + (BM*BN)/128)`.
+
+When sub-schedules have multiple scenarios, the cartesian product produces all
+combinations. For instance, if `func0` has scenarios A, B and `func1` has
+scenarios C, D, the Sequential would have four combined scenarios: AC, AD, BC,
+BD — each with summed time costs and AND-ed constraints.
 
 ## Build and Test
 

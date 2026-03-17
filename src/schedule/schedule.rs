@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{MlirFunc, MlirModule};
-use crate::arch::{FunctionProcessor, PerfScenario, Processor, Sym, TimeExpr};
+use crate::arch::{FunctionProcessor, PerfScenario, Processor, Sym};
 use crate::math::Expr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -13,7 +13,7 @@ pub enum Schedule {
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<Processor>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        time: Option<TimeExpr>,
+        scenarios: Option<Vec<PerfScenario>>,
     },
     Sequential {
         schedules: Vec<Schedule>,
@@ -22,7 +22,7 @@ pub enum Schedule {
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<Processor>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        time: Option<TimeExpr>,
+        scenarios: Option<Vec<PerfScenario>>,
     },
     Func {
         func: MlirFunc,
@@ -89,6 +89,7 @@ mod tests {
     use crate::FuncPerfModel;
     use crate::FunctionProcessor;
     use crate::Processor;
+    use crate::arch::perf::PerfScenario;
     use crate::schedule::{MlirFunc, MlirModule};
     use serde_json::json;
 
@@ -139,12 +140,18 @@ mod tests {
                     }],
                     mlir_ref: Some(mul_module),
                     processor: Some(lane_proc),
-                    time: Some(Expr::Const(40)),
+                    scenarios: Some(vec![PerfScenario {
+                        constraints: crate::math::constraint::ConstraintExpr::True,
+                        time_cost: crate::arch::perf::TimeCost::Concrete(Expr::Const(40)),
+                    }]),
                 },
             ],
             mlir_ref: Some(module),
             processor: Some(mesh_proc),
-            time: Some(Expr::Const(150)),
+            scenarios: Some(vec![PerfScenario {
+                constraints: crate::math::constraint::ConstraintExpr::True,
+                time_cost: crate::arch::perf::TimeCost::Concrete(Expr::Const(150)),
+            }]),
         };
 
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
@@ -153,8 +160,7 @@ mod tests {
             json!("tests/2d_mesh/compute/vector_lane.mlir")
         );
         assert_eq!(value["Sequential"]["processor"]["name"], json!("mesh"));
-        assert_eq!(value["Sequential"]["time"], json!({"Const": 150}));
-        // Func nodes no longer have a `time` field; they carry `scenarios` instead.
+        assert!(value["Sequential"]["scenarios"].is_array());
         assert!(
             value["Sequential"]["schedules"][0]["Func"]
                 .get("scenarios")
@@ -176,6 +182,7 @@ mod tests {
             value["Sequential"]["schedules"][1]["Parallel"]["processor"]["name"],
             json!("lane")
         );
+        assert!(value["Sequential"]["schedules"][1]["Parallel"]["scenarios"].is_array());
         assert!(
             value["Sequential"]["schedules"][1]["Parallel"]["schedules"][0]["Func"]
                 .get("scenarios")
@@ -206,11 +213,11 @@ mod tests {
                 }],
                 mlir_ref: None,
                 processor: None,
-                time: None,
+                scenarios: None,
             }],
             mlir_ref: None,
             processor: None,
-            time: None,
+            scenarios: None,
         };
 
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
@@ -219,14 +226,14 @@ mod tests {
             .expect("Sequential payload should be an object");
         assert!(!seq.contains_key("mlir_ref"));
         assert!(!seq.contains_key("processor"));
-        assert!(!seq.contains_key("time"));
+        assert!(!seq.contains_key("scenarios"));
 
         let par = value["Sequential"]["schedules"][0]["Parallel"]
             .as_object()
             .expect("Parallel payload should be an object");
         assert!(!par.contains_key("mlir_ref"));
         assert!(!par.contains_key("processor"));
-        assert!(!par.contains_key("time"));
+        assert!(!par.contains_key("scenarios"));
 
         let op = value["Sequential"]["schedules"][0]["Parallel"]["schedules"][0]["Func"]
             .as_object()
