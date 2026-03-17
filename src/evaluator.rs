@@ -169,13 +169,13 @@ macro_rules! mlar_evaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::graph::ArchGraph;
+    use crate::Sym;
+    use crate::arch::ArchGraph;
     use crate::arch::perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost};
     use crate::arch::processor::{FunctionProcessor, Processor};
     use crate::math::constraint::ConstraintExpr;
     use crate::math::expr::Expr;
     use crate::schedule::MlirFunc;
-    use crate::Sym;
 
     fn test_arch() -> Architecture {
         let fp = FunctionProcessor::new(
@@ -208,8 +208,7 @@ mod tests {
     #[test]
     fn evaluator_input_parses_bare_schedule() {
         let json = r#"{"Func":{"func":{"name":"vec_add_f32","symbols":["L"]}}}"#;
-        let input: Schedule =
-            serde_json::from_str(json).expect("bare schedule should parse");
+        let input: Schedule = serde_json::from_str(json).expect("bare schedule should parse");
         assert!(matches!(input, Schedule::Func { .. }));
     }
 
@@ -246,4 +245,3 @@ mod tests {
         assert!(decoded.get_processor("inner").is_some());
     }
 }
-

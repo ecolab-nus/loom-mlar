@@ -80,8 +80,6 @@ impl Default for SymbolicMapping {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::Schedule;
@@ -118,10 +116,8 @@ mod tests {
                 .expect("from_mlir should set module path"),
             &[mul_name.as_str()],
         );
-        let add_fp =
-            FunctionProcessor::new(MlirFunc::named(&add_name), FuncPerfModel::trivial());
-        let mul_fp =
-            FunctionProcessor::new(MlirFunc::named(&mul_name), FuncPerfModel::trivial());
+        let add_fp = FunctionProcessor::new(MlirFunc::named(&add_name), FuncPerfModel::trivial());
+        let mul_fp = FunctionProcessor::new(MlirFunc::named(&mul_name), FuncPerfModel::trivial());
         let mesh_proc = Processor::with_functions("mesh", vec![add_fp.clone(), mul_fp.clone()]);
         let lane_proc = Processor::with_functions("lane", vec![mul_fp.clone()]);
 

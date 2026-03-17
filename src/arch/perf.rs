@@ -224,10 +224,7 @@ mod tests {
                 ]),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(8),
-                    volume: Expr::mul(
-                        Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                        Expr::sym("K"),
-                    ),
+                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                     throughput: Expr::Const(1024),
                 }),
             }],
@@ -244,10 +241,7 @@ mod tests {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(0),
-                    volume: Expr::mul(
-                        Expr::sym("M"),
-                        Expr::mul(Expr::sym("N"), Expr::sym("K")),
-                    ),
+                    volume: Expr::mul(Expr::sym("M"), Expr::mul(Expr::sym("N"), Expr::sym("K"))),
                     throughput: Expr::Const(1),
                 }),
             }],

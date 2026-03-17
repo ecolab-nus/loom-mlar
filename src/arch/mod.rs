@@ -1,5 +1,4 @@
 pub mod architecture;
-pub mod graph;
 pub mod links;
 pub mod memory;
 pub mod perf;
@@ -11,8 +10,9 @@ pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
     MlirTensorSymbolBinding,
 };
-pub use architecture::Architecture;
-pub use graph::{ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent};
+pub use architecture::{
+    ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
+};
 pub use links::{
     Endpoint, LinkMapRelation, LinkTopology, Router, RouterEndpoint, RouterEndpointTarget,
     RouterSide, ScaleOutNetwork, SharingDomain,

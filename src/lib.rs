@@ -6,9 +6,9 @@ pub mod visualization;
 
 // Re-export commonly used architecture types
 pub use arch::{
-    ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
-    Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank, MemoryRegion, PerfScenario,
-    Processor, ProcessorSet, Processors, Router, RouterEndpoint,
+    ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent,
+    Architecture, Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank, MemoryRegion,
+    PerfScenario, Processor, ProcessorSet, Processors, Router, RouterEndpoint,
     RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SimpleTimeCost, SizeExpr,
     Sym, TimeCost, TimeExpr,
 };
@@ -20,8 +20,7 @@ pub use math::{
 };
 pub use schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
-    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping,
-    evaluate,
+    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping, evaluate,
 };
 
 // Re-export visualization utilities

@@ -123,7 +123,9 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
     assert_eq!(vec_module.ops.len(), 6);
     let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
-    for prefix in ["vec_max_", "vec_exp_", "vec_sum_", "vec_add_", "vec_mul_", "vec_div_"] {
+    for prefix in [
+        "vec_max_", "vec_exp_", "vec_sum_", "vec_add_", "vec_mul_", "vec_div_",
+    ] {
         assert!(
             op_names.iter().any(|n| n.starts_with(prefix)),
             "expected a function starting with '{}' in vector_lane ops",
@@ -139,7 +141,10 @@ fn test_2d_mesh_torus_perf_models() {
 
             let max_name = vec_func("vec_max");
             let fast = p.get_function(&max_name).expect("vec_max_* binding");
-            let fast_cost = fast.perf.scenarios[0].time_cost.as_simple().expect("Simple");
+            let fast_cost = fast.perf.scenarios[0]
+                .time_cost
+                .as_simple()
+                .expect("Simple");
             assert_eq!(fast_cost.throughput.eval_const(), Some(1024));
             assert_eq!(fast_cost.fixed_latency.eval_const(), Some(1));
 
@@ -157,7 +162,6 @@ fn test_2d_mesh_torus_perf_models() {
         }
         _ => panic!("expected Unit"),
     }
-
 }
 
 #[test]
@@ -265,10 +269,7 @@ fn test_evaluate_vector_lane_sequential_schedule() {
     let l_sym = vec![Sym::new("L")];
     let sym_map = {
         let mut m = SymbolicMapping::new();
-        m.insert(
-            Sym::new("L"),
-            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-        );
+        m.insert(Sym::new("L"), Expr::mul(Expr::sym("BM"), Expr::sym("BN")));
         Some(m)
     };
 
@@ -323,7 +324,10 @@ fn test_evaluate_vector_lane_sequential_schedule() {
         Schedule::Sequential { schedules, .. } => schedules
             .iter()
             .map(|s| match s {
-                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                Schedule::Func {
+                    scenarios: Some(sc),
+                    ..
+                } => sc,
                 _ => panic!("expected Func with filled scenarios"),
             })
             .collect(),
@@ -379,8 +383,7 @@ fn test_evaluate_vector_lane_sequential_schedule() {
     // Schedule round-trips through JSON.
     let json = serde_json::to_string(&result).expect("Schedule should serialize");
     println!("{}", json);
-    let decoded: Schedule =
-        serde_json::from_str(&json).expect("Schedule should deserialize");
+    let decoded: Schedule = serde_json::from_str(&json).expect("Schedule should deserialize");
     let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
     assert_eq!(json, decoded_json);
 }
@@ -406,10 +409,7 @@ fn test_evaluate_with_sym_map() {
     let l_sym = vec![Sym::new("L")];
     let sym_map = {
         let mut m = SymbolicMapping::new();
-        m.insert(
-            Sym::new("L"),
-            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-        );
+        m.insert(Sym::new("L"), Expr::mul(Expr::sym("BM"), Expr::sym("BN")));
         Some(m)
     };
 
@@ -446,7 +446,10 @@ fn test_evaluate_with_sym_map() {
         Schedule::Sequential { schedules, .. } => schedules
             .iter()
             .map(|s| match s {
-                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                Schedule::Func {
+                    scenarios: Some(sc),
+                    ..
+                } => sc,
                 _ => panic!("expected Func with filled scenarios"),
             })
             .collect(),
@@ -515,8 +518,7 @@ fn test_evaluate_with_sym_map() {
     // --- JSON round-trip ---
     let json = serde_json::to_string(&result).expect("Schedule should serialize");
     println!("{}", json);
-    let decoded: Schedule =
-        serde_json::from_str(&json).expect("Schedule should deserialize");
+    let decoded: Schedule = serde_json::from_str(&json).expect("Schedule should deserialize");
     let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
     assert_eq!(json, decoded_json);
 }
@@ -527,20 +529,19 @@ fn test_evaluate_with_sym_map() {
 fn test_generate_core_evaluator_binary() {
     let core = crate::core_arch::single_core();
 
-    let output_dir =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
     let binary = generate_evaluator_binary(&core, "eval_core", &output_dir)
         .expect("binary generation should succeed");
 
-    assert!(binary.exists(), "generated binary should exist at {binary:?}");
+    assert!(
+        binary.exists(),
+        "generated binary should exist at {binary:?}"
+    );
 
     let l_sym = vec![Sym::new("L")];
     let sym_map = {
         let mut m = SymbolicMapping::new();
-        m.insert(
-            Sym::new("L"),
-            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-        );
+        m.insert(Sym::new("L"), Expr::mul(Expr::sym("BM"), Expr::sym("BN")));
         Some(m)
     };
 
@@ -602,7 +603,10 @@ fn test_generate_core_evaluator_binary() {
         Schedule::Sequential { schedules, .. } => schedules
             .iter()
             .map(|s| match s {
-                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                Schedule::Func {
+                    scenarios: Some(sc),
+                    ..
+                } => sc,
                 _ => panic!("expected Func with filled scenarios"),
             })
             .collect(),

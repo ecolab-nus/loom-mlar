@@ -23,8 +23,7 @@ src/
 │   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet/Processors aliases
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── links.rs                # ScaleOutNetwork, Router, Endpoint, SharingDomain
-│   ├── graph.rs                # ArchGraph, ArchNode, ArchNodeComponent, ArchEdge
-│   └── architecture.rs         # Architecture (recursive enum: Unit | Array | Graph)
+│   └── architecture.rs         # Architecture + graph composition primitives (ArchGraph, ArchNode, ArchEdge)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
 │   ├── expr.rs                 # Symbolic arithmetic expressions
@@ -223,11 +222,11 @@ let link = ScaleOutNetwork::builder("l1_to_vector")
 
 ## Architecture Composition
 
-`Architecture` is a recursive enum:
+`Architecture` is the single composition model for compute architecture:
 
-- `Unit(Processor)`
-- `Array { name, dims, elem, connectivity, interface }`
-- `Graph(ArchGraph)`
+- `Unit(Processor)`: one processor as one architecture element
+- `Array { name, dims, elem, connectivity, interface }`: homogeneous scaling of one sub-architecture
+- `Graph(ArchGraph)`: heterogeneous composition of architecture/memory/router nodes
 
 Build it directly via enum variants and helpers such as `Processor::into_elem()`,
 `Processor::replicate(...)`, `Architecture::from_graph(...)`, and `architecture.scale(...)`.
@@ -283,7 +282,7 @@ Web UI lives in `tools/web-visualization/`.
 | `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
 | `ScaleOutNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
-| `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style architecture description | `src/arch/graph.rs` |
+| `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture.rs` |
 | `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
 | `run_evaluator`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
 

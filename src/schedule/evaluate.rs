@@ -20,8 +20,8 @@
 //!    cartesian product of all sub-schedule scenarios. Each product element
 //!    sums the time costs and ANDs the constraints.
 
+use crate::arch::ArchNodeComponent;
 use crate::arch::architecture::Architecture;
-use crate::arch::graph::ArchNodeComponent;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
 use crate::arch::processor::FunctionProcessor;
 use crate::math::constraint::ConstraintExpr;
@@ -56,10 +56,8 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
                 schedules.iter().map(|sub| evaluate(sub, arch)).collect();
             let evaluated = evaluated?;
 
-            let sub_scenarios: Vec<&[PerfScenario]> = evaluated
-                .iter()
-                .map(|s| extract_scenarios(s))
-                .collect();
+            let sub_scenarios: Vec<&[PerfScenario]> =
+                evaluated.iter().map(|s| extract_scenarios(s)).collect();
             let combined = cartesian_product_scenarios(&sub_scenarios);
 
             Ok(Schedule::Sequential {
@@ -70,7 +68,9 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
             })
         }
 
-        Schedule::Func { func, processor, .. } => {
+        Schedule::Func {
+            func, processor, ..
+        } => {
             let fp = find_function_processor(arch, &func.name).ok_or_else(|| {
                 format!(
                     "no FunctionProcessor found for '{}' in the architecture",
@@ -192,7 +192,7 @@ fn find_function_processor<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::graph::ArchGraph;
+    use crate::arch::ArchGraph;
     use crate::arch::perf::FuncPerfModel;
     use crate::arch::processor::Processor;
     use crate::schedule::MlirFunc;
@@ -286,7 +286,10 @@ mod tests {
         let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 1);
         assert!(scenarios[0].time_cost.as_concrete().is_some());
-        assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(10 + 200));
+        assert_eq!(
+            scenarios[0].time_cost.to_expr().eval_const(),
+            Some(10 + 200)
+        );
     }
 
     #[test]
@@ -431,10 +434,7 @@ mod tests {
         let result = evaluate(&schedule, &arch).expect("should find f in graph");
         let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 1);
-        assert_eq!(
-            scenarios[0].time_cost.to_expr().eval_const(),
-            Some(7 + 42)
-        );
+        assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(7 + 42));
     }
 
     #[test]

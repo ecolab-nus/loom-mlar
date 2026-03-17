@@ -24,10 +24,7 @@ pub fn matrix_lane() -> Processors {
                 ),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(
-                        Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                        Expr::sym("K"),
-                    ),
+                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                     throughput: Expr::Const(1024),
                 }),
             },
@@ -38,15 +35,9 @@ pub fn matrix_lane() -> Processors {
                 ),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(
-                        Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                        Expr::sym("K"),
-                    ),
+                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
                     throughput: Expr::mul(
-                        Expr::div(
-                            Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                            Expr::Const(8192),
-                        ),
+                        Expr::div(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::Const(8192)),
                         Expr::Const(1024),
                     ),
                 }),

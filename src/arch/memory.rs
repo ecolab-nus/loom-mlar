@@ -153,7 +153,6 @@ impl MemoryRegion {
                 .try_fold(0u64, |acc, p| p.total_size_bytes().map(|s| acc + s)),
         }
     }
-
 }
 
 impl From<&MemoryRegion> for MemoryRegion {
