@@ -15,15 +15,15 @@
 module @vector_lane {
 
 // out[i] = max(a[i], b[i]), for i in [0, L)
-func.func @vec_max_f32(
-    %a: tensor<?xf32>,
-    %b: tensor<?xf32>,
-    %out: tensor<?xf32>
-) -> tensor<?xf32> {
+func.func @vec_max_f16(
+    %a: tensor<?xf16>,
+    %b: tensor<?xf16>,
+    %out: tensor<?xf16>
+) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %b, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind %b, [%L] : tensor<?xf16>
+  loom.bind %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -32,23 +32,23 @@ func.func @vec_max_f32(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : tensor<?xf32>, tensor<?xf32>)
-    outs(%out : tensor<?xf32>) {
-    ^bb0(%x: f32, %y: f32, %z: f32):
-      %m = arith.maximumf %x, %y : f32
-      linalg.yield %m : f32
-  } -> tensor<?xf32>
-  return %result : tensor<?xf32>
+    ins(%a, %b : tensor<?xf16>, tensor<?xf16>)
+    outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %y: f16, %z: f16):
+      %m = arith.maximumf %x, %y : f16
+      linalg.yield %m : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
 }
 
 // out[i] = exp(a[i]), for i in [0, L)
-func.func @vec_exp_f32(
-    %a: tensor<?xf32>,
-    %out: tensor<?xf32>
-) -> tensor<?xf32> {
+func.func @vec_exp_f16(
+    %a: tensor<?xf16>,
+    %out: tensor<?xf16>
+) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -56,22 +56,22 @@ func.func @vec_exp_f32(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a : tensor<?xf32>)
-    outs(%out : tensor<?xf32>) {
-    ^bb0(%x: f32, %y: f32):
-      %e = math.exp %x : f32
-      linalg.yield %e : f32
-  } -> tensor<?xf32>
-  return %result : tensor<?xf32>
+    ins(%a : tensor<?xf16>)
+    outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %y: f16):
+      %e = math.exp %x : f16
+      linalg.yield %e : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
 }
 
 // scalar = sum(a[i]) for i in [0, L)
-func.func @vec_sum_f32(
-    %a: tensor<?xf32>,
-    %init: tensor<f32>
-) -> tensor<f32> {
+func.func @vec_sum_f16(
+    %a: tensor<?xf16>,
+    %init: tensor<f16>
+) -> tensor<f16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -79,25 +79,25 @@ func.func @vec_sum_f32(
       ],
       iterator_types = ["reduction"]
     }
-    ins(%a : tensor<?xf32>)
-    outs(%init : tensor<f32>) {
-    ^bb0(%x: f32, %acc: f32):
-      %s = arith.addf %x, %acc : f32
-      linalg.yield %s : f32
-  } -> tensor<f32>
-  return %result : tensor<f32>
+    ins(%a : tensor<?xf16>)
+    outs(%init : tensor<f16>) {
+    ^bb0(%x: f16, %acc: f16):
+      %s = arith.addf %x, %acc : f16
+      linalg.yield %s : f16
+  } -> tensor<f16>
+  return %result : tensor<f16>
 }
 
 // out[i] = a[i] + b[i], for i in [0, L)
-func.func @vec_add_f32(
-    %a: tensor<?xf32>,
-    %b: tensor<?xf32>,
-    %out: tensor<?xf32>
-) -> tensor<?xf32> {
+func.func @vec_add_f16(
+    %a: tensor<?xf16>,
+    %b: tensor<?xf16>,
+    %out: tensor<?xf16>
+) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %b, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind %b, [%L] : tensor<?xf16>
+  loom.bind %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -106,25 +106,25 @@ func.func @vec_add_f32(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : tensor<?xf32>, tensor<?xf32>)
-    outs(%out : tensor<?xf32>) {
-    ^bb0(%x: f32, %y: f32, %z: f32):
-      %r = arith.addf %x, %y : f32
-      linalg.yield %r : f32
-  } -> tensor<?xf32>
-  return %result : tensor<?xf32>
+    ins(%a, %b : tensor<?xf16>, tensor<?xf16>)
+    outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %y: f16, %z: f16):
+      %r = arith.addf %x, %y : f16
+      linalg.yield %r : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
 }
 
 // out[i] = a[i] * b[i], for i in [0, L)
-func.func @vec_mul_f32(
-    %a: tensor<?xf32>,
-    %b: tensor<?xf32>,
-    %out: tensor<?xf32>
-) -> tensor<?xf32> {
+func.func @vec_mul_f16(
+    %a: tensor<?xf16>,
+    %b: tensor<?xf16>,
+    %out: tensor<?xf16>
+) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %b, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind %b, [%L] : tensor<?xf16>
+  loom.bind %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -133,25 +133,25 @@ func.func @vec_mul_f32(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : tensor<?xf32>, tensor<?xf32>)
-    outs(%out : tensor<?xf32>) {
-    ^bb0(%x: f32, %y: f32, %z: f32):
-      %r = arith.mulf %x, %y : f32
-      linalg.yield %r : f32
-  } -> tensor<?xf32>
-  return %result : tensor<?xf32>
+    ins(%a, %b : tensor<?xf16>, tensor<?xf16>)
+    outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %y: f16, %z: f16):
+      %r = arith.mulf %x, %y : f16
+      linalg.yield %r : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
 }
 
 // out[i] = a[i] / b[i], for i in [0, L)
-func.func @vec_div_f32(
-    %a: tensor<?xf32>,
-    %b: tensor<?xf32>,
-    %out: tensor<?xf32>
-) -> tensor<?xf32> {
+func.func @vec_div_f16(
+    %a: tensor<?xf16>,
+    %b: tensor<?xf16>,
+    %out: tensor<?xf16>
+) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %b, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind %b, [%L] : tensor<?xf16>
+  loom.bind %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -160,13 +160,13 @@ func.func @vec_div_f32(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : tensor<?xf32>, tensor<?xf32>)
-    outs(%out : tensor<?xf32>) {
-    ^bb0(%x: f32, %y: f32, %z: f32):
-      %r = arith.divf %x, %y : f32
-      linalg.yield %r : f32
-  } -> tensor<?xf32>
-  return %result : tensor<?xf32>
+    ins(%a, %b : tensor<?xf16>, tensor<?xf16>)
+    outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %y: f16, %z: f16):
+      %r = arith.divf %x, %y : f16
+      linalg.yield %r : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
 }
 
 }
