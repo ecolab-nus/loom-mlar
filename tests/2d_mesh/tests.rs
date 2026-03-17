@@ -6,6 +6,21 @@ use mlar_rust::*;
 
 use crate::scale::scaled_mesh_torus;
 
+const VEC_LANE_MLIR: &str = "tests/2d_mesh/compute/vector_lane.mlir";
+
+/// Look up the full function name for a given operation prefix (e.g. `"vec_add"`)
+/// from the vector-lane MLIR module. This makes tests resilient to datatype changes
+/// (f16 ↔ f32 ↔ bf16 etc.) in the `.mlir` files.
+fn vec_func(prefix: &str) -> String {
+    Module::from_mlir(VEC_LANE_MLIR)
+        .expect("vector_lane MLIR should parse")
+        .ops
+        .into_iter()
+        .find(|op| op.name.starts_with(prefix))
+        .unwrap_or_else(|| panic!("no function matching '{prefix}_*' in {VEC_LANE_MLIR}"))
+        .name
+}
+
 #[test]
 fn test_2d_mesh_torus_perf_models() {
     let mesh = scaled_mesh_torus();
@@ -61,11 +76,11 @@ fn test_2d_mesh_torus_perf_models() {
     );
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
     assert_eq!(mat_module.ops.len(), 1);
-    assert_eq!(mat_module.ops[0].name, "matmul_f32");
+    assert!(mat_module.ops[0].name.starts_with("matmul_"));
     let matmul_details = mat_module.ops[0]
         .mlir_details
         .as_ref()
-        .expect("matmul_f32 should include MLIR details");
+        .expect("matmul_* should include MLIR details");
     assert_eq!(
         matmul_details
             .tensor_symbol_bindings
@@ -108,12 +123,13 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
     assert_eq!(vec_module.ops.len(), 6);
     let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
-    assert!(op_names.contains(&"vec_max_f32"));
-    assert!(op_names.contains(&"vec_exp_f32"));
-    assert!(op_names.contains(&"vec_sum_f32"));
-    assert!(op_names.contains(&"vec_add_f32"));
-    assert!(op_names.contains(&"vec_mul_f32"));
-    assert!(op_names.contains(&"vec_div_f32"));
+    for prefix in ["vec_max_", "vec_exp_", "vec_sum_", "vec_add_", "vec_mul_", "vec_div_"] {
+        assert!(
+            op_names.iter().any(|n| n.starts_with(prefix)),
+            "expected a function starting with '{}' in vector_lane ops",
+            prefix
+        );
+    }
 
     // === Verify per-function perf bindings for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
@@ -121,17 +137,20 @@ fn test_2d_mesh_torus_perf_models() {
         Processors::Unit(p) => {
             assert_eq!(p.functions.len(), 6);
 
-            let fast = p.get_function("vec_max_f32").expect("vec_max_f32 binding");
+            let max_name = vec_func("vec_max");
+            let fast = p.get_function(&max_name).expect("vec_max_* binding");
             let fast_cost = fast.perf.scenarios[0].time_cost.as_simple().expect("Simple");
             assert_eq!(fast_cost.throughput.eval_const(), Some(1024));
             assert_eq!(fast_cost.fixed_latency.eval_const(), Some(1));
 
-            let exp = p.get_function("vec_exp_f32").expect("vec_exp_f32 binding");
+            let exp_name = vec_func("vec_exp");
+            let exp = p.get_function(&exp_name).expect("vec_exp_* binding");
             let exp_cost = exp.perf.scenarios[0].time_cost.as_simple().expect("Simple");
             assert_eq!(exp_cost.throughput.eval_const(), Some(128));
             assert_eq!(exp_cost.fixed_latency.eval_const(), Some(16));
 
-            let div = p.get_function("vec_div_f32").expect("vec_div_f32 binding");
+            let div_name = vec_func("vec_div");
+            let div = p.get_function(&div_name).expect("vec_div_* binding");
             let div_cost = div.perf.scenarios[0].time_cost.as_simple().expect("Simple");
             assert_eq!(div_cost.throughput.eval_const(), Some(256));
             assert_eq!(div_cost.fixed_latency.eval_const(), Some(8));
@@ -230,13 +249,13 @@ fn test_export_2d_mesh_torus_graph_json() {
 /// against the single-core architecture, using `ScheduleWithSymMap` to map
 /// the MLIR symbol `L` to the expression `BM * BN`.
 ///
-/// Schedule: vec_add_f32 → vec_exp_f32 → vec_mul_f32 → vec_div_f32
+/// Schedule: vec_add → vec_exp → vec_mul → vec_div
 ///
 /// Before substitution the per-function costs are:
-///   vec_add_f32: 1 + L/1024
-///   vec_exp_f32: 16 + L/128
-///   vec_mul_f32: 1 + L/1024
-///   vec_div_f32: 8 + L/256
+///   vec_add: 1 + L/1024
+///   vec_exp: 16 + L/128
+///   vec_mul: 1 + L/1024
+///   vec_div: 8 + L/256
 ///   total(L)   = 26 + L/1024 + L/128 + L/1024 + L/256
 ///
 /// After L → BM*BN the expressions use `BM` and `BN` instead.
@@ -249,22 +268,22 @@ fn test_evaluate_vector_lane_sequential_schedule() {
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_exp_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_exp"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_div_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_div"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
@@ -355,9 +374,9 @@ fn test_evaluate_vector_lane_sequential_schedule() {
 /// by `BM * BN`, and the mapping should be preserved in the returned
 /// `PerfScenarios`.
 ///
-/// Schedule: vec_add_f32 → vec_mul_f32
-///   vec_add_f32: fixed=1, volume=L, throughput=1024  → 1 + L/1024
-///   vec_mul_f32: fixed=1, volume=L, throughput=1024  → 1 + L/1024
+/// Schedule: vec_add → vec_mul
+///   vec_add: fixed=1, volume=L, throughput=1024  → 1 + L/1024
+///   vec_mul: fixed=1, volume=L, throughput=1024  → 1 + L/1024
 ///   total(L) = 2 + 2*L/1024
 ///
 /// After substitution L → BM*BN:
@@ -370,12 +389,12 @@ fn test_evaluate_with_sym_map() {
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
@@ -474,12 +493,12 @@ fn test_generate_core_evaluator_binary() {
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_add_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols("vec_mul_f32", l_sym.clone()),
+                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
                 processor: None,
                 time: None,
             },
@@ -529,8 +548,8 @@ fn test_generate_core_evaluator_binary() {
     assert!(free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")));
 
     // BM=32, BN=32 → L=1024:
-    //   vec_add_f32: 1 + 1024/1024 = 2
-    //   vec_mul_f32: 1 + 1024/1024 = 2
+    //   vec_add: 1 + 1024/1024 = 2
+    //   vec_mul: 1 + 1024/1024 = 2
     //   total = 4
     let at_32x32 = expr.substitute(&[
         (Sym::new("BM"), Expr::Const(32)),

@@ -81,6 +81,6 @@ mod tests {
             Some("tests/2d_mesh/compute/vector_lane.mlir")
         );
         assert_eq!(module.ops.len(), 6);
-        assert!(module.op("vec_add_f32").is_some());
+        assert!(module.ops.iter().any(|op| op.name.starts_with("vec_add_")));
     }
 }

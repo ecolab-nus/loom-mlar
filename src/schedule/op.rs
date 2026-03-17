@@ -27,7 +27,7 @@ pub struct MlirFuncDetails {
 /// Reference to one MLIR function and its shape-related interface metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirFunc {
-    /// Function symbol name (e.g. `matmul_f32`).
+    /// Function symbol name (e.g. `matmul_f16`).
     pub name: String,
     /// Symbol arguments declared as `loom.sym` in the function signature, without `%`.
     pub symbols: Vec<Sym>,
@@ -173,6 +173,8 @@ impl MlirFunc {
             }
         }
 
+        symbols.extend(parse_loom_syms(func_mlir));
+
         let tensor_symbol_bindings = parse_loom_bindings(func_mlir)?;
         let output_tensors = parse_output_tensors(func_mlir)?
             .into_iter()
@@ -243,6 +245,38 @@ fn extract_function_blocks(source: &str) -> Result<Vec<&str>, String> {
     Ok(blocks)
 }
 
+/// Extract `loom.sym` declarations from the function body.
+///
+/// Matches lines of the form `%<ssa> = loom.sym @<name> : index`.
+fn parse_loom_syms(func_mlir: &str) -> Vec<Sym> {
+    let mut symbols = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix('%') else {
+            continue;
+        };
+        let Some(eq_pos) = rest.find('=') else {
+            continue;
+        };
+        let rhs = rest[eq_pos + 1..].trim();
+        let Some(after_marker) = rhs.strip_prefix("loom.sym") else {
+            continue;
+        };
+        let after_marker = after_marker.trim();
+        let Some(after_at) = after_marker.strip_prefix('@') else {
+            continue;
+        };
+        let end = after_at
+            .find(|c: char| c.is_whitespace() || c == ':')
+            .unwrap_or(after_at.len());
+        let sym_name = &after_at[..end];
+        if !sym_name.is_empty() {
+            symbols.push(Sym::new(sym_name));
+        }
+    }
+    symbols
+}
+
 fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<MlirTensorSymbolBinding>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
@@ -266,10 +300,10 @@ fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<MlirTensorSymbolBinding>, 
 
         let sym_section = rest[comma + 1..].trim();
         let open = sym_section
-            .find('(')
-            .ok_or_else(|| format!("invalid loom.bind missing '(' : {}", trimmed))?;
-        let close = find_matching_delimiter(sym_section, open, '(', ')')
-            .ok_or_else(|| format!("invalid loom.bind unbalanced parentheses: {}", trimmed))?;
+            .find('[')
+            .ok_or_else(|| format!("invalid loom.bind missing '[' : {}", trimmed))?;
+        let close = find_matching_delimiter(sym_section, open, '[', ']')
+            .ok_or_else(|| format!("invalid loom.bind unbalanced brackets: {}", trimmed))?;
         let sym_list = &sym_section[open + 1..close];
 
         let mut symbols = Vec::new();
@@ -430,8 +464,8 @@ mod tests {
         assert_eq!(module.module_name, "vector_lane");
         assert_eq!(module.functions.len(), 6);
         assert_eq!(module.function_refs.len(), 6);
-        assert!(module.functions.contains(&"vec_max_f32".to_string()));
-        assert!(module.functions.contains(&"vec_div_f32".to_string()));
+        assert!(module.functions.iter().any(|f| f.starts_with("vec_max_")));
+        assert!(module.functions.iter().any(|f| f.starts_with("vec_div_")));
 
         // Uppercase alias naming is also supported.
         let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
@@ -459,8 +493,8 @@ mod tests {
         let func = module
             .function_refs
             .iter()
-            .find(|f| f.name == "matmul_f32")
-            .expect("matmul_f32 function should exist");
+            .find(|f| f.name.starts_with("matmul_"))
+            .expect("matmul_* function should exist");
         let details = func
             .mlir_details
             .as_ref()
@@ -492,14 +526,14 @@ mod tests {
     fn mlir_func_ref_from_mlir_parses_function_snippet_directly() {
         let snippet = r#"
 func.func @vec_add_f32(
-    %L: loom.sym,
     %a: tensor<?xf32>,
     %b: tensor<?xf32>,
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
-  loom.bind %a, (%L)
-  loom.bind %b, (%L)
-  loom.bind %out, (%L)
+  %L = loom.sym @L : index
+  loom.bind %a, [%L] : tensor<?xf32>
+  loom.bind %b, [%L] : tensor<?xf32>
+  loom.bind %out, [%L] : tensor<?xf32>
   return %out : tensor<?xf32>
 }
 "#;

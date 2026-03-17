@@ -3,22 +3,23 @@ use mlar_rust::*;
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
-/// - All vector kernels in `compute/vector_lane.mlir` take `%L: loom.sym`
+/// - All vector kernels in `compute/vector_lane.mlir` declare `%L = loom.sym @L : index`
 ///   as the logical vector length and bind vector tensors with `loom.bind`.
-/// - `vec_max_f32`, `vec_add_f32`, `vec_sum_f32`, `vec_mul_f32`:
+/// - `vec_max_*`, `vec_add_*`, `vec_sum_*`, `vec_mul_*`:
 ///   throughput = 1024, latency = 1
-/// - `vec_exp_f32`: throughput = 128, latency = 16
-/// - `vec_div_f32`: throughput = 256, latency = 8
+/// - `vec_exp_*`: throughput = 128, latency = 16
+/// - `vec_div_*`: throughput = 256, latency = 8
 pub fn vector_lane() -> Processors {
     let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
         .expect("tests/2d_mesh/compute/vector_lane.mlir should parse");
 
     let perf_for = |func: &str| -> FuncPerfModel {
-        let (fixed_latency, throughput) = match func {
-            "vec_max_f32" | "vec_sum_f32" | "vec_add_f32" | "vec_mul_f32" => (1, 1024),
-            "vec_exp_f32" => (16, 128),
-            "vec_div_f32" => (8, 256),
-            other => panic!("unexpected vector op '{}'", other),
+        let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
+        let (fixed_latency, throughput) = match op_prefix {
+            "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
+            "vec_exp" => (16, 128),
+            "vec_div" => (8, 256),
+            _ => panic!("unexpected vector op '{}'", func),
         };
 
         FuncPerfModel {

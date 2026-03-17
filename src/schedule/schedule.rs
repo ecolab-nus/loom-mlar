@@ -111,26 +111,28 @@ mod tests {
         let add_func = module
             .function_refs
             .iter()
-            .find(|func| func.name == "vec_add_f32")
+            .find(|func| func.name.starts_with("vec_add_"))
             .cloned()
-            .expect("vec_add_f32 should exist");
+            .expect("vec_add_* should exist");
         let mul_func = module
             .function_refs
             .iter()
-            .find(|func| func.name == "vec_mul_f32")
+            .find(|func| func.name.starts_with("vec_mul_"))
             .cloned()
-            .expect("vec_mul_f32 should exist");
+            .expect("vec_mul_* should exist");
+        let add_name = add_func.name.clone();
+        let mul_name = mul_func.name.clone();
         let mul_module = MlirModule::with_functions(
             module
                 .path
                 .as_deref()
                 .expect("from_mlir should set module path"),
-            &["vec_mul_f32"],
+            &[mul_name.as_str()],
         );
         let add_fp =
-            FunctionProcessor::new(MlirFunc::named("vec_add_f32"), FuncPerfModel::trivial());
+            FunctionProcessor::new(MlirFunc::named(&add_name), FuncPerfModel::trivial());
         let mul_fp =
-            FunctionProcessor::new(MlirFunc::named("vec_mul_f32"), FuncPerfModel::trivial());
+            FunctionProcessor::new(MlirFunc::named(&mul_name), FuncPerfModel::trivial());
         let mesh_proc = Processor::with_functions("mesh", vec![add_fp.clone(), mul_fp.clone()]);
         let lane_proc = Processor::with_functions("lane", vec![mul_fp.clone()]);
 
@@ -166,15 +168,15 @@ mod tests {
         assert_eq!(value["Sequential"]["time"], json!({"Const": 150}));
         assert_eq!(
             value["Sequential"]["schedules"][0]["Func"]["func"]["name"],
-            json!("vec_add_f32")
+            json!(add_name)
         );
         assert_eq!(
             value["Sequential"]["schedules"][0]["Func"]["processor"]["func"]["name"],
-            json!("vec_add_f32")
+            json!(add_name)
         );
         assert_eq!(
             value["Sequential"]["schedules"][1]["Parallel"]["mlir_ref"]["functions"],
-            json!(["vec_mul_f32"])
+            json!([mul_name])
         );
         assert_eq!(
             value["Sequential"]["schedules"][1]["Parallel"]["processor"]["name"],
@@ -198,8 +200,8 @@ mod tests {
             .expect("vector_lane MLIR should parse")
             .function_refs
             .into_iter()
-            .find(|f| f.name == "vec_add_f32")
-            .expect("vec_add_f32 should exist");
+            .find(|f| f.name.starts_with("vec_add_"))
+            .expect("vec_add_* should exist");
 
         let schedule = Schedule::Sequential {
             schedules: vec![Schedule::Parallel {
