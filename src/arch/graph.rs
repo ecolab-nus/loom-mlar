@@ -68,7 +68,7 @@ impl ArchNode {
     }
 }
 
-/// Backward-compatible name for existing code.
+/// Alias name for graph nodes.
 pub type ArchGraphNode = ArchNode;
 
 /// Directed edge between two architecture graph nodes.

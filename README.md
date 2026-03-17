@@ -20,7 +20,7 @@ src/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
-│   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet
+│   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet/Processors aliases
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── links.rs                # ScaleOutNetwork, Router, Endpoint, SharingDomain
 │   ├── graph.rs                # ArchGraph, ArchNode, ArchNodeComponent, ArchEdge
@@ -100,20 +100,18 @@ let matmul = MlirFunc {
 `FuncPerfModel` is independent of MLIR and operation metadata. It only models symbols, constraints, and costs.
 
 ```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, Sym, TimeCostExpr};
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost, Sym, TimeCost};
 
 let perf = FuncPerfModel {
     symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
     constraints: ConstraintExpr::True,
     scenarios: vec![PerfScenario {
         constraints: ConstraintExpr::True,
-        time_cost: TimeCostExpr {
+        time_cost: TimeCost::Simple(SimpleTimeCost {
             fixed_latency: Expr::Const(8),
-            throughput: Expr::div(
-                Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-                Expr::Const(1024),
-            ),
-        },
+            volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+            throughput: Expr::Const(1024),
+        }),
     }],
 };
 
@@ -143,7 +141,7 @@ Useful helpers:
 Use `Processor::from_module` to bind one perf model per function (in order):
 
 ```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, Sym, TimeCostExpr};
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
 
 let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
     .expect("MLIR should parse");
@@ -156,10 +154,11 @@ let perf_models: Vec<FuncPerfModel> = functionality
         constraints: ConstraintExpr::True,
         scenarios: vec![PerfScenario {
             constraints: ConstraintExpr::True,
-            time_cost: TimeCostExpr {
+            time_cost: TimeCost::Simple(SimpleTimeCost {
                 fixed_latency: Expr::Const(1),
+                volume: Expr::sym("L"),
                 throughput: Expr::Const(1024),
-            },
+            }),
         }],
     })
     .collect();
@@ -172,11 +171,11 @@ assert!(lane.get_function("vec_add_f32").is_some());
 
 ## Processor Composition
 
-`ProcessorSet` (alias: `Processors`) is recursive:
+`ProcessorSet` and `Processors` are aliases of `Architecture`, so they share the same recursive shape:
 
 - `Unit(Processor)`
-- `Array { dims, elem }`
-- `Set { parts }`
+- `Array { name, dims, elem, connectivity, interface }`
+- `Graph(ArchGraph)`
 
 ```rust
 use mlar_rust::{Dimension, Processor};
@@ -195,7 +194,7 @@ Memory uses the same recursive pattern:
 - `MemoryRegion::Replicated`
 - `MemoryRegion::Group`
 
-Connectivity is `Link` with:
+Connectivity is `ScaleOutNetwork` with:
 
 - source and destination endpoints (`MemoryRegion` or `Processors`)
 - affine map (`AffineMap`)
@@ -213,7 +212,7 @@ let l1 = MemoryRegion::bank(MemoryBank::from_blocks(SizeExpr::Const(128), SizeEx
 let proc = Processor::new("vector_lane").into_elem();
 let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
 
-let link = Link::builder("l1_to_vector")
+let link = ScaleOutNetwork::builder("l1_to_vector")
     .from_mem(&l1)
     .to_proc(&proc)
     .map(&all_to_one)
@@ -223,13 +222,14 @@ let link = Link::builder("l1_to_vector")
 
 ## Architecture Composition
 
-`Architecture` stores concrete components:
+`Architecture` is a recursive enum:
 
-- `memory: Vec<MemoryRegion>`
-- `processors: Vec<Processors>`
-- `links: Vec<Link>`
+- `Unit(Processor)`
+- `Array { name, dims, elem, connectivity, interface }`
+- `Graph(ArchGraph)`
 
-Build with `Architecture::builder(...)`, then optionally scale with `architecture.scale([&dim_x, &dim_y])`.
+Build it directly via enum variants and helpers such as `Processor::into_elem()`,
+`Processor::replicate(...)`, `Architecture::from_graph(...)`, and `architecture.scale(...)`.
 
 ## MLIR Types
 
@@ -272,11 +272,11 @@ Web UI lives in `tools/web-visualization/`.
 | `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
 | `Module` | Functionality module model | `src/schedule/module.rs` |
 | `Schedule`, `ScheduleWithSymMap` | Schedule tree and symbol mapping | `src/schedule/schedule.rs` |
-| `FuncPerfModel`, `PerfScenario`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
+| `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
 | `PerfScenarios` | Evaluation result (scenarios + sym_map) | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
-| `ProcessorSet` / `Processors` | Recursive processor composition | `src/arch/processor.rs` |
+| `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
 | `ScaleOutNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
 | `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style architecture description | `src/arch/graph.rs` |

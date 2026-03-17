@@ -46,7 +46,7 @@ pub struct Processor {
     pub outputs: Option<Vec<String>>,
 }
 
-/// Backward-compatible aliases for architecture-as-processor usage.
+/// Aliases for architecture-as-processor usage.
 pub type ProcessorSet = Architecture;
 pub type Processors = Architecture;
 

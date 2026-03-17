@@ -10,8 +10,6 @@ use std::ops::{Deref, DerefMut};
 
 /// Unified recursive architecture description.
 ///
-/// `Architecture` replaces the former split between processor sets and
-/// top-level architecture:
 /// - `Unit`: atomic processor
 /// - `Array`: homogeneous scaling-out of a sub-architecture
 /// - `Graph`: explicit graph architecture (`ArchGraph`)
