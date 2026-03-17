@@ -246,7 +246,7 @@ fn test_export_2d_mesh_torus_graph_json() {
 }
 
 /// Evaluate a sequential schedule of different vector-lane instructions
-/// against the single-core architecture, using `ScheduleWithSymMap` to map
+/// against the single-core architecture, with the per-func `sym_map` mapping
 /// the MLIR symbol `L` to the expression `BM * BN`.
 ///
 /// Schedule: vec_add → vec_exp → vec_mul → vec_div
@@ -256,36 +256,59 @@ fn test_export_2d_mesh_torus_graph_json() {
 ///   vec_exp: 16 + L/128
 ///   vec_mul: 1 + L/1024
 ///   vec_div: 8 + L/256
-///   total(L)   = 26 + L/1024 + L/128 + L/1024 + L/256
 ///
 /// After L → BM*BN the expressions use `BM` and `BN` instead.
-///   total(BM,BN) = 26 + (BM*BN)/1024 + (BM*BN)/128 + (BM*BN)/1024 + (BM*BN)/256
 #[test]
 fn test_evaluate_vector_lane_sequential_schedule() {
     let core = crate::core_arch::single_core();
 
     let l_sym = vec![Sym::new("L")];
+    let sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(
+            Sym::new("L"),
+            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
+        );
+        Some(m)
+    };
+
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_exp"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_exp"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_div"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_div"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
         ],
         mlir_ref: None,
@@ -293,26 +316,28 @@ fn test_evaluate_vector_lane_sequential_schedule() {
         time: None,
     };
 
-    let mut sym_map = SymbolicMapping::new();
-    sym_map.insert(
-        Sym::new("L"),
-        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-    );
+    let result = evaluate(&schedule, &core).expect("sequential vector schedule should evaluate");
 
-    let input = ScheduleWithSymMap::new(schedule, sym_map);
-    let scenarios =
-        evaluate_with_sym_map(&input, &core).expect("sequential vector schedule should evaluate");
+    // Extract per-func scenarios from the result schedule
+    let func_scenarios: Vec<&Vec<PerfScenario>> = match &result {
+        Schedule::Sequential { schedules, .. } => schedules
+            .iter()
+            .map(|s| match s {
+                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                _ => panic!("expected Func with filled scenarios"),
+            })
+            .collect(),
+        _ => panic!("expected Sequential"),
+    };
 
-    // 1 scenario per function → 1×1×1×1 = 1 combined scenario
-    assert_eq!(scenarios.len(), 1);
+    // Each function has 1 scenario
+    for sc in &func_scenarios {
+        assert_eq!(sc.len(), 1);
+    }
 
-    let s = &scenarios[0];
-    assert!(s.time_cost.as_concrete().is_some(), "evaluated scenario should be Concrete");
-
-    let expr = s.time_cost.to_expr();
-
-    // L should have been replaced — only BM and BN remain.
-    let free = expr.free_symbols();
+    // vec_add: 1 + L/1024, after L → BM*BN
+    let add_expr = func_scenarios[0][0].time_cost.to_expr();
+    let free = add_expr.free_symbols();
     assert!(
         !free.contains(&Sym::new("L")),
         "L should have been substituted away, but symbols are: {:?}",
@@ -324,79 +349,89 @@ fn test_evaluate_vector_lane_sequential_schedule() {
         free
     );
 
-    // BM=0, BN=0 → L=0, only fixed latencies: 1 + 16 + 1 + 8 = 26
-    let at_0x0 = expr.substitute(&[
-        (Sym::new("BM"), Expr::Const(0)),
-        (Sym::new("BN"), Expr::Const(0)),
-    ]);
-    assert_eq!(at_0x0.eval_const(), Some(1 + 16 + 1 + 8));
-
-    // BM=32, BN=32 → L=1024:
-    //   (1 + 1024/1024) + (16 + 1024/128) + (1 + 1024/1024) + (8 + 1024/256)
-    //   = 2 + 24 + 2 + 12 = 40
-    let at_32x32 = expr.substitute(&[
+    // BM=32, BN=32 → L=1024 → vec_add: 1 + 1024/1024 = 2
+    let at_32x32 = add_expr.substitute(&[
         (Sym::new("BM"), Expr::Const(32)),
         (Sym::new("BN"), Expr::Const(32)),
     ]);
-    assert_eq!(at_32x32.eval_const(), Some(40));
+    assert_eq!(at_32x32.eval_const(), Some(2));
 
-    // All individual constraints are True, so the fused constraint must also
-    // evaluate to true.
-    assert_eq!(s.constraints.eval_const(), Some(true));
+    // All individual constraints are True
+    assert_eq!(func_scenarios[0][0].constraints.eval_const(), Some(true));
 
-    // --- sym_map is preserved in the output PerfScenarios ---
-    let preserved_map = scenarios.sym_map.as_ref().expect("sym_map should be present");
-    assert_eq!(preserved_map.entries.len(), 1);
-    assert_eq!(preserved_map.entries[0].0, Sym::new("L"));
+    // sym_map is preserved on each func in the output schedule
+    match &result {
+        Schedule::Sequential { schedules, .. } => {
+            for s in schedules {
+                match s {
+                    Schedule::Func { func, .. } => {
+                        let sm = func.sym_map.as_ref().expect("sym_map should be present");
+                        assert_eq!(sm.entries.len(), 1);
+                        assert_eq!(sm.entries[0].0, Sym::new("L"));
+                    }
+                    _ => panic!("expected Func"),
+                }
+            }
+        }
+        _ => panic!("expected Sequential"),
+    }
 
-    // PerfScenarios (including sym_map) round-trips through JSON.
-    let json = serde_json::to_string(&scenarios).expect("PerfScenarios should serialize");
+    // Schedule round-trips through JSON.
+    let json = serde_json::to_string(&result).expect("Schedule should serialize");
     println!("{}", json);
-    let decoded: PerfScenarios =
-        serde_json::from_str(&json).expect("PerfScenarios should deserialize");
-    assert_eq!(decoded.len(), scenarios.len());
-
-    let decoded_map = decoded.sym_map.as_ref().expect("decoded sym_map should be present");
-    assert_eq!(decoded_map.entries.len(), 1);
-    assert_eq!(decoded_map.entries[0].0, Sym::new("L"));
-
-    let decoded_at_32x32 = decoded[0].time_cost.to_expr().substitute(&[
-        (Sym::new("BM"), Expr::Const(32)),
-        (Sym::new("BN"), Expr::Const(32)),
-    ]);
-    assert_eq!(decoded_at_32x32.eval_const(), at_32x32.eval_const());
+    let decoded: Schedule =
+        serde_json::from_str(&json).expect("Schedule should deserialize");
+    let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
+    assert_eq!(json, decoded_json);
 }
 
-/// Evaluate a `ScheduleWithSymMap` that maps the MLIR symbol `L` to `BM * BN`.
+/// Evaluate a schedule with per-func `sym_map` that maps the MLIR symbol `L`
+/// to `BM * BN`.
 ///
 /// The vector-lane functions all reference `L` in their cost expressions.
-/// After `evaluate_with_sym_map`, every occurrence of `L` should be replaced
-/// by `BM * BN`, and the mapping should be preserved in the returned
-/// `PerfScenarios`.
+/// After `evaluate`, every occurrence of `L` should be replaced by `BM * BN`,
+/// and the mapping should be preserved on each `MlirFunc` in the returned
+/// `Schedule`.
 ///
 /// Schedule: vec_add → vec_mul
 ///   vec_add: fixed=1, volume=L, throughput=1024  → 1 + L/1024
 ///   vec_mul: fixed=1, volume=L, throughput=1024  → 1 + L/1024
-///   total(L) = 2 + 2*L/1024
 ///
 /// After substitution L → BM*BN:
-///   total(BM, BN) = 2 + 2*(BM*BN)/1024
+///   per-func cost = 1 + (BM*BN)/1024
 #[test]
 fn test_evaluate_with_sym_map() {
     let core = crate::core_arch::single_core();
 
     let l_sym = vec![Sym::new("L")];
+    let sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(
+            Sym::new("L"),
+            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
+        );
+        Some(m)
+    };
+
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
         ],
         mlir_ref: None,
@@ -404,25 +439,44 @@ fn test_evaluate_with_sym_map() {
         time: None,
     };
 
-    let mut sym_map = SymbolicMapping::new();
-    sym_map.insert(
-        Sym::new("L"),
-        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-    );
+    let result = evaluate(&schedule, &core).expect("evaluate should succeed");
 
-    let input = ScheduleWithSymMap::new(schedule, sym_map);
-    let scenarios =
-        evaluate_with_sym_map(&input, &core).expect("evaluate_with_sym_map should succeed");
+    // Extract per-func scenarios from the result
+    let func_scenarios: Vec<&Vec<PerfScenario>> = match &result {
+        Schedule::Sequential { schedules, .. } => schedules
+            .iter()
+            .map(|s| match s {
+                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                _ => panic!("expected Func with filled scenarios"),
+            })
+            .collect(),
+        _ => panic!("expected Sequential"),
+    };
 
-    assert_eq!(scenarios.len(), 1);
+    assert_eq!(func_scenarios.len(), 2);
+    for sc in &func_scenarios {
+        assert_eq!(sc.len(), 1);
+    }
 
-    // --- Verify that the sym_map is preserved ---
-    let preserved_map = scenarios.sym_map.as_ref().expect("sym_map should be present");
-    assert_eq!(preserved_map.entries.len(), 1);
-    assert_eq!(preserved_map.entries[0].0, Sym::new("L"));
+    // --- Verify that the sym_map is preserved on each func ---
+    match &result {
+        Schedule::Sequential { schedules, .. } => {
+            for s in schedules {
+                match s {
+                    Schedule::Func { func, .. } => {
+                        let sm = func.sym_map.as_ref().expect("sym_map should be present");
+                        assert_eq!(sm.entries.len(), 1);
+                        assert_eq!(sm.entries[0].0, Sym::new("L"));
+                    }
+                    _ => panic!("expected Func"),
+                }
+            }
+        }
+        _ => panic!("expected Sequential"),
+    }
 
     // --- Verify symbol substitution: L should no longer appear ---
-    let s = &scenarios[0];
+    let s = &func_scenarios[0][0];
     assert!(
         s.time_cost.as_concrete().is_some(),
         "evaluated scenario should be Concrete"
@@ -441,43 +495,34 @@ fn test_evaluate_with_sym_map() {
     );
 
     // --- Verify concrete evaluation ---
-    // With BM=32, BN=32 → L=1024:
-    //   total = (1 + 1024/1024) + (1 + 1024/1024) = 2 + 2 = 4
+    // With BM=32, BN=32 → L=1024: per func = 1 + 1024/1024 = 2
     let at_32x32 = expr.substitute(&[
         (Sym::new("BM"), Expr::Const(32)),
         (Sym::new("BN"), Expr::Const(32)),
     ]);
-    assert_eq!(at_32x32.eval_const(), Some(4));
+    assert_eq!(at_32x32.eval_const(), Some(2));
 
-    // With BM=0, BN=0 → L=0, only fixed latencies: 1 + 1 = 2
+    // With BM=0, BN=0 → L=0, only fixed latency: 1
     let at_0x0 = expr.substitute(&[
         (Sym::new("BM"), Expr::Const(0)),
         (Sym::new("BN"), Expr::Const(0)),
     ]);
-    assert_eq!(at_0x0.eval_const(), Some(2));
+    assert_eq!(at_0x0.eval_const(), Some(1));
 
     // Constraints remain True (all vector-lane scenarios have True constraints).
     assert_eq!(s.constraints.eval_const(), Some(true));
 
-    // --- JSON round-trip preserves sym_map ---
-    let json = serde_json::to_string(&scenarios).expect("PerfScenarios should serialize");
+    // --- JSON round-trip ---
+    let json = serde_json::to_string(&result).expect("Schedule should serialize");
     println!("{}", json);
-    let decoded: PerfScenarios =
-        serde_json::from_str(&json).expect("PerfScenarios should deserialize");
-    assert_eq!(decoded.len(), scenarios.len());
-    let decoded_map = decoded.sym_map.as_ref().expect("decoded sym_map should be present");
-    assert_eq!(decoded_map.entries.len(), 1);
-    assert_eq!(decoded_map.entries[0].0, Sym::new("L"));
-
-    let decoded_at_32x32 = decoded[0].time_cost.to_expr().substitute(&[
-        (Sym::new("BM"), Expr::Const(32)),
-        (Sym::new("BN"), Expr::Const(32)),
-    ]);
-    assert_eq!(decoded_at_32x32.eval_const(), at_32x32.eval_const());
+    let decoded: Schedule =
+        serde_json::from_str(&json).expect("Schedule should deserialize");
+    let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
+    assert_eq!(json, decoded_json);
 }
 
 /// Generate a standalone evaluator binary for the single-core architecture,
-/// then verify it produces correct PerfScenarios when invoked externally.
+/// then verify it produces the correct evaluated Schedule when invoked externally.
 #[test]
 fn test_generate_core_evaluator_binary() {
     let core = crate::core_arch::single_core();
@@ -490,30 +535,41 @@ fn test_generate_core_evaluator_binary() {
     assert!(binary.exists(), "generated binary should exist at {binary:?}");
 
     let l_sym = vec![Sym::new("L")];
+    let sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(
+            Sym::new("L"),
+            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
+        );
+        Some(m)
+    };
+
     let schedule = Schedule::Sequential {
         schedules: vec![
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_add"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
             Schedule::Func {
-                func: MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone()),
+                func: {
+                    let mut f = MlirFunc::with_symbols(&vec_func("vec_mul"), l_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
                 processor: None,
-                time: None,
+                scenarios: None,
             },
         ],
         mlir_ref: None,
         processor: None,
         time: None,
     };
-    let mut sym_map = SymbolicMapping::new();
-    sym_map.insert(
-        Sym::new("L"),
-        Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-    );
-    let input = ScheduleWithSymMap::new(schedule, sym_map);
-    let input_json = serde_json::to_string(&input).expect("input should serialize");
+    let input_json = serde_json::to_string(&schedule).expect("input should serialize");
 
     let output = Command::new(&binary)
         .stdin(std::process::Stdio::piped())
@@ -538,22 +594,36 @@ fn test_generate_core_evaluator_binary() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let scenarios: PerfScenarios =
+    let result: Schedule =
         serde_json::from_slice(&output.stdout).expect("binary output should be valid JSON");
 
-    assert_eq!(scenarios.len(), 1);
-    let expr = scenarios[0].time_cost.to_expr();
+    // Extract per-func scenarios
+    let func_scenarios: Vec<&Vec<PerfScenario>> = match &result {
+        Schedule::Sequential { schedules, .. } => schedules
+            .iter()
+            .map(|s| match s {
+                Schedule::Func { scenarios: Some(sc), .. } => sc,
+                _ => panic!("expected Func with filled scenarios"),
+            })
+            .collect(),
+        _ => panic!("expected Sequential"),
+    };
+
+    assert_eq!(func_scenarios.len(), 2);
+    for sc in &func_scenarios {
+        assert_eq!(sc.len(), 1);
+    }
+
+    let expr = func_scenarios[0][0].time_cost.to_expr();
     let free = expr.free_symbols();
     assert!(!free.contains(&Sym::new("L")));
     assert!(free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")));
 
     // BM=32, BN=32 → L=1024:
     //   vec_add: 1 + 1024/1024 = 2
-    //   vec_mul: 1 + 1024/1024 = 2
-    //   total = 4
     let at_32x32 = expr.substitute(&[
         (Sym::new("BM"), Expr::Const(32)),
         (Sym::new("BN"), Expr::Const(32)),
     ]);
-    assert_eq!(at_32x32.eval_const(), Some(4));
+    assert_eq!(at_32x32.eval_const(), Some(2));
 }

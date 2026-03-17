@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{MlirFunc, MlirModule};
-use crate::arch::{FunctionProcessor, Processor, Sym, TimeExpr};
+use crate::arch::{FunctionProcessor, PerfScenario, Processor, Sym, TimeExpr};
 use crate::math::Expr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub enum Schedule {
         #[serde(skip_serializing_if = "Option::is_none")]
         processor: Option<FunctionProcessor>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        time: Option<TimeExpr>,
+        scenarios: Option<Vec<PerfScenario>>,
     },
 }
 
@@ -38,7 +38,7 @@ pub enum Schedule {
 /// For example, one can record that the MLIR symbol `L` should be replaced by
 /// the expression `BM * BN` during evaluation. Each entry is a `(Sym, Expr)`
 /// pair where `Sym` is the original MLIR symbol and `Expr` is its replacement.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicMapping {
     pub entries: Vec<(Sym, Expr)>,
 }
@@ -80,19 +80,7 @@ impl Default for SymbolicMapping {
     }
 }
 
-/// A [`Schedule`] bundled with a [`SymbolicMapping`] that records how MLIR
-/// symbols should be rewritten to new symbolic expressions during evaluation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ScheduleWithSymMap {
-    pub schedule: Schedule,
-    pub sym_map: SymbolicMapping,
-}
 
-impl ScheduleWithSymMap {
-    pub fn new(schedule: Schedule, sym_map: SymbolicMapping) -> Self {
-        Self { schedule, sym_map }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -141,13 +129,13 @@ mod tests {
                 Schedule::Func {
                     func: add_func,
                     processor: Some(add_fp),
-                    time: Some(Expr::Const(100)),
+                    scenarios: None,
                 },
                 Schedule::Parallel {
                     schedules: vec![Schedule::Func {
                         func: mul_func,
                         processor: Some(mul_fp),
-                        time: None,
+                        scenarios: None,
                     }],
                     mlir_ref: Some(mul_module),
                     processor: Some(lane_proc),
@@ -166,6 +154,12 @@ mod tests {
         );
         assert_eq!(value["Sequential"]["processor"]["name"], json!("mesh"));
         assert_eq!(value["Sequential"]["time"], json!({"Const": 150}));
+        // Func nodes no longer have a `time` field; they carry `scenarios` instead.
+        assert!(
+            value["Sequential"]["schedules"][0]["Func"]
+                .get("scenarios")
+                .is_none()
+        );
         assert_eq!(
             value["Sequential"]["schedules"][0]["Func"]["func"]["name"],
             json!(add_name)
@@ -184,7 +178,7 @@ mod tests {
         );
         assert!(
             value["Sequential"]["schedules"][1]["Parallel"]["schedules"][0]["Func"]
-                .get("time")
+                .get("scenarios")
                 .is_none()
         );
 
@@ -208,7 +202,7 @@ mod tests {
                 schedules: vec![Schedule::Func {
                     func: func,
                     processor: None,
-                    time: None,
+                    scenarios: None,
                 }],
                 mlir_ref: None,
                 processor: None,
@@ -238,7 +232,7 @@ mod tests {
             .as_object()
             .expect("Func payload should be an object");
         assert!(!op.contains_key("processor"));
-        assert!(!op.contains_key("time"));
+        assert!(!op.contains_key("scenarios"));
 
         let decoded: Schedule =
             serde_json::from_value(value.clone()).expect("schedule should deserialize");

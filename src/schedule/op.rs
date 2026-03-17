@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 
 use crate::arch::Sym;
+use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
 
 /// Relationship extracted from `loom.bind` in an MLIR function body.
@@ -25,7 +26,7 @@ pub struct MlirFuncDetails {
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlirFunc {
     /// Function symbol name (e.g. `matmul_f16`).
     pub name: String,
@@ -34,6 +35,13 @@ pub struct MlirFunc {
     /// Optional tensor-level metadata extracted from MLIR body/signature.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mlir_details: Option<MlirFuncDetails>,
+    /// Optional symbolic mapping for this function invocation.
+    ///
+    /// When a function is scheduled, each call site may bind its symbols to
+    /// different expressions. This mapping records those bindings and must be
+    /// filled for schedules given to evaluation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sym_map: Option<SymbolicMapping>,
 }
 
 /// Reference to an external MLIR module that contains compute semantics.
@@ -41,7 +49,7 @@ pub struct MlirFunc {
 /// The referenced `.mlir` file is expected to contain one module with one or
 /// more linalg functions. `functions` can optionally restrict which symbols
 /// in that module are used for this processor.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlirModule {
     pub path: Option<String>,
     /// Module symbol name, when parsed from MLIR text (`module @name`).
@@ -103,6 +111,7 @@ impl MlirFunc {
             name: name.into(),
             symbols: vec![],
             mlir_details: None,
+            sym_map: None,
         }
     }
 
@@ -113,6 +122,7 @@ impl MlirFunc {
             name: name.into(),
             symbols,
             mlir_details: None,
+            sym_map: None,
         }
     }
 
@@ -189,6 +199,7 @@ impl MlirFunc {
                 output_tensors,
                 tensor_symbol_bindings,
             }),
+            sym_map: None,
         })
     }
 }

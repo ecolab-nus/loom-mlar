@@ -8,7 +8,7 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
     Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank, MemoryRegion, PerfScenario,
-    PerfScenarios, Processor, ProcessorSet, Processors, Router, RouterEndpoint,
+    Processor, ProcessorSet, Processors, Router, RouterEndpoint,
     RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SimpleTimeCost, SizeExpr,
     Sym, TimeCost, TimeExpr,
 };
@@ -20,8 +20,8 @@ pub use math::{
 };
 pub use schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
-    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, ScheduleWithSymMap, SymbolicMapping,
-    evaluate, evaluate_with_sym_map,
+    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping,
+    evaluate,
 };
 
 // Re-export visualization utilities
@@ -31,6 +31,4 @@ pub use visualization::graph_json::{
 };
 
 // Re-export evaluator utilities
-pub use evaluator::{
-    EvaluatorInput, generate_evaluator_binary, run_evaluator, run_evaluator_from_json,
-};
+pub use evaluator::{generate_evaluator_binary, run_evaluator, run_evaluator_from_json};

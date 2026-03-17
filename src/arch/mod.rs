@@ -18,6 +18,6 @@ pub use links::{
     RouterSide, ScaleOutNetwork, SharingDomain,
 };
 pub use memory::{MemoryBank, MemoryRegion};
-pub use perf::{FuncPerfModel, PerfScenario, PerfScenarios, SimpleTimeCost, TimeCost, TimeExpr};
+pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
 pub use size_dim::{Dimension, SizeExpr, Sym};

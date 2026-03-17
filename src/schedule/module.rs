@@ -12,7 +12,7 @@ pub struct ModuleSource {
 }
 
 /// Functionality module: a named set of operation interfaces.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Module {
     /// Logical module name.
     pub name: Option<String>,

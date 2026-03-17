@@ -33,8 +33,8 @@ src/
 │   └── parse.rs                # Parsers
 ├── schedule/
 │   ├── mod.rs                  # Scheduling-domain re-exports
-│   ├── schedule.rs             # Schedule, ScheduleWithSymMap, SymbolicMapping
-│   ├── evaluate.rs             # evaluate(), evaluate_with_sym_map()
+│   ├── schedule.rs             # Schedule, SymbolicMapping
+│   ├── evaluate.rs             # evaluate()
 │   ├── op.rs                   # MlirModule, MlirFunc, MlirFuncDetails, MLIR parser
 │   └── module.rs               # Module, ModuleSource
 └── visualization/
@@ -92,6 +92,7 @@ let matmul = MlirFunc {
             },
         ],
     }),
+    sym_map: None,
 };
 ```
 
@@ -247,6 +248,9 @@ Raw MLIR extraction and parsing types are under `src/schedule/op.rs`:
 - `MlirFuncDetails.output_tensors`
 - `MlirFuncDetails.tensor_symbol_bindings`
 
+Each `MlirFunc` can also carry an optional `sym_map: Option<SymbolicMapping>` for
+per-invocation symbol substitutions. This mapping is applied during schedule evaluation.
+
 These are useful for parsing and inspection, and are also the canonical function interface types used by processors and schedules.
 
 ## Visualization
@@ -271,9 +275,9 @@ Web UI lives in `tools/web-visualization/`.
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
 | `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
 | `Module` | Functionality module model | `src/schedule/module.rs` |
-| `Schedule`, `ScheduleWithSymMap` | Schedule tree and symbol mapping | `src/schedule/schedule.rs` |
+| `Schedule` | Schedule tree (Func carries per-func scenarios) | `src/schedule/schedule.rs` |
+| `SymbolicMapping` | Per-function symbol substitution mapping | `src/schedule/schedule.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
-| `PerfScenarios` | Evaluation result (scenarios + sym_map) | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
@@ -286,14 +290,15 @@ Web UI lives in `tools/web-visualization/`.
 ## Evaluator Binary Generation
 
 MLAR can produce **standalone evaluator binaries** for any architecture.
-External (non-Rust) tools invoke the binary, pass a schedule as JSON on
-**stdin**, and receive performance scenarios as JSON on **stdout**.
+External (non-Rust) tools invoke the binary, pass a `Schedule` as JSON on
+**stdin**, and receive the evaluated `Schedule` (with `scenarios` filled on
+each `Func` node) as JSON on **stdout**.
 
 ### Protocol
 
 ```text
-stdin  →  ScheduleWithSymMap JSON  (or bare Schedule JSON)
-stdout ←  PerfScenarios JSON
+stdin  →  Schedule JSON
+stdout ←  Schedule JSON  (with scenarios filled)
 ```
 
 ### Three ways to create an evaluator binary
@@ -360,7 +365,12 @@ call it:
 **Shell:**
 
 ```bash
-echo '{ "schedule": ..., "sym_map": ... }' | ./eval_core
+echo '{"Sequential":{"schedules":[
+  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"],
+    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
+  {"Func":{"func":{"name":"vec_mul_f32","symbols":["L"],
+    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
+]}}' | ./eval_core
 ```
 
 **Python:**
@@ -368,17 +378,13 @@ echo '{ "schedule": ..., "sym_map": ... }' | ./eval_core
 ```python
 import subprocess, json
 
+sym_map = {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
 schedule_input = {
-    "schedule": {
-        "Sequential": {
-            "schedules": [
-                {"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"]}}},
-                {"Func": {"func": {"name": "vec_mul_f32", "symbols": ["L"]}}},
-            ]
-        }
-    },
-    "sym_map": {
-        "entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]
+    "Sequential": {
+        "schedules": [
+            {"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"], "sym_map": sym_map}}},
+            {"Func": {"func": {"name": "vec_mul_f32", "symbols": ["L"], "sym_map": sym_map}}},
+        ]
     },
 }
 
@@ -387,43 +393,45 @@ result = subprocess.run(
     input=json.dumps(schedule_input),
     capture_output=True, text=True, check=True,
 )
-perf_scenarios = json.loads(result.stdout)
+evaluated_schedule = json.loads(result.stdout)
 ```
 
 ### Input format
 
-The binary accepts two JSON formats:
+The binary accepts a `Schedule` JSON tree. Symbol substitutions are specified
+per-function via the optional `sym_map` field on each `MlirFunc`:
 
-- **`ScheduleWithSymMap`** — has `schedule` and `sym_map` fields. The
-  `sym_map` records symbol substitutions (e.g. MLIR symbol `L` → `BM * BN`)
-  that are applied during evaluation.
-- **Bare `Schedule`** — just the schedule tree, no symbol substitutions.
+```json
+{"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"],
+  "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}}}}
+```
+
+The `sym_map` records per-invocation symbol substitutions (e.g. MLIR symbol
+`L` → `BM * BN`) that are applied during evaluation.
 
 ### Output format
 
-The output is a `PerfScenarios` JSON object:
+The output is the same `Schedule` JSON with each `Func` node's `scenarios`
+field filled in:
 
 ```json
-{
+{"Func": {
+  "func": {"name": "vec_add_f32", "symbols": ["L"],
+    "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}},
   "scenarios": [
     {
       "constraints": "True",
-      "time_cost": { "Concrete": { "Add": [{"Const": 1}, {"Div": [{"Sym": "L"}, {"Const": 1024}]}] } }
+      "time_cost": {"Concrete": {"Add": [{"Const": 1}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}]}}
     }
-  ],
-  "sym_map": {
-    "entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]
-  }
-}
+  ]
+}}
 ```
 
 Each scenario contains:
 
 - `constraints` — a boolean constraint expression describing when this
   scenario applies.
-- `time_cost` — a symbolic `Concrete` expression for the total cycle cost.
-
-The optional `sym_map` preserves any substitutions that were applied.
+- `time_cost` — a symbolic `Concrete` expression for the per-function cycle cost.
 
 ### Example: 2D mesh core architecture
 
@@ -437,10 +445,12 @@ binary under `tests/2d_mesh/evaluators/`:
 cargo test test_generate_core_evaluator_binary
 
 # Use the generated binary
-echo '{"schedule":{"Sequential":{"schedules":[
-  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"]}}},
-  {"Func":{"func":{"name":"vec_exp_f32","symbols":["L"]}}}
-]}},"sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}' \
+echo '{"Sequential":{"schedules":[
+  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"],
+    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
+  {"Func":{"func":{"name":"vec_exp_f32","symbols":["L"],
+    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
+]}}' \
   | ./tests/2d_mesh/evaluators/eval_core
 ```
 

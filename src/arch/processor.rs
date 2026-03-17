@@ -217,6 +217,7 @@ mod tests {
                         },
                     ],
                 }),
+                sym_map: None,
             },
             FuncPerfModel {
                 symbols: vec![],

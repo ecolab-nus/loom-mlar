@@ -23,7 +23,7 @@ use crate::arch::size_dim::Sym;
 /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
 /// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConstraintExpr {
     /// Always true
     True,

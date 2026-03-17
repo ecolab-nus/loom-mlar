@@ -21,7 +21,7 @@ use crate::arch::size_dim::Sym;
 /// let e = Expr::parse("M * N / 64").unwrap();
 /// let e: Expr = "min(M, 1024) + N".parse().unwrap();
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Expr {
     Const(i64),
     Sym(Sym),

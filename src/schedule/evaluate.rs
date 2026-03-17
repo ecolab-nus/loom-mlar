@@ -12,61 +12,33 @@
 //!
 //! 1. **Leaf (`Func`)**: look up the [`FunctionProcessor`] whose `func.name`
 //!    matches, retrieve its [`FuncPerfModel`], fuse global constraints into
-//!    each [`PerfScenario`] with AND logic, and return the fused scenario
-//!    vector.
+//!    each [`PerfScenario`] with AND logic, apply the per-func `sym_map`
+//!    substitution if present, and set the `scenarios` field on the `Func`
+//!    node.
 //!
-//! 2. **Sequential**: recursively evaluate every sub-schedule, then fold the
-//!    scenario vectors via Cartesian product — for each pair of scenarios the
-//!    concrete time-cost expressions are summed and constraints are composed
-//!    with AND.
+//! 2. **Sequential**: recursively evaluate every sub-schedule.  The `scenarios`
+//!    fields are filled on each leaf `Func` node but the `time` on
+//!    `Sequential`/`Parallel` nodes is left as-is (not evaluated in this
+//!    prototype).
 
 use crate::arch::architecture::Architecture;
 use crate::arch::graph::ArchNodeComponent;
-use crate::arch::perf::{FuncPerfModel, PerfScenario, PerfScenarios, TimeCost};
+use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
 use crate::arch::processor::FunctionProcessor;
 use crate::math::constraint::ConstraintExpr;
-use crate::math::expr::Expr;
-use crate::schedule::schedule::{Schedule, ScheduleWithSymMap};
+use crate::schedule::schedule::Schedule;
 
 /// Evaluate a schedule's performance on the given architecture.
 ///
-/// Returns a [`PerfScenarios`] containing the full set of combined scenarios
-/// — one per Cartesian-product combination of per-function scenarios across
-/// the sequential composition.
+/// Returns a new [`Schedule`] with each `Func` node's `scenarios` field
+/// filled in. `Sequential`/`Parallel` nodes are left as-is (their `time`
+/// field is not evaluated in this prototype).
 ///
 /// # Errors
 ///
 /// - [`Schedule::Parallel`] is not supported and returns an error.
 /// - A `Func` whose name cannot be found in `arch` returns an error.
-pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<PerfScenarios, String> {
-    evaluate_inner(schedule, arch).map(PerfScenarios::new)
-}
-
-/// Evaluate a [`ScheduleWithSymMap`] against the given architecture.
-///
-/// This works like [`evaluate`] but additionally applies the symbolic mapping
-/// from `input.sym_map`: every symbol that appears in a mapping entry is
-/// replaced by its corresponding expression in every [`PerfScenario`]
-/// (constraints and time-cost expressions alike).  The mapping is preserved
-/// in the returned [`PerfScenarios`] so the relationship remains available
-/// even after substitution.
-pub fn evaluate_with_sym_map(
-    input: &ScheduleWithSymMap,
-    arch: &Architecture,
-) -> Result<PerfScenarios, String> {
-    let raw = evaluate_inner(&input.schedule, arch)?;
-    let mappings = input.sym_map.as_slice();
-    let substituted = raw
-        .into_iter()
-        .map(|s| PerfScenario {
-            constraints: s.constraints.substitute(mappings),
-            time_cost: s.time_cost.substitute(mappings),
-        })
-        .collect();
-    Ok(PerfScenarios::with_sym_map(substituted, input.sym_map.clone()))
-}
-
-fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfScenario>, String> {
+pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, String> {
     match schedule {
         // NOTE: Parallel evaluation is intentionally unsupported in this
         // prototype. Supporting it requires a cost model for concurrent
@@ -76,26 +48,48 @@ fn evaluate_inner(schedule: &Schedule, arch: &Architecture) -> Result<Vec<PerfSc
             unimplemented!("Parallel schedule evaluation is not yet supported");
         }
 
-        Schedule::Sequential { schedules, .. } => {
-            let identity = vec![PerfScenario {
-                constraints: ConstraintExpr::True,
-                time_cost: TimeCost::Concrete(Expr::Const(0)),
-            }];
-
-            schedules.iter().try_fold(identity, |acc, sub| {
-                let sub_scenarios = evaluate_inner(sub, arch)?;
-                Ok(cartesian_combine(&acc, &sub_scenarios))
+        Schedule::Sequential {
+            schedules,
+            mlir_ref,
+            processor,
+            time,
+        } => {
+            let evaluated: Result<Vec<Schedule>, String> =
+                schedules.iter().map(|sub| evaluate(sub, arch)).collect();
+            Ok(Schedule::Sequential {
+                schedules: evaluated?,
+                mlir_ref: mlir_ref.clone(),
+                processor: processor.clone(),
+                time: time.clone(),
             })
         }
 
-        Schedule::Func { func, .. } => {
+        Schedule::Func { func, processor, .. } => {
             let fp = find_function_processor(arch, &func.name).ok_or_else(|| {
                 format!(
                     "no FunctionProcessor found for '{}' in the architecture",
                     func.name
                 )
             })?;
-            Ok(fuse_model_scenarios(&fp.perf))
+            let mut scenarios = fuse_model_scenarios(&fp.perf);
+
+            // Apply per-func symbolic mapping if present.
+            if let Some(ref sym_map) = func.sym_map {
+                let mappings = sym_map.as_slice();
+                scenarios = scenarios
+                    .into_iter()
+                    .map(|s| PerfScenario {
+                        constraints: s.constraints.substitute(mappings),
+                        time_cost: s.time_cost.substitute(mappings),
+                    })
+                    .collect();
+            }
+
+            Ok(Schedule::Func {
+                func: func.clone(),
+                processor: processor.clone(),
+                scenarios: Some(scenarios),
+            })
         }
     }
 }
@@ -123,26 +117,6 @@ fn and_constraints(a: &ConstraintExpr, b: &ConstraintExpr) -> ConstraintExpr {
     }
 }
 
-/// Cartesian product of two scenario vectors.
-///
-/// For every (l, r) pair the concrete time-cost expressions are summed and
-/// the constraints are composed with AND.
-fn cartesian_combine(left: &[PerfScenario], right: &[PerfScenario]) -> Vec<PerfScenario> {
-    let mut result = Vec::with_capacity(left.len() * right.len());
-    for l in left {
-        for r in right {
-            result.push(PerfScenario {
-                constraints: and_constraints(&l.constraints, &r.constraints),
-                time_cost: TimeCost::Concrete(Expr::add(
-                    l.time_cost.to_expr(),
-                    r.time_cost.to_expr(),
-                )),
-            });
-        }
-    }
-    result
-}
-
 /// Recursively search an [`Architecture`] for a [`FunctionProcessor`] whose
 /// `func.name` matches `func_name`.
 fn find_function_processor<'a>(
@@ -168,6 +142,7 @@ mod tests {
     use crate::schedule::MlirFunc;
 
     use crate::arch::perf::SimpleTimeCost;
+    use crate::math::expr::Expr;
 
     /// Helper: single-scenario model with concrete volume and throughput = 1,
     /// so concretized total = `fixed + volume`.
@@ -219,23 +194,34 @@ mod tests {
         Processor::with_functions("test_proc", fps).into_elem()
     }
 
+    /// Helper: extract the `scenarios` field from a `Schedule::Func`.
+    fn extract_func_scenarios(schedule: &Schedule) -> &[PerfScenario] {
+        match schedule {
+            Schedule::Func {
+                scenarios: Some(s), ..
+            } => s,
+            _ => panic!("expected Schedule::Func with filled scenarios"),
+        }
+    }
+
     #[test]
     fn evaluate_single_func() {
         let arch = make_arch(vec![("f", simple_model(10, 200))]);
         let schedule = Schedule::Func {
             func: MlirFunc::named("f"),
             processor: None,
-            time: None,
+            scenarios: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
+        let result = evaluate(&schedule, &arch).expect("should evaluate");
+        let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 1);
         assert!(scenarios[0].time_cost.as_concrete().is_some());
         assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(10 + 200));
     }
 
     #[test]
-    fn evaluate_sequential_sums_costs() {
+    fn evaluate_sequential_fills_func_scenarios() {
         let arch = make_arch(vec![
             ("f1", simple_model(10, 100)),
             ("f2", simple_model(20, 200)),
@@ -245,12 +231,12 @@ mod tests {
                 Schedule::Func {
                     func: MlirFunc::named("f1"),
                     processor: None,
-                    time: None,
+                    scenarios: None,
                 },
                 Schedule::Func {
                     func: MlirFunc::named("f2"),
                     processor: None,
-                    time: None,
+                    scenarios: None,
                 },
             ],
             mlir_ref: None,
@@ -258,16 +244,23 @@ mod tests {
             time: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
-        assert_eq!(scenarios.len(), 1);
-        assert_eq!(
-            scenarios[0].time_cost.to_expr().eval_const(),
-            Some((10 + 100) + (20 + 200))
-        );
+        let result = evaluate(&schedule, &arch).expect("should evaluate");
+        match &result {
+            Schedule::Sequential { schedules, .. } => {
+                let s1 = extract_func_scenarios(&schedules[0]);
+                assert_eq!(s1.len(), 1);
+                assert_eq!(s1[0].time_cost.to_expr().eval_const(), Some(10 + 100));
+
+                let s2 = extract_func_scenarios(&schedules[1]);
+                assert_eq!(s2.len(), 1);
+                assert_eq!(s2[0].time_cost.to_expr().eval_const(), Some(20 + 200));
+            }
+            _ => panic!("expected Sequential"),
+        }
     }
 
     #[test]
-    fn evaluate_sequential_cartesian_product() {
+    fn evaluate_sequential_multi_scenario() {
         let arch = make_arch(vec![
             ("f1", two_scenario_model()),
             ("f2", simple_model(1, 1)),
@@ -277,12 +270,12 @@ mod tests {
                 Schedule::Func {
                     func: MlirFunc::named("f1"),
                     processor: None,
-                    time: None,
+                    scenarios: None,
                 },
                 Schedule::Func {
                     func: MlirFunc::named("f2"),
                     processor: None,
-                    time: None,
+                    scenarios: None,
                 },
             ],
             mlir_ref: None,
@@ -290,19 +283,22 @@ mod tests {
             time: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
-        // f1 has 2 scenarios, f2 has 1 → 2 × 1 = 2 combinations
-        assert_eq!(scenarios.len(), 2);
+        let result = evaluate(&schedule, &arch).expect("should evaluate");
+        match &result {
+            Schedule::Sequential { schedules, .. } => {
+                // f1 has 2 scenarios
+                let s1 = extract_func_scenarios(&schedules[0]);
+                assert_eq!(s1.len(), 2);
+                assert_eq!(s1[0].time_cost.to_expr().eval_const(), Some(10 + 100));
+                assert_eq!(s1[1].time_cost.to_expr().eval_const(), Some(5 + 50));
 
-        assert_eq!(
-            scenarios[0].time_cost.to_expr().eval_const(),
-            Some((10 + 100) + (1 + 1))
-        );
-
-        assert_eq!(
-            scenarios[1].time_cost.to_expr().eval_const(),
-            Some((5 + 50) + (1 + 1))
-        );
+                // f2 has 1 scenario
+                let s2 = extract_func_scenarios(&schedules[1]);
+                assert_eq!(s2.len(), 1);
+                assert_eq!(s2[0].time_cost.to_expr().eval_const(), Some(1 + 1));
+            }
+            _ => panic!("expected Sequential"),
+        }
     }
 
     #[test]
@@ -311,14 +307,15 @@ mod tests {
         let schedule = Schedule::Func {
             func: MlirFunc::named("f1"),
             processor: None,
-            time: None,
+            scenarios: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("should evaluate");
+        let result = evaluate(&schedule, &arch).expect("should evaluate");
+        let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 2);
 
         // Global constraint (N >= 1) should be AND-ed with each scenario constraint.
-        for s in &scenarios {
+        for s in scenarios {
             assert!(matches!(s.constraints, ConstraintExpr::And(_)));
         }
     }
@@ -332,10 +329,11 @@ mod tests {
         let schedule = Schedule::Func {
             func: MlirFunc::named("f"),
             processor: None,
-            time: None,
+            scenarios: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("should find f in graph");
+        let result = evaluate(&schedule, &arch).expect("should find f in graph");
+        let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 1);
         assert_eq!(
             scenarios[0].time_cost.to_expr().eval_const(),
@@ -353,8 +351,12 @@ mod tests {
             time: None,
         };
 
-        let scenarios = evaluate(&schedule, &arch).expect("empty sequential should work");
-        assert_eq!(scenarios.len(), 1);
-        assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(0));
+        let result = evaluate(&schedule, &arch).expect("empty sequential should work");
+        match &result {
+            Schedule::Sequential { schedules, .. } => {
+                assert!(schedules.is_empty());
+            }
+            _ => panic!("expected Sequential"),
+        }
     }
 }

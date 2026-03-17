@@ -2,9 +2,9 @@
 //!
 //! This module provides the infrastructure to produce standalone executables
 //! that evaluate schedules against a fixed architecture.  External (non-Rust)
-//! tools can invoke the binary, pass a [`ScheduleWithSymMap`] (or bare
-//! [`Schedule`]) as JSON on **stdin**, and receive [`PerfScenarios`] as JSON
-//! on **stdout**.
+//! tools can invoke the binary, pass a [`Schedule`] as JSON on **stdin**, and
+//! receive the evaluated [`Schedule`] (with `scenarios` filled) as JSON on
+//! **stdout**.
 //!
 //! # Three ways to create an evaluator binary
 //!
@@ -40,39 +40,23 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-
 use crate::arch::Architecture;
-use crate::schedule::evaluate::{evaluate, evaluate_with_sym_map};
-use crate::schedule::schedule::{Schedule, ScheduleWithSymMap};
-
-/// Input accepted by the evaluator binary.
-///
-/// Tries to deserialize as [`ScheduleWithSymMap`] first (has `schedule` and
-/// `sym_map` fields); falls back to a bare [`Schedule`].
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum EvaluatorInput {
-    WithSymMap(ScheduleWithSymMap),
-    Bare(Schedule),
-}
+use crate::schedule::evaluate::evaluate;
+use crate::schedule::schedule::Schedule;
 
 /// Run the schedule-evaluation pipeline:
 ///
-/// 1. Read JSON from **stdin** (`Schedule` or `ScheduleWithSymMap`)
+/// 1. Read JSON from **stdin** (`Schedule`)
 /// 2. Evaluate against `arch`
-/// 3. Write `PerfScenarios` JSON to **stdout**
+/// 3. Write evaluated `Schedule` JSON to **stdout**
 pub fn run_evaluator(arch: &Architecture) -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
-    let input: EvaluatorInput = serde_json::from_reader(stdin.lock())?;
+    let input: Schedule = serde_json::from_reader(stdin.lock())?;
 
-    let scenarios = match input {
-        EvaluatorInput::WithSymMap(ref swsm) => evaluate_with_sym_map(swsm, arch)?,
-        EvaluatorInput::Bare(ref sched) => evaluate(sched, arch)?,
-    };
+    let result = evaluate(&input, arch)?;
 
     let stdout = std::io::stdout();
-    serde_json::to_writer(stdout.lock(), &scenarios)?;
+    serde_json::to_writer(stdout.lock(), &result)?;
     Ok(())
 }
 
@@ -190,7 +174,6 @@ mod tests {
     use crate::arch::processor::{FunctionProcessor, Processor};
     use crate::math::constraint::ConstraintExpr;
     use crate::math::expr::Expr;
-    use crate::schedule::schedule::SymbolicMapping;
     use crate::schedule::MlirFunc;
     use crate::Sym;
 
@@ -225,28 +208,9 @@ mod tests {
     #[test]
     fn evaluator_input_parses_bare_schedule() {
         let json = r#"{"Func":{"func":{"name":"vec_add_f32","symbols":["L"]}}}"#;
-        let input: EvaluatorInput =
+        let input: Schedule =
             serde_json::from_str(json).expect("bare schedule should parse");
-        assert!(matches!(input, EvaluatorInput::Bare(_)));
-    }
-
-    #[test]
-    fn evaluator_input_parses_schedule_with_sym_map() {
-        let schedule = Schedule::Func {
-            func: MlirFunc::with_symbols("vec_add_f32", vec![Sym::new("L")]),
-            processor: None,
-            time: None,
-        };
-        let mut sym_map = SymbolicMapping::new();
-        sym_map.insert(
-            Sym::new("L"),
-            Expr::mul(Expr::sym("BM"), Expr::sym("BN")),
-        );
-        let swsm = ScheduleWithSymMap::new(schedule, sym_map);
-        let json = serde_json::to_string(&swsm).expect("ScheduleWithSymMap should serialize");
-        let input: EvaluatorInput =
-            serde_json::from_str(&json).expect("ScheduleWithSymMap should parse as input");
-        assert!(matches!(input, EvaluatorInput::WithSymMap(_)));
+        assert!(matches!(input, Schedule::Func { .. }));
     }
 
     #[test]
@@ -282,3 +246,4 @@ mod tests {
         assert!(decoded.get_processor("inner").is_some());
     }
 }
+

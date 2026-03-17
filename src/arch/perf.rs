@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use super::size_dim::Sym;
 use crate::math::{ConstraintExpr, Expr};
 use crate::schedule::MlirFunc;
-use crate::schedule::schedule::SymbolicMapping;
 
 /// A single performance scenario — constraints that select it and an associated time cost.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -132,76 +131,6 @@ impl TimeCost {
             TimeCost::Simple(s) => TimeCost::Simple(s.substitute(mappings)),
             TimeCost::Concrete(e) => TimeCost::Concrete(e.substitute(mappings)),
         }
-    }
-}
-
-/// A collection of [`PerfScenario`]s — the result of evaluating a schedule.
-///
-/// Each entry represents one feasible scenario with its own constraints and
-/// cost expressions. When a sequential schedule is evaluated, the Cartesian
-/// product of per-function scenarios produces this vector.
-///
-/// An optional [`SymbolicMapping`] records which symbol substitutions were
-/// applied during evaluation so the relationship is preserved even after
-/// concrete expressions have been rewritten.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PerfScenarios {
-    pub scenarios: Vec<PerfScenario>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sym_map: Option<SymbolicMapping>,
-}
-
-impl PerfScenarios {
-    pub fn new(scenarios: Vec<PerfScenario>) -> Self {
-        Self {
-            scenarios,
-            sym_map: None,
-        }
-    }
-
-    pub fn with_sym_map(scenarios: Vec<PerfScenario>, sym_map: SymbolicMapping) -> Self {
-        Self {
-            scenarios,
-            sym_map: Some(sym_map),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.scenarios.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.scenarios.is_empty()
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, PerfScenario> {
-        self.scenarios.iter()
-    }
-}
-
-impl std::ops::Index<usize> for PerfScenarios {
-    type Output = PerfScenario;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.scenarios[index]
-    }
-}
-
-impl IntoIterator for PerfScenarios {
-    type Item = PerfScenario;
-    type IntoIter = std::vec::IntoIter<PerfScenario>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.scenarios.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a PerfScenarios {
-    type Item = &'a PerfScenario;
-    type IntoIter = std::slice::Iter<'a, PerfScenario>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.scenarios.iter()
     }
 }
 
@@ -371,6 +300,7 @@ mod tests {
                     },
                 ],
             }),
+            sym_map: None,
         };
 
         let err = model.validate_for_func(&op).unwrap_err();
