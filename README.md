@@ -366,9 +366,9 @@ call it:
 
 ```bash
 echo '{"Sequential":{"schedules":[
-  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"],
+  {"Func":{"func":{"name":"vec_add_f16","symbols":["L"],
     "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
-  {"Func":{"func":{"name":"vec_mul_f32","symbols":["L"],
+  {"Func":{"func":{"name":"vec_mul_f16","symbols":["L"],
     "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
 ]}}' | ./eval_core
 ```
@@ -382,8 +382,8 @@ sym_map = {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
 schedule_input = {
     "Sequential": {
         "schedules": [
-            {"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"], "sym_map": sym_map}}},
-            {"Func": {"func": {"name": "vec_mul_f32", "symbols": ["L"], "sym_map": sym_map}}},
+            {"Func": {"func": {"name": "vec_add_f16", "symbols": ["L"], "sym_map": sym_map}}},
+            {"Func": {"func": {"name": "vec_mul_f16", "symbols": ["L"], "sym_map": sym_map}}},
         ]
     },
 }
@@ -402,7 +402,7 @@ The binary accepts a `Schedule` JSON tree. Symbol substitutions are specified
 per-function via the optional `sym_map` field on each `MlirFunc`:
 
 ```json
-{"Func": {"func": {"name": "vec_add_f32", "symbols": ["L"],
+{"Func": {"func": {"name": "vec_add_f16", "symbols": ["L"],
   "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}}}}
 ```
 
@@ -416,7 +416,7 @@ field filled in:
 
 ```json
 {"Func": {
-  "func": {"name": "vec_add_f32", "symbols": ["L"],
+  "func": {"name": "vec_add_f16", "symbols": ["L"],
     "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}},
   "scenarios": [
     {
@@ -446,13 +446,73 @@ cargo test test_generate_core_evaluator_binary
 
 # Use the generated binary
 echo '{"Sequential":{"schedules":[
-  {"Func":{"func":{"name":"vec_add_f32","symbols":["L"],
+  {"Func":{"func":{"name":"vec_add_f16","symbols":["L"],
     "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
-  {"Func":{"func":{"name":"vec_exp_f32","symbols":["L"],
+  {"Func":{"func":{"name":"vec_exp_f16","symbols":["L"],
     "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
 ]}}' \
   | ./tests/2d_mesh/evaluators/eval_core
 ```
+
+Example output (pretty-printed):
+
+```json
+{
+  "Sequential": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "vec_add_f16",
+            "symbols": ["L"],
+            "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
+          },
+          "scenarios": [
+            {
+              "constraints": "True",
+              "time_cost": {
+                "Concrete": {
+                  "Add": [
+                    {"Const": 1},
+                    {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "Func": {
+          "func": {
+            "name": "vec_exp_f16",
+            "symbols": ["L"],
+            "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
+          },
+          "scenarios": [
+            {
+              "constraints": "True",
+              "time_cost": {
+                "Concrete": {
+                  "Add": [
+                    {"Const": 16},
+                    {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 128}]}
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+Each `Func` node now has `scenarios` filled in. The `time_cost` is a symbolic
+expression: `vec_add_f16` costs `1 + (BM * BN) / 1024` cycles (fixed latency 1,
+throughput 1024), while `vec_exp_f16` costs `16 + (BM * BN) / 128` cycles
+(fixed latency 16, throughput 128).
 
 ## Build and Test
 
