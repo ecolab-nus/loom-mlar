@@ -54,21 +54,7 @@ pub enum HierarchyNodeDetails {
     },
     Router {
         router: GraphRouter,
-        sides: Vec<HierarchyRouterSide>,
     },
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct HierarchyRouterSide {
-    pub name: String,
-    pub endpoints: Vec<HierarchyRouterEndpoint>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct HierarchyRouterEndpoint {
-    pub name: String,
-    pub target_kind: String,
-    pub target_ref: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -183,30 +169,6 @@ fn memory_region_to_hierarchy_node(region: &MemoryRegion) -> HierarchyNode {
 }
 
 fn router_to_hierarchy_node(router: &Router) -> HierarchyNode {
-    let sides: Vec<HierarchyRouterSide> = router
-        .sides
-        .iter()
-        .map(|side| HierarchyRouterSide {
-            name: side.name.clone(),
-            endpoints: side
-                .endpoints
-                .iter()
-                .map(|ep| {
-                    let (target_kind, target_ref) = match &ep.target {
-                        crate::arch::RouterEndpointTarget::MemRef(r) => ("memory", r.clone()),
-                        crate::arch::RouterEndpointTarget::ProcRef(r) => ("processor", r.clone()),
-                        crate::arch::RouterEndpointTarget::RouterRef(r) => ("router", r.clone()),
-                    };
-                    HierarchyRouterEndpoint {
-                        name: ep.name.clone(),
-                        target_kind: target_kind.to_string(),
-                        target_ref,
-                    }
-                })
-                .collect(),
-        })
-        .collect();
-
     HierarchyNode {
         kind: HierarchyNodeKind::Router,
         name: router.name.clone(),
@@ -216,9 +178,7 @@ fn router_to_hierarchy_node(router: &Router) -> HierarchyNode {
             router: GraphRouter {
                 name: router.name.clone(),
                 side_count: router.side_count(),
-                endpoints: router.total_endpoints(),
             },
-            sides,
         }),
         connectivity: Vec::new(),
         children: Vec::new(),
@@ -295,8 +255,7 @@ fn memory_region_detail(region: &MemoryRegion) -> GraphMemoryRegion {
 mod tests {
     use super::*;
     use crate::arch::{
-        ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router, RouterEndpoint,
-        RouterSide, SizeExpr,
+        ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router, SizeExpr,
     };
 
     #[test]
@@ -317,8 +276,7 @@ mod tests {
         ))
         .with_name("L1");
         let lane = Processor::new("lane").into_elem();
-        let router = Router::new("xbar")
-            .side(RouterSide::new("compute").endpoint(RouterEndpoint::from_proc_ref("lane", "arch::lane::node")));
+        let router = Router::new("xbar", 1);
 
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -394,17 +352,7 @@ mod tests {
         let matrix_lane = Processor::new("matrix_lane").into_elem();
         let vector_lane = Processor::new("vector_lane").into_elem();
 
-        let l1_ref = "mem::L1::node";
-        let matrix_ref = "arch::matrix_lane::node";
-        let vector_ref = "arch::vector_lane::node";
-
-        let core_router = Router::new("core_router")
-            .side(
-                RouterSide::new("compute")
-                    .endpoint(RouterEndpoint::from_proc_ref("matrix_lane", matrix_ref))
-                    .endpoint(RouterEndpoint::from_proc_ref("vector_lane", vector_ref)),
-            )
-            .side(RouterSide::from_memory_region_banks("memory", &l1, l1_ref));
+        let core_router = Router::new("core_router", 2);
 
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)

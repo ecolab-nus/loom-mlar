@@ -14,12 +14,12 @@ pub use crate::schedule::{
 };
 pub use architecture::Architecture;
 pub use architecture_graph::{
-    ArchEdge, ArchEdgeId, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent,
-    ArchNodeId,
+    ArchEdge, ArchEdgeAttr, ArchEdgeId, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode,
+    ArchNodeComponent, ArchNodeId,
 };
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{MeshNetwork, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
-pub use router::{Router, RouterEndpoint, RouterEndpointTarget, RouterSide};
+pub use router::{Router, RouterSide};
 pub use size_dim::{Dimension, SizeExpr, Sym};

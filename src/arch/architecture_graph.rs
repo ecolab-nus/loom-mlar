@@ -4,7 +4,7 @@ use super::architecture::Architecture;
 use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::Processor;
-use super::router::Router;
+use super::router::{Router, RouterSide};
 use std::fmt;
 
 const NODE_ID_SUFFIX: &str = "::node";
@@ -142,17 +142,61 @@ impl ArchNode {
 /// Alias name for graph nodes.
 pub type ArchGraphNode = ArchNode;
 
+/// Typed attribute that can be attached to an architecture graph edge.
+///
+/// Each variant represents a different kind of metadata. An edge carries a
+/// `Vec<ArchEdgeAttr>`, so it can hold zero or more attributes of any
+/// combination of types.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArchEdgeAttr {
+    /// The router side this edge connects through.
+    Side(RouterSide),
+}
+
 /// Directed edge between two architecture graph nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchEdge {
     pub id: ArchEdgeId,
     pub source: ArchNodeId,
     pub target: ArchNodeId,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attrs: Vec<ArchEdgeAttr>,
 }
 
 impl ArchEdge {
-    fn new(id: ArchEdgeId, source: ArchNodeId, target: ArchNodeId) -> Self {
-        Self { id, source, target }
+    fn with_attrs(
+        id: ArchEdgeId,
+        source: ArchNodeId,
+        target: ArchNodeId,
+        attrs: Vec<ArchEdgeAttr>,
+    ) -> Self {
+        Self {
+            id,
+            source,
+            target,
+            attrs,
+        }
+    }
+
+    /// Return the first `Side` attribute value, if any.
+    pub fn side(&self) -> Option<RouterSide> {
+        self.attrs.iter().find_map(|a| match a {
+            ArchEdgeAttr::Side(s) => Some(*s),
+        })
+    }
+
+    /// Return all attributes matching a predicate.
+    pub fn attrs_where<F>(&self, predicate: F) -> Vec<&ArchEdgeAttr>
+    where
+        F: Fn(&ArchEdgeAttr) -> bool,
+    {
+        self.attrs.iter().filter(|a| predicate(a)).collect()
+    }
+
+    /// Add an attribute, returning `self` for builder-style chaining.
+    pub fn with_attr(mut self, attr: ArchEdgeAttr) -> Self {
+        self.attrs.push(attr);
+        self
     }
 }
 
@@ -269,6 +313,15 @@ impl ArchGraph {
     }
 
     pub fn connect(&mut self, source: &ArchNode, target: &ArchNode) -> &ArchEdge {
+        self.connect_with_attrs(source, target, Vec::new())
+    }
+
+    pub fn connect_with_attrs(
+        &mut self,
+        source: &ArchNode,
+        target: &ArchNode,
+        attrs: Vec<ArchEdgeAttr>,
+    ) -> &ArchEdge {
         self.assert_node_exists(&source.id);
         self.assert_node_exists(&target.id);
         assert!(
@@ -280,7 +333,7 @@ impl ArchGraph {
         );
 
         let edge_id = self.next_edge_id(&source.id, &target.id);
-        let edge = ArchEdge::new(edge_id, source.id.clone(), target.id.clone());
+        let edge = ArchEdge::with_attrs(edge_id, source.id.clone(), target.id.clone(), attrs);
         self.edges.push(edge);
         self.edges
             .last()

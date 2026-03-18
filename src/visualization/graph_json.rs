@@ -70,7 +70,6 @@ pub enum GraphNodeDetails {
 pub struct GraphRouter {
     pub name: String,
     pub side_count: usize,
-    pub endpoints: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -411,7 +410,6 @@ fn router_node(id: String, name: &str, router: &Router) -> GraphNode {
             router: GraphRouter {
                 name: router.name.clone(),
                 side_count: router.side_count(),
-                endpoints: router.total_endpoints(),
             },
         },
     }
