@@ -1,6 +1,5 @@
 pub mod architecture;
 pub mod architecture_graph;
-pub mod links;
 pub mod memory;
 pub mod network;
 pub mod perf;
