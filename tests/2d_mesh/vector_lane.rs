@@ -20,6 +20,9 @@ pub fn vector_lane() -> Architecture {
             "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
             "vec_exp" => (16, 128),
             "vec_div" => (8, 256),
+            "vec_sub" => (1, 1024),
+            "vec_powf" => (32, 64),
+            "vec_vmax" => (1, 1024),
             "vec_cmpf_ogt" => (1, 1024),
             "vec_select" => (1, 1024),
             "vec_max1" => (1, 1024),
@@ -27,7 +30,7 @@ pub fn vector_lane() -> Architecture {
             _ => panic!("unexpected vector op '{}'", func),
         };
 
-        let (symbols, volume) = if op_prefix == "vec_vsum" {
+        let (symbols, volume) = if op_prefix == "vec_vsum" || op_prefix == "vec_vmax" {
             (
                 vec![Sym::new("P"), Sym::new("R")],
                 Expr::mul(Expr::sym("P"), Expr::sym("R")),
