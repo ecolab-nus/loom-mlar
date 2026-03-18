@@ -121,10 +121,16 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/compute/vector_lane.mlir")
     );
     assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
-    assert_eq!(vec_module.ops.len(), 9);
+    assert_eq!(vec_module.ops.len(), 10);
     let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
     for prefix in [
-        "vec_max_", "vec_exp_", "vec_sum_", "vec_add_", "vec_mul_", "vec_div_",
+        "vec_max_",
+        "vec_exp_",
+        "vec_sum_",
+        "vec_vsum_",
+        "vec_add_",
+        "vec_mul_",
+        "vec_div_",
     ] {
         assert!(
             op_names.iter().any(|n| n.starts_with(prefix)),
@@ -137,7 +143,7 @@ fn test_2d_mesh_torus_perf_models() {
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
         Processors::Unit(p) => {
-            assert_eq!(p.functions.len(), 9);
+            assert_eq!(p.functions.len(), 10);
 
             let max_name = vec_func("vec_max");
             let fast = p.get_function(&max_name).expect("vec_max_* binding");
@@ -159,6 +165,10 @@ fn test_2d_mesh_torus_perf_models() {
             let div_cost = div.perf.scenarios[0].time_cost.as_simple().expect("Simple");
             assert_eq!(div_cost.throughput.eval_const(), Some(256));
             assert_eq!(div_cost.fixed_latency.eval_const(), Some(8));
+
+            let vsum_name = vec_func("vec_vsum");
+            let vsum = p.get_function(&vsum_name).expect("vec_vsum_* binding");
+            assert_eq!(vsum.perf.symbols, vec![Sym::new("P"), Sym::new("R")]);
         }
         _ => panic!("expected Unit"),
     }

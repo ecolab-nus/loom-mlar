@@ -88,6 +88,31 @@ func.func @vec_sum_f16(
   return %result : tensor<f16>
 }
 
+func.func @vec_vsum_f16(
+  %a: tensor<?x?xf16>,
+  %out: tensor<?xf16>
+) -> tensor<?xf16> {
+  %P = loom.sym @P : index
+  %R = loom.sym @R : index
+  loom.bind %a, [%P, %R] : tensor<?x?xf16>
+  loom.bind %out, [%P] : tensor<?xf16>
+  %result = linalg.generic {
+    indexing_maps = [
+      affine_map<(d0, d1) -> (d0, d1)>,
+      affine_map<(d0, d1) -> (d0)>,
+    ],
+    iterator_types = ["parallel", "reduction"]
+  }
+  ins(%a : tensor<?x?xf16>)
+  outs(%out : tensor<?xf16>) {
+    ^bb0(%x: f16, %acc: f16):
+      %s = arith.addf %x, %acc : f16
+      linalg.yield %s : f16
+  } -> tensor<?xf16>
+  return %result : tensor<?xf16>
+}
+
+
 // out[i] = a[i] + b[i], for i in [0, L)
 func.func @vec_add_f16(
     %a: tensor<?xf16>,

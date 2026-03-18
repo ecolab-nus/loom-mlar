@@ -105,6 +105,7 @@
                 "vec_max_f16",
                 "vec_exp_f16",
                 "vec_sum_f16",
+                "vec_vsum_f16",
                 "vec_add_f16",
                 "vec_mul_f16",
                 "vec_div_f16",

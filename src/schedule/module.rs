@@ -80,7 +80,6 @@ mod tests {
             module.source.as_ref().map(|s| s.path.as_str()),
             Some("tests/2d_mesh/compute/vector_lane.mlir")
         );
-        assert_eq!(module.ops.len(), 9);
         assert!(module.ops.iter().any(|op| op.name.starts_with("vec_add_")));
     }
 }

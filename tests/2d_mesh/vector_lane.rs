@@ -3,8 +3,9 @@ use mlar_rust::*;
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
-/// - All vector kernels in `compute/vector_lane.mlir` declare `%L = loom.sym @L : index`
-///   as the logical vector length and bind vector tensors with `loom.bind`.
+/// - Most vector kernels in `compute/vector_lane.mlir` declare
+///   `%L = loom.sym @L : index` as the logical vector length.
+/// - `vec_vsum_*` declares `%P = loom.sym @P` and `%R = loom.sym @R`.
 /// - `vec_max_*`, `vec_add_*`, `vec_sum_*`, `vec_mul_*`:
 ///   throughput = 1024, latency = 1
 /// - `vec_exp_*`: throughput = 128, latency = 16
@@ -22,17 +23,27 @@ pub fn vector_lane() -> Processors {
             "vec_cmpf_ogt" => (1, 1024),
             "vec_select" => (1, 1024),
             "vec_max1" => (1, 1024),
+            "vec_vsum" => (1, 1024),
             _ => panic!("unexpected vector op '{}'", func),
         };
 
+        let (symbols, volume) = if op_prefix == "vec_vsum" {
+            (
+                vec![Sym::new("P"), Sym::new("R")],
+                Expr::mul(Expr::sym("P"), Expr::sym("R")),
+            )
+        } else {
+            (vec![Sym::new("L")], Expr::sym("L"))
+        };
+
         FuncPerfModel {
-            symbols: vec![Sym::new("L")],
+            symbols,
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(fixed_latency),
-                    volume: Expr::sym("L"),
+                    volume,
                     throughput: Expr::Const(throughput),
                 }),
             }],
