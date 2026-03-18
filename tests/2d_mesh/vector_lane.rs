@@ -19,6 +19,9 @@ pub fn vector_lane() -> Processors {
             "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
             "vec_exp" => (16, 128),
             "vec_div" => (8, 256),
+            "vec_cmpf_ogt" => (1, 1024),
+            "vec_select" => (1, 1024),
+            "vec_max1" => (1, 1024),
             _ => panic!("unexpected vector op '{}'", func),
         };
 

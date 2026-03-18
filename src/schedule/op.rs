@@ -473,8 +473,8 @@ mod tests {
             Some("tests/2d_mesh/compute/vector_lane.mlir")
         );
         assert_eq!(module.module_name, "vector_lane");
-        assert_eq!(module.functions.len(), 6);
-        assert_eq!(module.function_refs.len(), 6);
+        assert_eq!(module.functions.len(), 9);
+        assert_eq!(module.function_refs.len(), 9);
         assert!(module.functions.iter().any(|f| f.starts_with("vec_max_")));
         assert!(module.functions.iter().any(|f| f.starts_with("vec_div_")));
 
