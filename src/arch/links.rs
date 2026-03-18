@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::memory::MemoryRegion;
 use super::processor::Processors;
 use super::size_dim::Dimension;
-use crate::math::{AffineExpr, AffineMap, ConstraintExpr, Expr};
+use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;
 
 /// Router endpoint target.
@@ -185,13 +185,6 @@ impl Endpoint {
     }
 }
 
-/// Bandwidth-sharing semantics for a scale-out network.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SharingDomain {
-    /// Bandwidth is shared across all concurrent users of this link.
-    SharedAcrossAll,
-}
-
 /// Relation between map source and destination domains.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkMapRelation {
@@ -209,69 +202,105 @@ pub enum LinkTopology {
     General,
 }
 
-/// A connectivity edge between two architecture entities (memory <-> memory, memory <-> processor).
-///
-/// Endpoints hold the actual `MemoryRegion` or `Processors` values directly.
-/// Names are derived from the embedded data -- no separate name field needed.
+/// A mesh network: endpoints connected via an affine-map topology with uniform
+/// per-link bandwidth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ScaleOutNetwork {
-    /// Display/debug name (e.g. "DRAM_to_L2")
+pub struct MeshNetwork {
     pub name: String,
-    pub src: Endpoint,
-    pub dst: Endpoint,
-    /// Affine map describing how src indices map to dst indices
+    /// Affine map describing the mesh topology (src indices -> dst indices).
     pub map: AffineMap,
-    /// Bandwidth (symbolic expression, e.g. Expr::Const(256))
+    /// Source endpoint (memory region or processor array).
+    pub src: Endpoint,
+    /// Destination endpoint (memory region or processor array).
+    pub dst: Endpoint,
+    /// Bandwidth per link (symbolic expression, e.g. `Expr::Const(256)`).
     pub bandwidth: Expr,
-    /// Optional latency
-    pub latency: Option<Expr>,
-    /// Applicability constraints (optional)
-    pub constraints: ConstraintExpr,
-    /// Bandwidth-sharing semantics
-    pub sharing: SharingDomain,
+}
+
+/// A connectivity network between architecture entities.
+///
+/// Each variant captures a different interconnect topology.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ScaleOutNetwork {
+    /// Mesh: endpoints connected via an affine-map topology with uniform per-link bandwidth.
+    Mesh(MeshNetwork),
 }
 
 impl ScaleOutNetwork {
-    /// Start building a scale-out network with a name.
-    pub fn builder(name: impl Into<String>) -> ScaleOutNetworkBuilder {
-        ScaleOutNetworkBuilder {
+    /// Start building a mesh network.
+    pub fn mesh(name: impl Into<String>) -> MeshNetworkBuilder {
+        MeshNetworkBuilder {
             name: name.into(),
             src: None,
             dst: None,
             map: None,
             bandwidth: None,
-            latency: None,
-            constraints: ConstraintExpr::True,
-            sharing: SharingDomain::SharedAcrossAll,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Mesh(m) => &m.name,
+        }
+    }
+
+    pub fn src(&self) -> &Endpoint {
+        match self {
+            Self::Mesh(m) => &m.src,
+        }
+    }
+
+    pub fn dst(&self) -> &Endpoint {
+        match self {
+            Self::Mesh(m) => &m.dst,
+        }
+    }
+
+    pub fn map(&self) -> &AffineMap {
+        match self {
+            Self::Mesh(m) => &m.map,
+        }
+    }
+
+    pub fn bandwidth(&self) -> &Expr {
+        match self {
+            Self::Mesh(m) => &m.bandwidth,
+        }
+    }
+
+    pub fn latency(&self) -> Option<&Expr> {
+        match self {
+            Self::Mesh(_) => None,
         }
     }
 
     /// Prepend identity dimensions to this link's affine map and scale the endpoints.
     /// Used during Architecture::scale().
     pub fn prepend_identity_dims(self, dims: &[Dimension]) -> Self {
-        ScaleOutNetwork {
-            name: self.name,
-            src: self.src.replicate(dims),
-            dst: self.dst.replicate(dims),
-            map: AffineMap::identity(dims),
-            bandwidth: self.bandwidth,
-            latency: self.latency,
-            constraints: self.constraints,
-            sharing: self.sharing,
+        match self {
+            Self::Mesh(m) => Self::Mesh(MeshNetwork {
+                name: m.name,
+                src: m.src.replicate(dims),
+                dst: m.dst.replicate(dims),
+                map: AffineMap::identity(dims),
+                bandwidth: m.bandwidth,
+            }),
         }
     }
 
     /// Validate affine-map domain/codomain structure.
     pub fn validate_map_domains(&self) -> Result<(), String> {
-        if self.map.exprs.len() != self.map.dst_dims.len() {
+        let map = self.map();
+
+        if map.exprs.len() != map.dst_dims.len() {
             return Err("expression count must match destination dimensions".to_string());
         }
 
-        if has_duplicate_dimension_names(&self.map.src_dims) {
+        if has_duplicate_dimension_names(&map.src_dims) {
             return Err("source map dimensions must be unique".to_string());
         }
 
-        if has_duplicate_dimension_names(&self.map.dst_dims) {
+        if has_duplicate_dimension_names(&map.dst_dims) {
             return Err("destination map dimensions must be unique".to_string());
         }
 
@@ -280,12 +309,12 @@ impl ScaleOutNetwork {
 
     /// Product of source-domain sizes if all dimensions are concrete.
     pub fn source_domain_size(&self) -> Option<u64> {
-        domain_size(&self.map.src_dims)
+        domain_size(&self.map().src_dims)
     }
 
     /// Product of destination-domain sizes if all dimensions are concrete.
     pub fn target_domain_size(&self) -> Option<u64> {
-        domain_size(&self.map.dst_dims)
+        domain_size(&self.map().dst_dims)
     }
 
     /// Classify map relation using source/destination domain cardinalities.
@@ -302,7 +331,7 @@ impl ScaleOutNetwork {
     /// True when the map is an identity on all but one dimension and that
     /// remaining dimension is shifted with modulo wrapping.
     pub fn is_ring_topology(&self) -> bool {
-        ring_shift_axis(&self.map).is_some()
+        ring_shift_axis(self.map()).is_some()
     }
 
     pub fn topology(&self) -> LinkTopology {
@@ -314,50 +343,47 @@ impl ScaleOutNetwork {
     }
 }
 
-/// Builder for ergonomic scale-out network construction.
-pub struct ScaleOutNetworkBuilder {
+/// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
+pub struct MeshNetworkBuilder {
     name: String,
     src: Option<Endpoint>,
     dst: Option<Endpoint>,
     map: Option<AffineMap>,
     bandwidth: Option<Expr>,
-    latency: Option<Expr>,
-    constraints: ConstraintExpr,
-    sharing: SharingDomain,
 }
 
-impl ScaleOutNetworkBuilder {
-    /// Set the source as a memory region (borrows and clones internally).
+impl MeshNetworkBuilder {
+    /// Set the source as a memory region.
     pub fn from_mem(mut self, region: &MemoryRegion) -> Self {
         self.src = Some(Endpoint::Mem(region.clone()));
         self
     }
 
-    /// Set the source as a processor (borrows and clones internally).
+    /// Set the source as a processor array.
     pub fn from_proc(mut self, proc: &Processors) -> Self {
         self.src = Some(Endpoint::Proc(proc.clone()));
         self
     }
 
-    /// Set the destination as a memory region (borrows and clones internally).
+    /// Set the destination as a memory region.
     pub fn to_mem(mut self, region: &MemoryRegion) -> Self {
         self.dst = Some(Endpoint::Mem(region.clone()));
         self
     }
 
-    /// Set the destination as a processor (borrows and clones internally).
+    /// Set the destination as a processor array.
     pub fn to_proc(mut self, proc: &Processors) -> Self {
         self.dst = Some(Endpoint::Proc(proc.clone()));
         self
     }
 
-    /// Set the affine map (borrows and clones internally).
+    /// Set the affine map describing the mesh topology.
     pub fn map(mut self, map: &AffineMap) -> Self {
         self.map = Some(map.clone());
         self
     }
 
-    /// Set bandwidth as a concrete integer (shorthand for Expr::Const).
+    /// Set bandwidth as a concrete integer (shorthand for `Expr::Const`).
     pub fn bandwidth(mut self, bw: i64) -> Self {
         self.bandwidth = Some(Expr::Const(bw));
         self
@@ -369,33 +395,16 @@ impl ScaleOutNetworkBuilder {
         self
     }
 
-    pub fn latency(mut self, lat: Expr) -> Self {
-        self.latency = Some(lat);
-        self
-    }
-
-    pub fn constraints(mut self, c: ConstraintExpr) -> Self {
-        self.constraints = c;
-        self
-    }
-
-    pub fn sharing(mut self, s: SharingDomain) -> Self {
-        self.sharing = s;
-        self
-    }
-
     pub fn build(self) -> ScaleOutNetwork {
-        let link = ScaleOutNetwork {
+        let mesh = MeshNetwork {
             name: self.name,
             src: self.src.expect("src endpoint must be set"),
             dst: self.dst.expect("dst endpoint must be set"),
             map: self.map.expect("affine map must be set"),
             bandwidth: self.bandwidth.expect("bandwidth must be set"),
-            latency: self.latency,
-            constraints: self.constraints,
-            sharing: self.sharing,
         };
 
+        let link = ScaleOutNetwork::Mesh(mesh);
         link.validate_map_domains()
             .expect("invalid link map domain/codomain configuration");
         link
@@ -510,7 +519,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = ScaleOutNetwork::builder("torus")
+        let link = ScaleOutNetwork::mesh("torus")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)
@@ -533,7 +542,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = ScaleOutNetwork::builder("reduce")
+        let link = ScaleOutNetwork::mesh("reduce")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)
@@ -567,7 +576,7 @@ mod tests {
         ))
         .with_name("l1");
 
-        let link = ScaleOutNetwork::builder("ring")
+        let link = ScaleOutNetwork::mesh("ring")
             .from_mem(&l1)
             .to_mem(&l1)
             .map(&map)

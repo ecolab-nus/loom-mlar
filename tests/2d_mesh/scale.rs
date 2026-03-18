@@ -27,7 +27,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_y = ScaleOutNetwork::builder("L1_torus_y")
+    let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_y_map)
@@ -40,7 +40,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_x = ScaleOutNetwork::builder("L1_torus_x")
+    let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
         .from_mem(&scaled_l1)
         .to_mem(&scaled_l1)
         .map(&torus_x_map)

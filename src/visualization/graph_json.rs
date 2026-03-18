@@ -1,6 +1,6 @@
 use crate::arch::{
     ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, Endpoint, LinkMapRelation,
-    LinkTopology, MemoryRegion, Processors, Router, SharingDomain, SizeExpr,
+    LinkTopology, MemoryRegion, Processors, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
@@ -251,41 +251,42 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
     collect_connectivity_links(arch, &mut links);
     for (idx, link) in links.iter().enumerate() {
         let (source, source_name) = ensure_endpoint_node(
-            &link.src,
+            link.src(),
             &mut nodes,
             &mut memory_node_ids,
             &mut processor_node_ids,
             &mut used_ids,
         );
         let (target, target_name) = ensure_endpoint_node(
-            &link.dst,
+            link.dst(),
             &mut nodes,
             &mut memory_node_ids,
             &mut processor_node_ids,
             &mut used_ids,
         );
 
+        let link_name = link.name();
         let edge_id = unique_id(
-            &format!("edge:{}:{}", slugify(&link.name), idx),
+            &format!("edge:{}:{}", slugify(link_name), idx),
             &mut used_ids,
         );
-        let bandwidth = expr_to_json(&link.bandwidth);
+        let bandwidth = expr_to_json(link.bandwidth());
         edges.push(GraphEdge {
             id: edge_id,
             kind: GraphEdgeKind::ScaleOutNetwork,
-            name: link.name.clone(),
+            name: link_name.to_owned(),
             source,
             target,
             source_name,
             target_name,
-            label: format!("{} ({} B/cycle)", link.name, bandwidth.expr),
+            label: format!("{} ({} B/cycle)", link_name, bandwidth.expr),
             bandwidth,
-            latency: link.latency.as_ref().map(expr_to_json),
-            constraints: link.constraints.to_string(),
-            sharing: sharing_to_string(&link.sharing).to_string(),
+            latency: link.latency().map(expr_to_json),
+            constraints: String::new(),
+            sharing: network_kind_label(link).to_owned(),
             map_relation: link_map_relation_to_json(link.map_relation()),
             topology: link_topology_to_json(link.topology()),
-            map: affine_map_to_json(&link.map),
+            map: affine_map_to_json(link.map()),
         });
     }
 
@@ -486,9 +487,9 @@ fn slugify(value: &str) -> String {
     }
 }
 
-fn sharing_to_string(sharing: &SharingDomain) -> &'static str {
-    match sharing {
-        SharingDomain::SharedAcrossAll => "shared_across_all",
+fn network_kind_label(net: &crate::arch::ScaleOutNetwork) -> &'static str {
+    match net {
+        crate::arch::ScaleOutNetwork::Mesh(_) => "mesh",
     }
 }
 
@@ -689,7 +690,7 @@ mod tests {
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
-        let link = ScaleOutNetwork::builder("l1_to_lane")
+        let link = ScaleOutNetwork::mesh("l1_to_lane")
             .from_mem(&l1)
             .to_proc(&lane)
             .map(&map)

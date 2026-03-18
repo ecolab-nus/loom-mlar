@@ -214,16 +214,16 @@ fn test_2d_mesh_torus() {
 
     // === Verify torus links ===
     let torus_y_link = &connectivity[0];
-    assert_eq!(torus_y_link.name, "L1_torus_y");
-    assert_eq!(torus_y_link.map.apply(&[0, 0]), vec![0, 1]);
-    assert_eq!(torus_y_link.map.apply(&[3, 5]), vec![3, 6]);
-    assert_eq!(torus_y_link.map.apply(&[3, 7]), vec![3, 0]); // wraps
+    assert_eq!(torus_y_link.name(), "L1_torus_y");
+    assert_eq!(torus_y_link.map().apply(&[0, 0]), vec![0, 1]);
+    assert_eq!(torus_y_link.map().apply(&[3, 5]), vec![3, 6]);
+    assert_eq!(torus_y_link.map().apply(&[3, 7]), vec![3, 0]); // wraps
 
     let torus_x_link = &connectivity[1];
-    assert_eq!(torus_x_link.name, "L1_torus_x");
-    assert_eq!(torus_x_link.map.apply(&[0, 0]), vec![1, 0]);
-    assert_eq!(torus_x_link.map.apply(&[5, 3]), vec![6, 3]);
-    assert_eq!(torus_x_link.map.apply(&[7, 3]), vec![0, 3]); // wraps
+    assert_eq!(torus_x_link.name(), "L1_torus_x");
+    assert_eq!(torus_x_link.map().apply(&[0, 0]), vec![1, 0]);
+    assert_eq!(torus_x_link.map().apply(&[5, 3]), vec![6, 3]);
+    assert_eq!(torus_x_link.map().apply(&[7, 3]), vec![0, 3]); // wraps
 
     // === JSON export sanity for web visualization ===
     let json =

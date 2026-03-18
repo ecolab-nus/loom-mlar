@@ -14,8 +14,8 @@ pub use architecture::{
     ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent, Architecture,
 };
 pub use links::{
-    Endpoint, LinkMapRelation, LinkTopology, Router, RouterEndpoint, RouterEndpointTarget,
-    RouterSide, ScaleOutNetwork, SharingDomain,
+    Endpoint, LinkMapRelation, LinkTopology, MeshNetwork, Router, RouterEndpoint,
+    RouterEndpointTarget, RouterSide, ScaleOutNetwork,
 };
 pub use memory::{MemoryBank, MemoryRegion};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};

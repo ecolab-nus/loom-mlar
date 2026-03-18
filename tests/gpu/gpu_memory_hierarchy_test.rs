@@ -37,7 +37,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&dram_dim])
         .expect("failed to bind affine map");
 
-    let dram_to_l2 = ScaleOutNetwork::builder("DRAM_to_L2")
+    let dram_to_l2 = ScaleOutNetwork::mesh("DRAM_to_L2")
         .from_mem(&dram)
         .to_mem(&l2)
         .map(&dram_to_l2_map)
@@ -49,7 +49,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&dram_dim, &warp_dim])
         .expect("failed to bind affine map");
 
-    let l2_to_l1 = ScaleOutNetwork::builder("L2_to_L1")
+    let l2_to_l1 = ScaleOutNetwork::mesh("L2_to_L1")
         .from_mem(&l2)
         .to_mem(&l1)
         .map(&l2_to_l1_map)
@@ -61,7 +61,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&warp_dim])
         .expect("failed to bind affine map");
 
-    let l1_to_rf = ScaleOutNetwork::builder("L1_to_RF")
+    let l1_to_rf = ScaleOutNetwork::mesh("L1_to_RF")
         .from_mem(&l1)
         .to_mem(&rf)
         .map(&l1_to_rf_map)
@@ -75,7 +75,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&warp_dim])
         .expect("failed to bind affine map");
 
-    let rf_to_mat = ScaleOutNetwork::builder("RF_to_MatLane")
+    let rf_to_mat = ScaleOutNetwork::mesh("RF_to_MatLane")
         .from_mem(&rf)
         .to_proc(&mat_lane)
         .map(&rf_to_mat_map)
@@ -101,10 +101,10 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         _ => panic!("GPU architecture should be array-wrapped for connectivity"),
     };
     assert_eq!(connectivity.len(), 4);
-    assert_eq!(connectivity[0].name, "DRAM_to_L2");
-    assert_eq!(connectivity[1].name, "L2_to_L1");
-    assert_eq!(connectivity[2].name, "L1_to_RF");
-    assert_eq!(connectivity[3].name, "RF_to_MatLane");
+    assert_eq!(connectivity[0].name(), "DRAM_to_L2");
+    assert_eq!(connectivity[1].name(), "L2_to_L1");
+    assert_eq!(connectivity[2].name(), "L1_to_RF");
+    assert_eq!(connectivity[3].name(), "RF_to_MatLane");
 
     arch
 }

@@ -8,9 +8,9 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent,
     Architecture, Dimension, Endpoint, FuncPerfModel, FunctionProcessor, MemoryBank, MemoryRegion,
-    PerfScenario, Processor, ProcessorSet, Processors, Router, RouterEndpoint,
-    RouterEndpointTarget, RouterSide, ScaleOutNetwork, SharingDomain, SimpleTimeCost, SizeExpr,
-    Sym, TimeCost, TimeExpr,
+    MeshNetwork, PerfScenario, Processor, ProcessorSet, Processors, Router, RouterEndpoint,
+    RouterEndpointTarget, RouterSide, ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost,
+    TimeExpr,
 };
 
 // Re-export commonly used math types

@@ -133,8 +133,8 @@
         "const_value": 64
       },
       "latency": null,
-      "constraints": "true",
-      "sharing": "shared_across_all",
+      "constraints": "",
+      "sharing": "mesh",
       "map_relation": "one_to_one",
       "topology": "ring",
       "map": {
@@ -182,8 +182,8 @@
         "const_value": 64
       },
       "latency": null,
-      "constraints": "true",
-      "sharing": "shared_across_all",
+      "constraints": "",
+      "sharing": "mesh",
       "map_relation": "one_to_one",
       "topology": "ring",
       "map": {

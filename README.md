@@ -22,7 +22,7 @@ src/
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
 │   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet/Processors aliases
 │   ├── memory.rs               # MemoryBank, MemoryRegion
-│   ├── links.rs                # ScaleOutNetwork, Router, Endpoint, SharingDomain
+│   ├── links.rs                # ScaleOutNetwork (enum: Mesh), MeshNetwork, Router, Endpoint
 │   └── architecture.rs         # Architecture + graph composition primitives (ArchGraph, ArchNode, ArchEdge)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
@@ -212,7 +212,7 @@ let l1 = MemoryRegion::bank(MemoryBank::from_blocks(SizeExpr::Const(128), SizeEx
 let proc = Processor::new("vector_lane").into_elem();
 let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
 
-let link = ScaleOutNetwork::builder("l1_to_vector")
+let link = ScaleOutNetwork::mesh("l1_to_vector")
     .from_mem(&l1)
     .to_proc(&proc)
     .map(&all_to_one)
@@ -281,7 +281,7 @@ Web UI lives in `tools/web-visualization/`.
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
-| `ScaleOutNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
+| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
 | `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture.rs` |
 | `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
 | `run_evaluator`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
