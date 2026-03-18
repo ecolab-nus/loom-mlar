@@ -8,34 +8,34 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         SizeExpr::Const(256),
         SizeExpr::sym("DRAM_SIZE"),
     ))
-    .replicate(dram_dim.as_slice())
+    .scale(dram_dim.as_slice())
     .with_name("dram");
 
     let l2 = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(256),
         SizeExpr::Const(4096),
     ))
-    .replicate(dram_dim.as_slice())
+    .scale(dram_dim.as_slice())
     .with_name("l2");
 
     let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(64),
         SizeExpr::Const(1024),
     ))
-    .replicate(warp_dim.as_slice())
+    .scale(warp_dim.as_slice())
     .with_name("l1");
 
     let rf = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(32),
         SizeExpr::Const(128),
     ))
-    .replicate(warp_dim.as_slice())
+    .scale(warp_dim.as_slice())
     .with_name("rf");
     let mat_buf = MemoryRegion::bank(MemoryBank::from_blocks(
         SizeExpr::Const(32),
         SizeExpr::Const(128),
     ))
-    .replicate(warp_dim.as_slice())
+    .scale(warp_dim.as_slice())
     .with_name("mat_buf");
 
     let dram_to_l2_map = AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
@@ -44,8 +44,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .expect("failed to bind affine map");
 
     let dram_to_l2 = ScaleOutNetwork::mesh("DRAM_to_L2")
-        .from_mem(&dram)
-        .to_mem(&l2)
+        .region_mem(&dram)
         .map(&dram_to_l2_map)
         .bandwidth(256)
         .build();
@@ -56,8 +55,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .expect("failed to bind affine map");
 
     let l2_to_l1 = ScaleOutNetwork::mesh("L2_to_L1")
-        .from_mem(&l2)
-        .to_mem(&l1)
+        .region_mem(&l2)
         .map(&l2_to_l1_map)
         .bandwidth(128)
         .build();
@@ -68,8 +66,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .expect("failed to bind affine map");
 
     let l1_to_rf = ScaleOutNetwork::mesh("L1_to_RF")
-        .from_mem(&l1)
-        .to_mem(&rf)
+        .region_mem(&l1)
         .map(&l1_to_rf_map)
         .bandwidth(64)
         .build();
@@ -82,8 +79,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .expect("failed to bind affine map");
 
     let rf_to_mat = ScaleOutNetwork::mesh("RF_to_MatBuf")
-        .from_mem(&rf)
-        .to_mem(&mat_buf)
+        .region_mem(&rf)
         .map(&rf_to_mat_map)
         .bandwidth(64)
         .build();

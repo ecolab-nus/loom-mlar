@@ -51,25 +51,19 @@ impl MemoryBank {
     }
 }
 
-/// Recursive memory region — Bank, Replicated, or Group.
+/// Recursive memory region — Bank or Array.
 ///
 /// * `Bank` is the atomic leaf unit.
-/// * `Replicated` represents homogeneous replication along dimensions.
-/// * `Group` is explicit grouping/concatenation of heterogeneous parts.
+/// * `Array` represents homogeneous scaling along dimensions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MemoryRegion {
     /// Leaf: a single memory bank
     Bank(MemoryBank),
-    /// Homogeneous replication along one or more dimensions
-    Replicated {
+    /// Homogeneous scaling along one or more dimensions
+    Array {
         name: Option<String>,
         dims: Vec<Dimension>,
         elem: Box<MemoryRegion>,
-    },
-    /// Explicit grouping/concatenation of sub-regions
-    Group {
-        name: Option<String>,
-        parts: Vec<MemoryRegion>,
     },
 }
 
@@ -87,10 +81,10 @@ impl MemoryRegion {
         ))
     }
 
-    /// Wrap this region in a Replicated with the given dimensions.
+    /// Wrap this region in an Array with the given dimensions.
     /// Accepts a slice reference; clones internally.
-    pub fn replicate(self, dims: &[Dimension]) -> Self {
-        MemoryRegion::Replicated {
+    pub fn scale(self, dims: &[Dimension]) -> Self {
+        MemoryRegion::Array {
             name: None,
             dims: dims.to_vec(),
             elem: Box::new(self),
@@ -98,12 +92,11 @@ impl MemoryRegion {
     }
 
     /// Get the name of this region.
-    /// For Replicated, returns its own name if set, otherwise recurses into elem.
+    /// For Array, returns its own name if set, otherwise recurses into elem.
     pub fn name(&self) -> Option<&str> {
         match self {
             MemoryRegion::Bank(b) => b.name.as_deref(),
-            MemoryRegion::Replicated { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
-            MemoryRegion::Group { name, .. } => name.as_deref(),
+            MemoryRegion::Array { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
         }
     }
 
@@ -114,14 +107,10 @@ impl MemoryRegion {
                 b.name = Some(n.into());
                 MemoryRegion::Bank(b)
             }
-            MemoryRegion::Replicated { dims, elem, .. } => MemoryRegion::Replicated {
+            MemoryRegion::Array { dims, elem, .. } => MemoryRegion::Array {
                 name: Some(n.into()),
                 dims,
                 elem,
-            },
-            MemoryRegion::Group { parts, .. } => MemoryRegion::Group {
-                name: Some(n.into()),
-                parts,
             },
         }
     }
@@ -129,18 +118,18 @@ impl MemoryRegion {
     /// Get the outermost dimensions of this region (empty for Bank).
     pub fn dims(&self) -> &[Dimension] {
         match self {
-            MemoryRegion::Replicated { dims, .. } => dims,
+            MemoryRegion::Array { dims, .. } => dims,
             _ => &[],
         }
     }
 
     /// Compute the total size in bytes of this region, recursing through all sub-regions.
     ///
-    /// Returns `None` if any leaf capacity or replication dimension is symbolic.
+    /// Returns `None` if any leaf capacity or array dimension is symbolic.
     pub fn total_size_bytes(&self) -> Option<u64> {
         match self {
             MemoryRegion::Bank(bank) => bank.capacity_bytes.as_const(),
-            MemoryRegion::Replicated { dims, elem, .. } => {
+            MemoryRegion::Array { dims, elem, .. } => {
                 let elem_size = elem.total_size_bytes()?;
                 let multiplier: u64 = dims
                     .iter()
@@ -148,9 +137,6 @@ impl MemoryRegion {
                     .try_fold(1u64, |acc, s| s.map(|v| acc * v))?;
                 Some(elem_size * multiplier)
             }
-            MemoryRegion::Group { parts, .. } => parts
-                .iter()
-                .try_fold(0u64, |acc, p| p.total_size_bytes().map(|s| acc + s)),
         }
     }
 }
@@ -200,7 +186,7 @@ mod tests {
             SizeExpr::Const(128),
             SizeExpr::Const(1024),
         ))
-        .replicate(dim.as_slice())
+        .scale(dim.as_slice())
         .with_name("L1");
 
         // 16 banks × 128 bytes/block × 1024 blocks = 2 MB
@@ -216,20 +202,20 @@ mod tests {
     }
 
     #[test]
-    fn test_replicate() {
+    fn test_scale() {
         let dim = Dimension::new_int("nbank", 16);
         let region = MemoryRegion::leaf_concrete(128, 1024)
-            .replicate(dim.as_slice())
+            .scale(dim.as_slice())
             .with_name("test_mem");
 
         assert_eq!(region.name(), Some("test_mem"));
         match &region {
-            MemoryRegion::Replicated { dims, elem, .. } => {
+            MemoryRegion::Array { dims, elem, .. } => {
                 assert_eq!(dims.len(), 1);
                 assert_eq!(dims[0].name.0, "nbank");
                 assert!(matches!(elem.as_ref(), MemoryRegion::Bank(_)));
             }
-            _ => panic!("expected Replicated"),
+            _ => panic!("expected Array"),
         }
     }
 }

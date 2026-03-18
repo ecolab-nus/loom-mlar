@@ -8,6 +8,6 @@ pub fn l1() -> MemoryRegion {
         SizeExpr::Const(128),
         SizeExpr::Const(1024),
     ))
-    .replicate(dim_bank().as_slice())
+    .scale(dim_bank().as_slice())
     .with_name("L1")
 }

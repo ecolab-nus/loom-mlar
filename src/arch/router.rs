@@ -111,7 +111,7 @@ impl Router {
 fn memory_leaf_count(region: &MemoryRegion) -> Option<u64> {
     match region {
         MemoryRegion::Bank(_) => Some(1),
-        MemoryRegion::Replicated { dims, elem, .. } => {
+        MemoryRegion::Array { dims, elem, .. } => {
             let mult: u64 = dims
                 .iter()
                 .map(|d| d.size.as_const())
@@ -119,13 +119,6 @@ fn memory_leaf_count(region: &MemoryRegion) -> Option<u64> {
                 .into_iter()
                 .product();
             Some(mult * memory_leaf_count(elem)?)
-        }
-        MemoryRegion::Group { parts, .. } => {
-            let mut total = 0u64;
-            for part in parts {
-                total += memory_leaf_count(part)?;
-            }
-            Some(total)
         }
     }
 }

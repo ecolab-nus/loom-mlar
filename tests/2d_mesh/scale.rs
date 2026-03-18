@@ -18,7 +18,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .get_memory_region("L1")
         .expect("scaled mesh should contain L1")
         .clone()
-        .replicate(&[dim_x.clone(), dim_y.clone()])
+        .scale(&[dim_x.clone(), dim_y.clone()])
         .with_name("L1");
 
     // Horizontal torus: y-neighbor with wraparound

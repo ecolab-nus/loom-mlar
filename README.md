@@ -191,12 +191,11 @@ assert_eq!(lanes.total_instances(), Some(32));
 Memory uses the same recursive pattern:
 
 - `MemoryRegion::Bank`
-- `MemoryRegion::Replicated`
-- `MemoryRegion::Group`
+- `MemoryRegion::Array`
 
 Connectivity is `ScaleOutNetwork` with:
 
-- source and destination endpoints (`MemoryRegion`)
+- one scaled array memory region (`MemoryRegion::Array`)
 - affine map (`AffineMap`)
 - bandwidth/latency expressions
 - optional constraints
@@ -206,14 +205,13 @@ use mlar_rust::*;
 
 let bank_dim = Dimension::new_int("nbank", 16);
 let l1 = MemoryRegion::bank(MemoryBank::from_blocks(SizeExpr::Const(128), SizeExpr::Const(1024)))
-    .replicate(bank_dim.as_slice())
+    .scale(bank_dim.as_slice())
     .with_name("l1");
 
 let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
 
 let link = ScaleOutNetwork::mesh("l1_to_vector")
-    .from_mem(&l1)
-    .to_mem(&l1)
+    .region_mem(&l1)
     .map(&all_to_one)
     .bandwidth(128)
     .build();

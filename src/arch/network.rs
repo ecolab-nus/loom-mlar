@@ -12,8 +12,8 @@ pub struct MeshNetwork {
     pub name: String,
     /// Affine map describing the mesh topology (src indices -> dst indices).
     pub map: AffineMap,
-    /// Entire connected memory region attached to this mesh network.
-    pub region: Vec<MemoryRegion>,
+    /// Array memory region attached to this mesh network.
+    pub region: MemoryRegion,
     /// Aggregate ingress/egress bandwidth for the whole mesh.
     pub io_bandwidth: Expr,
     /// Bandwidth per internal mesh link.
@@ -34,7 +34,7 @@ impl ScaleOutNetwork {
     pub fn mesh(name: impl Into<String>) -> MeshNetworkBuilder {
         MeshNetworkBuilder {
             name: name.into(),
-            region: Vec::new(),
+            region: None,
             map: None,
             io_bandwidth: None,
             link_bandwidth: None,
@@ -47,25 +47,18 @@ impl ScaleOutNetwork {
         }
     }
 
-    pub fn region(&self) -> &[MemoryRegion] {
+    pub fn region(&self) -> &MemoryRegion {
         match self {
             Self::Mesh(m) => &m.region,
         }
     }
 
     pub fn src(&self) -> &MemoryRegion {
-        match self {
-            Self::Mesh(m) => m.region.first().expect("mesh region must not be empty"),
-        }
+        self.region()
     }
 
     pub fn dst(&self) -> &MemoryRegion {
-        match self {
-            Self::Mesh(m) => m
-                .region
-                .get(1)
-                .unwrap_or_else(|| m.region.first().expect("mesh region must not be empty")),
-        }
+        self.region()
     }
 
     pub fn map(&self) -> &AffineMap {
@@ -102,11 +95,7 @@ impl ScaleOutNetwork {
         match self {
             Self::Mesh(m) => Self::Mesh(MeshNetwork {
                 name: m.name,
-                region: m
-                    .region
-                    .into_iter()
-                    .map(|region| region.replicate(dims))
-                    .collect(),
+                region: m.region.scale(dims),
                 map: AffineMap::identity(dims),
                 io_bandwidth: m.io_bandwidth,
                 link_bandwidth: m.link_bandwidth,
@@ -153,31 +142,29 @@ impl ScaleOutNetwork {
 /// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
 pub struct MeshNetworkBuilder {
     name: String,
-    region: Vec<MemoryRegion>,
+    region: Option<MemoryRegion>,
     map: Option<AffineMap>,
     io_bandwidth: Option<Expr>,
     link_bandwidth: Option<Expr>,
 }
 
 impl MeshNetworkBuilder {
-    fn push_region_memory(&mut self, region: MemoryRegion) {
-        self.region.push(region);
+    fn set_region_memory(&mut self, region: MemoryRegion) {
+        assert!(
+            matches!(region, MemoryRegion::Array { .. }),
+            "mesh region must be an Array memory region"
+        );
+        assert!(
+            self.region.is_none(),
+            "mesh region is already set; provide exactly one region_mem()"
+        );
+        self.region = Some(region);
     }
 
-    /// Add a memory region endpoint to the connected mesh region.
+    /// Set the array memory region attached to this mesh.
     pub fn region_mem(mut self, region: &MemoryRegion) -> Self {
-        self.push_region_memory(region.clone());
+        self.set_region_memory(region.clone());
         self
-    }
-
-    /// Backward-compatible alias for adding a memory endpoint.
-    pub fn from_mem(self, region: &MemoryRegion) -> Self {
-        self.region_mem(region)
-    }
-
-    /// Backward-compatible alias for adding a memory endpoint.
-    pub fn to_mem(self, region: &MemoryRegion) -> Self {
-        self.region_mem(region)
     }
 
     /// Set aggregate ingress/egress bandwidth as a concrete integer.
@@ -237,13 +224,9 @@ impl MeshNetworkBuilder {
 
         let mesh = MeshNetwork {
             name: self.name,
-            region: {
-                assert!(
-                    !self.region.is_empty(),
-                    "at least one mesh region endpoint must be set"
-                );
-                self.region
-            },
+            region: self
+                .region
+                .expect("mesh region must be set via region_mem()"),
             map: self.map.expect("affine map must be set"),
             io_bandwidth,
             link_bandwidth,
@@ -362,6 +345,7 @@ mod tests {
             SizeExpr::Const(128),
             SizeExpr::Const(1024),
         ))
+        .scale(&[dx.clone(), dy.clone()])
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("torus")
@@ -384,6 +368,7 @@ mod tests {
             SizeExpr::Const(128),
             SizeExpr::Const(1024),
         ))
+        .scale(bank.as_slice())
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("reduce")
@@ -417,6 +402,7 @@ mod tests {
             SizeExpr::Const(128),
             SizeExpr::Const(1024),
         ))
+        .scale(&[x.clone(), y.clone()])
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("ring")

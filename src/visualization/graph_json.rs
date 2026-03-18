@@ -194,15 +194,10 @@ pub enum GraphMemoryRegion {
         access_granularity: Option<GraphSizeExpr>,
         total_size_bytes: Option<u64>,
     },
-    Replicated {
+    Array {
         name: Option<String>,
         dimensions: Vec<GraphDimension>,
         elem: Box<GraphMemoryRegion>,
-        total_size_bytes: Option<u64>,
-    },
-    Group {
-        name: Option<String>,
-        parts: Vec<GraphMemoryRegion>,
         total_size_bytes: Option<u64>,
     },
 }
@@ -580,16 +575,9 @@ fn format_affine_expr(expr: &AffineExpr) -> String {
 fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     match region {
         MemoryRegion::Bank(_) => Vec::new(),
-        MemoryRegion::Replicated { dims, elem, .. } => {
+        MemoryRegion::Array { dims, elem, .. } => {
             let mut out = dims.clone();
             out.extend(collect_memory_dims(elem));
-            out
-        }
-        MemoryRegion::Group { parts, .. } => {
-            let mut out = Vec::new();
-            for part in parts {
-                out.extend(collect_memory_dims(part));
-            }
             out
         }
     }
@@ -635,15 +623,10 @@ fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
             access_granularity: bank.block_size.as_ref().map(size_expr_to_json),
             total_size_bytes,
         },
-        MemoryRegion::Replicated { name, dims, elem } => GraphMemoryRegion::Replicated {
+        MemoryRegion::Array { name, dims, elem } => GraphMemoryRegion::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
             elem: Box::new(memory_region_to_json(elem)),
-            total_size_bytes,
-        },
-        MemoryRegion::Group { name, parts } => GraphMemoryRegion::Group {
-            name: name.clone(),
-            parts: parts.iter().map(memory_region_to_json).collect(),
             total_size_bytes,
         },
     }
@@ -690,26 +673,26 @@ mod tests {
             SizeExpr::Const(64),
             SizeExpr::Const(512),
         ))
-        .replicate(core_dim.as_slice())
+        .scale(core_dim.as_slice())
         .with_name("l1");
         let l2 = MemoryRegion::bank(MemoryBank::from_blocks(
             SizeExpr::Const(64),
             SizeExpr::Const(1024),
         ))
-        .replicate(core_dim.as_slice())
+        .scale(core_dim.as_slice())
         .with_name("l2");
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
         let link = ScaleOutNetwork::mesh("l1_to_l2")
-            .from_mem(&l1)
-            .to_mem(&l2)
+            .region_mem(&l1)
             .map(&map)
             .bandwidth(128)
             .build();
 
         let arch: Architecture = ArchGraph::builder("unit")
             .mem(&l1)
+            .mem(&l2)
             .processor(&lane)
             .build()
             .into();
@@ -719,7 +702,7 @@ mod tests {
         let value = architecture_to_graph_json_value(&arch);
         assert_eq!(value["schema_version"], "mlar.arch-graph.v1");
         assert_eq!(value["architecture"]["name"], "unit");
-        assert_eq!(value["nodes"].as_array().map(|v| v.len()), Some(3));
+        assert_eq!(value["nodes"].as_array().map(|v| v.len()), Some(2));
         assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
         assert_eq!(value["edges"][0]["map"]["expressions"][0], "core");
         assert_eq!(value["edges"][0]["bandwidth"]["const_value"], 128);
@@ -735,7 +718,7 @@ mod tests {
             SizeExpr::Const(64),
             SizeExpr::Const(512),
         ))
-        .replicate(bank_dim.as_slice())
+        .scale(bank_dim.as_slice())
         .with_name("l1");
         let lane = Processor::new("lane").into_elem();
 
@@ -757,12 +740,13 @@ mod tests {
     #[test]
     fn serializes_many_to_one_map_relation() {
         let dim_x = Dimension::new_int("x", 4);
+        let map_dim = Dimension::new_int("bank", 16);
         let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
             SizeExpr::Const(64),
             SizeExpr::Const(512),
         ))
+        .scale(map_dim.as_slice())
         .with_name("l1");
-        let map_dim = Dimension::new_int("bank", 16);
         let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
 
         let link = ScaleOutNetwork::mesh("reduce")
@@ -794,6 +778,7 @@ mod tests {
             SizeExpr::Const(64),
             SizeExpr::Const(512),
         ))
+        .scale(&[x.clone(), y.clone()])
         .with_name("l1");
         let map = AffineMap::new(
             &[x.clone(), y.clone()],

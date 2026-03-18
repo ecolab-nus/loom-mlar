@@ -74,7 +74,7 @@
       "details": {
         "type": "memory",
         "region": {
-          "kind": "replicated",
+          "kind": "array",
           "name": "L1",
           "dimensions": [
             {
@@ -89,7 +89,7 @@
             }
           ],
           "elem": {
-            "kind": "replicated",
+            "kind": "array",
             "name": "L1",
             "dimensions": [
               {
