@@ -1,6 +1,5 @@
 use crate::arch::{
-    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, MemoryRegion, Processors,
-    Router, SizeExpr,
+    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, MemoryRegion, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
@@ -242,8 +241,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("mem:{}", slugify(&name)), &mut used_ids);
                 memory_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map
-                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
+                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(memory_node_from_region(id, &name, region));
             }
             ArchNodeComponent::Architecture(proc) => {
@@ -253,8 +251,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("proc:{}", slugify(&name)), &mut used_ids);
                 processor_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map
-                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
+                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(processor_node_from_elem(id, &name, proc));
             }
             ArchNodeComponent::Router(router) => {
@@ -268,8 +265,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("router:{}", slugify(&name)), &mut used_ids);
                 router_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map
-                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
+                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(router_node(id, &name, router));
             }
         }
@@ -384,7 +380,10 @@ pub fn architecture_to_graph_json_string_pretty(
 
 fn build_labels_and_intra_core(
     arch: &Architecture,
-) -> (Vec<GraphArchitectureLabel>, Option<Box<ArchitectureGraphJson>>) {
+) -> (
+    Vec<GraphArchitectureLabel>,
+    Option<Box<ArchitectureGraphJson>>,
+) {
     if let Architecture::Array {
         name, dims, elem, ..
     } = arch
@@ -465,7 +464,7 @@ fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> Gra
     }
 }
 
-fn processor_node_from_elem(id: String, name: &str, elem: &Processors) -> GraphNode {
+fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> GraphNode {
     let dimensions = dedup_dimensions(collect_processor_dims(elem))
         .iter()
         .map(dimension_to_json)
@@ -665,15 +664,15 @@ fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     }
 }
 
-fn collect_processor_dims(elem: &Processors) -> Vec<Dimension> {
+fn collect_processor_dims(elem: &Architecture) -> Vec<Dimension> {
     match elem {
-        Processors::Unit(_) => Vec::new(),
-        Processors::Array { dims, elem, .. } => {
+        Architecture::Unit(_) => Vec::new(),
+        Architecture::Array { dims, elem, .. } => {
             let mut out = dims.clone();
             out.extend(collect_processor_dims(elem));
             out
         }
-        Processors::Graph(graph) => {
+        Architecture::Graph(graph) => {
             let mut out = Vec::new();
             for node in &graph.nodes {
                 if let ArchNodeComponent::Architecture(arch) = &node.component {
@@ -714,20 +713,20 @@ fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
     }
 }
 
-fn processors_to_json(elem: &Processors) -> GraphProcessors {
+fn processors_to_json(elem: &Architecture) -> GraphProcessors {
     match elem {
-        Processors::Unit(proc) => GraphProcessors::Unit {
+        Architecture::Unit(proc) => GraphProcessors::Unit {
             name: proc.name.clone(),
             functionality: functionality_to_json(&proc.functionality),
         },
-        Processors::Array {
+        Architecture::Array {
             name, dims, elem, ..
         } => GraphProcessors::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
             elem: Box::new(processors_to_json(elem)),
         },
-        Processors::Graph(graph) => GraphProcessors::Graph {
+        Architecture::Graph(graph) => GraphProcessors::Graph {
             name: graph.name.clone(),
             processor_count: graph
                 .nodes
@@ -815,7 +814,10 @@ mod tests {
         let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
 
         let graph = architecture_to_graph_json(&mesh);
-        assert!(graph.intra_core.is_some(), "2D Array should produce intra_core");
+        assert!(
+            graph.intra_core.is_some(),
+            "2D Array should produce intra_core"
+        );
         assert_eq!(graph.architecture.labels.len(), 1);
         assert_eq!(graph.architecture.labels[0].dimensions.len(), 2);
         let intra = graph.intra_core.as_ref().unwrap();

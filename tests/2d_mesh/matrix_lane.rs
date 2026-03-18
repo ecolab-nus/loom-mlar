@@ -5,7 +5,7 @@ use mlar_rust::*;
 /// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
 /// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
 /// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
-pub fn matrix_lane() -> Processors {
+pub fn matrix_lane() -> Architecture {
     let functionality = Module::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
         .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse");
 

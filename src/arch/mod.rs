@@ -20,6 +20,6 @@ pub use architecture_graph::{
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{MeshNetwork, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
-pub use processor::{FunctionProcessor, Processor, ProcessorSet, Processors};
+pub use processor::{FunctionProcessor, Processor};
 pub use router::{Router, RouterSide};
 pub use size_dim::{Dimension, SizeExpr, Sym};

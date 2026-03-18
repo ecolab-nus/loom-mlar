@@ -45,7 +45,7 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(proc_nodes.len(), 2);
     for proc in proc_nodes {
         match proc {
-            Processors::Unit(p) => {
+            Architecture::Unit(p) => {
                 assert!(
                     p.validate().is_ok(),
                     "processor {:?} should validate after scaling",
@@ -142,7 +142,7 @@ fn test_2d_mesh_torus_perf_models() {
     // === Verify per-function perf bindings for vector lane ===
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
-        Processors::Unit(p) => {
+        Architecture::Unit(p) => {
             assert_eq!(p.functions.len(), 10);
 
             let max_name = vec_func("vec_max");
@@ -276,7 +276,9 @@ fn test_export_2d_mesh_torus_hierarchy_json() {
     assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
     assert_eq!(value["root"]["kind"], "array");
     assert_eq!(value["root"]["name"], "2d_mesh_torus");
-    assert!(value["root"]["children"].as_array().is_some_and(|v| !v.is_empty()));
+    assert!(value["root"]["children"]
+        .as_array()
+        .is_some_and(|v| !v.is_empty()));
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/2d_mesh/2d_mesh_torus_hierarchy.json");

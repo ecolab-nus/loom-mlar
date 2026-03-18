@@ -46,10 +46,6 @@ pub struct Processor {
     pub outputs: Option<Vec<String>>,
 }
 
-/// Aliases for architecture-as-processor usage.
-pub type ProcessorSet = Architecture;
-pub type Processors = Architecture;
-
 impl Processor {
     /// Create a structural-only processor (no functionality/perf bindings).
     pub fn new(name: impl Into<String>) -> Self {
@@ -161,7 +157,7 @@ impl Processor {
     }
 
     /// Wrap this processor in an Array with the given dimensions.
-    pub fn replicate(self, dims: &[Dimension]) -> ProcessorSet {
+    pub fn replicate(self, dims: &[Dimension]) -> Architecture {
         Architecture::Array {
             name: None,
             dims: dims.to_vec(),
@@ -172,26 +168,26 @@ impl Processor {
     }
 
     /// Convert this processor into an architecture leaf.
-    pub fn into_elem(self) -> ProcessorSet {
+    pub fn into_elem(self) -> Architecture {
         Architecture::Unit(self)
     }
 }
 
-impl From<Processor> for ProcessorSet {
+impl From<Processor> for Architecture {
     fn from(p: Processor) -> Self {
         Architecture::Unit(p)
     }
 }
 
-impl From<&ProcessorSet> for ProcessorSet {
-    fn from(p: &ProcessorSet) -> Self {
+impl From<&Architecture> for Architecture {
+    fn from(p: &Architecture) -> Self {
         p.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionProcessor, Processor, ProcessorSet};
+    use super::{Architecture, FunctionProcessor, Processor};
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
     use crate::schedule::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Module};
@@ -282,6 +278,6 @@ mod tests {
         assert_eq!(module.ops[0].name, "f");
 
         assert_eq!(elem.total_instances(), Some(8));
-        assert!(matches!(elem, ProcessorSet::Array { .. }));
+        assert!(matches!(elem, Architecture::Array { .. }));
     }
 }

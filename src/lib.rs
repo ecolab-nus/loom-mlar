@@ -8,9 +8,8 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchEdgeAttr, ArchEdgeId, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode,
     ArchNodeComponent, ArchNodeId, Architecture, Dimension, FuncPerfModel, FunctionProcessor,
-    MemoryBank, MemoryRegion, MeshNetwork, PerfScenario, Processor, ProcessorSet, Processors,
-    Router, RouterSide, ScaleOutNetwork, SimpleTimeCost,
-    SizeExpr, Sym, TimeCost, TimeExpr,
+    MemoryBank, MemoryRegion, MeshNetwork, PerfScenario, Processor, Router, RouterSide,
+    ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
 };
 
 // Re-export commonly used math types
@@ -19,18 +18,19 @@ pub use math::{
     ParseError,
 };
 pub use schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
-    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping, evaluate,
+    evaluate, MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
+    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping,
 };
 
 // Re-export visualization utilities
 pub use visualization::graph_json::{
-    ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
+    architecture_to_graph_json, architecture_to_graph_json_string,
     architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
+    ArchitectureGraphJson,
 };
 pub use visualization::hierarchy_json::{
-    ArchitectureHierarchyJson, architecture_to_hierarchy_json,
-    architecture_to_hierarchy_json_string_pretty, architecture_to_hierarchy_json_value,
+    architecture_to_hierarchy_json, architecture_to_hierarchy_json_string_pretty,
+    architecture_to_hierarchy_json_value, ArchitectureHierarchyJson,
 };
 
 // Re-export evaluator utilities

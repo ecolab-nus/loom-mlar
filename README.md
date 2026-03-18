@@ -20,7 +20,7 @@ src/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
-│   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet/Processors aliases
+│   ├── processor.rs            # FunctionProcessor, Processor
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, Router
 │   └── architecture.rs         # Architecture + graph composition primitives (ArchGraph, ArchNode, ArchEdge)
@@ -171,7 +171,7 @@ assert!(lane.get_function("vec_add_f32").is_some());
 
 ## Processor Composition
 
-`ProcessorSet` and `Processors` are aliases of `Architecture`, so they share the same recursive shape:
+Processor composition uses `Architecture`, with the recursive shape:
 
 - `Unit(Processor)`
 - `Array { name, dims, elem, connectivity, interface }`
@@ -276,7 +276,6 @@ Web UI lives in `tools/web-visualization/`.
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
-| `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
 | `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `Router` | Connectivity, routing, scale-out links | `src/arch/network.rs` |
 | `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture.rs` |
