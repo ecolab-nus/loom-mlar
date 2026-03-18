@@ -51,7 +51,7 @@ function isArchFlowNodeData(value: unknown): value is ArchFlowNodeData {
   }
   const candidate = value as Partial<ArchFlowNodeData>;
   return (
-    (candidate.kind === 'memory' || candidate.kind === 'processor' || candidate.kind === 'link') &&
+    (candidate.kind === 'memory' || candidate.kind === 'processor' || candidate.kind === 'link' || candidate.kind === 'router') &&
     typeof candidate.name === 'string' &&
     typeof candidate.summary === 'string' &&
     Array.isArray(candidate.dimensions) &&
@@ -65,6 +65,9 @@ function classForNode(nodeData: ArchFlowNodeData): string {
   }
   if (nodeData.kind === 'processor') {
     return 'node-processor';
+  }
+  if (nodeData.kind === 'router') {
+    return 'node-router';
   }
   return 'node-link';
 }

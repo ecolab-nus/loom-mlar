@@ -27,7 +27,8 @@ import {
 import { loadGraphFromFile, loadGraphFromUrl, parseAnyText } from './runtime-loader';
 import type {
   ArchitectureGraph,
-  ArchitectureHierarchy,
+  ArchitectureViewer,
+  HierarchyNode,
   AnyArchPayload,
   GraphMemoryRegion,
 } from './schema';
@@ -37,9 +38,7 @@ const nodeTypes: NodeTypes = {
   coreArchNode: CoreArchNode,
   coreGridNode: CoreGridNode,
 };
-const DEFAULT_GRAPH_URL = '/sample-hierarchy.json';
-
-type ViewMode = 'graph' | 'hierarchy';
+const DEFAULT_URL = '/sample-viewer.json';
 
 function parseCoreNodeId(nodeId: string): { x: number; y: number } | null {
   const parts = nodeId.split('|');
@@ -57,19 +56,49 @@ function parseCoreNodeId(nodeId: string): { x: number; y: number } | null {
   return { x, y };
 }
 
+interface ParsedState {
+  payload: AnyArchPayload | null;
+  hierarchy: HierarchyNode | null;
+  graphs: Record<string, ArchitectureGraph>;
+  error: string | null;
+}
+
+function extractViewData(payload: AnyArchPayload): {
+  hierarchy: HierarchyNode | null;
+  graphs: Record<string, ArchitectureGraph>;
+} {
+  switch (payload.type) {
+    case 'viewer':
+      return {
+        hierarchy: payload.data.hierarchy,
+        graphs: payload.data.graphs,
+      };
+    case 'hierarchy':
+      return {
+        hierarchy: payload.data.root,
+        graphs: {},
+      };
+    case 'graph':
+      return {
+        hierarchy: null,
+        graphs: { '': payload.data },
+      };
+  }
+}
+
 function AppInner() {
   const [jsonText, setJsonText] = useState('');
-  const [sourceUrl, setSourceUrl] = useState(DEFAULT_GRAPH_URL);
+  const [sourceUrl, setSourceUrl] = useState(DEFAULT_URL);
   const [sourceName, setSourceName] = useState('none');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [selectedGraphPath, setSelectedGraphPath] = useState<string>('');
   const [selectedCore, setSelectedCore] = useState<{ x: number; y: number } | null>(null);
   const [selectedLegendLinkName, setSelectedLegendLinkName] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<{
     name: string;
     region: GraphMemoryRegion;
   } | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('graph');
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -77,11 +106,7 @@ function AppInner() {
       setJsonText(loaded.text);
       setSourceName(loaded.source);
       setLoadError(null);
-      if (loaded.payload.type === 'hierarchy') {
-        setViewMode('hierarchy');
-      } else {
-        setViewMode('graph');
-      }
+      setSelectedGraphPath('');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load URL';
       setLoadError(message);
@@ -89,30 +114,38 @@ function AppInner() {
   };
 
   useEffect(() => {
-    void loadFromUrl(DEFAULT_GRAPH_URL);
+    void loadFromUrl(DEFAULT_URL);
   }, []);
 
-  const parsed = useMemo((): {
-    payload: AnyArchPayload | null;
-    graph: ArchitectureGraph | null;
-    hierarchy: ArchitectureHierarchy | null;
-    error: string | null;
-  } => {
+  const parsed = useMemo((): ParsedState => {
     if (!jsonText.trim()) {
-      return { payload: null, graph: null, hierarchy: null, error: loadError ?? 'No JSON loaded yet.' };
+      return { payload: null, hierarchy: null, graphs: {}, error: loadError ?? 'No JSON loaded yet.' };
     }
 
     try {
       const loaded = parseAnyText(jsonText, sourceName);
-      if (loaded.payload.type === 'graph') {
-        return { payload: loaded.payload, graph: loaded.payload.data, hierarchy: null, error: null };
-      }
-      return { payload: loaded.payload, graph: null, hierarchy: loaded.payload.data, error: null };
+      const { hierarchy, graphs } = extractViewData(loaded.payload);
+      return { payload: loaded.payload, hierarchy, graphs, error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid JSON payload';
-      return { payload: null, graph: null, hierarchy: null, error: message };
+      return { payload: null, hierarchy: null, graphs: {}, error: message };
     }
   }, [jsonText, sourceName, loadError]);
+
+  const availableGraphPaths = useMemo(
+    () => new Set(Object.keys(parsed.graphs)),
+    [parsed.graphs],
+  );
+
+  const activeGraph = useMemo((): ArchitectureGraph | null => {
+    return parsed.graphs[selectedGraphPath] ?? null;
+  }, [parsed.graphs, selectedGraphPath]);
+
+  const onNodeSelect = useCallback((path: string) => {
+    setSelectedGraphPath(path);
+    setSelectedCore(null);
+    setSelectedMemory(null);
+  }, []);
 
   const onCoreClick = useCallback((x: number, y: number) => {
     setSelectedCore({ x, y });
@@ -123,15 +156,15 @@ function AppInner() {
   }, []);
 
   const flow = useMemo(() => {
-    if (!parsed.graph) {
+    if (!activeGraph) {
       return {
         nodes: [] as AnyFlowNode[],
         edges: [] as Edge[],
         coreLinkLegend: [],
       } satisfies FlowConversionResult;
     }
-    return architectureToFlow(parsed.graph, onCoreClick, onMemoryClick);
-  }, [parsed.graph, onCoreClick, onMemoryClick]);
+    return architectureToFlow(activeGraph, onCoreClick, onMemoryClick);
+  }, [activeGraph, onCoreClick, onMemoryClick]);
 
   useEffect(() => {
     if (flow.coreLinkLegend.length === 0) {
@@ -160,22 +193,15 @@ function AppInner() {
       setJsonText(loaded.text);
       setSourceName(loaded.source);
       setLoadError(null);
-      if (loaded.payload.type === 'hierarchy') {
-        setViewMode('hierarchy');
-      } else {
-        setViewMode('graph');
-      }
+      setSelectedGraphPath('');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load file';
       setLoadError(message);
     }
   };
 
-  const canShowGraph = parsed.graph !== null;
-  const canShowHierarchy = parsed.hierarchy !== null;
-
-  const archName =
-    parsed.graph?.architecture.name ?? parsed.hierarchy?.root.name ?? 'invalid payload';
+  const graphPathLabel = selectedGraphPath === '' ? 'root' : selectedGraphPath;
+  const archName = activeGraph?.architecture.name ?? parsed.hierarchy?.name ?? 'no selection';
 
   return (
     <div className="app-shell">
@@ -191,7 +217,7 @@ function AppInner() {
             value={sourceUrl}
             onChange={(event) => setSourceUrl(event.target.value)}
             spellCheck={false}
-            placeholder="/sample-graph.json"
+            placeholder="/sample-viewer.json"
           />
           <button type="button" className="action-button" onClick={() => void loadFromUrl(sourceUrl)}>
             Load URL
@@ -207,34 +233,25 @@ function AppInner() {
           >
             {isEditorVisible ? 'Hide JSON' : 'Show JSON'}
           </button>
-
-          <div className="view-mode-toggle">
-            <button
-              type="button"
-              className={`view-mode-btn ${viewMode === 'graph' ? 'view-mode-btn--active' : ''}`}
-              disabled={!canShowGraph}
-              onClick={() => setViewMode('graph')}
-            >
-              Graph
-            </button>
-            <button
-              type="button"
-              className={`view-mode-btn ${viewMode === 'hierarchy' ? 'view-mode-btn--active' : ''}`}
-              disabled={!canShowHierarchy}
-              onClick={() => setViewMode('hierarchy')}
-            >
-              Hierarchy
-            </button>
-          </div>
         </div>
       </header>
 
-      <main className={`app-main${isEditorVisible ? ' app-main--editor-open' : ''}`}>
-        <section className="canvas-panel">
-          {viewMode === 'hierarchy' && parsed.hierarchy ? (
-            <HierarchyView hierarchy={parsed.hierarchy} />
-          ) : (
+      <main className="app-main-split">
+        {parsed.hierarchy && (
+          <aside className="hierarchy-sidebar">
+            <HierarchyView
+              hierarchy={parsed.hierarchy}
+              selectedPath={selectedGraphPath}
+              availableGraphPaths={availableGraphPaths}
+              onNodeSelect={onNodeSelect}
+            />
+          </aside>
+        )}
+
+        <section className="graph-panel">
+          {activeGraph ? (
             <ReactFlow<AnyFlowNode, Edge>
+              key={selectedGraphPath}
               nodes={flow.nodes}
               edges={flow.edges}
               nodeTypes={nodeTypes}
@@ -262,6 +279,10 @@ function AppInner() {
                   <div>
                     <strong>Architecture</strong>
                     <span>{archName}</span>
+                  </div>
+                  <div>
+                    <strong>Path</strong>
+                    <span>{graphPathLabel}</span>
                   </div>
                   <div>
                     <strong>Source</strong>
@@ -317,6 +338,15 @@ function AppInner() {
                 </Panel>
               )}
             </ReactFlow>
+          ) : (
+            <div className="graph-placeholder">
+              <div className="graph-placeholder-content">
+                <span className="graph-placeholder-icon">&#x2B22;</span>
+                <h3>Select an architecture</h3>
+                <p>Click on a node in the hierarchy tree to view its graph.</p>
+                {parsed.error && <p className="error-line">{parsed.error}</p>}
+              </div>
+            </div>
           )}
         </section>
 
@@ -337,11 +367,11 @@ function AppInner() {
         )}
       </main>
 
-      {selectedCore && parsed.graph?.intra_core && (
+      {selectedCore && activeGraph?.intra_core && (
         <IntraCorePanel
           coreX={selectedCore.x}
           coreY={selectedCore.y}
-          intraCoreGraph={parsed.graph.intra_core}
+          intraCoreGraph={activeGraph.intra_core}
           onClose={() => setSelectedCore(null)}
           onMemoryClick={onMemoryClick}
         />

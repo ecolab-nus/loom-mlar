@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import type {
-  ArchitectureHierarchy,
   HierarchyNode,
   HierarchyNodeKind,
   HierarchyConnectivity,
@@ -10,19 +9,29 @@ import type {
 } from '../schema';
 
 interface HierarchyViewProps {
-  hierarchy: ArchitectureHierarchy;
+  hierarchy: HierarchyNode;
+  selectedPath: string | null;
+  availableGraphPaths: Set<string>;
+  onNodeSelect: (path: string) => void;
 }
 
-export function HierarchyView({ hierarchy }: HierarchyViewProps) {
+export function HierarchyView({ hierarchy, selectedPath, availableGraphPaths, onNodeSelect }: HierarchyViewProps) {
   return (
     <div className="hierarchy-view">
       <div className="hierarchy-header">
         <span className="hierarchy-badge">hierarchy</span>
-        <h2 className="hierarchy-title">{hierarchy.root.name}</h2>
-        <span className="hierarchy-subtitle">Architecture Hierarchy</span>
+        <h2 className="hierarchy-title">{hierarchy.name}</h2>
       </div>
       <div className="hierarchy-tree">
-        <HierarchyTreeNode node={hierarchy.root} depth={0} isLast />
+        <HierarchyTreeNode
+          node={hierarchy}
+          depth={0}
+          isLast
+          path=""
+          selectedPath={selectedPath}
+          availableGraphPaths={availableGraphPaths}
+          onNodeSelect={onNodeSelect}
+        />
       </div>
     </div>
   );
@@ -32,11 +41,18 @@ interface HierarchyTreeNodeProps {
   node: HierarchyNode;
   depth: number;
   isLast: boolean;
+  path: string;
+  selectedPath: string | null;
+  availableGraphPaths: Set<string>;
+  onNodeSelect: (path: string) => void;
 }
 
-function HierarchyTreeNode({ node, depth, isLast }: HierarchyTreeNodeProps) {
+function HierarchyTreeNode({ node, depth, isLast, path, selectedPath, availableGraphPaths, onNodeSelect }: HierarchyTreeNodeProps) {
   const hasChildren = (node.children?.length ?? 0) > 0;
   const [expanded, setExpanded] = useState(depth < 3);
+  const hasGraph = availableGraphPaths.has(path);
+  const isSelected = selectedPath === path;
+  const isArchitectureNode = node.kind === 'graph' || node.kind === 'array' || node.kind === 'unit';
 
   const toggle = useCallback(() => {
     if (hasChildren) {
@@ -44,13 +60,31 @@ function HierarchyTreeNode({ node, depth, isLast }: HierarchyTreeNodeProps) {
     }
   }, [hasChildren]);
 
+  const handleClick = useCallback(() => {
+    if (hasGraph) {
+      onNodeSelect(path);
+    } else if (hasChildren) {
+      setExpanded((v) => !v);
+    }
+  }, [hasGraph, hasChildren, onNodeSelect, path]);
+
   const children = node.children ?? [];
 
   return (
     <div className={`htree-node ${isLast ? 'htree-node--last' : ''}`}>
-      <div className="htree-node-row" onClick={toggle}>
+      <div
+        className={`htree-node-row${isSelected ? ' htree-node-row--selected' : ''}${hasGraph ? ' htree-node-row--has-graph' : ''}`}
+        role={hasGraph ? 'button' : undefined}
+        tabIndex={hasGraph ? 0 : undefined}
+        aria-label={hasGraph ? `View graph: ${node.name}` : undefined}
+        onClick={handleClick}
+        onKeyDown={hasGraph ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
+      >
         {hasChildren && (
-          <span className={`htree-toggle ${expanded ? 'htree-toggle--open' : ''}`}>
+          <span
+            className={`htree-toggle ${expanded ? 'htree-toggle--open' : ''}`}
+            onClick={(e) => { e.stopPropagation(); toggle(); }}
+          >
             {expanded ? '\u25BE' : '\u25B8'}
           </span>
         )}
@@ -66,6 +100,9 @@ function HierarchyTreeNode({ node, depth, isLast }: HierarchyTreeNodeProps) {
           <span className="htree-instances">{node.total_instances} instances</span>
         )}
         <NodeSummaryBadge node={node} />
+        {hasGraph && isArchitectureNode && (
+          <span className="htree-graph-indicator" title="Click to view graph">&#x25A3;</span>
+        )}
       </div>
 
       {expanded && (
@@ -74,18 +111,36 @@ function HierarchyTreeNode({ node, depth, isLast }: HierarchyTreeNodeProps) {
             <ConnectivityBlock connectivity={node.connectivity} />
           )}
           {node.details && <DetailsBlock details={node.details} />}
-          {children.map((child, idx) => (
-            <HierarchyTreeNode
-              key={`${child.kind}-${child.name}-${idx}`}
-              node={child}
-              depth={depth + 1}
-              isLast={idx === children.length - 1}
-            />
-          ))}
+          {children.map((child, idx) => {
+            const childPath = computeChildPath(path, child, node);
+            return (
+              <HierarchyTreeNode
+                key={`${child.kind}-${child.name}-${idx}`}
+                node={child}
+                depth={depth + 1}
+                isLast={idx === children.length - 1}
+                path={childPath}
+                selectedPath={selectedPath}
+                availableGraphPaths={availableGraphPaths}
+                onNodeSelect={onNodeSelect}
+              />
+            );
+          })}
         </div>
       )}
     </div>
   );
+}
+
+function computeChildPath(parentPath: string, child: HierarchyNode, _parent: HierarchyNode): string {
+  const isArchitecture = child.kind === 'graph' || child.kind === 'array' || child.kind === 'unit';
+  if (!isArchitecture) {
+    return `${parentPath}##${child.name}`;
+  }
+  if (parentPath === '') {
+    return child.name;
+  }
+  return `${parentPath}/${child.name}`;
 }
 
 function NodeSummaryBadge({ node }: { node: HierarchyNode }) {
@@ -106,9 +161,10 @@ function NodeSummaryBadge({ node }: { node: HierarchyNode }) {
     }
   }
   if (node.kind === 'router' && node.details?.type === 'router') {
+    const endpoints = node.details.router.endpoints;
     return (
       <span className="htree-router-info">
-        {node.details.router.side_count} sides, {node.details.router.endpoints} endpoints
+        {node.details.router.side_count} sides{endpoints != null ? `, ${endpoints} endpoints` : ''}
       </span>
     );
   }
@@ -165,10 +221,12 @@ function DetailsBlock({ details }: DetailsBlockProps) {
   }
 
   if (details.type === 'router') {
+    const sides = details.sides ?? [];
+    if (sides.length === 0) return null;
     return (
       <div className="htree-details">
         <div className="htree-section-label">Router Sides</div>
-        {details.sides.map((side) => (
+        {sides.map((side) => (
           <RouterSideBlock key={side.name} side={side} />
         ))}
       </div>

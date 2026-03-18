@@ -1003,6 +1003,9 @@ function summarizeArchitectureNode(node: ArchitectureGraphNode): string {
       ? `instances=${node.details.total_instances}`
       : 'instances=symbolic';
   }
+  if (node.kind === 'router' && node.details.type === 'router') {
+    return `${node.details.router.side_count} sides`;
+  }
   return '';
 }
 

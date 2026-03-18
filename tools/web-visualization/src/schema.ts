@@ -82,7 +82,7 @@ export interface ArchitectureGraphNode {
 
 export interface ArchitectureGraphEdge {
   id: string;
-  kind: 'link';
+  kind: string;
   name: string;
   source: string;
   target: string;
@@ -136,8 +136,8 @@ export type HierarchyNodeDetails =
   | { type: 'memory'; region: GraphMemoryRegion; total_size_bytes: number | null }
   | {
       type: 'router';
-      router: { name: string; side_count: number; endpoints: number };
-      sides: HierarchyRouterSide[];
+      router: { name: string; side_count: number; endpoints?: number };
+      sides?: HierarchyRouterSide[];
     };
 
 export interface HierarchyConnectivity {
@@ -163,14 +163,24 @@ export interface ArchitectureHierarchy {
   root: HierarchyNode;
 }
 
+// ── Viewer (combined) schema types ───────────────────────────
+
+export interface ArchitectureViewer {
+  schema_version: 'mlar.arch-viewer.v1';
+  hierarchy: HierarchyNode;
+  graphs: Record<string, ArchitectureGraph>;
+}
+
 // ── Schema detection and parsing ─────────────────────────────
 
 export type AnyArchPayload =
   | { type: 'graph'; data: ArchitectureGraph }
-  | { type: 'hierarchy'; data: ArchitectureHierarchy };
+  | { type: 'hierarchy'; data: ArchitectureHierarchy }
+  | { type: 'viewer'; data: ArchitectureViewer };
 
 const GRAPH_SCHEMA_VERSION = 'mlar.arch-graph.v1';
 const HIERARCHY_SCHEMA_VERSION = 'mlar.arch-hierarchy.v1';
+const VIEWER_SCHEMA_VERSION = 'mlar.arch-viewer.v1';
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null;
@@ -271,9 +281,33 @@ export function parseArchitectureHierarchy(raw: unknown): ArchitectureHierarchy 
   return raw as unknown as ArchitectureHierarchy;
 }
 
+export function parseArchitectureViewer(raw: unknown): ArchitectureViewer {
+  if (!isRecord(raw)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  if (raw.schema_version !== VIEWER_SCHEMA_VERSION) {
+    throw new Error(`Expected schema_version=${VIEWER_SCHEMA_VERSION}.`);
+  }
+
+  if (!isRecord(raw.hierarchy) || typeof raw.hierarchy.kind !== 'string' || typeof raw.hierarchy.name !== 'string') {
+    throw new Error('Missing or invalid hierarchy node in viewer payload.');
+  }
+
+  if (!isRecord(raw.graphs)) {
+    throw new Error('Missing graphs map in viewer payload.');
+  }
+
+  return raw as unknown as ArchitectureViewer;
+}
+
 export function parseAnyArchPayload(raw: unknown): AnyArchPayload {
   if (!isRecord(raw)) {
     throw new Error('Payload must be a JSON object.');
+  }
+
+  if (raw.schema_version === VIEWER_SCHEMA_VERSION) {
+    return { type: 'viewer', data: parseArchitectureViewer(raw) };
   }
 
   if (raw.schema_version === HIERARCHY_SCHEMA_VERSION) {
@@ -286,6 +320,6 @@ export function parseAnyArchPayload(raw: unknown): AnyArchPayload {
 
   throw new Error(
     `Unknown schema_version: ${String(raw.schema_version)}. ` +
-      `Expected ${GRAPH_SCHEMA_VERSION} or ${HIERARCHY_SCHEMA_VERSION}.`,
+      `Expected ${GRAPH_SCHEMA_VERSION}, ${HIERARCHY_SCHEMA_VERSION}, or ${VIEWER_SCHEMA_VERSION}.`,
   );
 }
