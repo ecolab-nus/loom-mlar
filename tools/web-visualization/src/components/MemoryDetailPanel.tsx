@@ -75,6 +75,7 @@ function RegionView({
     case 'bank':
       return <BankView region={region} />;
     case 'replicated':
+    case 'array':
       return <ReplicatedView region={region} onDrillDown={onDrillDown} />;
     case 'group':
       return <GroupView region={region} onDrillDown={onDrillDown} />;
@@ -123,7 +124,7 @@ function ReplicatedView({
   region,
   onDrillDown,
 }: {
-  region: Extract<GraphMemoryRegion, { kind: 'replicated' }>;
+  region: Extract<GraphMemoryRegion, { kind: 'replicated' | 'array' }>;
   onDrillDown: (name: string, region: GraphMemoryRegion) => void;
 }) {
   const copies = productConcreteSizes(region.dimensions);
@@ -277,6 +278,7 @@ function regionKindLabel(region: GraphMemoryRegion): string {
     case 'bank':
       return 'bank';
     case 'replicated':
+    case 'array':
       return 'replicated';
     case 'group':
       return 'group';
@@ -289,7 +291,8 @@ function regionSummaryLabel(region: GraphMemoryRegion): string {
       const cap = region.capacity_bytes.const_value;
       return cap !== null ? `bank, ${formatBytes(cap)}` : `bank, capacity=${region.capacity_bytes.expr}`;
     }
-    case 'replicated': {
+    case 'replicated':
+    case 'array': {
       const copies = productConcreteSizes(region.dimensions);
       const dimStr = region.dimensions.map((d) => `${d.name}=${d.size_expr}`).join(', ');
       return copies !== null ? `${copies}× replicated [${dimStr}]` : `replicated [${dimStr}]`;

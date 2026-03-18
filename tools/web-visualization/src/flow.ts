@@ -783,7 +783,8 @@ export function countBankLeaves(region: GraphMemoryRegion): number | null {
       }
       return sum;
     }
-    case 'replicated': {
+    case 'replicated':
+    case 'array': {
       const inner = countBankLeaves(region.elem);
       if (inner === null) {
         return null;
@@ -814,7 +815,8 @@ function compactRegionSummary(region: GraphMemoryRegion): string {
       const size = regionTotalBytes(region);
       return size !== null ? formatBytesCompact(size) : region.capacity_bytes.expr;
     }
-    case 'replicated': {
+    case 'replicated':
+    case 'array': {
       const n = productConcreteSizes(region.dimensions);
       const elemSize = regionTotalBytes(region.elem);
       if (n !== null && elemSize !== null) {
@@ -840,7 +842,8 @@ function regionTotalBytes(region: GraphMemoryRegion): number | null {
   switch (region.kind) {
     case 'bank':
       return region.capacity_bytes.const_value;
-    case 'replicated': {
+    case 'replicated':
+    case 'array': {
       const elemSize = regionTotalBytes(region.elem);
       const multiplier = productConcreteSizes(region.dimensions);
       return elemSize !== null && multiplier !== null ? elemSize * multiplier : null;

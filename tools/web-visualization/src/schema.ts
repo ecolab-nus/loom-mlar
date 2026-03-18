@@ -1,4 +1,4 @@
-export type NodeKind = 'memory' | 'processor';
+export type NodeKind = 'memory' | 'processor' | 'router';
 
 export interface GraphDimension {
   name: string;
@@ -43,7 +43,7 @@ export type GraphMemoryRegion =
       total_size_bytes?: number | null;
     }
   | {
-      kind: 'replicated';
+      kind: 'replicated' | 'array';
       name: string | null;
       dimensions: GraphDimension[];
       elem: GraphMemoryRegion;
@@ -65,6 +65,10 @@ export type GraphNodeDetails =
       type: 'processor';
       element: GraphProcessorElem;
       total_instances: number | null;
+    }
+  | {
+      type: 'router';
+      router: { name: string; side_count: number; endpoints: number };
     };
 
 export interface ArchitectureGraphNode {
@@ -112,7 +116,61 @@ export interface ArchitectureGraph {
   intra_core?: ArchitectureGraph;
 }
 
-const SCHEMA_VERSION = 'mlar.arch-graph.v1';
+// ── Hierarchy schema types ───────────────────────────────────
+
+export type HierarchyNodeKind = 'unit' | 'array' | 'graph' | 'memory' | 'router';
+
+export interface HierarchyRouterEndpoint {
+  name: string;
+  target_kind: string;
+  target_ref: string;
+}
+
+export interface HierarchyRouterSide {
+  name: string;
+  endpoints: HierarchyRouterEndpoint[];
+}
+
+export type HierarchyNodeDetails =
+  | { type: 'processor'; functions: string[] }
+  | { type: 'memory'; region: GraphMemoryRegion; total_size_bytes: number | null }
+  | {
+      type: 'router';
+      router: { name: string; side_count: number; endpoints: number };
+      sides: HierarchyRouterSide[];
+    };
+
+export interface HierarchyConnectivity {
+  name: string;
+  kind: string;
+  bandwidth: GraphExpr;
+  latency: GraphExpr | null;
+  topology: string;
+}
+
+export interface HierarchyNode {
+  kind: HierarchyNodeKind;
+  name: string;
+  dimensions?: GraphDimension[];
+  total_instances?: number | null;
+  details?: HierarchyNodeDetails | null;
+  connectivity?: HierarchyConnectivity[];
+  children?: HierarchyNode[];
+}
+
+export interface ArchitectureHierarchy {
+  schema_version: 'mlar.arch-hierarchy.v1';
+  root: HierarchyNode;
+}
+
+// ── Schema detection and parsing ─────────────────────────────
+
+export type AnyArchPayload =
+  | { type: 'graph'; data: ArchitectureGraph }
+  | { type: 'hierarchy'; data: ArchitectureHierarchy };
+
+const GRAPH_SCHEMA_VERSION = 'mlar.arch-graph.v1';
+const HIERARCHY_SCHEMA_VERSION = 'mlar.arch-hierarchy.v1';
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null;
@@ -145,8 +203,8 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
     throw new Error('Payload must be a JSON object.');
   }
 
-  if (raw.schema_version !== SCHEMA_VERSION) {
-    throw new Error(`Expected schema_version=${SCHEMA_VERSION}.`);
+  if (raw.schema_version !== GRAPH_SCHEMA_VERSION) {
+    throw new Error(`Expected schema_version=${GRAPH_SCHEMA_VERSION}.`);
   }
 
   if (!isRecord(raw.architecture) || typeof raw.architecture.name !== 'string') {
@@ -166,7 +224,7 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
       throw new Error('Node must include string id and name.');
     }
 
-    if (node.kind !== 'memory' && node.kind !== 'processor') {
+    if (node.kind !== 'memory' && node.kind !== 'processor' && node.kind !== 'router') {
       throw new Error(`Invalid node kind for ${node.id}.`);
     }
 
@@ -195,4 +253,39 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
   }
 
   return raw as unknown as ArchitectureGraph;
+}
+
+export function parseArchitectureHierarchy(raw: unknown): ArchitectureHierarchy {
+  if (!isRecord(raw)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  if (raw.schema_version !== HIERARCHY_SCHEMA_VERSION) {
+    throw new Error(`Expected schema_version=${HIERARCHY_SCHEMA_VERSION}.`);
+  }
+
+  if (!isRecord(raw.root) || typeof raw.root.kind !== 'string' || typeof raw.root.name !== 'string') {
+    throw new Error('Missing or invalid root node in hierarchy.');
+  }
+
+  return raw as unknown as ArchitectureHierarchy;
+}
+
+export function parseAnyArchPayload(raw: unknown): AnyArchPayload {
+  if (!isRecord(raw)) {
+    throw new Error('Payload must be a JSON object.');
+  }
+
+  if (raw.schema_version === HIERARCHY_SCHEMA_VERSION) {
+    return { type: 'hierarchy', data: parseArchitectureHierarchy(raw) };
+  }
+
+  if (raw.schema_version === GRAPH_SCHEMA_VERSION) {
+    return { type: 'graph', data: parseArchitectureGraph(raw) };
+  }
+
+  throw new Error(
+    `Unknown schema_version: ${String(raw.schema_version)}. ` +
+      `Expected ${GRAPH_SCHEMA_VERSION} or ${HIERARCHY_SCHEMA_VERSION}.`,
+  );
 }

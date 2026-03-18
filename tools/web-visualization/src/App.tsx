@@ -15,6 +15,7 @@ import '@xyflow/react/dist/style.css';
 import { ArchNode } from './components/ArchNode';
 import { CoreArchNode } from './components/CoreArchNode';
 import { CoreGridNode } from './components/CoreGridNode';
+import { HierarchyView } from './components/HierarchyView';
 import { IntraCorePanel } from './components/IntraCorePanel';
 import { MemoryDetailPanel } from './components/MemoryDetailPanel';
 import {
@@ -23,15 +24,22 @@ import {
   type ArchFlowNodeData,
   type FlowConversionResult,
 } from './flow';
-import { loadGraphFromFile, loadGraphFromUrl, parseGraphText } from './runtime-loader';
-import type { GraphMemoryRegion } from './schema';
+import { loadGraphFromFile, loadGraphFromUrl, parseAnyText } from './runtime-loader';
+import type {
+  ArchitectureGraph,
+  ArchitectureHierarchy,
+  AnyArchPayload,
+  GraphMemoryRegion,
+} from './schema';
 
 const nodeTypes: NodeTypes = {
   archNode: ArchNode,
   coreArchNode: CoreArchNode,
   coreGridNode: CoreGridNode,
 };
-const DEFAULT_GRAPH_URL = '/sample-graph.json';
+const DEFAULT_GRAPH_URL = '/sample-hierarchy.json';
+
+type ViewMode = 'graph' | 'hierarchy';
 
 function parseCoreNodeId(nodeId: string): { x: number; y: number } | null {
   const parts = nodeId.split('|');
@@ -61,6 +69,7 @@ function AppInner() {
     name: string;
     region: GraphMemoryRegion;
   } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('graph');
 
   const loadFromUrl = async (url: string) => {
     try {
@@ -68,6 +77,11 @@ function AppInner() {
       setJsonText(loaded.text);
       setSourceName(loaded.source);
       setLoadError(null);
+      if (loaded.payload.type === 'hierarchy') {
+        setViewMode('hierarchy');
+      } else {
+        setViewMode('graph');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load URL';
       setLoadError(message);
@@ -78,17 +92,25 @@ function AppInner() {
     void loadFromUrl(DEFAULT_GRAPH_URL);
   }, []);
 
-  const parsed = useMemo(() => {
+  const parsed = useMemo((): {
+    payload: AnyArchPayload | null;
+    graph: ArchitectureGraph | null;
+    hierarchy: ArchitectureHierarchy | null;
+    error: string | null;
+  } => {
     if (!jsonText.trim()) {
-      return { graph: null, error: loadError ?? 'No JSON loaded yet.' };
+      return { payload: null, graph: null, hierarchy: null, error: loadError ?? 'No JSON loaded yet.' };
     }
 
     try {
-      const loaded = parseGraphText(jsonText, sourceName);
-      return { graph: loaded.graph, error: null as string | null };
+      const loaded = parseAnyText(jsonText, sourceName);
+      if (loaded.payload.type === 'graph') {
+        return { payload: loaded.payload, graph: loaded.payload.data, hierarchy: null, error: null };
+      }
+      return { payload: loaded.payload, graph: null, hierarchy: loaded.payload.data, error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid JSON payload';
-      return { graph: null, error: message };
+      return { payload: null, graph: null, hierarchy: null, error: message };
     }
   }, [jsonText, sourceName, loadError]);
 
@@ -138,18 +160,29 @@ function AppInner() {
       setJsonText(loaded.text);
       setSourceName(loaded.source);
       setLoadError(null);
+      if (loaded.payload.type === 'hierarchy') {
+        setViewMode('hierarchy');
+      } else {
+        setViewMode('graph');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load file';
       setLoadError(message);
     }
   };
 
+  const canShowGraph = parsed.graph !== null;
+  const canShowHierarchy = parsed.hierarchy !== null;
+
+  const archName =
+    parsed.graph?.architecture.name ?? parsed.hierarchy?.root.name ?? 'invalid payload';
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>MLAR Graph Flow</h1>
-          <p>Runtime JSON loader for React Flow (schema: mlar.arch-graph.v1)</p>
+          <h1>MLAR Architecture Viewer</h1>
+          <p>Runtime JSON loader for architecture visualization</p>
         </div>
 
         <div className="source-controls">
@@ -174,94 +207,117 @@ function AppInner() {
           >
             {isEditorVisible ? 'Hide JSON' : 'Show JSON'}
           </button>
+
+          <div className="view-mode-toggle">
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === 'graph' ? 'view-mode-btn--active' : ''}`}
+              disabled={!canShowGraph}
+              onClick={() => setViewMode('graph')}
+            >
+              Graph
+            </button>
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === 'hierarchy' ? 'view-mode-btn--active' : ''}`}
+              disabled={!canShowHierarchy}
+              onClick={() => setViewMode('hierarchy')}
+            >
+              Hierarchy
+            </button>
+          </div>
         </div>
       </header>
 
       <main className={`app-main${isEditorVisible ? ' app-main--editor-open' : ''}`}>
         <section className="canvas-panel">
-          <ReactFlow<AnyFlowNode, Edge>
-            nodes={flow.nodes}
-            edges={flow.edges}
-            nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.15 }}
-            onNodeClick={(_, node) => {
-              const coord = parseCoreNodeId(node.id);
-              if (coord) {
-                setSelectedCore(coord);
-                return;
-              }
-              if (node.type === 'archNode') {
-                const data = node.data as ArchFlowNodeData;
-                if (data.kind === 'memory' && data.region) {
-                  setSelectedMemory({ name: data.name, region: data.region });
+          {viewMode === 'hierarchy' && parsed.hierarchy ? (
+            <HierarchyView hierarchy={parsed.hierarchy} />
+          ) : (
+            <ReactFlow<AnyFlowNode, Edge>
+              nodes={flow.nodes}
+              edges={flow.edges}
+              nodeTypes={nodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.15 }}
+              onNodeClick={(_, node) => {
+                const coord = parseCoreNodeId(node.id);
+                if (coord) {
+                  setSelectedCore(coord);
+                  return;
                 }
-              }
-            }}
-          >
-            <Controls />
-            <MiniMap pannable zoomable />
-            <Background color="#dbe8ef" gap={22} size={1} />
-            <Panel position="top-left">
-              <div className="meta-panel">
-                <div>
-                  <strong>Architecture</strong>
-                  <span>{parsed.graph?.architecture.name ?? 'invalid payload'}</span>
-                </div>
-                <div>
-                  <strong>Source</strong>
-                  <span>{sourceName}</span>
-                </div>
-                <div>
-                  <strong>Nodes</strong>
-                  <span>{flow.nodes.length}</span>
-                </div>
-                <div>
-                  <strong>Edges</strong>
-                  <span>{flow.edges.length}</span>
-                </div>
-              </div>
-            </Panel>
-            {flow.coreLinkLegend.length > 0 && (
-              <Panel position="top-right">
-                <div className="link-legend">
-                  <h3>Core Links</h3>
-                  {flow.coreLinkLegend.map((entry) => (
-                    <button
-                      type="button"
-                      className={`link-legend-item${
-                        selectedLegendLinkName === entry.name ? ' link-legend-item--active' : ''
-                      }`}
-                      key={entry.name}
-                      onClick={() => setSelectedLegendLinkName(entry.name)}
-                    >
-                      <span className="link-legend-swatch" style={{ background: entry.color }} />
-                      <span>{entry.name}</span>
-                    </button>
-                  ))}
-                  {selectedLegendLink && (
-                    <div className="link-legend-details">
-                      <strong>{selectedLegendLink.name}</strong>
-                      <div>
-                        <span>bandwidth</span>
-                        <code>{selectedLegendLink.bandwidth}</code>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Panel>
-            )}
-            {flow.nodes.length === 0 && (
-              <Panel position="top-center">
+                if (node.type === 'archNode') {
+                  const data = node.data as ArchFlowNodeData;
+                  if (data.kind === 'memory' && data.region) {
+                    setSelectedMemory({ name: data.name, region: data.region });
+                  }
+                }
+              }}
+            >
+              <Controls />
+              <MiniMap pannable zoomable />
+              <Background color="#dbe8ef" gap={22} size={1} />
+              <Panel position="top-left">
                 <div className="meta-panel">
                   <div>
-                    <strong>Status</strong>
-                    <span>No nodes to render</span>
+                    <strong>Architecture</strong>
+                    <span>{archName}</span>
+                  </div>
+                  <div>
+                    <strong>Source</strong>
+                    <span>{sourceName}</span>
+                  </div>
+                  <div>
+                    <strong>Nodes</strong>
+                    <span>{flow.nodes.length}</span>
+                  </div>
+                  <div>
+                    <strong>Edges</strong>
+                    <span>{flow.edges.length}</span>
                   </div>
                 </div>
               </Panel>
-            )}
-          </ReactFlow>
+              {flow.coreLinkLegend.length > 0 && (
+                <Panel position="top-right">
+                  <div className="link-legend">
+                    <h3>Core Links</h3>
+                    {flow.coreLinkLegend.map((entry) => (
+                      <button
+                        type="button"
+                        className={`link-legend-item${
+                          selectedLegendLinkName === entry.name ? ' link-legend-item--active' : ''
+                        }`}
+                        key={entry.name}
+                        onClick={() => setSelectedLegendLinkName(entry.name)}
+                      >
+                        <span className="link-legend-swatch" style={{ background: entry.color }} />
+                        <span>{entry.name}</span>
+                      </button>
+                    ))}
+                    {selectedLegendLink && (
+                      <div className="link-legend-details">
+                        <strong>{selectedLegendLink.name}</strong>
+                        <div>
+                          <span>bandwidth</span>
+                          <code>{selectedLegendLink.bandwidth}</code>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Panel>
+              )}
+              {flow.nodes.length === 0 && (
+                <Panel position="top-center">
+                  <div className="meta-panel">
+                    <div>
+                      <strong>Status</strong>
+                      <span>No nodes to render</span>
+                    </div>
+                  </div>
+                </Panel>
+              )}
+            </ReactFlow>
+          )}
         </section>
 
         {isEditorVisible && (

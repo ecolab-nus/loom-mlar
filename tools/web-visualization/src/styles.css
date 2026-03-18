@@ -985,6 +985,430 @@ body {
   }
 }
 
+/* ── View Mode Toggle ──────────────────────────────────────── */
+
+.view-mode-toggle {
+  display: flex;
+  border: 1px solid #a9bdc9;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #f0f6fa;
+}
+
+.view-mode-btn {
+  border: none;
+  background: transparent;
+  color: #3a6178;
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0.38rem 0.72rem;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.view-mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.view-mode-btn--active {
+  background: #1e4658;
+  color: #eef5fa;
+}
+
+.view-mode-btn--active:disabled {
+  opacity: 1;
+}
+
+/* ── Hierarchy View ────────────────────────────────────────── */
+
+.hierarchy-view {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(180deg, #fafcfd 0%, #f0f6fa 100%);
+}
+
+.hierarchy-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid #c8dbe5;
+}
+
+.hierarchy-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  background: #1e4658;
+  color: #e0eff8;
+}
+
+.hierarchy-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f2a36;
+}
+
+.hierarchy-subtitle {
+  font-size: 0.8rem;
+  color: #5f7a88;
+  font-weight: 500;
+}
+
+.hierarchy-tree {
+  font-size: 0.86rem;
+}
+
+/* ── Tree Node ─────────────────────────────────────────────── */
+
+.htree-node {
+  position: relative;
+}
+
+.htree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.45rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 100ms ease;
+  user-select: none;
+}
+
+.htree-node-row:hover {
+  background: rgba(30, 70, 88, 0.06);
+}
+
+.htree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: #5f7a88;
+  transition: transform 120ms ease;
+}
+
+.htree-toggle--open {
+  color: #1e4658;
+}
+
+.htree-toggle--leaf {
+  visibility: hidden;
+}
+
+.htree-toggle--small {
+  width: 14px;
+  height: 14px;
+  font-size: 0.62rem;
+}
+
+.htree-kind {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.htree-kind--unit {
+  background: #d7f3dd;
+  color: #1a4a2e;
+  border: 1px solid #9cd4aa;
+}
+
+.htree-kind--array {
+  background: #e8d8f8;
+  color: #3d1a5e;
+  border: 1px solid #c4a0e0;
+}
+
+.htree-kind--graph {
+  background: #d6e8f4;
+  color: #1a3a52;
+  border: 1px solid #94b8d4;
+}
+
+.htree-kind--memory {
+  background: #cee6f8;
+  color: #1a4a64;
+  border: 1px solid #9cc4dc;
+}
+
+.htree-kind--router {
+  background: #ffe7b8;
+  color: #5a3a0e;
+  border: 1px solid #d4b06a;
+}
+
+.htree-name {
+  font-weight: 700;
+  color: #0f2a36;
+  white-space: nowrap;
+}
+
+.htree-dims {
+  font: 500 0.74rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #3d6070;
+  background: rgba(30, 70, 88, 0.07);
+  border-radius: 6px;
+  padding: 0.08rem 0.38rem;
+}
+
+.htree-instances {
+  font-size: 0.72rem;
+  color: #5f7a88;
+  font-weight: 500;
+}
+
+.htree-size {
+  font: 600 0.72rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #1a4a64;
+  background: #e0f0fc;
+  border: 1px solid #b4d4e8;
+  border-radius: 6px;
+  padding: 0.06rem 0.32rem;
+}
+
+.htree-func-count {
+  font-size: 0.72rem;
+  color: #1a4a2e;
+  background: #daf3e0;
+  border: 1px solid #9cd4aa;
+  border-radius: 6px;
+  padding: 0.06rem 0.32rem;
+  font-weight: 600;
+}
+
+.htree-router-info {
+  font-size: 0.72rem;
+  color: #5a3a0e;
+  background: #fff0d8;
+  border: 1px solid #d4b06a;
+  border-radius: 6px;
+  padding: 0.06rem 0.32rem;
+  font-weight: 600;
+}
+
+/* ── Tree Children ─────────────────────────────────────────── */
+
+.htree-children {
+  margin-left: 24px;
+  padding-left: 14px;
+  border-left: 1.5px solid #d0dfe8;
+}
+
+/* ── Connectivity Block ────────────────────────────────────── */
+
+.htree-connectivity {
+  margin: 0.3rem 0 0.4rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f8f4ff 0%, #f0eaf8 100%);
+  border: 1px solid #d4c4e8;
+}
+
+.htree-section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5a4878;
+  margin-bottom: 0.25rem;
+}
+
+.htree-conn-item {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.15rem 0;
+  font-size: 0.78rem;
+}
+
+.htree-conn-badge {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 0.08rem 0.32rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.htree-conn-badge--ring {
+  background: #d7f3dd;
+  color: #1a4a2e;
+  border: 1px solid #9cd4aa;
+}
+
+.htree-conn-badge--general {
+  background: #e3ecf2;
+  color: #2c4b5b;
+  border: 1px solid #b0c8d4;
+}
+
+.htree-conn-name {
+  font-weight: 600;
+  color: #1e3440;
+}
+
+.htree-conn-bw,
+.htree-conn-lat {
+  font: 500 0.72rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #3d6070;
+  background: rgba(90, 72, 120, 0.08);
+  border-radius: 5px;
+  padding: 0.04rem 0.3rem;
+}
+
+/* ── Details Block ─────────────────────────────────────────── */
+
+.htree-details {
+  margin: 0.15rem 0 0.3rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid #d0dfe8;
+}
+
+.htree-func-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.24rem;
+}
+
+.htree-func-chip {
+  font: 600 0.7rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #1a4a2e;
+  background: #e4f5e8;
+  border: 1px solid #aad8b4;
+  border-radius: 6px;
+  padding: 0.06rem 0.36rem;
+}
+
+/* ── Memory Detail in Tree ─────────────────────────────────── */
+
+.htree-mem-bank,
+.htree-mem-array {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+}
+
+.htree-mem-label {
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #1a4a64;
+  background: #d6eaf4;
+  border-radius: 4px;
+  padding: 0.04rem 0.28rem;
+}
+
+.htree-mem-value {
+  font: 500 0.72rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #2c5060;
+}
+
+/* ── Router Side ───────────────────────────────────────────── */
+
+.htree-router-side {
+  margin: 0.15rem 0;
+}
+
+.htree-router-side-header {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  padding: 0.18rem 0.3rem;
+  border-radius: 6px;
+  transition: background 100ms ease;
+}
+
+.htree-router-side-header:hover {
+  background: rgba(90, 58, 14, 0.06);
+}
+
+.htree-router-side-name {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: #3d2a0a;
+}
+
+.htree-router-side-count {
+  font-size: 0.68rem;
+  color: #7a6040;
+  font-weight: 500;
+}
+
+.htree-router-endpoints {
+  margin-left: 20px;
+  padding-left: 10px;
+  border-left: 1px solid #e0d0b8;
+}
+
+.htree-router-ep {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0;
+  font-size: 0.72rem;
+}
+
+.htree-ep-kind {
+  text-transform: uppercase;
+  font-size: 0.54rem;
+  font-weight: 700;
+  padding: 0.04rem 0.24rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.htree-ep-kind--processor {
+  background: #d7f3dd;
+  color: #1a4a2e;
+  border: 1px solid #9cd4aa;
+}
+
+.htree-ep-kind--memory {
+  background: #cee6f8;
+  color: #1a4a64;
+  border: 1px solid #9cc4dc;
+}
+
+.htree-ep-kind--router {
+  background: #ffe7b8;
+  color: #5a3a0e;
+  border: 1px solid #d4b06a;
+}
+
+.htree-ep-name {
+  font-weight: 600;
+  color: #2c2010;
+}
+
+.htree-ep-ref {
+  font: 500 0.66rem/1.2 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  color: #7a6040;
+}
+
 /* ── Responsive ────────────────────────────────────────────── */
 
 @media (max-width: 980px) {
