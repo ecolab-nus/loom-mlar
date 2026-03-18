@@ -48,6 +48,10 @@ fn collect_sub_graphs(
     path: &str,
     graphs: &mut HashMap<String, ArchitectureGraphJson>,
 ) {
+    if matches!(arch, Architecture::Unit(_)) && !path.is_empty() {
+        return;
+    }
+
     graphs.insert(path.to_string(), architecture_to_graph_json(arch));
 
     match arch {
@@ -81,10 +85,51 @@ fn sub_path(parent: &str, child: &str) -> String {
 mod tests {
     use super::*;
     use crate::arch::{
-        ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router, ScaleOutNetwork,
-        SizeExpr,
+        ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router,
+        ScaleOutNetwork, SizeExpr,
     };
     use crate::math::{AffineExpr, AffineMap};
+
+    fn build_core_with_edges() -> (Architecture, MemoryRegion) {
+        let dim_bank = Dimension::new_int("nbank", 16);
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(dim_bank.as_slice())
+        .with_name("L1");
+
+        let matrix_lane = Processor::new("matrix_lane").into_elem();
+        let vector_lane = Processor::new("vector_lane").into_elem();
+        let core_router = Router::new("core_router", 2);
+
+        let mut core: Architecture = ArchGraph::builder("core")
+            .mem(&l1)
+            .processor(&matrix_lane)
+            .processor(&vector_lane)
+            .router(&core_router)
+            .build()
+            .into();
+
+        {
+            let graph = core.as_graph_mut().unwrap();
+            let router_id = graph.router_ref("core_router").unwrap();
+            let mem_id = graph.memory_ref("L1").unwrap();
+            let mat_id = graph.processor_ref("matrix_lane").unwrap();
+            let vec_id = graph.processor_ref("vector_lane").unwrap();
+
+            let router_node = graph.get_node(&router_id).unwrap().clone();
+            let mem_node = graph.get_node(&mem_id).unwrap().clone();
+            let mat_node = graph.get_node(&mat_id).unwrap().clone();
+            let vec_node = graph.get_node(&vec_id).unwrap().clone();
+
+            graph.connect_with_attrs(&mat_node, &router_node, vec![ArchEdgeAttr::Side(0)]);
+            graph.connect_with_attrs(&vec_node, &router_node, vec![ArchEdgeAttr::Side(0)]);
+            graph.connect_with_attrs(&router_node, &mem_node, vec![ArchEdgeAttr::Side(1)]);
+        }
+
+        (core, l1)
+    }
 
     #[test]
     fn viewer_json_has_both_hierarchy_and_graphs() {
@@ -111,30 +156,12 @@ mod tests {
 
     #[test]
     fn viewer_json_has_sub_graphs_for_scaled_architecture() {
-        let dim_bank = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(dim_bank.as_slice())
-        .with_name("L1");
-
-        let matrix_lane = Processor::new("matrix_lane").into_elem();
-        let vector_lane = Processor::new("vector_lane").into_elem();
-        let core_router = Router::new("core_router", 2);
-
-        let core: Architecture = ArchGraph::builder("core")
-            .mem(&l1)
-            .processor(&matrix_lane)
-            .processor(&vector_lane)
-            .router(&core_router)
-            .build()
-            .into();
+        let (core, l1) = build_core_with_edges();
 
         let dim_x = Dimension::new_int("x", 8);
         let dim_y = Dimension::new_int("y", 8);
 
-        let scaled_l1 = l1.clone().scale(&[dim_x.clone(), dim_y.clone()]);
+        let scaled_l1 = l1.scale(&[dim_x.clone(), dim_y.clone()]);
 
         let torus_y_map = AffineMap::new(
             &[dim_x.clone(), dim_y.clone()],
@@ -198,34 +225,20 @@ mod tests {
             !core_graph.nodes.is_empty(),
             "core graph should have nodes"
         );
+        assert!(
+            !core_graph.edges.is_empty(),
+            "core graph should have intra-graph edges"
+        );
     }
 
     #[test]
     fn generate_sample_viewer_json() {
-        let dim_bank = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(dim_bank.as_slice())
-        .with_name("L1");
-
-        let matrix_lane = Processor::new("matrix_lane").into_elem();
-        let vector_lane = Processor::new("vector_lane").into_elem();
-        let core_router = Router::new("core_router", 2);
-
-        let core: Architecture = ArchGraph::builder("core")
-            .mem(&l1)
-            .processor(&matrix_lane)
-            .processor(&vector_lane)
-            .router(&core_router)
-            .build()
-            .into();
+        let (core, l1) = build_core_with_edges();
 
         let dim_x = Dimension::new_int("x", 8);
         let dim_y = Dimension::new_int("y", 8);
 
-        let scaled_l1 = l1.clone().scale(&[dim_x.clone(), dim_y.clone()]);
+        let scaled_l1 = l1.scale(&[dim_x.clone(), dim_y.clone()]);
 
         let torus_y_map = AffineMap::new(
             &[dim_x.clone(), dim_y.clone()],

@@ -118,180 +118,27 @@
     ]
   },
   "graphs": {
-    "core/vector_lane": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "vector_lane",
-        "labels": []
-      },
-      "nodes": [
-        {
-          "id": "proc:vector_lane",
-          "kind": "processor",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "vector_lane",
-              "functionality": {
-                "name": null,
-                "source_path": null,
-                "source_mlir_module_name": null,
-                "ops": []
-              }
-            },
-            "total_instances": 1
-          }
-        }
-      ],
-      "edges": []
-    },
-    "core/matrix_lane": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "matrix_lane",
-        "labels": []
-      },
-      "nodes": [
-        {
-          "id": "proc:matrix_lane",
-          "kind": "processor",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "matrix_lane",
-              "functionality": {
-                "name": null,
-                "source_path": null,
-                "source_mlir_module_name": null,
-                "ops": []
-              }
-            },
-            "total_instances": 1
-          }
-        }
-      ],
-      "edges": []
-    },
-    "core": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "core",
-        "labels": []
-      },
-      "nodes": [
-        {
-          "id": "mem:l1",
-          "kind": "memory",
-          "name": "L1",
-          "label": "L1 [nbank=16]",
-          "dimensions": [
-            {
-              "name": "nbank",
-              "size_expr": "16",
-              "size_const": 16
-            }
-          ],
-          "details": {
-            "type": "memory",
-            "region": {
-              "kind": "array",
-              "name": "L1",
-              "dimensions": [
-                {
-                  "name": "nbank",
-                  "size_expr": "16",
-                  "size_const": 16
-                }
-              ],
-              "elem": {
-                "kind": "bank",
-                "name": null,
-                "capacity_bytes": {
-                  "expr": "(128 * 1024)",
-                  "const_value": 131072
-                },
-                "access_granularity": {
-                  "expr": "128",
-                  "const_value": 128
-                },
-                "total_size_bytes": 131072
-              },
-              "total_size_bytes": 2097152
-            }
-          }
-        },
-        {
-          "id": "proc:matrix_lane",
-          "kind": "processor",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "matrix_lane",
-              "functionality": {
-                "name": null,
-                "source_path": null,
-                "source_mlir_module_name": null,
-                "ops": []
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "proc:vector_lane",
-          "kind": "processor",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "vector_lane",
-              "functionality": {
-                "name": null,
-                "source_path": null,
-                "source_mlir_module_name": null,
-                "ops": []
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "router:core_router",
-          "kind": "router",
-          "name": "core_router",
-          "label": "core_router",
-          "dimensions": [],
-          "details": {
-            "type": "router",
-            "router": {
-              "name": "core_router",
-              "side_count": 2
-            }
-          }
-        }
-      ],
-      "edges": []
-    },
     "": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
         "name": "2d_mesh_torus",
-        "labels": []
+        "labels": [
+          {
+            "name": "2d_mesh_torus",
+            "dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ]
+          }
+        ]
       },
       "nodes": [
         {
@@ -421,7 +268,6 @@
             "expr": "64",
             "const_value": 64
           },
-          "latency": null,
           "constraints": "",
           "sharing": "mesh",
           "map_relation": "one_to_one",
@@ -470,7 +316,6 @@
             "expr": "64",
             "const_value": 64
           },
-          "latency": null,
           "constraints": "",
           "sharing": "mesh",
           "map_relation": "one_to_one",
@@ -505,6 +350,288 @@
               "y"
             ]
           }
+        }
+      ],
+      "intra_core": {
+        "schema_version": "mlar.arch-graph.v1",
+        "architecture": {
+          "name": "core",
+          "labels": []
+        },
+        "nodes": [
+          {
+            "id": "mem:l1",
+            "kind": "memory",
+            "name": "L1",
+            "label": "L1 [nbank=16]",
+            "dimensions": [
+              {
+                "name": "nbank",
+                "size_expr": "16",
+                "size_const": 16
+              }
+            ],
+            "details": {
+              "type": "memory",
+              "region": {
+                "kind": "array",
+                "name": "L1",
+                "dimensions": [
+                  {
+                    "name": "nbank",
+                    "size_expr": "16",
+                    "size_const": 16
+                  }
+                ],
+                "elem": {
+                  "kind": "bank",
+                  "name": null,
+                  "capacity_bytes": {
+                    "expr": "(128 * 1024)",
+                    "const_value": 131072
+                  },
+                  "access_granularity": {
+                    "expr": "128",
+                    "const_value": 128
+                  },
+                  "total_size_bytes": 131072
+                },
+                "total_size_bytes": 2097152
+              }
+            }
+          },
+          {
+            "id": "proc:matrix_lane",
+            "kind": "processor",
+            "name": "matrix_lane",
+            "label": "matrix_lane",
+            "dimensions": [],
+            "details": {
+              "type": "processor",
+              "element": {
+                "kind": "unit",
+                "name": "matrix_lane",
+                "functionality": {
+                  "name": null,
+                  "source_path": null,
+                  "source_mlir_module_name": null,
+                  "ops": []
+                }
+              },
+              "total_instances": 1
+            }
+          },
+          {
+            "id": "proc:vector_lane",
+            "kind": "processor",
+            "name": "vector_lane",
+            "label": "vector_lane",
+            "dimensions": [],
+            "details": {
+              "type": "processor",
+              "element": {
+                "kind": "unit",
+                "name": "vector_lane",
+                "functionality": {
+                  "name": null,
+                  "source_path": null,
+                  "source_mlir_module_name": null,
+                  "ops": []
+                }
+              },
+              "total_instances": 1
+            }
+          },
+          {
+            "id": "router:core_router",
+            "kind": "router",
+            "name": "core_router",
+            "label": "core_router",
+            "dimensions": [],
+            "details": {
+              "type": "router",
+              "router": {
+                "name": "core_router",
+                "side_count": 2
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "iedge:matrix_lane:0",
+            "kind": "intra_graph",
+            "name": "matrix_lane→core_router",
+            "source": "proc:matrix_lane",
+            "target": "router:core_router",
+            "source_name": "matrix_lane",
+            "target_name": "core_router",
+            "label": "matrix_lane → core_router (side 0)",
+            "side": 0
+          },
+          {
+            "id": "iedge:vector_lane:1",
+            "kind": "intra_graph",
+            "name": "vector_lane→core_router",
+            "source": "proc:vector_lane",
+            "target": "router:core_router",
+            "source_name": "vector_lane",
+            "target_name": "core_router",
+            "label": "vector_lane → core_router (side 0)",
+            "side": 0
+          },
+          {
+            "id": "iedge:core_router:2",
+            "kind": "intra_graph",
+            "name": "core_router→L1",
+            "source": "router:core_router",
+            "target": "mem:l1",
+            "source_name": "core_router",
+            "target_name": "L1",
+            "label": "core_router → L1 (side 1)",
+            "side": 1
+          }
+        ]
+      }
+    },
+    "core": {
+      "schema_version": "mlar.arch-graph.v1",
+      "architecture": {
+        "name": "core",
+        "labels": []
+      },
+      "nodes": [
+        {
+          "id": "mem:l1",
+          "kind": "memory",
+          "name": "L1",
+          "label": "L1 [nbank=16]",
+          "dimensions": [
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "L1",
+              "dimensions": [
+                {
+                  "name": "nbank",
+                  "size_expr": "16",
+                  "size_const": 16
+                }
+              ],
+              "elem": {
+                "kind": "bank",
+                "name": null,
+                "capacity_bytes": {
+                  "expr": "(128 * 1024)",
+                  "const_value": 131072
+                },
+                "access_granularity": {
+                  "expr": "128",
+                  "const_value": 128
+                },
+                "total_size_bytes": 131072
+              },
+              "total_size_bytes": 2097152
+            }
+          }
+        },
+        {
+          "id": "proc:matrix_lane",
+          "kind": "processor",
+          "name": "matrix_lane",
+          "label": "matrix_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "matrix_lane",
+              "functionality": {
+                "name": null,
+                "source_path": null,
+                "source_mlir_module_name": null,
+                "ops": []
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "proc:vector_lane",
+          "kind": "processor",
+          "name": "vector_lane",
+          "label": "vector_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "vector_lane",
+              "functionality": {
+                "name": null,
+                "source_path": null,
+                "source_mlir_module_name": null,
+                "ops": []
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "router:core_router",
+          "kind": "router",
+          "name": "core_router",
+          "label": "core_router",
+          "dimensions": [],
+          "details": {
+            "type": "router",
+            "router": {
+              "name": "core_router",
+              "side_count": 2
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "iedge:matrix_lane:0",
+          "kind": "intra_graph",
+          "name": "matrix_lane→core_router",
+          "source": "proc:matrix_lane",
+          "target": "router:core_router",
+          "source_name": "matrix_lane",
+          "target_name": "core_router",
+          "label": "matrix_lane → core_router (side 0)",
+          "side": 0
+        },
+        {
+          "id": "iedge:vector_lane:1",
+          "kind": "intra_graph",
+          "name": "vector_lane→core_router",
+          "source": "proc:vector_lane",
+          "target": "router:core_router",
+          "source_name": "vector_lane",
+          "target_name": "core_router",
+          "label": "vector_lane → core_router (side 0)",
+          "side": 0
+        },
+        {
+          "id": "iedge:core_router:2",
+          "kind": "intra_graph",
+          "name": "core_router→L1",
+          "source": "router:core_router",
+          "target": "mem:l1",
+          "source_name": "core_router",
+          "target_name": "L1",
+          "label": "core_router → L1 (side 1)",
+          "side": 1
         }
       ]
     }

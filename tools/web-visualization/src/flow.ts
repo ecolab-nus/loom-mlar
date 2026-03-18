@@ -96,7 +96,7 @@ interface VisualEdgeSpec {
   source: string;
   target: string;
   label?: string;
-  kind: 'link_in' | 'link_out';
+  kind: 'link_in' | 'link_out' | 'direct';
 }
 
 interface VisualGraph {
@@ -604,8 +604,11 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
     });
   }
 
+  const scaleOutEdges = graph.edges.filter((e) => e.kind === 'scale_out_network');
+  const intraEdges = graph.edges.filter((e) => e.kind === 'intra_graph');
+
   const links = new Map<string, LinkAccumulator>();
-  for (const edge of graph.edges) {
+  for (const edge of scaleOutEdges) {
     if (!links.has(edge.name)) {
       links.set(edge.name, {
         edge,
@@ -624,6 +627,7 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
 
   for (const [name, acc] of links.entries()) {
     const linkNodeId = `link:${slugify(name)}`;
+    const bwExpr = acc.edge.bandwidth?.expr ?? '?';
     const latency = acc.edge.latency ? `, lat=${acc.edge.latency.expr}` : '';
     nodes.push({
       id: linkNodeId,
@@ -631,7 +635,7 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
       name,
       label: name,
       dimensions: [],
-      summary: `bw=${acc.edge.bandwidth.expr}${latency}`,
+      summary: `bw=${bwExpr}${latency}`,
       bankSlots: [],
     });
 
@@ -665,6 +669,17 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
         },
       );
     }
+  }
+
+  for (const edge of intraEdges) {
+    const sideLabel = edge.side != null ? `side ${edge.side}` : undefined;
+    pushEdge(edges, edgeKeys, {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: sideLabel,
+      kind: 'direct',
+    });
   }
 
   return { nodes, edges };
@@ -1020,6 +1035,17 @@ function summarizeMemoryNode(node: ArchitectureGraphNode, totalBanks: number | n
 }
 
 function edgeToFlow(edge: VisualEdgeSpec): Edge {
+  if (edge.kind === 'direct') {
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: { stroke: '#5a8ea0', strokeWidth: 2 },
+      labelStyle: { fontSize: 10, fontWeight: 600, fill: '#3a6a7e' },
+    };
+  }
   const stroke = edge.kind === 'link_in' ? '#3e6d89' : '#1f5d80';
   return {
     id: edge.id,

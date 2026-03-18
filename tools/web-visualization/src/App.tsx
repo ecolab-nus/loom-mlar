@@ -16,7 +16,6 @@ import { ArchNode } from './components/ArchNode';
 import { CoreArchNode } from './components/CoreArchNode';
 import { CoreGridNode } from './components/CoreGridNode';
 import { HierarchyView } from './components/HierarchyView';
-import { IntraCorePanel } from './components/IntraCorePanel';
 import { MemoryDetailPanel } from './components/MemoryDetailPanel';
 import {
   architectureToFlow,
@@ -27,7 +26,6 @@ import {
 import { loadGraphFromFile, loadGraphFromUrl, parseAnyText } from './runtime-loader';
 import type {
   ArchitectureGraph,
-  ArchitectureViewer,
   HierarchyNode,
   AnyArchPayload,
   GraphMemoryRegion,
@@ -86,6 +84,33 @@ function extractViewData(payload: AnyArchPayload): {
   }
 }
 
+function buildBreadcrumbSegments(
+  path: string,
+  hierarchy: HierarchyNode | null,
+): Array<{ label: string; path: string }> {
+  if (!hierarchy) return [];
+
+  const rootLabel = hierarchy.name;
+  const segments: Array<{ label: string; path: string }> = [
+    { label: rootLabel, path: '' },
+  ];
+
+  if (path === '') return segments;
+
+  const parts = path.split('/');
+  let accum = '';
+  for (const part of parts) {
+    accum = accum === '' ? part : `${accum}/${part}`;
+    segments.push({ label: part, path: accum });
+  }
+
+  return segments;
+}
+
+function childGraphPath(currentPath: string, childName: string): string {
+  return currentPath === '' ? childName : `${currentPath}/${childName}`;
+}
+
 function AppInner() {
   const [jsonText, setJsonText] = useState('');
   const [sourceUrl, setSourceUrl] = useState(DEFAULT_URL);
@@ -93,7 +118,6 @@ function AppInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedGraphPath, setSelectedGraphPath] = useState<string>('');
-  const [selectedCore, setSelectedCore] = useState<{ x: number; y: number } | null>(null);
   const [selectedLegendLinkName, setSelectedLegendLinkName] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<{
     name: string;
@@ -141,19 +165,47 @@ function AppInner() {
     return parsed.graphs[selectedGraphPath] ?? null;
   }, [parsed.graphs, selectedGraphPath]);
 
-  const onNodeSelect = useCallback((path: string) => {
+  const navigateToPath = useCallback((path: string) => {
     setSelectedGraphPath(path);
-    setSelectedCore(null);
     setSelectedMemory(null);
   }, []);
 
-  const onCoreClick = useCallback((x: number, y: number) => {
-    setSelectedCore({ x, y });
-  }, []);
+  const tryNavigateDeeper = useCallback((nodeName: string) => {
+    const candidate = childGraphPath(selectedGraphPath, nodeName);
+    if (parsed.graphs[candidate]) {
+      navigateToPath(candidate);
+      return true;
+    }
+    return false;
+  }, [selectedGraphPath, parsed.graphs, navigateToPath]);
+
+  const onCoreClick = useCallback((_x: number, _y: number) => {
+    if (activeGraph?.intra_core) {
+      const innerName = activeGraph.intra_core.architecture.name;
+      tryNavigateDeeper(innerName);
+    }
+  }, [activeGraph, tryNavigateDeeper]);
 
   const onMemoryClick = useCallback((name: string, region: GraphMemoryRegion) => {
     setSelectedMemory({ name, region });
   }, []);
+
+  const onGraphNodeClick = useCallback((_event: React.MouseEvent, node: AnyFlowNode) => {
+    const coord = parseCoreNodeId(node.id);
+    if (coord) {
+      onCoreClick(coord.x, coord.y);
+      return;
+    }
+    if (node.type === 'archNode') {
+      const data = node.data as ArchFlowNodeData;
+      if (tryNavigateDeeper(data.name)) {
+        return;
+      }
+      if (data.kind === 'memory' && data.region) {
+        setSelectedMemory({ name: data.name, region: data.region });
+      }
+    }
+  }, [onCoreClick, tryNavigateDeeper]);
 
   const flow = useMemo(() => {
     if (!activeGraph) {
@@ -200,7 +252,11 @@ function AppInner() {
     }
   };
 
-  const graphPathLabel = selectedGraphPath === '' ? 'root' : selectedGraphPath;
+  const breadcrumbs = useMemo(
+    () => buildBreadcrumbSegments(selectedGraphPath, parsed.hierarchy),
+    [selectedGraphPath, parsed.hierarchy],
+  );
+
   const archName = activeGraph?.architecture.name ?? parsed.hierarchy?.name ?? 'no selection';
 
   return (
@@ -243,12 +299,34 @@ function AppInner() {
               hierarchy={parsed.hierarchy}
               selectedPath={selectedGraphPath}
               availableGraphPaths={availableGraphPaths}
-              onNodeSelect={onNodeSelect}
+              onNodeSelect={navigateToPath}
             />
           </aside>
         )}
 
         <section className="graph-panel">
+          {activeGraph && breadcrumbs.length > 0 && (
+            <div className="graph-breadcrumb">
+              <span className="graph-breadcrumb-label">Viewing</span>
+              {breadcrumbs.map((seg, idx) => (
+                <span key={seg.path} className="graph-breadcrumb-segment">
+                  {idx > 0 && <span className="graph-breadcrumb-sep">/</span>}
+                  {idx < breadcrumbs.length - 1 ? (
+                    <button
+                      type="button"
+                      className="graph-breadcrumb-link"
+                      onClick={() => navigateToPath(seg.path)}
+                    >
+                      {seg.label}
+                    </button>
+                  ) : (
+                    <span className="graph-breadcrumb-current">{seg.label}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
           {activeGraph ? (
             <ReactFlow<AnyFlowNode, Edge>
               key={selectedGraphPath}
@@ -257,19 +335,7 @@ function AppInner() {
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={{ padding: 0.15 }}
-              onNodeClick={(_, node) => {
-                const coord = parseCoreNodeId(node.id);
-                if (coord) {
-                  setSelectedCore(coord);
-                  return;
-                }
-                if (node.type === 'archNode') {
-                  const data = node.data as ArchFlowNodeData;
-                  if (data.kind === 'memory' && data.region) {
-                    setSelectedMemory({ name: data.name, region: data.region });
-                  }
-                }
-              }}
+              onNodeClick={onGraphNodeClick}
             >
               <Controls />
               <MiniMap pannable zoomable />
@@ -279,10 +345,6 @@ function AppInner() {
                   <div>
                     <strong>Architecture</strong>
                     <span>{archName}</span>
-                  </div>
-                  <div>
-                    <strong>Path</strong>
-                    <span>{graphPathLabel}</span>
                   </div>
                   <div>
                     <strong>Source</strong>
@@ -366,16 +428,6 @@ function AppInner() {
           </section>
         )}
       </main>
-
-      {selectedCore && activeGraph?.intra_core && (
-        <IntraCorePanel
-          coreX={selectedCore.x}
-          coreY={selectedCore.y}
-          intraCoreGraph={activeGraph.intra_core}
-          onClose={() => setSelectedCore(null)}
-          onMemoryClick={onMemoryClick}
-        />
-      )}
 
       {selectedMemory && (
         <MemoryDetailPanel

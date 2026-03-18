@@ -89,17 +89,18 @@ export interface ArchitectureGraphEdge {
   source_name: string;
   target_name: string;
   label: string;
-  bandwidth: GraphExpr;
-  latency: GraphExpr | null;
-  constraints: string;
-  sharing: string;
+  bandwidth?: GraphExpr;
+  latency?: GraphExpr | null;
+  constraints?: string;
+  sharing?: string;
   map_relation?: 'one_to_one' | 'one_to_many' | 'many_to_one' | 'many_to_many' | 'unknown';
   topology?: 'ring' | 'general';
-  map: {
+  map?: {
     source_dimensions: GraphDimension[];
     target_dimensions: GraphDimension[];
     expressions: string[];
   };
+  side?: number | null;
 }
 
 export interface ArchitectureGraph {

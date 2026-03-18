@@ -76,6 +76,7 @@ pub struct GraphRouter {
 #[serde(rename_all = "snake_case")]
 pub enum GraphEdgeKind {
     ScaleOutNetwork,
+    IntraGraph,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,13 +89,22 @@ pub struct GraphEdge {
     pub source_name: String,
     pub target_name: String,
     pub label: String,
-    pub bandwidth: GraphExpr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<GraphExpr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub latency: Option<GraphExpr>,
-    pub constraints: String,
-    pub sharing: String,
-    pub map_relation: GraphMapRelation,
-    pub topology: GraphLinkTopology,
-    pub map: GraphAffineMap,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map_relation: Option<GraphMapRelation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology: Option<GraphLinkTopology>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map: Option<GraphAffineMap>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -221,6 +231,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
     let mut memory_node_ids = HashMap::new();
     let mut processor_node_ids = HashMap::new();
     let mut router_node_ids: HashMap<String, String> = HashMap::new();
+    let mut arch_node_id_map: HashMap<String, (String, String)> = HashMap::new();
 
     for (idx, node) in graph.nodes.iter().enumerate() {
         match &node.component {
@@ -231,6 +242,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("mem:{}", slugify(&name)), &mut used_ids);
                 memory_node_ids.insert(name.clone(), id.clone());
+                arch_node_id_map
+                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(memory_node_from_region(id, &name, region));
             }
             ArchNodeComponent::Architecture(proc) => {
@@ -240,6 +253,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("proc:{}", slugify(&name)), &mut used_ids);
                 processor_node_ids.insert(name.clone(), id.clone());
+                arch_node_id_map
+                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(processor_node_from_elem(id, &name, proc));
             }
             ArchNodeComponent::Router(router) => {
@@ -253,6 +268,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 }
                 let id = unique_id(&format!("router:{}", slugify(&name)), &mut used_ids);
                 router_node_ids.insert(name.clone(), id.clone());
+                arch_node_id_map
+                    .insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(router_node(id, &name, router));
             }
         }
@@ -281,25 +298,69 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             source_name,
             target_name,
             label: format!("{} ({} B/cycle)", link_name, bandwidth.expr),
-            bandwidth,
+            bandwidth: Some(bandwidth),
             latency: link.latency().map(expr_to_json),
-            constraints: String::new(),
-            sharing: network_kind_label(link).to_owned(),
-            map_relation: link_map_relation_to_json(link_map_relation(link)),
-            topology: link_topology_to_json(link_topology(link)),
-            map: affine_map_to_json(link.map()),
+            constraints: Some(String::new()),
+            sharing: Some(network_kind_label(link).to_owned()),
+            map_relation: Some(link_map_relation_to_json(link_map_relation(link))),
+            topology: Some(link_topology_to_json(link_topology(link))),
+            map: Some(affine_map_to_json(link.map())),
+            side: None,
         });
     }
+
+    for (idx, arch_edge) in graph.edges.iter().enumerate() {
+        let Some((source_id, source_name)) =
+            arch_node_id_map.get(arch_edge.source.as_str()).cloned()
+        else {
+            continue;
+        };
+        let Some((target_id, target_name)) =
+            arch_node_id_map.get(arch_edge.target.as_str()).cloned()
+        else {
+            continue;
+        };
+
+        let edge_id = unique_id(
+            &format!("iedge:{}:{}", slugify(&source_name), idx),
+            &mut used_ids,
+        );
+        let side_attr = arch_edge.side();
+        let label = match side_attr {
+            Some(s) => format!("{} → {} (side {})", source_name, target_name, s),
+            None => format!("{} → {}", source_name, target_name),
+        };
+        edges.push(GraphEdge {
+            id: edge_id,
+            kind: GraphEdgeKind::IntraGraph,
+            name: format!("{}→{}", source_name, target_name),
+            source: source_id,
+            target: target_id,
+            source_name,
+            target_name,
+            label,
+            bandwidth: None,
+            latency: None,
+            constraints: None,
+            sharing: None,
+            map_relation: None,
+            topology: None,
+            map: None,
+            side: side_attr,
+        });
+    }
+
+    let (labels, intra_core) = build_labels_and_intra_core(arch);
 
     ArchitectureGraphJson {
         schema_version: GRAPH_SCHEMA_VERSION,
         architecture: GraphArchitectureMeta {
             name: graph.name.clone(),
-            labels: Vec::new(),
+            labels,
         },
         nodes,
         edges,
-        intra_core: None,
+        intra_core,
     }
 }
 
@@ -319,6 +380,29 @@ pub fn architecture_to_graph_json_string_pretty(
     arch: &Architecture,
 ) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(&architecture_to_graph_json(arch))
+}
+
+fn build_labels_and_intra_core(
+    arch: &Architecture,
+) -> (Vec<GraphArchitectureLabel>, Option<Box<ArchitectureGraphJson>>) {
+    if let Architecture::Array {
+        name, dims, elem, ..
+    } = arch
+    {
+        if dims.len() >= 2 {
+            let label_name = name
+                .clone()
+                .or_else(|| elem.name().map(String::from))
+                .unwrap_or_else(|| "array".to_string());
+            let label = GraphArchitectureLabel {
+                name: label_name,
+                dimensions: dims.iter().map(dimension_to_json).collect(),
+            };
+            let intra = architecture_to_graph_json(elem);
+            return (vec![label], Some(Box::new(intra)));
+        }
+    }
+    (Vec::new(), None)
 }
 
 fn collect_connectivity_links<'a>(
@@ -731,7 +815,11 @@ mod tests {
         let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
 
         let graph = architecture_to_graph_json(&mesh);
-        assert!(graph.intra_core.is_none());
+        assert!(graph.intra_core.is_some(), "2D Array should produce intra_core");
+        assert_eq!(graph.architecture.labels.len(), 1);
+        assert_eq!(graph.architecture.labels[0].dimensions.len(), 2);
+        let intra = graph.intra_core.as_ref().unwrap();
+        assert_eq!(intra.architecture.name, "core");
         assert!(!graph.nodes.is_empty());
     }
 

@@ -100,7 +100,10 @@ function HierarchyTreeNode({ node, depth, isLast, path, selectedPath, availableG
           <span className="htree-instances">{node.total_instances} instances</span>
         )}
         <NodeSummaryBadge node={node} />
-        {hasGraph && isArchitectureNode && (
+        {isSelected && (
+          <span className="htree-viewing-badge">viewing</span>
+        )}
+        {hasGraph && isArchitectureNode && !isSelected && (
           <span className="htree-graph-indicator" title="Click to view graph">&#x25A3;</span>
         )}
       </div>
