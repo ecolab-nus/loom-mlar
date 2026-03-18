@@ -1,6 +1,6 @@
 use crate::arch::{
-    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, Endpoint, LinkMapRelation,
-    LinkTopology, MemoryRegion, Processors, Router, SizeExpr,
+    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, LinkMapRelation, LinkTopology,
+    MemoryRegion, Processors, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
@@ -250,20 +250,10 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
     let mut links = Vec::new();
     collect_connectivity_links(arch, &mut links);
     for (idx, link) in links.iter().enumerate() {
-        let (source, source_name) = ensure_endpoint_node(
-            link.src(),
-            &mut nodes,
-            &mut memory_node_ids,
-            &mut processor_node_ids,
-            &mut used_ids,
-        );
-        let (target, target_name) = ensure_endpoint_node(
-            link.dst(),
-            &mut nodes,
-            &mut memory_node_ids,
-            &mut processor_node_ids,
-            &mut used_ids,
-        );
+        let (source, source_name) =
+            ensure_endpoint_node(link.src(), &mut nodes, &mut memory_node_ids, &mut used_ids);
+        let (target, target_name) =
+            ensure_endpoint_node(link.dst(), &mut nodes, &mut memory_node_ids, &mut used_ids);
 
         let link_name = link.name();
         let edge_id = unique_id(
@@ -343,44 +333,24 @@ fn collect_connectivity_links<'a>(
 }
 
 fn ensure_endpoint_node(
-    endpoint: &Endpoint,
+    endpoint: &MemoryRegion,
     nodes: &mut Vec<GraphNode>,
     memory_node_ids: &mut HashMap<String, String>,
-    processor_node_ids: &mut HashMap<String, String>,
     used_ids: &mut HashSet<String>,
 ) -> (String, String) {
-    match endpoint {
-        Endpoint::Mem(region) => {
-            let name = region
-                .name()
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "unnamed_memory".to_string());
+    let name = endpoint
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "unnamed_memory".to_string());
 
-            if let Some(id) = memory_node_ids.get(&name) {
-                return (id.clone(), name);
-            }
-
-            let id = unique_id(&format!("mem:{}", slugify(&name)), used_ids);
-            nodes.push(memory_node_from_region(id.clone(), &name, region));
-            memory_node_ids.insert(name.clone(), id.clone());
-            (id, name)
-        }
-        Endpoint::Proc(proc) => {
-            let name = proc
-                .name()
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "unnamed_processor".to_string());
-
-            if let Some(id) = processor_node_ids.get(&name) {
-                return (id.clone(), name);
-            }
-
-            let id = unique_id(&format!("proc:{}", slugify(&name)), used_ids);
-            nodes.push(processor_node_from_elem(id.clone(), &name, proc));
-            processor_node_ids.insert(name.clone(), id.clone());
-            (id, name)
-        }
+    if let Some(id) = memory_node_ids.get(&name) {
+        return (id.clone(), name);
     }
+
+    let id = unique_id(&format!("mem:{}", slugify(&name)), used_ids);
+    nodes.push(memory_node_from_region(id.clone(), &name, endpoint));
+    memory_node_ids.insert(name.clone(), id.clone());
+    (id, name)
 }
 
 fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> GraphNode {
@@ -687,12 +657,18 @@ mod tests {
         ))
         .replicate(core_dim.as_slice())
         .with_name("l1");
+        let l2 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(64),
+            SizeExpr::Const(1024),
+        ))
+        .replicate(core_dim.as_slice())
+        .with_name("l2");
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
-        let link = ScaleOutNetwork::mesh("l1_to_lane")
+        let link = ScaleOutNetwork::mesh("l1_to_l2")
             .from_mem(&l1)
-            .to_proc(&lane)
+            .to_mem(&l2)
             .map(&map)
             .bandwidth(128)
             .build();

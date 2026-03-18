@@ -28,10 +28,10 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("failed to bind");
 
     let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
-        .from_mem(&scaled_l1)
-        .to_mem(&scaled_l1)
+        .region_mem(&scaled_l1)
         .map(&torus_y_map)
-        .bandwidth(64)
+        .io_bandwidth(64)
+        .link_bandwidth(64)
         .build();
 
     // Vertical torus: x-neighbor with wraparound
@@ -41,10 +41,10 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("failed to bind");
 
     let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
-        .from_mem(&scaled_l1)
-        .to_mem(&scaled_l1)
+        .region_mem(&scaled_l1)
         .map(&torus_x_map)
-        .bandwidth(64)
+        .io_bandwidth(64)
+        .link_bandwidth(64)
         .build();
 
     mesh.with_connectivity(vec![torus_y, torus_x])

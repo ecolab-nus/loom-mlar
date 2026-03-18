@@ -22,7 +22,7 @@ src/
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
 │   ├── processor.rs            # FunctionProcessor, Processor, ProcessorSet/Processors aliases
 │   ├── memory.rs               # MemoryBank, MemoryRegion
-│   ├── links.rs                # ScaleOutNetwork (enum: Mesh), MeshNetwork, Router, Endpoint
+│   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, Router
 │   └── architecture.rs         # Architecture + graph composition primitives (ArchGraph, ArchNode, ArchEdge)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
@@ -196,7 +196,7 @@ Memory uses the same recursive pattern:
 
 Connectivity is `ScaleOutNetwork` with:
 
-- source and destination endpoints (`MemoryRegion` or `Processors`)
+- source and destination endpoints (`MemoryRegion`)
 - affine map (`AffineMap`)
 - bandwidth/latency expressions
 - optional constraints
@@ -209,12 +209,11 @@ let l1 = MemoryRegion::bank(MemoryBank::from_blocks(SizeExpr::Const(128), SizeEx
     .replicate(bank_dim.as_slice())
     .with_name("l1");
 
-let proc = Processor::new("vector_lane").into_elem();
 let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
 
 let link = ScaleOutNetwork::mesh("l1_to_vector")
     .from_mem(&l1)
-    .to_proc(&proc)
+    .to_mem(&l1)
     .map(&all_to_one)
     .bandwidth(128)
     .build();
@@ -281,7 +280,7 @@ Web UI lives in `tools/web-visualization/`.
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `ProcessorSet` / `Processors` | Type aliases for `Architecture` | `src/arch/processor.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
-| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `Endpoint`, `Router` | Connectivity, routing, scale-out links | `src/arch/links.rs` |
+| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `Router` | Connectivity, routing, scale-out links | `src/arch/network.rs` |
 | `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture.rs` |
 | `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
 | `run_evaluator`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |

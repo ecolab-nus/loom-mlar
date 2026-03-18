@@ -1,61 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRegion;
-use super::processor::Processors;
 use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;
-
-/// An endpoint of a scale-out network.
-/// The name is derived from the embedded data via `.name()`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Endpoint {
-    Mem(MemoryRegion),
-    Proc(Processors),
-}
-
-impl Endpoint {
-    /// Get the display name (panics if the region/processor has no name).
-    pub fn name(&self) -> &str {
-        match self {
-            Endpoint::Mem(r) => r.name().expect("memory endpoint must have a name"),
-            Endpoint::Proc(p) => p.name().expect("processor endpoint must have a name"),
-        }
-    }
-
-    pub fn is_mem(&self) -> bool {
-        matches!(self, Endpoint::Mem(_))
-    }
-
-    pub fn is_proc(&self) -> bool {
-        matches!(self, Endpoint::Proc(_))
-    }
-
-    /// Get the memory region if this is a Mem endpoint.
-    pub fn as_region(&self) -> Option<&MemoryRegion> {
-        match self {
-            Endpoint::Mem(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    /// Get the processor if this is a Proc endpoint.
-    pub fn as_processor(&self) -> Option<&Processors> {
-        match self {
-            Endpoint::Proc(p) => Some(p),
-            _ => None,
-        }
-    }
-
-    /// Wrap the inner region/processor in Replicated with the given dimensions.
-    /// Used during Architecture::scale().
-    fn replicate(self, dims: &[Dimension]) -> Self {
-        match self {
-            Endpoint::Mem(region) => Endpoint::Mem(region.replicate(dims)),
-            Endpoint::Proc(processor) => Endpoint::Proc(processor.scale(dims)),
-        }
-    }
-}
 
 /// Relation between map source and destination domains.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,12 +29,12 @@ pub struct MeshNetwork {
     pub name: String,
     /// Affine map describing the mesh topology (src indices -> dst indices).
     pub map: AffineMap,
-    /// Source endpoint (memory region or processor array).
-    pub src: Endpoint,
-    /// Destination endpoint (memory region or processor array).
-    pub dst: Endpoint,
-    /// Bandwidth per link (symbolic expression, e.g. `Expr::Const(256)`).
-    pub bandwidth: Expr,
+    /// Entire connected memory region attached to this mesh network.
+    pub region: Vec<MemoryRegion>,
+    /// Aggregate ingress/egress bandwidth for the whole mesh.
+    pub io_bandwidth: Expr,
+    /// Bandwidth per internal mesh link.
+    pub link_bandwidth: Expr,
 }
 
 /// A connectivity network between architecture entities.
@@ -103,10 +51,10 @@ impl ScaleOutNetwork {
     pub fn mesh(name: impl Into<String>) -> MeshNetworkBuilder {
         MeshNetworkBuilder {
             name: name.into(),
-            src: None,
-            dst: None,
+            region: Vec::new(),
             map: None,
-            bandwidth: None,
+            io_bandwidth: None,
+            link_bandwidth: None,
         }
     }
 
@@ -116,15 +64,24 @@ impl ScaleOutNetwork {
         }
     }
 
-    pub fn src(&self) -> &Endpoint {
+    pub fn region(&self) -> &[MemoryRegion] {
         match self {
-            Self::Mesh(m) => &m.src,
+            Self::Mesh(m) => &m.region,
         }
     }
 
-    pub fn dst(&self) -> &Endpoint {
+    pub fn src(&self) -> &MemoryRegion {
         match self {
-            Self::Mesh(m) => &m.dst,
+            Self::Mesh(m) => m.region.first().expect("mesh region must not be empty"),
+        }
+    }
+
+    pub fn dst(&self) -> &MemoryRegion {
+        match self {
+            Self::Mesh(m) => m
+                .region
+                .get(1)
+                .unwrap_or_else(|| m.region.first().expect("mesh region must not be empty")),
         }
     }
 
@@ -134,10 +91,20 @@ impl ScaleOutNetwork {
         }
     }
 
-    pub fn bandwidth(&self) -> &Expr {
+    pub fn io_bandwidth(&self) -> &Expr {
         match self {
-            Self::Mesh(m) => &m.bandwidth,
+            Self::Mesh(m) => &m.io_bandwidth,
         }
+    }
+
+    pub fn link_bandwidth(&self) -> &Expr {
+        match self {
+            Self::Mesh(m) => &m.link_bandwidth,
+        }
+    }
+
+    pub fn bandwidth(&self) -> &Expr {
+        self.link_bandwidth()
     }
 
     pub fn latency(&self) -> Option<&Expr> {
@@ -152,10 +119,14 @@ impl ScaleOutNetwork {
         match self {
             Self::Mesh(m) => Self::Mesh(MeshNetwork {
                 name: m.name,
-                src: m.src.replicate(dims),
-                dst: m.dst.replicate(dims),
+                region: m
+                    .region
+                    .into_iter()
+                    .map(|region| region.replicate(dims))
+                    .collect(),
                 map: AffineMap::identity(dims),
-                bandwidth: m.bandwidth,
+                io_bandwidth: m.io_bandwidth,
+                link_bandwidth: m.link_bandwidth,
             }),
         }
     }
@@ -218,34 +189,54 @@ impl ScaleOutNetwork {
 /// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
 pub struct MeshNetworkBuilder {
     name: String,
-    src: Option<Endpoint>,
-    dst: Option<Endpoint>,
+    region: Vec<MemoryRegion>,
     map: Option<AffineMap>,
-    bandwidth: Option<Expr>,
+    io_bandwidth: Option<Expr>,
+    link_bandwidth: Option<Expr>,
 }
 
 impl MeshNetworkBuilder {
-    /// Set the source as a memory region.
-    pub fn from_mem(mut self, region: &MemoryRegion) -> Self {
-        self.src = Some(Endpoint::Mem(region.clone()));
+    fn push_region_memory(&mut self, region: MemoryRegion) {
+        self.region.push(region);
+    }
+
+    /// Add a memory region endpoint to the connected mesh region.
+    pub fn region_mem(mut self, region: &MemoryRegion) -> Self {
+        self.push_region_memory(region.clone());
         self
     }
 
-    /// Set the source as a processor array.
-    pub fn from_proc(mut self, proc: &Processors) -> Self {
-        self.src = Some(Endpoint::Proc(proc.clone()));
+    /// Backward-compatible alias for adding a memory endpoint.
+    pub fn from_mem(self, region: &MemoryRegion) -> Self {
+        self.region_mem(region)
+    }
+
+    /// Backward-compatible alias for adding a memory endpoint.
+    pub fn to_mem(self, region: &MemoryRegion) -> Self {
+        self.region_mem(region)
+    }
+
+    /// Set aggregate ingress/egress bandwidth as a concrete integer.
+    pub fn io_bandwidth(mut self, bw: i64) -> Self {
+        self.io_bandwidth = Some(Expr::Const(bw));
         self
     }
 
-    /// Set the destination as a memory region.
-    pub fn to_mem(mut self, region: &MemoryRegion) -> Self {
-        self.dst = Some(Endpoint::Mem(region.clone()));
+    /// Set aggregate ingress/egress bandwidth as an expression.
+    pub fn io_bandwidth_expr(mut self, bw: Expr) -> Self {
+        self.io_bandwidth = Some(bw);
         self
     }
 
-    /// Set the destination as a processor array.
-    pub fn to_proc(mut self, proc: &Processors) -> Self {
-        self.dst = Some(Endpoint::Proc(proc.clone()));
+    /// Set per-link bandwidth as a concrete integer.
+    pub fn link_bandwidth(mut self, bw: i64) -> Self {
+        self.link_bandwidth = Some(Expr::Const(bw));
+        self
+    }
+
+    /// Set per-link bandwidth as an expression.
+    pub fn link_bandwidth_expr(mut self, bw: Expr) -> Self {
+        self.link_bandwidth = Some(bw);
         self
     }
 
@@ -255,25 +246,43 @@ impl MeshNetworkBuilder {
         self
     }
 
-    /// Set bandwidth as a concrete integer (shorthand for `Expr::Const`).
+    /// Backward-compatible shorthand: set both io and per-link bandwidth.
     pub fn bandwidth(mut self, bw: i64) -> Self {
-        self.bandwidth = Some(Expr::Const(bw));
+        let bw = Expr::Const(bw);
+        self.io_bandwidth = Some(bw.clone());
+        self.link_bandwidth = Some(bw);
         self
     }
 
-    /// Set bandwidth as a symbolic expression.
+    /// Backward-compatible shorthand: set both io and per-link bandwidth.
     pub fn bandwidth_expr(mut self, bw: Expr) -> Self {
-        self.bandwidth = Some(bw);
+        self.io_bandwidth = Some(bw.clone());
+        self.link_bandwidth = Some(bw);
         self
     }
 
     pub fn build(self) -> ScaleOutNetwork {
+        let (io_bandwidth, link_bandwidth) = match (self.io_bandwidth, self.link_bandwidth) {
+            (Some(io), Some(link)) => (io, link),
+            (Some(io), None) => (io.clone(), io),
+            (None, Some(link)) => (link.clone(), link),
+            (None, None) => {
+                panic!("either bandwidth() or both io_bandwidth/link_bandwidth must be set")
+            }
+        };
+
         let mesh = MeshNetwork {
             name: self.name,
-            src: self.src.expect("src endpoint must be set"),
-            dst: self.dst.expect("dst endpoint must be set"),
+            region: {
+                assert!(
+                    !self.region.is_empty(),
+                    "at least one mesh region endpoint must be set"
+                );
+                self.region
+            },
             map: self.map.expect("affine map must be set"),
-            bandwidth: self.bandwidth.expect("bandwidth must be set"),
+            io_bandwidth,
+            link_bandwidth,
         };
 
         let link = ScaleOutNetwork::Mesh(mesh);
@@ -392,10 +401,10 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("torus")
-            .from_mem(&l1)
-            .to_mem(&l1)
+            .region_mem(&l1)
             .map(&map)
-            .bandwidth(64)
+            .io_bandwidth(64)
+            .link_bandwidth(64)
             .build();
 
         assert_eq!(link.source_domain_size(), Some(64));
@@ -415,10 +424,10 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("reduce")
-            .from_mem(&l1)
-            .to_mem(&l1)
+            .region_mem(&l1)
             .map(&map)
-            .bandwidth(64)
+            .io_bandwidth(64)
+            .link_bandwidth(64)
             .build();
 
         assert_eq!(link.source_domain_size(), Some(16));
@@ -449,10 +458,10 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("ring")
-            .from_mem(&l1)
-            .to_mem(&l1)
+            .region_mem(&l1)
             .map(&map)
-            .bandwidth(64)
+            .io_bandwidth(64)
+            .link_bandwidth(64)
             .build();
 
         assert!(link.is_ring_topology());

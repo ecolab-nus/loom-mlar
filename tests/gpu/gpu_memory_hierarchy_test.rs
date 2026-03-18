@@ -31,6 +31,12 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     ))
     .replicate(warp_dim.as_slice())
     .with_name("rf");
+    let mat_buf = MemoryRegion::bank(MemoryBank::from_blocks(
+        SizeExpr::Const(32),
+        SizeExpr::Const(128),
+    ))
+    .replicate(warp_dim.as_slice())
+    .with_name("mat_buf");
 
     let dram_to_l2_map = AffineMapTemplate::parse("[dram_dim] -> [dram_dim]: (dram_dim)")
         .expect("invalid affine map")
@@ -75,9 +81,9 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .bind([&warp_dim])
         .expect("failed to bind affine map");
 
-    let rf_to_mat = ScaleOutNetwork::mesh("RF_to_MatLane")
+    let rf_to_mat = ScaleOutNetwork::mesh("RF_to_MatBuf")
         .from_mem(&rf)
-        .to_proc(&mat_lane)
+        .to_mem(&mat_buf)
         .map(&rf_to_mat_map)
         .bandwidth(64)
         .build();
@@ -87,6 +93,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
         .mem(&l2)
         .mem(&l1)
         .mem(&rf)
+        .mem(&mat_buf)
         .processor(&mat_lane)
         .build()
         .into();
@@ -104,7 +111,7 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     assert_eq!(connectivity[0].name(), "DRAM_to_L2");
     assert_eq!(connectivity[1].name(), "L2_to_L1");
     assert_eq!(connectivity[2].name(), "L1_to_RF");
-    assert_eq!(connectivity[3].name(), "RF_to_MatLane");
+    assert_eq!(connectivity[3].name(), "RF_to_MatBuf");
 
     arch
 }
