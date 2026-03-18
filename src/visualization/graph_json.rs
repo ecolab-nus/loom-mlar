@@ -1,10 +1,10 @@
 use crate::arch::{
-    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, LinkMapRelation, LinkTopology,
-    MemoryRegion, Processors, Router, SizeExpr,
+    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, MemoryRegion, Processors,
+    Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -111,6 +111,23 @@ pub enum GraphMapRelation {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphLinkTopology {
+    Ring,
+    General,
+}
+
+/// Relation between map source and destination domains.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkMapRelation {
+    OneToOne,
+    OneToMany,
+    ManyToOne,
+    ManyToMany,
+    Unknown,
+}
+
+/// Topological classification of a link map.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkTopology {
     Ring,
     General,
 }
@@ -274,8 +291,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             latency: link.latency().map(expr_to_json),
             constraints: String::new(),
             sharing: network_kind_label(link).to_owned(),
-            map_relation: link_map_relation_to_json(link.map_relation()),
-            topology: link_topology_to_json(link.topology()),
+            map_relation: link_map_relation_to_json(link_map_relation(link)),
+            topology: link_topology_to_json(link_topology(link)),
             map: affine_map_to_json(link.map()),
         });
     }
@@ -463,6 +480,24 @@ fn network_kind_label(net: &crate::arch::ScaleOutNetwork) -> &'static str {
     }
 }
 
+fn link_map_relation(link: &crate::arch::ScaleOutNetwork) -> LinkMapRelation {
+    match (link.source_domain_size(), link.target_domain_size()) {
+        (Some(src), Some(dst)) if src == dst => LinkMapRelation::OneToOne,
+        (Some(src), Some(dst)) if src < dst => LinkMapRelation::OneToMany,
+        (Some(src), Some(dst)) if src > dst => LinkMapRelation::ManyToOne,
+        (Some(_), Some(_)) => LinkMapRelation::ManyToMany,
+        _ => LinkMapRelation::Unknown,
+    }
+}
+
+fn link_topology(link: &crate::arch::ScaleOutNetwork) -> LinkTopology {
+    if link.is_ring_topology() {
+        LinkTopology::Ring
+    } else {
+        LinkTopology::General
+    }
+}
+
 fn link_map_relation_to_json(relation: LinkMapRelation) -> GraphMapRelation {
     match relation {
         LinkMapRelation::OneToOne => GraphMapRelation::OneToOne,
@@ -646,7 +681,7 @@ mod tests {
         ArchGraph, Architecture, Dimension, MemoryBank, MemoryRegion, Processor, ScaleOutNetwork,
         SizeExpr,
     };
-    use crate::math::AffineMap;
+    use crate::math::{AffineExpr, AffineMap};
 
     #[test]
     fn serializes_architecture_graph_schema() {
@@ -688,6 +723,8 @@ mod tests {
         assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
         assert_eq!(value["edges"][0]["map"]["expressions"][0], "core");
         assert_eq!(value["edges"][0]["bandwidth"]["const_value"], 128);
+        assert_eq!(value["edges"][0]["map_relation"], "one_to_one");
+        assert_eq!(value["edges"][0]["topology"], "general");
         assert!(value.get("intra_core").is_none());
     }
 
@@ -715,5 +752,78 @@ mod tests {
         let graph = architecture_to_graph_json(&mesh);
         assert!(graph.intra_core.is_none());
         assert!(!graph.nodes.is_empty());
+    }
+
+    #[test]
+    fn serializes_many_to_one_map_relation() {
+        let dim_x = Dimension::new_int("x", 4);
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(64),
+            SizeExpr::Const(512),
+        ))
+        .with_name("l1");
+        let map_dim = Dimension::new_int("bank", 16);
+        let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
+
+        let link = ScaleOutNetwork::mesh("reduce")
+            .region_mem(&l1)
+            .map(&map)
+            .io_bandwidth(64)
+            .link_bandwidth(64)
+            .build();
+
+        let lane = Processor::new("lane").into_elem();
+        let arch: Architecture = ArchGraph::builder("unit")
+            .mem(&l1)
+            .processor(&lane)
+            .build()
+            .into();
+        let arch = arch.scale(dim_x.as_slice()).with_connectivity(vec![link]);
+
+        let value = architecture_to_graph_json_value(&arch);
+        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
+        assert_eq!(value["edges"][0]["map_relation"], "many_to_one");
+        assert_eq!(value["edges"][0]["topology"], "general");
+    }
+
+    #[test]
+    fn serializes_ring_topology() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(64),
+            SizeExpr::Const(512),
+        ))
+        .with_name("l1");
+        let map = AffineMap::new(
+            &[x.clone(), y.clone()],
+            &[x.clone(), y.clone()],
+            vec![
+                AffineExpr::var(x.clone()),
+                AffineExpr::modulo(
+                    AffineExpr::add(AffineExpr::var(y.clone()), AffineExpr::constant(1)),
+                    AffineExpr::constant(8),
+                ),
+            ],
+        );
+
+        let link = ScaleOutNetwork::mesh("ring")
+            .region_mem(&l1)
+            .map(&map)
+            .io_bandwidth(64)
+            .link_bandwidth(64)
+            .build();
+
+        let lane = Processor::new("lane").into_elem();
+        let arch: Architecture = ArchGraph::builder("unit")
+            .mem(&l1)
+            .processor(&lane)
+            .build()
+            .into();
+        let arch = arch.scale([&x, &y]).with_connectivity(vec![link]);
+
+        let value = architecture_to_graph_json_value(&arch);
+        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
+        assert_eq!(value["edges"][0]["topology"], "ring");
     }
 }

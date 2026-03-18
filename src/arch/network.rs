@@ -5,23 +5,6 @@ use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;
 
-/// Relation between map source and destination domains.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LinkMapRelation {
-    OneToOne,
-    OneToMany,
-    ManyToOne,
-    ManyToMany,
-    Unknown,
-}
-
-/// Topological classification of a link map.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LinkTopology {
-    Ring,
-    General,
-}
-
 /// A mesh network: endpoints connected via an affine-map topology with uniform
 /// per-link bandwidth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -160,29 +143,10 @@ impl ScaleOutNetwork {
         domain_size(&self.map().dst_dims)
     }
 
-    /// Classify map relation using source/destination domain cardinalities.
-    pub fn map_relation(&self) -> LinkMapRelation {
-        match (self.source_domain_size(), self.target_domain_size()) {
-            (Some(src), Some(dst)) if src == dst => LinkMapRelation::OneToOne,
-            (Some(src), Some(dst)) if src < dst => LinkMapRelation::OneToMany,
-            (Some(src), Some(dst)) if src > dst => LinkMapRelation::ManyToOne,
-            (Some(_), Some(_)) => LinkMapRelation::ManyToMany,
-            _ => LinkMapRelation::Unknown,
-        }
-    }
-
     /// True when the map is an identity on all but one dimension and that
     /// remaining dimension is shifted with modulo wrapping.
     pub fn is_ring_topology(&self) -> bool {
         ring_shift_axis(self.map()).is_some()
-    }
-
-    pub fn topology(&self) -> LinkTopology {
-        if self.is_ring_topology() {
-            LinkTopology::Ring
-        } else {
-            LinkTopology::General
-        }
     }
 }
 
@@ -384,12 +348,12 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{LinkMapRelation, LinkTopology, ScaleOutNetwork};
+    use super::ScaleOutNetwork;
     use crate::arch::{Dimension, MemoryBank, MemoryRegion, SizeExpr};
     use crate::math::{AffineExpr, AffineMap};
 
     #[test]
-    fn classifies_one_to_one_map() {
+    fn computes_one_to_one_domain_sizes() {
         let dx = Dimension::new_int("x", 8);
         let dy = Dimension::new_int("y", 8);
         let map = AffineMap::identity(&[dx.clone(), dy.clone()]);
@@ -409,11 +373,10 @@ mod tests {
 
         assert_eq!(link.source_domain_size(), Some(64));
         assert_eq!(link.target_domain_size(), Some(64));
-        assert_eq!(link.map_relation(), LinkMapRelation::OneToOne);
     }
 
     #[test]
-    fn classifies_many_to_one_map() {
+    fn computes_many_to_one_domain_sizes() {
         let bank = Dimension::new_int("bank", 16);
         let map = AffineMap::new(bank.as_slice(), &[], vec![]);
 
@@ -432,7 +395,6 @@ mod tests {
 
         assert_eq!(link.source_domain_size(), Some(16));
         assert_eq!(link.target_domain_size(), Some(1));
-        assert_eq!(link.map_relation(), LinkMapRelation::ManyToOne);
     }
 
     #[test]
@@ -465,6 +427,5 @@ mod tests {
             .build();
 
         assert!(link.is_ring_topology());
-        assert_eq!(link.topology(), LinkTopology::Ring);
     }
 }
