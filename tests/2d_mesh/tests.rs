@@ -183,7 +183,7 @@ fn test_2d_mesh_torus() {
     match elem.as_ref() {
         Architecture::Graph(graph) => {
             assert!(
-                graph.nodes.iter().any(|n| n.name == "core_router"),
+                graph.nodes.iter().any(|n| n.name() == Some("core_router")),
                 "scaled mesh should retain router node"
             );
             assert_eq!(

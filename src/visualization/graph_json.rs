@@ -244,11 +244,11 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 nodes.push(processor_node_from_elem(id, &name, proc));
             }
             ArchNodeComponent::Router(router) => {
-                let name = if node.name.is_empty() {
-                    format!("router_{idx}")
-                } else {
-                    node.name.clone()
-                };
+                let name = node
+                    .name()
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("router_{idx}"));
                 if router_node_ids.contains_key(&name) {
                     continue;
                 }

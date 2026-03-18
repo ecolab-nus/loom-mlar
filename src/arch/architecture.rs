@@ -296,8 +296,8 @@ impl From<ArchGraph> for Architecture {
 mod tests {
     use super::Architecture;
     use crate::arch::{
-        ArchEdge, ArchGraph, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor,
-        Router, SizeExpr,
+        ArchGraph, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor, Router,
+        SizeExpr,
     };
 
     #[test]
@@ -339,16 +339,32 @@ mod tests {
         let router = ArchNode::from_router(&Router::new("crossbar"));
         let arch: Architecture = ArchGraph::builder("mesh").node(&router).build().into();
         let graph = arch.as_graph().expect("builder must create graph");
-        assert!(graph.nodes.iter().any(|n| n.id == "router::crossbar"));
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id.as_str() == "router::crossbar::node")
+        );
     }
 
     #[test]
-    fn builder_accepts_custom_edges() {
-        let edge = ArchEdge::new("arch::foo", "arch::bar");
-        let arch: Architecture = ArchGraph::builder("mesh").edge(&edge).build().into();
-        let graph = arch.as_graph().expect("builder must create graph");
-        assert_eq!(graph.edges.len(), 1);
-        assert_eq!(graph.edges[0].id, "edge::foo_to_bar");
+    fn graph_connect_assigns_managed_edge_id() {
+        let mut graph = ArchGraph::new("mesh");
+        let src_id = graph.add_router(&Router::new("src"));
+        let dst_id = graph.add_router(&Router::new("dst"));
+        let src = graph
+            .get_node(&src_id)
+            .expect("source node should exist")
+            .clone();
+        let dst = graph
+            .get_node(&dst_id)
+            .expect("target node should exist")
+            .clone();
+
+        let edge = graph.connect(&src, &dst);
+        assert_eq!(edge.id.as_str(), "edge::router::src_to_router::dst::edge");
+        assert_eq!(edge.source, src_id);
+        assert_eq!(edge.target, dst_id);
     }
 
     #[test]
@@ -362,7 +378,7 @@ mod tests {
             .router_ref("router")
             .expect("router node ID should be available");
         let router = graph.get_node(&router_id).expect("router node must exist");
-        assert_eq!(router.name, "router");
+        assert_eq!(router.name(), Some("router"));
     }
 
     #[test]
@@ -377,25 +393,55 @@ mod tests {
             .into();
         let graph = graph.as_graph().expect("must build graph");
 
-        assert!(graph.get_node("mem::L1").is_some());
-        assert!(graph.get_node("arch::lane").is_some());
-        assert!(graph.get_node("router::xbar").is_some());
+        assert!(graph.nodes.iter().any(|n| n.id.as_str() == "mem::L1::node"));
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id.as_str() == "arch::lane::node")
+        );
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id.as_str() == "router::xbar::node")
+        );
     }
 
     #[test]
-    #[should_panic(expected = "duplicate ID")]
-    fn builder_rejects_duplicate_node_ids() {
+    fn builder_suffixes_duplicate_node_components() {
         let r1 = Router::new("dup");
         let r2 = Router::new("dup");
-        ArchGraph::builder("bad").router(&r1).router(&r2).build();
+        let arch: Architecture = ArchGraph::builder("ok")
+            .router(&r1)
+            .router(&r2)
+            .build()
+            .into();
+        let graph = arch.as_graph().expect("builder must create graph");
+
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id.as_str() == "router::dup::node")
+        );
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id.as_str() == "router::dup#2::node")
+        );
     }
 
     #[test]
-    #[should_panic(expected = "duplicate ID")]
-    fn graph_rejects_duplicate_node_ids() {
+    #[should_panic(expected = "edge already exists between")]
+    fn graph_rejects_duplicate_edges_between_same_nodes() {
         let mut graph = ArchGraph::new("bad");
-        let r = Router::new("r");
-        graph.add_router(&r);
-        graph.add_router(&r);
+        let src_id = graph.add_router(&Router::new("r1"));
+        let dst_id = graph.add_router(&Router::new("r2"));
+        let src = graph.get_node(&src_id).expect("source must exist").clone();
+        let dst = graph.get_node(&dst_id).expect("target must exist").clone();
+        graph.connect(&src, &dst);
+        graph.connect(&src, &dst);
     }
 }

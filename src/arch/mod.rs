@@ -14,7 +14,8 @@ pub use crate::schedule::{
 };
 pub use architecture::Architecture;
 pub use architecture_graph::{
-    ArchEdge, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent,
+    ArchEdge, ArchEdgeId, ArchGraph, ArchGraphBuilder, ArchGraphNode, ArchNode, ArchNodeComponent,
+    ArchNodeId,
 };
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{MeshNetwork, ScaleOutNetwork};

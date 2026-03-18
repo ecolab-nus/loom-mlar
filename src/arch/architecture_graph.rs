@@ -5,7 +5,78 @@ use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::Processor;
 use super::router::Router;
-use std::collections::HashSet;
+use std::fmt;
+
+const NODE_ID_SUFFIX: &str = "::node";
+const EDGE_ID_SUFFIX: &str = "::edge";
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArchNodeId(String);
+
+impl ArchNodeId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl fmt::Display for ArchNodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for ArchNodeId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ArchNodeId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<ArchNodeId> for String {
+    fn from(value: ArchNodeId) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArchEdgeId(String);
+
+impl ArchEdgeId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl fmt::Display for ArchEdgeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for ArchEdgeId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ArchEdgeId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<ArchEdgeId> for String {
+    fn from(value: ArchEdgeId) -> Self {
+        value.0
+    }
+}
 
 /// Abstract node payload for heterogeneous architecture graph composition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,24 +94,36 @@ impl ArchNodeComponent {
             ArchNodeComponent::Router(router) => Some(router.name.as_str()),
         }
     }
+
+    fn id_prefix(&self) -> &'static str {
+        match self {
+            ArchNodeComponent::Architecture(_) => "arch",
+            ArchNodeComponent::MemoryRegion(_) => "mem",
+            ArchNodeComponent::Router(_) => "router",
+        }
+    }
 }
 
 /// Abstract architecture graph node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchNode {
-    pub id: String,
-    pub name: String,
+    pub id: ArchNodeId,
     pub component: ArchNodeComponent,
 }
 
 impl ArchNode {
+    pub fn name(&self) -> Option<&str> {
+        self.component.display_name()
+    }
+
+    pub fn from_component(component: ArchNodeComponent) -> Self {
+        let base = component_node_base_id(&component);
+        let id = ArchNodeId::from(format!("{base}{NODE_ID_SUFFIX}"));
+        Self { id, component }
+    }
+
     pub fn from_architecture(architecture: &Architecture) -> Self {
-        let name = architecture.name().unwrap_or("unnamed").to_string();
-        Self {
-            id: format!("arch::{name}"),
-            name,
-            component: ArchNodeComponent::Architecture(architecture.clone()),
-        }
+        Self::from_component(ArchNodeComponent::Architecture(architecture.clone()))
     }
 
     pub fn from_processor(proc: &Processor) -> Self {
@@ -48,21 +131,11 @@ impl ArchNode {
     }
 
     pub fn from_memory_region(region: &MemoryRegion) -> Self {
-        let name = region.name().unwrap_or("unnamed").to_string();
-        Self {
-            id: format!("mem::{name}"),
-            name,
-            component: ArchNodeComponent::MemoryRegion(region.clone()),
-        }
+        Self::from_component(ArchNodeComponent::MemoryRegion(region.clone()))
     }
 
     pub fn from_router(router: &Router) -> Self {
-        let name = router.name.clone();
-        Self {
-            id: format!("router::{name}"),
-            name,
-            component: ArchNodeComponent::Router(router.clone()),
-        }
+        Self::from_component(ArchNodeComponent::Router(router.clone()))
     }
 }
 
@@ -72,24 +145,14 @@ pub type ArchGraphNode = ArchNode;
 /// Directed edge between two architecture graph nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchEdge {
-    pub id: String,
-    pub source: String,
-    pub target: String,
+    pub id: ArchEdgeId,
+    pub source: ArchNodeId,
+    pub target: ArchNodeId,
 }
 
 impl ArchEdge {
-    /// Create a directed edge. The ID is auto-generated from the source and
-    /// target node IDs (e.g. `"edge::L1_to_lane"`).
-    pub fn new(source: impl Into<String>, target: impl Into<String>) -> Self {
-        let source = source.into();
-        let target = target.into();
-        let src_name = source.rsplit("::").next().unwrap_or(&source);
-        let tgt_name = target.rsplit("::").next().unwrap_or(&target);
-        Self {
-            id: format!("edge::{src_name}_to_{tgt_name}"),
-            source,
-            target,
-        }
+    fn new(id: ArchEdgeId, source: ArchNodeId, target: ArchNodeId) -> Self {
+        Self { id, source, target }
     }
 }
 
@@ -110,138 +173,196 @@ impl ArchGraph {
         }
     }
 
-    fn has_id(&self, id: &str) -> bool {
-        self.nodes.iter().any(|n| n.id == id) || self.edges.iter().any(|e| e.id == id)
+    fn has_node_id(&self, id: &ArchNodeId) -> bool {
+        self.nodes.iter().any(|n| n.id == *id)
     }
 
-    fn assert_unique(&self, id: &str) {
+    fn has_node_id_str(&self, id: &str) -> bool {
+        self.nodes.iter().any(|n| n.id.as_str() == id)
+    }
+
+    fn has_edge_id(&self, id: &ArchEdgeId) -> bool {
+        self.edges.iter().any(|e| e.id == *id)
+    }
+
+    fn has_edge_id_str(&self, id: &str) -> bool {
+        self.edges.iter().any(|e| e.id.as_str() == id)
+    }
+
+    fn assert_node_exists(&self, id: &ArchNodeId) {
         assert!(
-            !self.has_id(id),
-            "duplicate ID '{}' in graph '{}'",
+            self.has_node_id(id),
+            "unknown node ID '{}' in graph '{}'",
             id,
             self.name
         );
     }
 
-    pub fn add_router(&mut self, router: &Router) -> String {
-        let node = ArchNode::from_router(router);
-        let id = node.id.clone();
-        self.add_node(node);
+    fn next_node_id_for_component(&self, component: &ArchNodeComponent) -> ArchNodeId {
+        let base = component_node_base_id(component);
+        let mut instance = 1usize;
+        loop {
+            let instance_tag = add_instance_tag(&base, instance);
+            let candidate = ArchNodeId::from(format!("{instance_tag}{NODE_ID_SUFFIX}"));
+            if !self.has_node_id(&candidate) && !self.has_edge_id_str(candidate.as_str()) {
+                return candidate;
+            }
+            instance += 1;
+        }
+    }
+
+    fn next_edge_id(&self, source: &ArchNodeId, target: &ArchNodeId) -> ArchEdgeId {
+        let src = strip_suffix(source.as_str(), NODE_ID_SUFFIX);
+        let tgt = strip_suffix(target.as_str(), NODE_ID_SUFFIX);
+        let base = format!("edge::{src}_to_{tgt}");
+        let mut instance = 1usize;
+        loop {
+            let instance_tag = add_instance_tag(&base, instance);
+            let candidate = ArchEdgeId::from(format!("{instance_tag}{EDGE_ID_SUFFIX}"));
+            if !self.has_edge_id(&candidate) && !self.has_node_id_str(candidate.as_str()) {
+                return candidate;
+            }
+            instance += 1;
+        }
+    }
+
+    fn edge_exists_between(&self, source: &ArchNodeId, target: &ArchNodeId) -> bool {
+        self.edges.iter().any(|edge| {
+            (edge.source == *source && edge.target == *target)
+                || (edge.source == *target && edge.target == *source)
+        })
+    }
+
+    pub fn add_component(&mut self, component: ArchNodeComponent) -> ArchNodeId {
+        let id = self.next_node_id_for_component(&component);
+        self.nodes.push(ArchNode {
+            id: id.clone(),
+            component,
+        });
         id
     }
 
-    pub fn memory_ref(&self, name: &str) -> Option<String> {
+    pub fn add_router(&mut self, router: &Router) -> ArchNodeId {
+        self.add_component(ArchNodeComponent::Router(router.clone()))
+    }
+
+    pub fn memory_ref(&self, name: &str) -> Option<ArchNodeId> {
         self.node_id_by_name_and_kind(name, |component| {
             matches!(component, ArchNodeComponent::MemoryRegion(_))
         })
     }
 
-    pub fn processor_ref(&self, name: &str) -> Option<String> {
+    pub fn processor_ref(&self, name: &str) -> Option<ArchNodeId> {
         self.node_id_by_name_and_kind(name, |component| {
             matches!(component, ArchNodeComponent::Architecture(_))
         })
     }
 
-    pub fn router_ref(&self, name: &str) -> Option<String> {
+    pub fn router_ref(&self, name: &str) -> Option<ArchNodeId> {
         self.node_id_by_name_and_kind(name, |component| {
             matches!(component, ArchNodeComponent::Router(_))
         })
     }
 
-    pub fn add_node(&mut self, node: ArchNode) {
-        self.assert_unique(&node.id);
-        self.nodes.push(node);
+    pub fn add_node(&mut self, node: ArchNode) -> ArchNodeId {
+        self.add_component(node.component)
     }
 
-    pub fn add_edge(&mut self, edge: ArchEdge) {
-        self.assert_unique(&edge.id);
+    pub fn connect(&mut self, source: &ArchNode, target: &ArchNode) -> &ArchEdge {
+        self.assert_node_exists(&source.id);
+        self.assert_node_exists(&target.id);
+        assert!(
+            !self.edge_exists_between(&source.id, &target.id),
+            "edge already exists between '{}' and '{}' in graph '{}'",
+            source.id,
+            target.id,
+            self.name
+        );
+
+        let edge_id = self.next_edge_id(&source.id, &target.id);
+        let edge = ArchEdge::new(edge_id, source.id.clone(), target.id.clone());
         self.edges.push(edge);
-    }
-
-    pub fn connect(&mut self, source: impl Into<String>, target: impl Into<String>) -> &ArchEdge {
-        let edge = ArchEdge::new(source, target);
-        self.add_edge(edge);
         self.edges
             .last()
             .expect("newly pushed edge must exist in graph")
     }
 
-    pub fn get_node(&self, node_id: &str) -> Option<&ArchNode> {
-        self.nodes.iter().find(|node| node.id == node_id)
+    pub fn get_node(&self, node_id: &ArchNodeId) -> Option<&ArchNode> {
+        self.nodes.iter().find(|node| node.id == *node_id)
     }
 
-    pub fn get_node_mut(&mut self, node_id: &str) -> Option<&mut ArchNode> {
-        self.nodes.iter_mut().find(|node| node.id == node_id)
+    pub fn get_node_mut(&mut self, node_id: &ArchNodeId) -> Option<&mut ArchNode> {
+        self.nodes.iter_mut().find(|node| node.id == *node_id)
     }
 
-    pub fn add_memory_region(&mut self, region: &MemoryRegion) -> String {
-        let node = ArchNode::from_memory_region(region);
-        let id = node.id.clone();
-        self.add_node(node);
-        id
+    pub fn add_memory_region(&mut self, region: &MemoryRegion) -> ArchNodeId {
+        self.add_component(ArchNodeComponent::MemoryRegion(region.clone()))
     }
 
-    pub fn add_architecture(&mut self, architecture: &Architecture) -> String {
-        let node = ArchNode::from_architecture(architecture);
-        let id = node.id.clone();
-        self.add_node(node);
-        id
+    pub fn add_architecture(&mut self, architecture: &Architecture) -> ArchNodeId {
+        self.add_component(ArchNodeComponent::Architecture(architecture.clone()))
     }
 
-    fn node_id_by_name_and_kind<F>(&self, name: &str, kind_check: F) -> Option<String>
+    fn node_id_by_name_and_kind<F>(&self, name: &str, kind_check: F) -> Option<ArchNodeId>
     where
         F: Fn(&ArchNodeComponent) -> bool,
     {
         self.nodes
             .iter()
-            .find(|node| node.name == name && kind_check(&node.component))
+            .find(|node| node.name() == Some(name) && kind_check(&node.component))
             .map(|node| node.id.clone())
     }
 
     /// Create a builder for constructing an `ArchGraph`.
     pub fn builder(name: impl Into<String>) -> ArchGraphBuilder {
         ArchGraphBuilder {
-            name: name.into(),
-            nodes: Vec::new(),
-            edges: Vec::new(),
-            ids: HashSet::new(),
+            graph: ArchGraph::new(name),
         }
     }
 }
 
+fn component_node_base_id(component: &ArchNodeComponent) -> String {
+    let name = component
+        .display_name()
+        .unwrap_or(default_component_name(component));
+    format!("{}::{}", component.id_prefix(), name)
+}
+
+fn default_component_name(component: &ArchNodeComponent) -> &'static str {
+    match component {
+        ArchNodeComponent::Architecture(_) => "unnamed_architecture",
+        ArchNodeComponent::MemoryRegion(_) => "unnamed_memory",
+        ArchNodeComponent::Router(_) => "unnamed_router",
+    }
+}
+
+fn add_instance_tag(base: &str, instance: usize) -> String {
+    if instance == 1 {
+        base.to_string()
+    } else {
+        format!("{base}#{instance}")
+    }
+}
+
+fn strip_suffix<'a>(value: &'a str, suffix: &str) -> &'a str {
+    value.strip_suffix(suffix).unwrap_or(value)
+}
+
 /// Builder for constructing an `ArchGraph`.
 pub struct ArchGraphBuilder {
-    name: String,
-    nodes: Vec<ArchNode>,
-    edges: Vec<ArchEdge>,
-    ids: HashSet<String>,
+    graph: ArchGraph,
 }
 
 impl ArchGraphBuilder {
-    fn assert_unique(&self, id: &str) {
-        assert!(
-            !self.ids.contains(id),
-            "duplicate ID '{}' in graph builder '{}'",
-            id,
-            self.name
-        );
-    }
-
     /// Add a memory region (borrows and clones).
     pub fn mem(mut self, region: &MemoryRegion) -> Self {
-        let node = ArchNode::from_memory_region(region);
-        self.assert_unique(&node.id);
-        self.ids.insert(node.id.clone());
-        self.nodes.push(node);
+        self.graph.add_memory_region(region);
         self
     }
 
     /// Add a processor architecture (borrows and clones).
     pub fn processor(mut self, proc: &Architecture) -> Self {
-        let node = ArchNode::from_architecture(proc);
-        self.assert_unique(&node.id);
-        self.ids.insert(node.id.clone());
-        self.nodes.push(node);
+        self.graph.add_architecture(proc);
         self
     }
 
@@ -252,35 +373,24 @@ impl ArchGraphBuilder {
 
     /// Add a router node.
     pub fn router(mut self, router: &Router) -> Self {
-        let node = ArchNode::from_router(router);
-        self.assert_unique(&node.id);
-        self.ids.insert(node.id.clone());
-        self.nodes.push(node);
+        self.graph.add_router(router);
         self
     }
 
-    /// Add a pre-built abstract graph node.
+    /// Add a pre-built abstract graph node by component.
     pub fn node(mut self, node: &ArchNode) -> Self {
-        self.assert_unique(&node.id);
-        self.ids.insert(node.id.clone());
-        self.nodes.push(node.clone());
+        self.graph.add_component(node.component.clone());
         self
     }
 
-    /// Add a pre-built abstract graph edge.
-    pub fn edge(mut self, edge: &ArchEdge) -> Self {
-        self.assert_unique(&edge.id);
-        self.ids.insert(edge.id.clone());
-        self.edges.push(edge.clone());
+    /// Add a graph node component.
+    pub fn component(mut self, component: ArchNodeComponent) -> Self {
+        self.graph.add_component(component);
         self
     }
 
     /// Build the `ArchGraph`.
     pub fn build(self) -> ArchGraph {
-        ArchGraph {
-            name: self.name,
-            nodes: self.nodes,
-            edges: self.edges,
-        }
+        self.graph
     }
 }
