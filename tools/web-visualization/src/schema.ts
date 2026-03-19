@@ -46,7 +46,7 @@ export type GraphMemoryRegion =
       kind: 'replicated' | 'array';
       name: string | null;
       dimensions: GraphDimension[];
-      elem: GraphMemoryRegion;
+      sub_region: GraphMemoryRegion;
       total_size_bytes?: number | null;
     }
   | {

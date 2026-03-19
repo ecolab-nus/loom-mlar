@@ -63,7 +63,7 @@ pub enum MemoryRegion {
     Array {
         name: Option<String>,
         dims: Vec<Dimension>,
-        elem: Box<MemoryRegion>,
+        sub_regions: Box<MemoryRegion>,
     },
 }
 
@@ -87,16 +87,20 @@ impl MemoryRegion {
         MemoryRegion::Array {
             name: None,
             dims: dims.to_vec(),
-            elem: Box::new(self),
+            sub_regions: Box::new(self),
         }
     }
 
     /// Get the name of this region.
-    /// For Array, returns its own name if set, otherwise recurses into elem.
+    /// For Array, returns its own name if set, otherwise recurses into the sub-region.
     pub fn name(&self) -> Option<&str> {
         match self {
             MemoryRegion::Bank(b) => b.name.as_deref(),
-            MemoryRegion::Array { name, elem, .. } => name.as_deref().or_else(|| elem.name()),
+            MemoryRegion::Array {
+                name,
+                sub_regions: sub_region,
+                ..
+            } => name.as_deref().or_else(|| sub_region.name()),
         }
     }
 
@@ -107,10 +111,14 @@ impl MemoryRegion {
                 b.name = Some(n.into());
                 MemoryRegion::Bank(b)
             }
-            MemoryRegion::Array { dims, elem, .. } => MemoryRegion::Array {
+            MemoryRegion::Array {
+                dims,
+                sub_regions: sub_region,
+                ..
+            } => MemoryRegion::Array {
                 name: Some(n.into()),
                 dims,
-                elem,
+                sub_regions: sub_region,
             },
         }
     }
@@ -129,13 +137,17 @@ impl MemoryRegion {
     pub fn total_size_bytes(&self) -> Option<u64> {
         match self {
             MemoryRegion::Bank(bank) => bank.capacity_bytes.as_const(),
-            MemoryRegion::Array { dims, elem, .. } => {
-                let elem_size = elem.total_size_bytes()?;
+            MemoryRegion::Array {
+                dims,
+                sub_regions: sub_region,
+                ..
+            } => {
+                let sub_region_size = sub_region.total_size_bytes()?;
                 let multiplier: u64 = dims
                     .iter()
                     .map(|d| d.size.as_const())
                     .try_fold(1u64, |acc, s| s.map(|v| acc * v))?;
-                Some(elem_size * multiplier)
+                Some(sub_region_size * multiplier)
             }
         }
     }
@@ -210,10 +222,14 @@ mod tests {
 
         assert_eq!(region.name(), Some("test_mem"));
         match &region {
-            MemoryRegion::Array { dims, elem, .. } => {
+            MemoryRegion::Array {
+                dims,
+                sub_regions: sub_region,
+                ..
+            } => {
                 assert_eq!(dims.len(), 1);
                 assert_eq!(dims[0].name.0, "nbank");
-                assert!(matches!(elem.as_ref(), MemoryRegion::Bank(_)));
+                assert!(matches!(sub_region.as_ref(), MemoryRegion::Bank(_)));
             }
             _ => panic!("expected Array"),
         }

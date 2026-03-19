@@ -129,7 +129,7 @@ function ReplicatedView({
 }) {
   const copies = productConcreteSizes(region.dimensions);
   const totalBanks = countBankLeaves(region);
-  const isLeafChild = region.elem.kind === 'bank';
+  const isLeafChild = region.sub_region.kind === 'bank';
 
   return (
     <div className="memory-region-section">
@@ -154,15 +154,15 @@ function ReplicatedView({
 
       <div className="region-children-section">
         <h3 className="region-children-heading">
-          {isLeafChild ? 'Bank properties' : 'Element'}
+          {isLeafChild ? 'Bank properties' : 'Sub-region'}
           {copies !== null && isLeafChild && (
             <span className="region-children-note"> (each of {copies} banks)</span>
           )}
         </h3>
         {isLeafChild ? (
-          <BankView region={region.elem as Extract<GraphMemoryRegion, { kind: 'bank' }>} />
+          <BankView region={region.sub_region as Extract<GraphMemoryRegion, { kind: 'bank' }>} />
         ) : (
-          <SubRegionCard region={region.elem} onClick={onDrillDown} />
+          <SubRegionCard region={region.sub_region} onClick={onDrillDown} />
         )}
       </div>
     </div>

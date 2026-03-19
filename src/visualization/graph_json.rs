@@ -205,7 +205,7 @@ pub enum GraphMemoryRegion {
     Array {
         name: Option<String>,
         dimensions: Vec<GraphDimension>,
-        elem: Box<GraphMemoryRegion>,
+        sub_region: Box<GraphMemoryRegion>,
         total_size_bytes: Option<u64>,
     },
 }
@@ -656,9 +656,13 @@ fn format_affine_expr(expr: &AffineExpr) -> String {
 fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     match region {
         MemoryRegion::Bank(_) => Vec::new(),
-        MemoryRegion::Array { dims, elem, .. } => {
+        MemoryRegion::Array {
+            dims,
+            sub_regions: sub_region,
+            ..
+        } => {
             let mut out = dims.clone();
-            out.extend(collect_memory_dims(elem));
+            out.extend(collect_memory_dims(sub_region));
             out
         }
     }
@@ -704,10 +708,14 @@ fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
             access_granularity: bank.block_size.as_ref().map(size_expr_to_json),
             total_size_bytes,
         },
-        MemoryRegion::Array { name, dims, elem } => GraphMemoryRegion::Array {
+        MemoryRegion::Array {
+            name,
+            dims,
+            sub_regions: sub_region,
+        } => GraphMemoryRegion::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
-            elem: Box::new(memory_region_to_json(elem)),
+            sub_region: Box::new(memory_region_to_json(sub_region)),
             total_size_bytes,
         },
     }

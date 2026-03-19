@@ -219,9 +219,13 @@ fn dimension_to_json(dim: &Dimension) -> GraphDimension {
 fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
     match region {
         MemoryRegion::Bank(_) => Vec::new(),
-        MemoryRegion::Array { dims, elem, .. } => {
+        MemoryRegion::Array {
+            dims,
+            sub_regions: sub_region,
+            ..
+        } => {
             let mut out = dims.clone();
-            out.extend(collect_memory_dims(elem));
+            out.extend(collect_memory_dims(sub_region));
             out
         }
     }
@@ -242,10 +246,14 @@ fn memory_region_detail(region: &MemoryRegion) -> GraphMemoryRegion {
             }),
             total_size_bytes,
         },
-        MemoryRegion::Array { name, dims, elem } => GraphMemoryRegion::Array {
+        MemoryRegion::Array {
+            name,
+            dims,
+            sub_regions: sub_region,
+        } => GraphMemoryRegion::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
-            elem: Box::new(memory_region_detail(elem)),
+            sub_region: Box::new(memory_region_detail(sub_region)),
             total_size_bytes,
         },
     }

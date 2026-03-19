@@ -60,7 +60,8 @@
               "size_const": 8
             }
           ],
-          "elem": {
+          "total_size_bytes": 134217728,
+          "sub_region": {
             "kind": "replicated",
             "name": "L1",
             "dimensions": [
@@ -70,7 +71,8 @@
                 "size_const": 16
               }
             ],
-            "elem": {
+            "total_size_bytes": 2097152,
+            "sub_region": {
               "kind": "bank",
               "name": null,
               "capacity_bytes": {
@@ -82,10 +84,8 @@
                 "const_value": 128
               },
               "total_size_bytes": 131072
-            },
-            "total_size_bytes": 2097152
-          },
-          "total_size_bytes": 134217728
+            }
+          }
         },
         "resource": {
           "name": "L1",

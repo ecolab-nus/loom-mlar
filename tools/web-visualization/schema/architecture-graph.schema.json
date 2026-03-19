@@ -208,12 +208,12 @@
         },
         {
           "type": "object",
-          "required": ["kind", "name", "dimensions", "elem"],
+          "required": ["kind", "name", "dimensions", "sub_region"],
           "properties": {
             "kind": { "const": "replicated" },
             "name": { "type": ["string", "null"] },
             "dimensions": { "$ref": "#/$defs/dimensions" },
-            "elem": { "$ref": "#/$defs/memory_region" }
+            "sub_region": { "$ref": "#/$defs/memory_region" }
           }
         },
         {

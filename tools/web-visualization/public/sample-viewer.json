@@ -66,7 +66,7 @@
                     "size_const": 16
                   }
                 ],
-                "elem": {
+                "sub_region": {
                   "kind": "bank",
                   "name": null,
                   "capacity_bytes": {
@@ -149,7 +149,7 @@
                   "size_const": 16
                 }
               ],
-              "elem": {
+              "sub_region": {
                 "kind": "bank",
                 "name": null,
                 "capacity_bytes": {
@@ -365,7 +365,7 @@
                   "size_const": 8
                 }
               ],
-              "elem": {
+              "sub_region": {
                 "kind": "array",
                 "name": "L1",
                 "dimensions": [
@@ -375,7 +375,7 @@
                     "size_const": 16
                   }
                 ],
-                "elem": {
+                "sub_region": {
                   "kind": "bank",
                   "name": null,
                   "capacity_bytes": {
@@ -524,7 +524,7 @@
                     "size_const": 16
                   }
                 ],
-                "elem": {
+                "sub_region": {
                   "kind": "bank",
                   "name": null,
                   "capacity_bytes": {
