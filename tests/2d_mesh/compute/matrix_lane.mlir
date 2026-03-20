@@ -32,7 +32,7 @@ func.func @batch_matmul_f16(
     %B: tensor<?x?x?xf16>,
     %C: tensor<?x?x?xf16>
 ) -> tensor<?x?x?xf16> {
-  %Batch = loom.sym @B : index
+  %Batch = loom.sym @Batch : index
   %M = loom.sym @M : index
   %N = loom.sym @N : index
   %K = loom.sym @K : index
