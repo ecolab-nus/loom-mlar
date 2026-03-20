@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 
 use mlar_rust::*;
+use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
 
 use crate::scale::scaled_mesh_torus;
 
@@ -75,9 +76,18 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/compute/matrix_lane.mlir")
     );
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
-    assert_eq!(mat_module.ops.len(), 1);
-    assert!(mat_module.ops[0].name.starts_with("matmul_"));
-    let matmul_details = mat_module.ops[0]
+    assert!(mat_module.ops.iter().any(|op| op.name.starts_with("matmul_")));
+    assert!(
+        mat_module
+            .ops
+            .iter()
+            .any(|op| op.name.starts_with("batch_matmul_"))
+    );
+    let matmul_details = mat_module
+        .ops
+        .iter()
+        .find(|op| op.name.starts_with("matmul_"))
+        .expect("matmul_* should exist")
         .mlir_details
         .as_ref()
         .expect("matmul_* should include MLIR details");
@@ -276,13 +286,33 @@ fn test_export_2d_mesh_torus_hierarchy_json() {
     assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
     assert_eq!(value["root"]["kind"], "array");
     assert_eq!(value["root"]["name"], "2d_mesh_torus");
-    assert!(value["root"]["children"]
-        .as_array()
-        .is_some_and(|v| !v.is_empty()));
+    assert!(
+        value["root"]["children"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    );
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/2d_mesh/2d_mesh_torus_hierarchy.json");
     fs::write(out_path, &json).expect("Failed to write hierarchy JSON file");
+}
+
+#[test]
+fn test_export_2d_mesh_torus_viewer_json() {
+    let mesh = scaled_mesh_torus();
+    let json = architecture_to_viewer_json_string_pretty(&mesh)
+        .expect("viewer JSON serialization should succeed");
+
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("serialized JSON should be valid");
+    assert_eq!(value["schema_version"], "mlar.arch-viewer.v1");
+    assert_eq!(value["hierarchy"]["name"], "2d_mesh_torus");
+    assert!(value["graphs"][""].is_object());
+    assert!(value["graphs"]["core"].is_object());
+
+    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tools/web-visualization/public/sample-viewer.json");
+    fs::write(out_path, &json).expect("Failed to write viewer JSON file");
 }
 
 /// Evaluate a sequential schedule of different vector-lane instructions

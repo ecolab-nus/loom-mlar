@@ -27,8 +27,12 @@ pub fn single_core() -> Architecture {
     let router_id = graph.add_router(&core_router);
 
     let mem_id = graph.memory_ref("L1").expect("L1 memory node");
-    let mat_id = graph.processor_ref("matrix_lane").expect("matrix_lane node");
-    let vec_id = graph.processor_ref("vector_lane").expect("vector_lane node");
+    let mat_id = graph
+        .processor_ref("matrix_lane")
+        .expect("matrix_lane node");
+    let vec_id = graph
+        .processor_ref("vector_lane")
+        .expect("vector_lane node");
 
     let router_node = graph.get_node(&router_id).unwrap().clone();
     let mem_node = graph.get_node(&mem_id).unwrap().clone();
@@ -38,17 +42,26 @@ pub fn single_core() -> Architecture {
     graph.connect_with_attrs(
         &mat_node,
         &router_node,
-        vec![ArchEdgeAttr::Side(0)],
+        vec![
+            ArchEdgeAttr::Side(0),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
     );
     graph.connect_with_attrs(
         &vec_node,
         &router_node,
-        vec![ArchEdgeAttr::Side(0)],
+        vec![
+            ArchEdgeAttr::Side(0),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
     );
     graph.connect_with_attrs(
         &router_node,
         &mem_node,
-        vec![ArchEdgeAttr::Side(1)],
+        vec![
+            ArchEdgeAttr::Side(1),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
     );
 
     core

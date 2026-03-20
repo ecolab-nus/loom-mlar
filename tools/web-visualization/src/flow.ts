@@ -6,6 +6,7 @@ import type {
   ArchitectureGraphEdge,
   ArchitectureGraphNode,
   GraphDimension,
+  GraphEdgeDirection,
   GraphMemoryRegion,
   NodeKind,
 } from './schema';
@@ -97,6 +98,7 @@ interface VisualEdgeSpec {
   target: string;
   label?: string;
   kind: 'link_in' | 'link_out' | 'direct';
+  direction: GraphEdgeDirection;
 }
 
 interface VisualGraph {
@@ -242,11 +244,15 @@ function buildCoreLevelFlow(
     if (!isOneToOneMap(edge)) {
       return false;
     }
+    const map = edge.map;
+    if (!map) {
+      return false;
+    }
     return (
-      edge.map.source_dimensions.some((d) => d.name === grid.colDim) &&
-      edge.map.source_dimensions.some((d) => d.name === grid.rowDim) &&
-      edge.map.target_dimensions.some((d) => d.name === grid.colDim) &&
-      edge.map.target_dimensions.some((d) => d.name === grid.rowDim)
+      map.source_dimensions.some((d) => d.name === grid.colDim) &&
+      map.source_dimensions.some((d) => d.name === grid.rowDim) &&
+      map.target_dimensions.some((d) => d.name === grid.colDim) &&
+      map.target_dimensions.some((d) => d.name === grid.rowDim)
     );
   });
 
@@ -293,6 +299,9 @@ function buildCoreLevelFlow(
   const edges: Edge[] = [];
   const legendByName = new Map<string, CoreLinkLegendEntry>();
   for (const edge of interCoreEdges) {
+    if (!edge.bandwidth) {
+      continue;
+    }
     const color = colorForInterCoreEdge(edge.name);
     if (!legendByName.has(edge.name)) {
       legendByName.set(edge.name, {
@@ -350,6 +359,9 @@ function buildCoreLevelFlow(
 }
 
 function isOneToOneMap(edge: ArchitectureGraphEdge): boolean {
+  if (!edge.map) {
+    return false;
+  }
   if (edge.map_relation === 'one_to_one') {
     return true;
   }
@@ -366,7 +378,12 @@ function enumerateCoreMappings(
   edge: ArchitectureGraphEdge,
   grid: { cols: number; rows: number; colDim: string; rowDim: string },
 ): Array<{ sourceX: number; sourceY: number; targetX: number; targetY: number }> {
-  const sourceDims = edge.map.source_dimensions;
+  if (!edge.map) {
+    return [];
+  }
+
+  const map = edge.map;
+  const sourceDims = map.source_dimensions;
   const assignments = enumerateAssignments(sourceDims);
   if (!assignments) {
     return [];
@@ -389,9 +406,9 @@ function enumerateCoreMappings(
 
     const targetAssignment: Record<string, number> = {};
     let failed = false;
-    for (let i = 0; i < edge.map.expressions.length; i += 1) {
-      const targetDim = edge.map.target_dimensions[i];
-      const value = evaluateAffineExpression(edge.map.expressions[i], sourceAssignment);
+    for (let i = 0; i < map.expressions.length; i += 1) {
+      const targetDim = map.target_dimensions[i];
+      const value = evaluateAffineExpression(map.expressions[i], sourceAssignment);
       if (value === null) {
         failed = true;
         break;
@@ -653,6 +670,7 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
           target: linkNodeId,
           label: multiplicityLabel,
           kind: 'link_in',
+          direction: 'directional',
         },
       );
     }
@@ -666,6 +684,7 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
           source: linkNodeId,
           target: target.nodeId,
           kind: 'link_out',
+          direction: 'directional',
         },
       );
     }
@@ -679,6 +698,7 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
       target: edge.target,
       label: sideLabel,
       kind: 'direct',
+      direction: edgeDirection(edge),
     });
   }
 
@@ -1036,12 +1056,17 @@ function summarizeMemoryNode(node: ArchitectureGraphNode, totalBanks: number | n
 
 function edgeToFlow(edge: VisualEdgeSpec): Edge {
   if (edge.kind === 'direct') {
+    const isBidirectional = edge.direction === 'bidirectional';
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       label: edge.label,
-      markerEnd: { type: MarkerType.ArrowClosed },
+      markerEnd: isBidirectional
+        ? undefined
+        : {
+            type: MarkerType.ArrowClosed,
+          },
       style: { stroke: '#5a8ea0', strokeWidth: 2 },
       labelStyle: { fontSize: 10, fontWeight: 600, fill: '#3a6a7e' },
     };
@@ -1065,6 +1090,10 @@ function edgeToFlow(edge: VisualEdgeSpec): Edge {
       fill: '#1f4b62',
     },
   };
+}
+
+function edgeDirection(edge: ArchitectureGraphEdge): GraphEdgeDirection {
+  return edge.direction ?? 'directional';
 }
 
 function slugify(value: string): string {

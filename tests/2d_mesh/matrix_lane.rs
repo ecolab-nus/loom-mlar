@@ -88,7 +88,11 @@ pub fn matrix_lane() -> Architecture {
         ],
     };
 
-    Processor::from_module("matrix_lane", functionality, vec![mat_func_perf, batch_mat_func_perf])
-        .expect("matrix_lane processor should link functionality and perf")
-        .into_elem()
+    Processor::from_module(
+        "matrix_lane",
+        functionality,
+        vec![mat_func_perf, batch_mat_func_perf],
+    )
+    .expect("matrix_lane processor should link functionality and perf")
+    .into_elem()
 }

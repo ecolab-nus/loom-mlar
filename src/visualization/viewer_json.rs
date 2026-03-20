@@ -1,5 +1,5 @@
-use super::graph_json::{architecture_to_graph_json, ArchitectureGraphJson};
-use super::hierarchy_json::{architecture_to_hierarchy_json, HierarchyNode};
+use super::graph_json::{ArchitectureGraphJson, architecture_to_graph_json};
+use super::hierarchy_json::{HierarchyNode, architecture_to_hierarchy_json};
 use crate::arch::{ArchNodeComponent, Architecture};
 use serde::Serialize;
 use serde_json::Value;
@@ -215,16 +215,10 @@ mod tests {
         );
 
         let root_graph = &json.graphs[""];
-        assert!(
-            !root_graph.nodes.is_empty(),
-            "root graph should have nodes"
-        );
+        assert!(!root_graph.nodes.is_empty(), "root graph should have nodes");
 
         let core_graph = &json.graphs["core"];
-        assert!(
-            !core_graph.nodes.is_empty(),
-            "core graph should have nodes"
-        );
+        assert!(!core_graph.nodes.is_empty(), "core graph should have nodes");
         assert!(
             !core_graph.edges.is_empty(),
             "core graph should have intra-graph edges"
@@ -282,10 +276,6 @@ mod tests {
             .with_connectivity(vec![torus_y, torus_x]);
 
         let json_str = architecture_to_viewer_json_string_pretty(&mesh).unwrap();
-
-        let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tools/web-visualization/public/sample-viewer.json");
-        std::fs::write(&out_path, &json_str).expect("Failed to write sample viewer JSON");
 
         let value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(value["schema_version"], "mlar.arch-viewer.v1");

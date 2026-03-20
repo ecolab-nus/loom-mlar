@@ -76,6 +76,7 @@
           "source_name",
           "target_name",
           "label",
+          "direction",
           "bandwidth",
           "latency",
           "constraints",
@@ -91,6 +92,10 @@
           "source_name": { "type": "string" },
           "target_name": { "type": "string" },
           "label": { "type": "string" },
+          "direction": {
+            "type": "string",
+            "enum": ["directional", "bidirectional"]
+          },
           "bandwidth": { "$ref": "#/$defs/expr" },
           "latency": { "anyOf": [{ "$ref": "#/$defs/expr" }, { "type": "null" }] },
           "constraints": { "type": "string" },

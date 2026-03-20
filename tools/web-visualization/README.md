@@ -54,6 +54,12 @@ Then restart or refresh the web app.
 
 You can also load any JSON file at runtime from the UI (`Open File`) or by URL path (`Load URL`).
 
+Generate the default viewer payload directly from the `2d_mesh` example:
+
+```bash
+cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
+```
+
 ## Schema
 
 Formal JSON schema file:

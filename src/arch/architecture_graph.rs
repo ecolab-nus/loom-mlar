@@ -147,13 +147,30 @@ pub type ArchGraphNode = ArchNode;
 /// Each variant represents a different kind of metadata. An edge carries a
 /// `Vec<ArchEdgeAttr>`, so it can hold zero or more attributes of any
 /// combination of types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchEdgeDirection {
+    /// The edge direction is from source node to target node.
+    Directional,
+    /// The edge connects both directions.
+    Bidirectional,
+}
+
+impl Default for ArchEdgeDirection {
+    fn default() -> Self {
+        Self::Directional
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArchEdgeAttr {
     /// The router side this edge connects through.
     Side(RouterSide),
+    /// Edge direction metadata.
+    Direction(ArchEdgeDirection),
 }
 
-/// Directed edge between two architecture graph nodes.
+/// Edge between two architecture graph nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchEdge {
     pub id: ArchEdgeId,
@@ -182,7 +199,21 @@ impl ArchEdge {
     pub fn side(&self) -> Option<RouterSide> {
         self.attrs.iter().find_map(|a| match a {
             ArchEdgeAttr::Side(s) => Some(*s),
+            _ => None,
         })
+    }
+
+    /// Return the effective edge direction.
+    ///
+    /// Defaults to `Directional` when no explicit direction attribute exists.
+    pub fn direction(&self) -> ArchEdgeDirection {
+        self.attrs
+            .iter()
+            .find_map(|a| match a {
+                ArchEdgeAttr::Direction(direction) => Some(*direction),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     /// Return all attributes matching a predicate.

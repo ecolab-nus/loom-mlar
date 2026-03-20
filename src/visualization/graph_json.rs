@@ -1,5 +1,6 @@
 use crate::arch::{
-    ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension, MemoryRegion, Router, SizeExpr,
+    ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension,
+    MemoryRegion, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
 use crate::schedule::Module;
@@ -78,6 +79,13 @@ pub enum GraphEdgeKind {
     IntraGraph,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphEdgeDirection {
+    Directional,
+    Bidirectional,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphEdge {
     pub id: String,
@@ -88,6 +96,7 @@ pub struct GraphEdge {
     pub source_name: String,
     pub target_name: String,
     pub label: String,
+    pub direction: GraphEdgeDirection,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bandwidth: Option<GraphExpr>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -294,6 +303,7 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             source_name,
             target_name,
             label: format!("{} ({} B/cycle)", link_name, bandwidth.expr),
+            direction: GraphEdgeDirection::Directional,
             bandwidth: Some(bandwidth),
             latency: link.latency().map(expr_to_json),
             constraints: Some(String::new()),
@@ -322,19 +332,25 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             &mut used_ids,
         );
         let side_attr = arch_edge.side();
+        let direction = arch_edge_direction_to_json(arch_edge.direction());
+        let link_symbol = match direction {
+            GraphEdgeDirection::Directional => "→",
+            GraphEdgeDirection::Bidirectional => "↔",
+        };
         let label = match side_attr {
-            Some(s) => format!("{} → {} (side {})", source_name, target_name, s),
-            None => format!("{} → {}", source_name, target_name),
+            Some(s) => format!("{source_name} {link_symbol} {target_name} (side {s})"),
+            None => format!("{source_name} {link_symbol} {target_name}"),
         };
         edges.push(GraphEdge {
             id: edge_id,
             kind: GraphEdgeKind::IntraGraph,
-            name: format!("{}→{}", source_name, target_name),
+            name: format!("{source_name}{link_symbol}{target_name}"),
             source: source_id,
             target: target_id,
             source_name,
             target_name,
             label,
+            direction,
             bandwidth: None,
             latency: None,
             constraints: None,
@@ -591,6 +607,13 @@ fn link_topology_to_json(topology: LinkTopology) -> GraphLinkTopology {
     }
 }
 
+fn arch_edge_direction_to_json(direction: ArchEdgeDirection) -> GraphEdgeDirection {
+    match direction {
+        ArchEdgeDirection::Directional => GraphEdgeDirection::Directional,
+        ArchEdgeDirection::Bidirectional => GraphEdgeDirection::Bidirectional,
+    }
+}
+
 fn expr_to_json(expr: &Expr) -> GraphExpr {
     GraphExpr {
         expr: expr.to_string(),
@@ -750,8 +773,8 @@ fn processors_to_json(elem: &Architecture) -> GraphProcessors {
 mod tests {
     use super::{architecture_to_graph_json, architecture_to_graph_json_value};
     use crate::arch::{
-        ArchGraph, Architecture, Dimension, MemoryBank, MemoryRegion, Processor, ScaleOutNetwork,
-        SizeExpr,
+        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Architecture, Dimension, MemoryBank,
+        MemoryRegion, Processor, Router, ScaleOutNetwork, SizeExpr,
     };
     use crate::math::{AffineExpr, AffineMap};
 
@@ -797,6 +820,7 @@ mod tests {
         assert_eq!(value["edges"][0]["bandwidth"]["const_value"], 128);
         assert_eq!(value["edges"][0]["map_relation"], "one_to_one");
         assert_eq!(value["edges"][0]["topology"], "general");
+        assert_eq!(value["edges"][0]["direction"], "directional");
         assert!(value.get("intra_core").is_none());
     }
 
@@ -864,6 +888,32 @@ mod tests {
         assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
         assert_eq!(value["edges"][0]["map_relation"], "many_to_one");
         assert_eq!(value["edges"][0]["topology"], "general");
+    }
+
+    #[test]
+    fn serializes_bidirectional_intra_graph_edges() {
+        let mut graph = ArchGraph::new("core");
+        let src_id = graph.add_router(&Router::new("src", 2));
+        let dst_id = graph.add_router(&Router::new("dst", 2));
+        let src = graph
+            .get_node(&src_id)
+            .expect("source node should exist")
+            .clone();
+        let dst = graph
+            .get_node(&dst_id)
+            .expect("target node should exist")
+            .clone();
+        graph.connect_with_attrs(
+            &src,
+            &dst,
+            vec![ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional)],
+        );
+
+        let arch: Architecture = graph.into();
+        let value = architecture_to_graph_json_value(&arch);
+        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
+        assert_eq!(value["edges"][0]["kind"], "intra_graph");
+        assert_eq!(value["edges"][0]["direction"], "bidirectional");
     }
 
     #[test]

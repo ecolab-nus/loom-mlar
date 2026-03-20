@@ -80,6 +80,8 @@ export interface ArchitectureGraphNode {
   details: GraphNodeDetails;
 }
 
+export type GraphEdgeDirection = 'directional' | 'bidirectional';
+
 export interface ArchitectureGraphEdge {
   id: string;
   kind: string;
@@ -89,6 +91,7 @@ export interface ArchitectureGraphEdge {
   source_name: string;
   target_name: string;
   label: string;
+  direction?: GraphEdgeDirection;
   bandwidth?: GraphExpr;
   latency?: GraphExpr | null;
   constraints?: string;
@@ -256,6 +259,14 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
       typeof edge.name !== 'string'
     ) {
       throw new Error('Edge must include id/source/target/name.');
+    }
+
+    if (
+      edge.direction !== undefined &&
+      edge.direction !== 'directional' &&
+      edge.direction !== 'bidirectional'
+    ) {
+      throw new Error(`Edge ${edge.id} has invalid direction.`);
     }
 
     if (!isRecord(edge.map) || !isStringArray(edge.map.expressions)) {

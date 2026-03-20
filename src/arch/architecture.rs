@@ -296,8 +296,8 @@ impl From<ArchGraph> for Architecture {
 mod tests {
     use super::Architecture;
     use crate::arch::{
-        ArchGraph, ArchNode, ArchNodeComponent, MemoryBank, MemoryRegion, Processor, Router,
-        SizeExpr,
+        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, MemoryBank,
+        MemoryRegion, Processor, Router, SizeExpr,
     };
 
     #[test]
@@ -365,6 +365,29 @@ mod tests {
         assert_eq!(edge.id.as_str(), "edge::router::src_to_router::dst::edge");
         assert_eq!(edge.source, src_id);
         assert_eq!(edge.target, dst_id);
+        assert_eq!(edge.direction(), ArchEdgeDirection::Directional);
+    }
+
+    #[test]
+    fn graph_edge_direction_attribute_overrides_default_direction() {
+        let mut graph = ArchGraph::new("mesh");
+        let src_id = graph.add_router(&Router::new("src", 0));
+        let dst_id = graph.add_router(&Router::new("dst", 0));
+        let src = graph
+            .get_node(&src_id)
+            .expect("source node should exist")
+            .clone();
+        let dst = graph
+            .get_node(&dst_id)
+            .expect("target node should exist")
+            .clone();
+
+        let edge = graph.connect_with_attrs(
+            &src,
+            &dst,
+            vec![ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional)],
+        );
+        assert_eq!(edge.direction(), ArchEdgeDirection::Bidirectional);
     }
 
     #[test]
