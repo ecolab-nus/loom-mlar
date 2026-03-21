@@ -10,6 +10,9 @@ use std::collections::HashSet;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MeshNetwork {
     pub name: String,
+    /// Canonical dimensions for this mesh network.
+    #[serde(default)]
+    pub dimensions: Vec<Dimension>,
     /// Affine map describing the mesh topology (src indices -> dst indices).
     pub map: AffineMap,
     /// Array memory region attached to this mesh network.
@@ -34,6 +37,7 @@ impl ScaleOutNetwork {
     pub fn mesh(name: impl Into<String>) -> MeshNetworkBuilder {
         MeshNetworkBuilder {
             name: name.into(),
+            dimensions: None,
             region: None,
             map: None,
             io_bandwidth: None,
@@ -67,6 +71,12 @@ impl ScaleOutNetwork {
         }
     }
 
+    pub fn dimensions(&self) -> &[Dimension] {
+        match self {
+            Self::Mesh(m) => &m.dimensions,
+        }
+    }
+
     pub fn io_bandwidth(&self) -> &Expr {
         match self {
             Self::Mesh(m) => &m.io_bandwidth,
@@ -93,13 +103,29 @@ impl ScaleOutNetwork {
     /// Used during Architecture::scale().
     pub fn prepend_identity_dims(self, dims: &[Dimension]) -> Self {
         match self {
-            Self::Mesh(m) => Self::Mesh(MeshNetwork {
-                name: m.name,
-                region: m.region.scale(dims),
-                map: AffineMap::identity(dims),
-                io_bandwidth: m.io_bandwidth,
-                link_bandwidth: m.link_bandwidth,
-            }),
+            Self::Mesh(m) => {
+                let mut src_dims = dims.to_vec();
+                src_dims.extend(m.map.src_dims.clone());
+
+                let mut dst_dims = dims.to_vec();
+                dst_dims.extend(m.map.dst_dims.clone());
+
+                let mut exprs: Vec<AffineExpr> =
+                    dims.iter().cloned().map(AffineExpr::var).collect();
+                exprs.extend(m.map.exprs.clone());
+
+                let mut network_dims = dims.to_vec();
+                network_dims.extend(m.dimensions.clone());
+
+                Self::Mesh(MeshNetwork {
+                    name: m.name,
+                    dimensions: network_dims,
+                    region: m.region.scale(dims),
+                    map: AffineMap::new(&src_dims, &dst_dims, exprs),
+                    io_bandwidth: m.io_bandwidth,
+                    link_bandwidth: m.link_bandwidth,
+                })
+            }
         }
     }
 
@@ -142,6 +168,7 @@ impl ScaleOutNetwork {
 /// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
 pub struct MeshNetworkBuilder {
     name: String,
+    dimensions: Option<Vec<Dimension>>,
     region: Option<MemoryRegion>,
     map: Option<AffineMap>,
     io_bandwidth: Option<Expr>,
@@ -149,6 +176,14 @@ pub struct MeshNetworkBuilder {
 }
 
 impl MeshNetworkBuilder {
+    fn ensure_dimensions(&mut self, dims: &[Dimension], source: &str) {
+        if let Some(existing) = &self.dimensions {
+            assert_matching_dimensions(existing, dims, source);
+        } else {
+            self.dimensions = Some(dims.to_vec());
+        }
+    }
+
     fn set_memory_region(&mut self, region: MemoryRegion) {
         assert!(
             matches!(region, MemoryRegion::Array { .. }),
@@ -158,13 +193,39 @@ impl MeshNetworkBuilder {
             self.region.is_none(),
             "mesh region is already set; provide exactly one mem_region()"
         );
+        self.ensure_dimensions(region.dims(), "memory region dimensions");
         self.region = Some(region);
+    }
+
+    fn set_map(&mut self, map: AffineMap) {
+        assert!(
+            self.map.is_none(),
+            "mesh map is already set; provide exactly one map()"
+        );
+        self.ensure_dimensions(&map.src_dims, "map source dimensions");
+        self.map = Some(map);
+    }
+
+    /// Set mesh dimensions explicitly.
+    pub fn dimensions(mut self, dims: &[Dimension]) -> Self {
+        self.ensure_dimensions(dims, "explicit dimensions");
+        self
+    }
+
+    /// Alias for `dimensions`.
+    pub fn dims(self, dims: &[Dimension]) -> Self {
+        self.dimensions(dims)
     }
 
     /// Set the array memory region attached to this mesh.
     pub fn mem_region(mut self, region: &MemoryRegion) -> Self {
         self.set_memory_region(region.clone());
         self
+    }
+
+    /// Backward-compatible alias for `mem_region`.
+    pub fn region_mem(self, region: &MemoryRegion) -> Self {
+        self.mem_region(region)
     }
 
     /// Set aggregate ingress/egress bandwidth as a concrete integer.
@@ -193,7 +254,7 @@ impl MeshNetworkBuilder {
 
     /// Set the affine map describing the mesh topology.
     pub fn map(mut self, map: &AffineMap) -> Self {
-        self.map = Some(map.clone());
+        self.set_map(map.clone());
         self
     }
 
@@ -222,12 +283,23 @@ impl MeshNetworkBuilder {
             }
         };
 
+        let dimensions = self.dimensions.expect(
+            "mesh dimensions must be set explicitly via dimensions()/dims(), \
+or inferred from mem_region()/region_mem()/map()",
+        );
+        let region = self
+            .region
+            .expect("mesh region must be set via mem_region()");
+        let map = self.map.expect("affine map must be set");
+
+        assert_matching_dimensions(&dimensions, region.dims(), "memory region dimensions");
+        assert_matching_dimensions(&dimensions, &map.src_dims, "map source dimensions");
+
         let mesh = MeshNetwork {
             name: self.name,
-            region: self
-                .region
-                .expect("mesh region must be set via region_mem()"),
-            map: self.map.expect("affine map must be set"),
+            dimensions,
+            region,
+            map,
             io_bandwidth,
             link_bandwidth,
         };
@@ -255,6 +327,26 @@ fn domain_size(dims: &[Dimension]) -> Option<u64> {
         out = out.checked_mul(dim.size.as_const()?)?;
     }
     Some(out)
+}
+
+fn assert_matching_dimensions(expected: &[Dimension], actual: &[Dimension], source: &str) {
+    assert!(
+        expected == actual,
+        "mesh dimensions mismatch: expected [{}], but {} were [{}]",
+        format_dimensions(expected),
+        source,
+        format_dimensions(actual)
+    );
+}
+
+fn format_dimensions(dims: &[Dimension]) -> String {
+    if dims.is_empty() {
+        return "<none>".to_string();
+    }
+    dims.iter()
+        .map(|d| format!("{}={}", d.name, d.size))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn ring_shift_axis(map: &AffineMap) -> Option<usize> {
@@ -413,5 +505,61 @@ mod tests {
             .build();
 
         assert!(link.is_ring_topology());
+    }
+
+    #[test]
+    fn infers_dimensions_from_map_then_checks_mem_region() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let map = AffineMap::identity(&[x.clone(), y.clone()]);
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(&[x.clone(), y.clone()])
+        .with_name("l1");
+
+        let link = ScaleOutNetwork::mesh("torus")
+            .map(&map)
+            .mem_region(&l1)
+            .bandwidth(64)
+            .build();
+
+        assert_eq!(link.dimensions(), &[x, y]);
+    }
+
+    #[test]
+    #[should_panic(expected = "mesh dimensions mismatch")]
+    fn rejects_mem_region_if_it_conflicts_with_explicit_dimensions() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let bad_region = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(x.as_slice())
+        .with_name("l1");
+
+        let _ = ScaleOutNetwork::mesh("bad_mesh")
+            .dimensions(&[x, y])
+            .mem_region(&bad_region);
+    }
+
+    #[test]
+    #[should_panic(expected = "mesh dimensions mismatch")]
+    fn rejects_map_if_it_conflicts_with_region_dimensions() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(x.as_slice())
+        .with_name("l1");
+        let bad_map = AffineMap::identity(y.as_slice());
+
+        let _ = ScaleOutNetwork::mesh("bad_mesh")
+            .mem_region(&l1)
+            .map(&bad_map);
     }
 }
