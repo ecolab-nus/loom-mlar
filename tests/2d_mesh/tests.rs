@@ -780,3 +780,245 @@ fn test_generate_core_evaluator_binary() {
     ]);
     assert_eq!(at_32x32.eval_const(), Some(2));
 }
+
+/// Evaluate a data-mover schedule against the full system architecture.
+///
+/// The `dram_to_l1_f16` function's perf model uses symbols M and N:
+///   fixed_latency = 20, volume = M * N, throughput = 2048
+///   → cost = 20 + (M*N) / 2048
+///
+/// After sym_map M → BM, N → BN the cost becomes 20 + (BM*BN) / 2048.
+/// At BM=32, BN=64 → cost = 20 + 2048/2048 = 21.
+#[test]
+fn test_evaluate_system_data_mover_schedule() {
+    let system = scaled_mesh_torus();
+
+    let mn_sym = vec![Sym::new("M"), Sym::new("N")];
+    let sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(Sym::new("M"), Expr::sym("BM"));
+        m.insert(Sym::new("N"), Expr::sym("BN"));
+        Some(m)
+    };
+
+    let schedule = Schedule::Sequential {
+        schedules: vec![
+            Schedule::Func {
+                func: {
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
+                processor: None,
+                scenarios: None,
+            },
+            Schedule::Func {
+                func: {
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
+                processor: None,
+                scenarios: None,
+            },
+        ],
+        mlir_ref: None,
+        processor: None,
+        scenarios: None,
+    };
+
+    let result = evaluate(&schedule, &system).expect("data mover schedule should evaluate");
+
+    let (func_scenarios, seq_scenarios) = match &result {
+        Schedule::Sequential {
+            schedules,
+            scenarios: Some(seq_sc),
+            ..
+        } => {
+            let per_func: Vec<&Vec<PerfScenario>> = schedules
+                .iter()
+                .map(|s| match s {
+                    Schedule::Func {
+                        scenarios: Some(sc),
+                        ..
+                    } => sc,
+                    _ => panic!("expected Func with filled scenarios"),
+                })
+                .collect();
+            (per_func, seq_sc)
+        }
+        _ => panic!("expected Sequential with filled scenarios"),
+    };
+
+    assert_eq!(func_scenarios.len(), 2);
+    for sc in &func_scenarios {
+        assert_eq!(sc.len(), 1);
+    }
+
+    // Per-func: M and N should be substituted away
+    let expr = func_scenarios[0][0].time_cost.to_expr();
+    let free = expr.free_symbols();
+    assert!(
+        !free.contains(&Sym::new("M")) && !free.contains(&Sym::new("N")),
+        "M and N should have been substituted away, but symbols are: {:?}",
+        free
+    );
+    assert!(
+        free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")),
+        "BM and BN should appear after substitution, but symbols are: {:?}",
+        free
+    );
+
+    // BM=32, BN=64 → M*N=2048 → 20 + 2048/2048 = 21
+    let at_32x64 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(64)),
+    ]);
+    assert_eq!(at_32x64.eval_const(), Some(21));
+
+    // Sequential total = 2 × per-func cost = 2 × 21 = 42
+    assert_eq!(seq_scenarios.len(), 1);
+    let seq_expr = seq_scenarios[0].time_cost.to_expr();
+    let seq_at_32x64 = seq_expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(64)),
+    ]);
+    assert_eq!(seq_at_32x64.eval_const(), Some(42));
+
+    // sym_map is preserved on each func in the output
+    match &result {
+        Schedule::Sequential { schedules, .. } => {
+            for s in schedules {
+                match s {
+                    Schedule::Func { func, .. } => {
+                        let sm = func.sym_map.as_ref().expect("sym_map should be present");
+                        assert_eq!(sm.entries.len(), 2);
+                        assert_eq!(sm.entries[0].0, Sym::new("M"));
+                        assert_eq!(sm.entries[1].0, Sym::new("N"));
+                    }
+                    _ => panic!("expected Func"),
+                }
+            }
+        }
+        _ => panic!("expected Sequential"),
+    }
+
+    // JSON round-trip
+    let json = serde_json::to_string(&result).expect("Schedule should serialize");
+    let decoded: Schedule = serde_json::from_str(&json).expect("Schedule should deserialize");
+    let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
+    assert_eq!(json, decoded_json);
+}
+
+/// Generate a standalone system-level evaluator binary for the full 2D mesh
+/// torus architecture, then verify it correctly evaluates data-mover schedules
+/// when invoked as an external process.
+///
+/// This mirrors `test_generate_core_evaluator_binary` but operates at the
+/// system level: the architecture includes the mesh, DRAM, routers, and the
+/// `dram_to_l1_mover` data mover.
+#[test]
+fn test_generate_system_evaluator_binary() {
+    let system = scaled_mesh_torus();
+
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let binary = generate_evaluator_binary(&system, "eval_system", &output_dir)
+        .expect("system binary generation should succeed");
+
+    assert!(
+        binary.exists(),
+        "generated binary should exist at {binary:?}"
+    );
+
+    let mn_sym = vec![Sym::new("M"), Sym::new("N")];
+    let sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(Sym::new("M"), Expr::sym("BM"));
+        m.insert(Sym::new("N"), Expr::sym("BN"));
+        Some(m)
+    };
+
+    let schedule = Schedule::Sequential {
+        schedules: vec![
+            Schedule::Func {
+                func: {
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
+                processor: None,
+                scenarios: None,
+            },
+            Schedule::Func {
+                func: {
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    f.sym_map = sym_map.clone();
+                    f
+                },
+                processor: None,
+                scenarios: None,
+            },
+        ],
+        mlir_ref: None,
+        processor: None,
+        scenarios: None,
+    };
+    let input_json = serde_json::to_string(&schedule).expect("input should serialize");
+
+    let output = Command::new(&binary)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(input_json.as_bytes())
+                .unwrap();
+            child.wait_with_output()
+        })
+        .expect("binary should execute");
+
+    assert!(
+        output.status.success(),
+        "binary exited with error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let result: Schedule =
+        serde_json::from_slice(&output.stdout).expect("binary output should be valid JSON");
+
+    let func_scenarios: Vec<&Vec<PerfScenario>> = match &result {
+        Schedule::Sequential { schedules, .. } => schedules
+            .iter()
+            .map(|s| match s {
+                Schedule::Func {
+                    scenarios: Some(sc),
+                    ..
+                } => sc,
+                _ => panic!("expected Func with filled scenarios"),
+            })
+            .collect(),
+        _ => panic!("expected Sequential"),
+    };
+
+    assert_eq!(func_scenarios.len(), 2);
+    for sc in &func_scenarios {
+        assert_eq!(sc.len(), 1);
+    }
+
+    let expr = func_scenarios[0][0].time_cost.to_expr();
+    let free = expr.free_symbols();
+    assert!(!free.contains(&Sym::new("M")) && !free.contains(&Sym::new("N")));
+    assert!(free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")));
+
+    // BM=32, BN=64 → M*N=2048 → per-func: 20 + 2048/2048 = 21
+    let at_32x64 = expr.substitute(&[
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(64)),
+    ]);
+    assert_eq!(at_32x64.eval_const(), Some(21));
+}
