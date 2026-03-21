@@ -38,12 +38,6 @@ pub struct Processor {
     pub name: Option<String>,
     pub functionality: Module,
     pub functions: Vec<FunctionProcessor>,
-    /// Optional named input ports for data ingress.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<Vec<String>>,
-    /// Optional named output ports for data egress.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outputs: Option<Vec<String>>,
 }
 
 impl Processor {
@@ -53,8 +47,6 @@ impl Processor {
             name: Some(name.into()),
             functionality: Module::unnamed(vec![]),
             functions: Vec::new(),
-            inputs: None,
-            outputs: None,
         }
     }
 
@@ -65,8 +57,6 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            inputs: None,
-            outputs: None,
         }
     }
 
@@ -96,8 +86,6 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            inputs: None,
-            outputs: None,
         };
         processor.validate()?;
         Ok(processor)
@@ -106,18 +94,6 @@ impl Processor {
     /// Set the name (builder-style, consumes self).
     pub fn with_name(mut self, n: impl Into<String>) -> Self {
         self.name = Some(n.into());
-        self
-    }
-
-    /// Set named input ports (builder-style).
-    pub fn with_inputs(mut self, inputs: Vec<String>) -> Self {
-        self.inputs = Some(inputs);
-        self
-    }
-
-    /// Set named output ports (builder-style).
-    pub fn with_outputs(mut self, outputs: Vec<String>) -> Self {
-        self.outputs = Some(outputs);
         self
     }
 

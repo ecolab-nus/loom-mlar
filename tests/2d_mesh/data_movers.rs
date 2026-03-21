@@ -24,6 +24,4 @@ pub fn dram_to_l1_mover() -> DataMover {
 
     DataMover::from_module("dram_to_l1_mover", functionality, perf_models)
         .expect("dram_to_l1 data mover should link functionality and perf")
-        .with_inputs(vec!["DRAM".to_string()])
-        .with_outputs(vec!["L1".to_string()])
 }

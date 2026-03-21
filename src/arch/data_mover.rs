@@ -20,12 +20,6 @@ pub struct DataMover {
     pub name: Option<String>,
     pub functionality: Module,
     pub functions: Vec<FunctionDataMover>,
-    /// Optional named source ports for ingress (memory read).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<Vec<String>>,
-    /// Optional named destination ports for egress (memory write).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outputs: Option<Vec<String>>,
 }
 
 impl DataMover {
@@ -35,8 +29,6 @@ impl DataMover {
             name: Some(name.into()),
             functionality: Module::unnamed(vec![]),
             functions: Vec::new(),
-            inputs: None,
-            outputs: None,
         }
     }
 
@@ -47,8 +39,6 @@ impl DataMover {
             name: Some(name.into()),
             functionality,
             functions,
-            inputs: None,
-            outputs: None,
         }
     }
 
@@ -78,8 +68,6 @@ impl DataMover {
             name: Some(name.into()),
             functionality,
             functions,
-            inputs: None,
-            outputs: None,
         };
         mover.validate()?;
         Ok(mover)
@@ -88,18 +76,6 @@ impl DataMover {
     /// Set the name (builder-style, consumes self).
     pub fn with_name(mut self, n: impl Into<String>) -> Self {
         self.name = Some(n.into());
-        self
-    }
-
-    /// Set named input ports (builder-style).
-    pub fn with_inputs(mut self, inputs: Vec<String>) -> Self {
-        self.inputs = Some(inputs);
-        self
-    }
-
-    /// Set named output ports (builder-style).
-    pub fn with_outputs(mut self, outputs: Vec<String>) -> Self {
-        self.outputs = Some(outputs);
         self
     }
 
@@ -175,8 +151,6 @@ impl From<DataMover> for Processor {
             name: value.name,
             functionality: value.functionality,
             functions: value.functions,
-            inputs: value.inputs,
-            outputs: value.outputs,
         }
     }
 }
