@@ -1,63 +1,56 @@
 {
   "schema_version": "mlar.arch-viewer.v1",
   "hierarchy": {
-    "kind": "array",
+    "kind": "graph",
     "name": "2d_mesh_torus",
-    "dimensions": [
-      {
-        "name": "x",
-        "size_expr": "8",
-        "size_const": 8
-      },
-      {
-        "name": "y",
-        "size_expr": "8",
-        "size_const": 8
-      }
-    ],
     "total_instances": 128,
-    "connectivity": [
-      {
-        "name": "L1_torus_y",
-        "kind": "mesh",
-        "bandwidth": {
-          "expr": "64",
-          "const_value": 64
-        },
-        "latency": null,
-        "topology": "ring"
-      },
-      {
-        "name": "L1_torus_x",
-        "kind": "mesh",
-        "bandwidth": {
-          "expr": "64",
-          "const_value": 64
-        },
-        "latency": null,
-        "topology": "ring"
-      }
-    ],
     "children": [
       {
-        "kind": "graph",
-        "name": "core",
-        "total_instances": 2,
+        "kind": "array",
+        "name": "mesh",
+        "dimensions": [
+          {
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "total_instances": 128,
+        "connectivity": [
+          {
+            "name": "L1_torus_y",
+            "kind": "mesh",
+            "bandwidth": {
+              "expr": "64",
+              "const_value": 64
+            },
+            "latency": null,
+            "topology": "ring"
+          },
+          {
+            "name": "L1_torus_x",
+            "kind": "mesh",
+            "bandwidth": {
+              "expr": "64",
+              "const_value": 64
+            },
+            "latency": null,
+            "topology": "ring"
+          }
+        ],
         "children": [
           {
-            "kind": "memory",
-            "name": "L1",
-            "dimensions": [
+            "kind": "graph",
+            "name": "core",
+            "total_instances": 2,
+            "children": [
               {
-                "name": "nbank",
-                "size_expr": "16",
-                "size_const": 16
-              }
-            ],
-            "details": {
-              "type": "memory",
-              "region": {
-                "kind": "array",
+                "kind": "memory",
                 "name": "L1",
                 "dimensions": [
                   {
@@ -66,82 +59,147 @@
                     "size_const": 16
                   }
                 ],
-                "sub_region": {
-                  "kind": "bank",
-                  "name": null,
-                  "capacity_bytes": {
-                    "expr": "(128 * 1024)",
-                    "const_value": 131072
+                "details": {
+                  "type": "memory",
+                  "region": {
+                    "kind": "array",
+                    "name": "L1",
+                    "dimensions": [
+                      {
+                        "name": "nbank",
+                        "size_expr": "16",
+                        "size_const": 16
+                      }
+                    ],
+                    "sub_region": {
+                      "kind": "bank",
+                      "name": null,
+                      "capacity_bytes": {
+                        "expr": "(128 * 1024)",
+                        "const_value": 131072
+                      },
+                      "access_granularity": {
+                        "expr": "128",
+                        "const_value": 128
+                      },
+                      "total_size_bytes": 131072
+                    },
+                    "total_size_bytes": 2097152
                   },
-                  "access_granularity": {
-                    "expr": "128",
-                    "const_value": 128
-                  },
-                  "total_size_bytes": 131072
-                },
-                "total_size_bytes": 2097152
+                  "total_size_bytes": 2097152
+                }
               },
-              "total_size_bytes": 2097152
-            }
-          },
-          {
-            "kind": "unit",
-            "name": "matrix_lane",
-            "total_instances": 1,
-            "details": {
-              "type": "processor",
-              "functions": [
-                "matmul_f16",
-                "batch_matmul_f16"
-              ]
-            }
-          },
-          {
-            "kind": "unit",
-            "name": "vector_lane",
-            "total_instances": 1,
-            "details": {
-              "type": "processor",
-              "functions": [
-                "vec_max_f16",
-                "vec_exp_f16",
-                "vec_sum_f16",
-                "vec_vsum_f16",
-                "vec_add_f16",
-                "vec_mul_f16",
-                "vec_div_f16",
-                "vec_sub_f16",
-                "vec_powf_f16",
-                "vec_vmax_f16",
-                "vec_max1_f16",
-                "vec_cmpf_ogt_f16",
-                "vec_select_f16"
-              ]
-            }
-          },
-          {
-            "kind": "router",
-            "name": "core_router",
-            "details": {
-              "type": "router",
-              "router": {
+              {
+                "kind": "unit",
+                "name": "matrix_lane",
+                "total_instances": 1,
+                "details": {
+                  "type": "processor",
+                  "functions": [
+                    "matmul_f16",
+                    "batch_matmul_f16"
+                  ]
+                }
+              },
+              {
+                "kind": "unit",
+                "name": "vector_lane",
+                "total_instances": 1,
+                "details": {
+                  "type": "processor",
+                  "functions": [
+                    "vec_max_f16",
+                    "vec_exp_f16",
+                    "vec_sum_f16",
+                    "vec_vsum_f16",
+                    "vec_add_f16",
+                    "vec_mul_f16",
+                    "vec_div_f16",
+                    "vec_sub_f16",
+                    "vec_powf_f16",
+                    "vec_vmax_f16",
+                    "vec_max1_f16",
+                    "vec_cmpf_ogt_f16",
+                    "vec_select_f16"
+                  ]
+                }
+              },
+              {
+                "kind": "router",
                 "name": "core_router",
-                "side_count": 2
+                "details": {
+                  "type": "router",
+                  "router": {
+                    "name": "core_router",
+                    "side_count": 2
+                  }
+                }
               }
-            }
+            ]
           }
         ]
+      },
+      {
+        "kind": "memory",
+        "name": "DRAM",
+        "dimensions": [
+          {
+            "name": "dram_channel",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "details": {
+          "type": "memory",
+          "region": {
+            "kind": "array",
+            "name": "DRAM",
+            "dimensions": [
+              {
+                "name": "dram_channel",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "sub_region": {
+              "kind": "bank",
+              "name": "DRAM_bank",
+              "capacity_bytes": {
+                "expr": "(256 * 8192)",
+                "const_value": 2097152
+              },
+              "access_granularity": {
+                "expr": "256",
+                "const_value": 256
+              },
+              "total_size_bytes": 2097152
+            },
+            "total_size_bytes": 16777216
+          },
+          "total_size_bytes": 16777216
+        }
+      },
+      {
+        "kind": "router",
+        "name": "mesh_dram_router",
+        "details": {
+          "type": "router",
+          "router": {
+            "name": "mesh_dram_router",
+            "side_count": 2
+          }
+        }
       }
     ]
   },
   "graphs": {
-    "": {
+    "mesh": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
-        "name": "2d_mesh_torus",
+        "name": "mesh",
         "labels": [
           {
-            "name": "2d_mesh_torus",
+            "name": "mesh",
             "dimensions": [
               {
                 "name": "x",
@@ -159,10 +217,10 @@
       },
       "nodes": [
         {
-          "id": "proc:2d_mesh_torus",
+          "id": "proc:mesh",
           "kind": "processor",
-          "name": "2d_mesh_torus",
-          "label": "2d_mesh_torus [x=8, y=8]",
+          "name": "mesh",
+          "label": "mesh [x=8, y=8]",
           "dimensions": [
             {
               "name": "x",
@@ -179,7 +237,7 @@
             "type": "processor",
             "element": {
               "kind": "array",
-              "name": "2d_mesh_torus",
+              "name": "mesh",
               "dimensions": [
                 {
                   "name": "x",
@@ -533,7 +591,307 @@
         ]
       }
     },
-    "core": {
+    "": {
+      "schema_version": "mlar.arch-graph.v1",
+      "architecture": {
+        "name": "2d_mesh_torus",
+        "labels": []
+      },
+      "nodes": [
+        {
+          "id": "proc:mesh",
+          "kind": "processor",
+          "name": "mesh",
+          "label": "mesh [x=8, y=8]",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "array",
+              "name": "mesh",
+              "dimensions": [
+                {
+                  "name": "x",
+                  "size_expr": "8",
+                  "size_const": 8
+                },
+                {
+                  "name": "y",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "elem": {
+                "kind": "graph",
+                "name": "core",
+                "processor_count": 2,
+                "link_count": 0
+              }
+            },
+            "total_instances": 128
+          }
+        },
+        {
+          "id": "mem:dram",
+          "kind": "memory",
+          "name": "DRAM",
+          "label": "DRAM [dram_channel=8]",
+          "dimensions": [
+            {
+              "name": "dram_channel",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "DRAM",
+              "dimensions": [
+                {
+                  "name": "dram_channel",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "sub_region": {
+                "kind": "bank",
+                "name": "DRAM_bank",
+                "capacity_bytes": {
+                  "expr": "(256 * 8192)",
+                  "const_value": 2097152
+                },
+                "access_granularity": {
+                  "expr": "256",
+                  "const_value": 256
+                },
+                "total_size_bytes": 2097152
+              },
+              "total_size_bytes": 16777216
+            }
+          }
+        },
+        {
+          "id": "router:mesh_dram_router",
+          "kind": "router",
+          "name": "mesh_dram_router",
+          "label": "mesh_dram_router",
+          "dimensions": [],
+          "details": {
+            "type": "router",
+            "router": {
+              "name": "mesh_dram_router",
+              "side_count": 2
+            }
+          }
+        },
+        {
+          "id": "mem:l1",
+          "kind": "memory",
+          "name": "L1",
+          "label": "L1 [x=8, y=8, nbank=16]",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "L1",
+              "dimensions": [
+                {
+                  "name": "x",
+                  "size_expr": "8",
+                  "size_const": 8
+                },
+                {
+                  "name": "y",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "sub_region": {
+                "kind": "array",
+                "name": "L1",
+                "dimensions": [
+                  {
+                    "name": "nbank",
+                    "size_expr": "16",
+                    "size_const": 16
+                  }
+                ],
+                "sub_region": {
+                  "kind": "bank",
+                  "name": null,
+                  "capacity_bytes": {
+                    "expr": "(128 * 1024)",
+                    "const_value": 131072
+                  },
+                  "access_granularity": {
+                    "expr": "128",
+                    "const_value": 128
+                  },
+                  "total_size_bytes": 131072
+                },
+                "total_size_bytes": 2097152
+              },
+              "total_size_bytes": 134217728
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge:l1_torus_y:0",
+          "kind": "scale_out_network",
+          "name": "L1_torus_y",
+          "source": "mem:l1",
+          "target": "mem:l1",
+          "source_name": "L1",
+          "target_name": "L1",
+          "label": "L1_torus_y (64 B/cycle)",
+          "direction": "directional",
+          "bandwidth": {
+            "expr": "64",
+            "const_value": 64
+          },
+          "constraints": "",
+          "sharing": "mesh",
+          "map_relation": "one_to_one",
+          "topology": "ring",
+          "map": {
+            "source_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "target_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "expressions": [
+              "x",
+              "((y + 1) mod 8)"
+            ]
+          }
+        },
+        {
+          "id": "edge:l1_torus_x:1",
+          "kind": "scale_out_network",
+          "name": "L1_torus_x",
+          "source": "mem:l1",
+          "target": "mem:l1",
+          "source_name": "L1",
+          "target_name": "L1",
+          "label": "L1_torus_x (64 B/cycle)",
+          "direction": "directional",
+          "bandwidth": {
+            "expr": "64",
+            "const_value": 64
+          },
+          "constraints": "",
+          "sharing": "mesh",
+          "map_relation": "one_to_one",
+          "topology": "ring",
+          "map": {
+            "source_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "target_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "expressions": [
+              "((x + 1) mod 8)",
+              "y"
+            ]
+          }
+        },
+        {
+          "id": "iedge:mesh:0",
+          "kind": "intra_graph",
+          "name": "mesh↔mesh_dram_router",
+          "source": "proc:mesh",
+          "target": "router:mesh_dram_router",
+          "source_name": "mesh",
+          "target_name": "mesh_dram_router",
+          "label": "mesh ↔ mesh_dram_router (side 0)",
+          "direction": "bidirectional",
+          "side": 0
+        },
+        {
+          "id": "iedge:mesh_dram_router:1",
+          "kind": "intra_graph",
+          "name": "mesh_dram_router↔DRAM",
+          "source": "router:mesh_dram_router",
+          "target": "mem:dram",
+          "source_name": "mesh_dram_router",
+          "target_name": "DRAM",
+          "label": "mesh_dram_router ↔ DRAM (side 1)",
+          "direction": "bidirectional",
+          "side": 1
+        }
+      ]
+    },
+    "mesh/core": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
         "name": "core",

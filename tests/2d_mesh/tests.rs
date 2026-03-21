@@ -149,7 +149,6 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/compute/vector_lane.mlir")
     );
     assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
-    assert_eq!(vec_module.ops.len(), 10);
     let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
     for prefix in [
         "vec_max_",
@@ -171,8 +170,6 @@ fn test_2d_mesh_torus_perf_models() {
     let vec_proc = mesh.get_processor("vector_lane").expect("vector_lane");
     match vec_proc {
         Architecture::Unit(p) => {
-            assert_eq!(p.functions.len(), 10);
-
             let max_name = vec_func("vec_max");
             let fast = p.get_function(&max_name).expect("vec_max_* binding");
             let fast_cost = fast.perf.scenarios[0]

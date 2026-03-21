@@ -1,63 +1,56 @@
 {
   "schema_version": "mlar.arch-hierarchy.v1",
   "root": {
-    "kind": "array",
+    "kind": "graph",
     "name": "2d_mesh_torus",
-    "dimensions": [
-      {
-        "name": "x",
-        "size_expr": "8",
-        "size_const": 8
-      },
-      {
-        "name": "y",
-        "size_expr": "8",
-        "size_const": 8
-      }
-    ],
     "total_instances": 128,
-    "connectivity": [
-      {
-        "name": "L1_torus_y",
-        "kind": "mesh",
-        "bandwidth": {
-          "expr": "64",
-          "const_value": 64
-        },
-        "latency": null,
-        "topology": "ring"
-      },
-      {
-        "name": "L1_torus_x",
-        "kind": "mesh",
-        "bandwidth": {
-          "expr": "64",
-          "const_value": 64
-        },
-        "latency": null,
-        "topology": "ring"
-      }
-    ],
     "children": [
       {
-        "kind": "graph",
-        "name": "core",
-        "total_instances": 2,
+        "kind": "array",
+        "name": "mesh",
+        "dimensions": [
+          {
+            "name": "x",
+            "size_expr": "8",
+            "size_const": 8
+          },
+          {
+            "name": "y",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "total_instances": 128,
+        "connectivity": [
+          {
+            "name": "L1_torus_y",
+            "kind": "mesh",
+            "bandwidth": {
+              "expr": "64",
+              "const_value": 64
+            },
+            "latency": null,
+            "topology": "ring"
+          },
+          {
+            "name": "L1_torus_x",
+            "kind": "mesh",
+            "bandwidth": {
+              "expr": "64",
+              "const_value": 64
+            },
+            "latency": null,
+            "topology": "ring"
+          }
+        ],
         "children": [
           {
-            "kind": "memory",
-            "name": "L1",
-            "dimensions": [
+            "kind": "graph",
+            "name": "core",
+            "total_instances": 2,
+            "children": [
               {
-                "name": "nbank",
-                "size_expr": "16",
-                "size_const": 16
-              }
-            ],
-            "details": {
-              "type": "memory",
-              "region": {
-                "kind": "array",
+                "kind": "memory",
                 "name": "L1",
                 "dimensions": [
                   {
@@ -66,71 +59,136 @@
                     "size_const": 16
                   }
                 ],
-                "sub_region": {
-                  "kind": "bank",
-                  "name": null,
-                  "capacity_bytes": {
-                    "expr": "(128 * 1024)",
-                    "const_value": 131072
+                "details": {
+                  "type": "memory",
+                  "region": {
+                    "kind": "array",
+                    "name": "L1",
+                    "dimensions": [
+                      {
+                        "name": "nbank",
+                        "size_expr": "16",
+                        "size_const": 16
+                      }
+                    ],
+                    "sub_region": {
+                      "kind": "bank",
+                      "name": null,
+                      "capacity_bytes": {
+                        "expr": "(128 * 1024)",
+                        "const_value": 131072
+                      },
+                      "access_granularity": {
+                        "expr": "128",
+                        "const_value": 128
+                      },
+                      "total_size_bytes": 131072
+                    },
+                    "total_size_bytes": 2097152
                   },
-                  "access_granularity": {
-                    "expr": "128",
-                    "const_value": 128
-                  },
-                  "total_size_bytes": 131072
-                },
-                "total_size_bytes": 2097152
+                  "total_size_bytes": 2097152
+                }
               },
-              "total_size_bytes": 2097152
-            }
-          },
-          {
-            "kind": "unit",
-            "name": "matrix_lane",
-            "total_instances": 1,
-            "details": {
-              "type": "processor",
-              "functions": [
-                "matmul_f16",
-                "batch_matmul_f16"
-              ]
-            }
-          },
-          {
-            "kind": "unit",
-            "name": "vector_lane",
-            "total_instances": 1,
-            "details": {
-              "type": "processor",
-              "functions": [
-                "vec_max_f16",
-                "vec_exp_f16",
-                "vec_sum_f16",
-                "vec_vsum_f16",
-                "vec_add_f16",
-                "vec_mul_f16",
-                "vec_div_f16",
-                "vec_sub_f16",
-                "vec_powf_f16",
-                "vec_vmax_f16",
-                "vec_max1_f16",
-                "vec_cmpf_ogt_f16",
-                "vec_select_f16"
-              ]
-            }
-          },
-          {
-            "kind": "router",
-            "name": "core_router",
-            "details": {
-              "type": "router",
-              "router": {
+              {
+                "kind": "unit",
+                "name": "matrix_lane",
+                "total_instances": 1,
+                "details": {
+                  "type": "processor",
+                  "functions": [
+                    "matmul_f16",
+                    "batch_matmul_f16"
+                  ]
+                }
+              },
+              {
+                "kind": "unit",
+                "name": "vector_lane",
+                "total_instances": 1,
+                "details": {
+                  "type": "processor",
+                  "functions": [
+                    "vec_max_f16",
+                    "vec_exp_f16",
+                    "vec_sum_f16",
+                    "vec_vsum_f16",
+                    "vec_add_f16",
+                    "vec_mul_f16",
+                    "vec_div_f16",
+                    "vec_sub_f16",
+                    "vec_powf_f16",
+                    "vec_vmax_f16",
+                    "vec_max1_f16",
+                    "vec_cmpf_ogt_f16",
+                    "vec_select_f16"
+                  ]
+                }
+              },
+              {
+                "kind": "router",
                 "name": "core_router",
-                "side_count": 2
+                "details": {
+                  "type": "router",
+                  "router": {
+                    "name": "core_router",
+                    "side_count": 2
+                  }
+                }
               }
-            }
+            ]
           }
         ]
+      },
+      {
+        "kind": "memory",
+        "name": "DRAM",
+        "dimensions": [
+          {
+            "name": "dram_channel",
+            "size_expr": "8",
+            "size_const": 8
+          }
+        ],
+        "details": {
+          "type": "memory",
+          "region": {
+            "kind": "array",
+            "name": "DRAM",
+            "dimensions": [
+              {
+                "name": "dram_channel",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "sub_region": {
+              "kind": "bank",
+              "name": "DRAM_bank",
+              "capacity_bytes": {
+                "expr": "(256 * 8192)",
+                "const_value": 2097152
+              },
+              "access_granularity": {
+                "expr": "256",
+                "const_value": 256
+              },
+              "total_size_bytes": 2097152
+            },
+            "total_size_bytes": 16777216
+          },
+          "total_size_bytes": 16777216
+        }
+      },
+      {
+        "kind": "router",
+        "name": "mesh_dram_router",
+        "details": {
+          "type": "router",
+          "router": {
+            "name": "mesh_dram_router",
+            "side_count": 2
+          }
+        }
       }
     ]
   }
