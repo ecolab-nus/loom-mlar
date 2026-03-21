@@ -49,8 +49,8 @@ pub struct MeshNetwork {
     /// Canonical dimensions for this mesh network.
     #[serde(default)]
     pub dimensions: Vec<Dimension>,
-    /// Affine map describing the mesh topology (src indices -> dst indices).
-    pub map: AffineMap,
+    /// Affine maps describing mesh topology links (src indices -> dst indices).
+    pub links: Vec<AffineMap>,
     /// Array memory region attached to this mesh network.
     pub region: MemoryRegion,
     /// IO interface describing external connections and their bandwidth.
@@ -75,7 +75,7 @@ impl ScaleOutNetwork {
             name: name.into(),
             dimensions: None,
             region: None,
-            map: None,
+            links: Vec::new(),
             io: None,
             link_bandwidth: None,
         }
@@ -103,7 +103,17 @@ impl ScaleOutNetwork {
 
     pub fn map(&self) -> &AffineMap {
         match self {
-            Self::Mesh(m) => &m.map,
+            Self::Mesh(m) => m
+                .links
+                .first()
+                .expect("mesh network must contain at least one topology link map"),
+        }
+    }
+
+    /// Return all affine maps describing this mesh network topology.
+    pub fn links(&self) -> &[AffineMap] {
+        match self {
+            Self::Mesh(m) => &m.links,
         }
     }
 
@@ -140,15 +150,23 @@ impl ScaleOutNetwork {
     pub fn prepend_identity_dims(self, dims: &[Dimension]) -> Self {
         match self {
             Self::Mesh(m) => {
-                let mut src_dims = dims.to_vec();
-                src_dims.extend(m.map.src_dims.clone());
+                let links = m
+                    .links
+                    .iter()
+                    .map(|link| {
+                        let mut src_dims = dims.to_vec();
+                        src_dims.extend(link.src_dims.clone());
 
-                let mut dst_dims = dims.to_vec();
-                dst_dims.extend(m.map.dst_dims.clone());
+                        let mut dst_dims = dims.to_vec();
+                        dst_dims.extend(link.dst_dims.clone());
 
-                let mut exprs: Vec<AffineExpr> =
-                    dims.iter().cloned().map(AffineExpr::var).collect();
-                exprs.extend(m.map.exprs.clone());
+                        let mut exprs: Vec<AffineExpr> =
+                            dims.iter().cloned().map(AffineExpr::var).collect();
+                        exprs.extend(link.exprs.clone());
+
+                        AffineMap::new(&src_dims, &dst_dims, exprs)
+                    })
+                    .collect();
 
                 let mut network_dims = dims.to_vec();
                 network_dims.extend(m.dimensions.clone());
@@ -157,7 +175,7 @@ impl ScaleOutNetwork {
                     name: m.name,
                     dimensions: network_dims,
                     region: m.region.scale(dims),
-                    map: AffineMap::new(&src_dims, &dst_dims, exprs),
+                    links,
                     io: m.io.prepend_identity_dims(dims),
                     link_bandwidth: m.link_bandwidth,
                 })
@@ -167,18 +185,24 @@ impl ScaleOutNetwork {
 
     /// Validate affine-map domain/codomain structure.
     pub fn validate_map_domains(&self) -> Result<(), String> {
-        let map = self.map();
+        for (idx, map) in self.links().iter().enumerate() {
+            if map.exprs.len() != map.dst_dims.len() {
+                return Err(format!(
+                    "link map #{idx}: expression count must match destination dimensions"
+                ));
+            }
 
-        if map.exprs.len() != map.dst_dims.len() {
-            return Err("expression count must match destination dimensions".to_string());
-        }
+            if has_duplicate_dimension_names(&map.src_dims) {
+                return Err(format!(
+                    "link map #{idx}: source map dimensions must be unique"
+                ));
+            }
 
-        if has_duplicate_dimension_names(&map.src_dims) {
-            return Err("source map dimensions must be unique".to_string());
-        }
-
-        if has_duplicate_dimension_names(&map.dst_dims) {
-            return Err("destination map dimensions must be unique".to_string());
+            if has_duplicate_dimension_names(&map.dst_dims) {
+                return Err(format!(
+                    "link map #{idx}: destination map dimensions must be unique"
+                ));
+            }
         }
 
         Ok(())
@@ -197,7 +221,11 @@ impl ScaleOutNetwork {
     /// True when the map is an identity on all but one dimension and that
     /// remaining dimension is shifted with modulo wrapping.
     pub fn is_ring_topology(&self) -> bool {
-        ring_shift_axis(self.map()).is_some()
+        let links = self.links();
+        if links.len() != 1 {
+            return false;
+        }
+        ring_shift_axis(&links[0]).is_some()
     }
 }
 
@@ -206,7 +234,7 @@ pub struct MeshNetworkBuilder {
     name: String,
     dimensions: Option<Vec<Dimension>>,
     region: Option<MemoryRegion>,
-    map: Option<AffineMap>,
+    links: Vec<AffineMap>,
     io: Option<MeshNetworkInterface>,
     link_bandwidth: Option<Expr>,
 }
@@ -234,12 +262,8 @@ impl MeshNetworkBuilder {
     }
 
     fn set_map(&mut self, map: AffineMap) {
-        assert!(
-            self.map.is_none(),
-            "mesh map is already set; provide exactly one map()"
-        );
         self.ensure_dimensions(&map.src_dims, "map source dimensions");
-        self.map = Some(map);
+        self.links.push(map);
     }
 
     /// Set mesh dimensions explicitly.
@@ -288,29 +312,41 @@ impl MeshNetworkBuilder {
         self
     }
 
+    /// Append multiple affine maps describing mesh topology links.
+    pub fn links(mut self, links: &[AffineMap]) -> Self {
+        assert!(!links.is_empty(), "mesh links cannot be empty");
+        for link in links {
+            self.set_map(link.clone());
+        }
+        self
+    }
+
     pub fn build(self) -> ScaleOutNetwork {
-        let link_bandwidth = self
-            .link_bandwidth
-            .expect("link_bandwidth must be set");
+        let link_bandwidth = self.link_bandwidth.expect("link_bandwidth must be set");
         let io = self.io.expect("io interface must be set via io()");
 
         let dimensions = self.dimensions.expect(
             "mesh dimensions must be set explicitly via dimensions()/dims(), \
-or inferred from mem_region()/region_mem()/map()",
+or inferred from mem_region()/region_mem()/map()/links()",
         );
         let region = self
             .region
             .expect("mesh region must be set via mem_region()");
-        let map = self.map.expect("affine map must be set");
+        assert!(
+            !self.links.is_empty(),
+            "at least one affine map must be set via map()/links()"
+        );
 
         assert_matching_dimensions(&dimensions, region.dims(), "memory region dimensions");
-        assert_matching_dimensions(&dimensions, &map.src_dims, "map source dimensions");
+        for link in &self.links {
+            assert_matching_dimensions(&dimensions, &link.src_dims, "map source dimensions");
+        }
 
         let mesh = MeshNetwork {
             name: self.name,
             dimensions,
             region,
-            map,
+            links: self.links,
             io,
             link_bandwidth,
         };
@@ -523,6 +559,56 @@ mod tests {
             .build();
 
         assert!(link.is_ring_topology());
+    }
+
+    #[test]
+    fn supports_multiple_topology_links() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let torus_y_map = AffineMap::new(
+            &[x.clone(), y.clone()],
+            &[x.clone(), y.clone()],
+            vec![
+                AffineExpr::var(x.clone()),
+                AffineExpr::modulo(
+                    AffineExpr::add(AffineExpr::var(y.clone()), AffineExpr::constant(1)),
+                    AffineExpr::constant(8),
+                ),
+            ],
+        );
+        let torus_x_map = AffineMap::new(
+            &[x.clone(), y.clone()],
+            &[x.clone(), y.clone()],
+            vec![
+                AffineExpr::modulo(
+                    AffineExpr::add(AffineExpr::var(x.clone()), AffineExpr::constant(1)),
+                    AffineExpr::constant(8),
+                ),
+                AffineExpr::var(y.clone()),
+            ],
+        );
+
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(&[x.clone(), y.clone()])
+        .with_name("l1");
+
+        let io = make_io(&[x.clone(), y.clone()], 64);
+        let link = ScaleOutNetwork::mesh("torus")
+            .mem_region(&l1)
+            .links(&[torus_y_map.clone(), torus_x_map.clone()])
+            .io(&io)
+            .link_bandwidth(64)
+            .build();
+
+        assert_eq!(link.links().len(), 2);
+        assert_eq!(link.links()[0].apply(&[3, 7]), vec![3, 0]);
+        assert_eq!(link.links()[1].apply(&[7, 3]), vec![0, 3]);
+        assert_eq!(link.source_domain_size(), Some(64));
+        assert_eq!(link.target_domain_size(), Some(64));
+        assert!(!link.is_ring_topology());
     }
 
     #[test]

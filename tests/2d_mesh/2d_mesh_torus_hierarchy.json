@@ -23,24 +23,14 @@
         "total_instances": 128,
         "connectivity": [
           {
-            "name": "L1_torus_y",
+            "name": "L1_torus",
             "kind": "mesh",
             "bandwidth": {
               "expr": "64",
               "const_value": 64
             },
             "latency": null,
-            "topology": "ring"
-          },
-          {
-            "name": "L1_torus_x",
-            "kind": "mesh",
-            "bandwidth": {
-              "expr": "64",
-              "const_value": 64
-            },
-            "latency": null,
-            "topology": "ring"
+            "topology": "general"
           }
         ],
         "children": [

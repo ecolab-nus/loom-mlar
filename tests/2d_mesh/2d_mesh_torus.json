@@ -175,14 +175,14 @@
   ],
   "edges": [
     {
-      "id": "edge:l1_torus_y:0",
+      "id": "edge:l1_torus:0",
       "kind": "scale_out_network",
-      "name": "L1_torus_y",
+      "name": "L1_torus",
       "source": "mem:l1",
       "target": "mem:l1",
       "source_name": "L1",
       "target_name": "L1",
-      "label": "L1_torus_y (64 B/cycle)",
+      "label": "L1_torus (64 B/cycle)",
       "direction": "directional",
       "bandwidth": {
         "expr": "64",
@@ -191,7 +191,7 @@
       "constraints": "",
       "sharing": "mesh",
       "map_relation": "one_to_one",
-      "topology": "ring",
+      "topology": "general",
       "map": {
         "source_dimensions": [
           {
@@ -220,55 +220,6 @@
         "expressions": [
           "x",
           "((y + 1) mod 8)"
-        ]
-      }
-    },
-    {
-      "id": "edge:l1_torus_x:1",
-      "kind": "scale_out_network",
-      "name": "L1_torus_x",
-      "source": "mem:l1",
-      "target": "mem:l1",
-      "source_name": "L1",
-      "target_name": "L1",
-      "label": "L1_torus_x (64 B/cycle)",
-      "direction": "directional",
-      "bandwidth": {
-        "expr": "64",
-        "const_value": 64
-      },
-      "constraints": "",
-      "sharing": "mesh",
-      "map_relation": "one_to_one",
-      "topology": "ring",
-      "map": {
-        "source_dimensions": [
-          {
-            "name": "x",
-            "size_expr": "8",
-            "size_const": 8
-          },
-          {
-            "name": "y",
-            "size_expr": "8",
-            "size_const": 8
-          }
-        ],
-        "target_dimensions": [
-          {
-            "name": "x",
-            "size_expr": "8",
-            "size_const": 8
-          },
-          {
-            "name": "y",
-            "size_expr": "8",
-            "size_const": 8
-          }
-        ],
-        "expressions": [
-          "((x + 1) mod 8)",
-          "y"
         ]
       }
     },

@@ -37,27 +37,20 @@ pub fn scaled_mesh_torus() -> Architecture {
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
-        .mem_region(&scaled_l1)
-        .map(&torus_y_map)
-        .io(&io)
-        .link_bandwidth(64)
-        .build();
-
     // Vertical torus: x-neighbor with wraparound
     let torus_x_map = AffineMapTemplate::parse("[x, y] -> [x, y]: ((x + 1) mod 8, y)")
         .expect("invalid affine map")
         .bind([&dim_x, &dim_y])
         .expect("failed to bind");
 
-    let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
+    let torus = ScaleOutNetwork::mesh("L1_torus")
         .mem_region(&scaled_l1)
-        .map(&torus_x_map)
+        .links(&[torus_y_map.clone(), torus_x_map.clone()])
         .io(&io)
         .link_bandwidth(64)
         .build();
 
-    let mesh = mesh.with_connectivity(vec![torus_y, torus_x]);
+    let mesh = mesh.with_connectivity(vec![torus]);
 
     let mut system: Architecture = ArchGraph::builder("2d_mesh_torus")
         .processor(&mesh)
