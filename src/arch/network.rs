@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::data_mover::DataMover;
 use super::memory::MemoryRegion;
 use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
@@ -13,6 +14,9 @@ pub struct MeshNetworkInterface {
     pub map: AffineMap,
     /// Bandwidth per IO link for the selected subregions.
     pub link_bandwidth: Expr,
+    /// Optional data mover engine that handles transfers through this IO interface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_mover: Option<DataMover>,
 }
 
 impl MeshNetworkInterface {
@@ -20,7 +24,14 @@ impl MeshNetworkInterface {
         Self {
             map,
             link_bandwidth,
+            data_mover: None,
         }
+    }
+
+    /// Attach a data mover to this IO interface (builder-style).
+    pub fn with_data_mover(mut self, data_mover: DataMover) -> Self {
+        self.data_mover = Some(data_mover);
+        self
     }
 
     /// Prepend identity dimensions to the IO map (used during scaling).
@@ -37,6 +48,7 @@ impl MeshNetworkInterface {
         Self {
             map: AffineMap::new(&src_dims, &dst_dims, exprs),
             link_bandwidth: self.link_bandwidth,
+            data_mover: self.data_mover,
         }
     }
 }
