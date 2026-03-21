@@ -1,6 +1,7 @@
 use mlar_rust::*;
 
 use crate::core_arch::single_core;
+use crate::data_movers::dram_to_l1_mover;
 use crate::dimensions::{dim_x, dim_y};
 use crate::memory::dram;
 
@@ -15,6 +16,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let dim_y = dim_y();
     let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
     let dram = dram();
+    let dram_to_l1 = dram_to_l1_mover();
 
     let scaled_l1 = mesh
         .get_memory_region("L1")
@@ -54,6 +56,7 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     let mut system: Architecture = ArchGraph::builder("2d_mesh_torus")
         .processor(&mesh)
+        .data_mover(&dram_to_l1)
         .mem(&dram)
         .build()
         .into();
@@ -62,12 +65,16 @@ pub fn scaled_mesh_torus() -> Architecture {
         .as_graph_mut()
         .expect("system architecture should be a graph");
 
-    let router_id = graph.add_router(&Router::new("mesh_dram_router", 2));
+    let router_id = graph.add_router(&Router::new("mesh_dram_router", 3));
     let mesh_id = graph.processor_ref("mesh").expect("mesh node");
+    let mover_id = graph
+        .data_mover_ref("dram_to_l1_mover")
+        .expect("dram_to_l1_mover node");
     let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
 
     let router_node = graph.get_node(&router_id).expect("router node").clone();
     let mesh_node = graph.get_node(&mesh_id).expect("mesh node").clone();
+    let mover_node = graph.get_node(&mover_id).expect("mover node").clone();
     let dram_node = graph.get_node(&dram_id).expect("DRAM node").clone();
 
     graph.connect_with_attrs(
@@ -80,9 +87,17 @@ pub fn scaled_mesh_torus() -> Architecture {
     );
     graph.connect_with_attrs(
         &router_node,
-        &dram_node,
+        &mover_node,
         vec![
             ArchEdgeAttr::Side(1),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
+    );
+    graph.connect_with_attrs(
+        &mover_node,
+        &dram_node,
+        vec![
+            ArchEdgeAttr::Side(2),
             ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
         ],
     );

@@ -282,7 +282,11 @@ mod tests {
             symbols: vec!["L".into()],
             mlir_details: Some(MlirFuncDetails {
                 tensor_args: vec!["a".into(), "out".into()],
+                memref_args: vec![],
                 output_tensors: vec!["out".into()],
+                source_memrefs: vec![],
+                target_memrefs: vec![],
+                memref_symbol_bindings: vec![],
                 tensor_symbol_bindings: vec![
                     MlirTensorSymbolBinding {
                         tensor: "a".into(),

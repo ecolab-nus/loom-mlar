@@ -184,6 +184,7 @@ fn find_function_processor<'a>(
         Architecture::Array { elem, .. } => find_function_processor(elem, func_name),
         Architecture::Graph(graph) => graph.nodes.iter().find_map(|node| match &node.component {
             ArchNodeComponent::Architecture(sub) => find_function_processor(sub, func_name),
+            ArchNodeComponent::DataMover(mover) => mover.get_function(func_name),
             _ => None,
         }),
     }

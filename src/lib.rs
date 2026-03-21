@@ -7,10 +7,10 @@ pub mod visualization;
 // Re-export commonly used architecture types
 pub use arch::{
     ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
-    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, Dimension, FuncPerfModel,
-    FunctionProcessor, MemoryBank, MemoryRegion, MeshNetwork, MeshNetworkInterface, PerfScenario,
-    Processor, Router,
-    RouterSide, ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
+    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, DataMover, Dimension,
+    FuncPerfModel, FunctionDataMover, FunctionProcessor, MemoryBank, MemoryRegion, MeshNetwork,
+    MeshNetworkInterface, PerfScenario, Processor, Router, RouterSide, ScaleOutNetwork,
+    SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
 };
 
 // Re-export commonly used math types
@@ -19,8 +19,8 @@ pub use math::{
     ParseError,
 };
 pub use schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
-    MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping, evaluate,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemrefSymbolBinding,
+    MlirModule, MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping, evaluate,
 };
 
 // Re-export visualization utilities

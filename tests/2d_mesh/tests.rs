@@ -93,14 +93,18 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/compute/matrix_lane.mlir")
     );
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
-    assert!(mat_module
-        .ops
-        .iter()
-        .any(|op| op.name.starts_with("matmul_")));
-    assert!(mat_module
-        .ops
-        .iter()
-        .any(|op| op.name.starts_with("batch_matmul_")));
+    assert!(
+        mat_module
+            .ops
+            .iter()
+            .any(|op| op.name.starts_with("matmul_"))
+    );
+    assert!(
+        mat_module
+            .ops
+            .iter()
+            .any(|op| op.name.starts_with("batch_matmul_"))
+    );
     let matmul_details = mat_module
         .ops
         .iter()
@@ -197,6 +201,40 @@ fn test_2d_mesh_torus_perf_models() {
         }
         _ => panic!("expected Unit"),
     }
+
+    // === Verify DRAM->L1 data mover interface and perf bindings ===
+    let mover = mesh
+        .get_data_mover("dram_to_l1_mover")
+        .expect("dram_to_l1_mover should exist");
+    assert!(mover.validate().is_ok(), "data mover should validate");
+    assert_eq!(
+        mover.functionality.source.as_ref().map(|s| s.path.as_str()),
+        Some("tests/2d_mesh/data_movers/dram_to_l1.mlir")
+    );
+    let move_func = mover
+        .get_function("dram_to_l1_f16")
+        .expect("dram_to_l1_f16 binding");
+    let move_details = move_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("dram_to_l1_f16 should include MLIR details");
+    assert_eq!(move_details.memref_args, vec!["dram_src", "l1_dst"]);
+    assert_eq!(move_details.source_memrefs, vec!["dram_src"]);
+    assert_eq!(move_details.target_memrefs, vec!["l1_dst"]);
+    assert!(move_details.tensor_args.is_empty());
+    assert!(move_details.tensor_symbol_bindings.is_empty());
+    assert_eq!(move_details.memref_symbol_bindings.len(), 2);
+    assert_eq!(move_details.memref_symbol_bindings[0].memref, "dram_src");
+    assert_eq!(move_details.memref_symbol_bindings[1].memref, "l1_dst");
+    assert_eq!(
+        move_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        move_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("M"), Sym::new("N")]
+    );
 }
 
 #[test]
@@ -224,7 +262,14 @@ fn test_2d_mesh_torus() {
             .any(|n| n.name() == Some("mesh_dram_router")),
         "top-level graph should include mesh_dram_router"
     );
-    assert_eq!(system_graph.edges.len(), 2);
+    assert!(
+        system_graph
+            .nodes
+            .iter()
+            .any(|n| n.name() == Some("dram_to_l1_mover")),
+        "top-level graph should include dram_to_l1_mover"
+    );
+    assert_eq!(system_graph.edges.len(), 3);
 
     let (dims, connectivity, elem) = match mesh_node(&mesh) {
         Architecture::Array {
@@ -323,9 +368,11 @@ fn test_export_2d_mesh_torus_hierarchy_json() {
     assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
     assert_eq!(value["root"]["kind"], "graph");
     assert_eq!(value["root"]["name"], "2d_mesh_torus");
-    assert!(value["root"]["children"]
-        .as_array()
-        .is_some_and(|v| !v.is_empty()));
+    assert!(
+        value["root"]["children"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    );
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/2d_mesh/2d_mesh_torus_hierarchy.json");

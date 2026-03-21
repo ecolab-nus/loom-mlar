@@ -4,9 +4,7 @@ use crate::arch::{
 use serde::Serialize;
 use serde_json::Value;
 
-use super::graph_json::{
-    GraphDimension, GraphExpr, GraphMemoryRegion, GraphRouter, GraphSizeExpr,
-};
+use super::graph_json::{GraphDimension, GraphExpr, GraphMemoryRegion, GraphRouter, GraphSizeExpr};
 
 const HIERARCHY_SCHEMA_VERSION: &str = "mlar.arch-hierarchy.v1";
 
@@ -87,7 +85,12 @@ pub fn architecture_to_hierarchy_json_string_pretty(
 fn architecture_to_hierarchy_node(arch: &Architecture) -> HierarchyNode {
     match arch {
         Architecture::Unit(proc) => {
-            let functions: Vec<String> = proc.functionality.ops.iter().map(|op| op.name.clone()).collect();
+            let functions: Vec<String> = proc
+                .functionality
+                .ops
+                .iter()
+                .map(|op| op.name.clone())
+                .collect();
             HierarchyNode {
                 kind: HierarchyNodeKind::Unit,
                 name: proc.name.clone().unwrap_or_else(|| "unnamed".into()),
@@ -107,12 +110,16 @@ fn architecture_to_hierarchy_node(arch: &Architecture) -> HierarchyNode {
         } => {
             let dimensions: Vec<GraphDimension> = dims.iter().map(dimension_to_json).collect();
             let total = arch.total_instances();
-            let conn: Vec<HierarchyConnectivity> = connectivity.iter().map(connectivity_to_json).collect();
+            let conn: Vec<HierarchyConnectivity> =
+                connectivity.iter().map(connectivity_to_json).collect();
             let child = architecture_to_hierarchy_node(elem);
 
             HierarchyNode {
                 kind: HierarchyNodeKind::Array,
-                name: name.clone().or_else(|| elem.name().map(String::from)).unwrap_or_else(|| "unnamed".into()),
+                name: name
+                    .clone()
+                    .or_else(|| elem.name().map(String::from))
+                    .unwrap_or_else(|| "unnamed".into()),
                 dimensions,
                 total_instances: total,
                 details: None,
@@ -142,6 +149,25 @@ fn architecture_to_hierarchy_node(arch: &Architecture) -> HierarchyNode {
 fn graph_node_to_hierarchy_node(component: &ArchNodeComponent) -> HierarchyNode {
     match component {
         ArchNodeComponent::Architecture(arch) => architecture_to_hierarchy_node(arch),
+        ArchNodeComponent::DataMover(mover) => HierarchyNode {
+            kind: HierarchyNodeKind::Unit,
+            name: mover
+                .name
+                .clone()
+                .unwrap_or_else(|| "unnamed_data_mover".to_string()),
+            dimensions: Vec::new(),
+            total_instances: Some(1),
+            details: Some(HierarchyNodeDetails::Processor {
+                functions: mover
+                    .functionality
+                    .ops
+                    .iter()
+                    .map(|op| op.name.clone())
+                    .collect(),
+            }),
+            connectivity: Vec::new(),
+            children: Vec::new(),
+        },
         ArchNodeComponent::MemoryRegion(region) => memory_region_to_hierarchy_node(region),
         ArchNodeComponent::Router(router) => router_to_hierarchy_node(router),
     }
@@ -298,7 +324,12 @@ mod tests {
         assert!(matches!(json.root.kind, HierarchyNodeKind::Graph));
         assert_eq!(json.root.children.len(), 3);
 
-        let kinds: Vec<_> = json.root.children.iter().map(|c| format!("{:?}", c.kind)).collect();
+        let kinds: Vec<_> = json
+            .root
+            .children
+            .iter()
+            .map(|c| format!("{:?}", c.kind))
+            .collect();
         assert!(kinds.contains(&"Memory".to_string()));
         assert!(kinds.contains(&"Unit".to_string()));
         assert!(kinds.contains(&"Router".to_string()));
@@ -346,8 +377,8 @@ mod tests {
 
     #[test]
     fn generate_sample_hierarchy_json() {
-        use crate::math::{AffineExpr, AffineMap, Expr};
         use crate::arch::{MeshNetworkInterface, ScaleOutNetwork};
+        use crate::math::{AffineExpr, AffineMap, Expr};
 
         let dim_bank = Dimension::new_int("nbank", 16);
         let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
@@ -431,7 +462,14 @@ mod tests {
         assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
         assert_eq!(value["root"]["name"], "2d_mesh_torus");
         assert_eq!(value["root"]["kind"], "array");
-        assert_eq!(value["root"]["dimensions"].as_array().map(|v| v.len()), Some(2));
-        assert!(value["root"]["connectivity"].as_array().is_some_and(|v| v.len() == 2));
+        assert_eq!(
+            value["root"]["dimensions"].as_array().map(|v| v.len()),
+            Some(2)
+        );
+        assert!(
+            value["root"]["connectivity"]
+                .as_array()
+                .is_some_and(|v| v.len() == 2)
+        );
     }
 }

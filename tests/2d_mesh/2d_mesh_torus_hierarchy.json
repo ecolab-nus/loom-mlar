@@ -130,6 +130,17 @@
         ]
       },
       {
+        "kind": "unit",
+        "name": "dram_to_l1_mover",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "dram_to_l1_f16"
+          ]
+        }
+      },
+      {
         "kind": "memory",
         "name": "DRAM",
         "dimensions": [
@@ -176,7 +187,7 @@
           "type": "router",
           "router": {
             "name": "mesh_dram_router",
-            "side_count": 2
+            "side_count": 3
           }
         }
       }

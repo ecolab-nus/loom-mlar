@@ -1,5 +1,5 @@
 use crate::arch::{
-    ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Architecture, Dimension,
+    ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Architecture, DataMover, Dimension,
     MemoryRegion, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
@@ -263,6 +263,20 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(processor_node_from_elem(id, &name, proc));
             }
+            ArchNodeComponent::DataMover(mover) => {
+                let name = mover
+                    .name
+                    .clone()
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| format!("data_mover_{idx}"));
+                if processor_node_ids.contains_key(&name) {
+                    continue;
+                }
+                let id = unique_id(&format!("dm:{}", slugify(&name)), &mut used_ids);
+                processor_node_ids.insert(name.clone(), id.clone());
+                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
+                nodes.push(data_mover_node_from_elem(id, &name, mover));
+            }
             ArchNodeComponent::Router(router) => {
                 let name = node
                     .name()
@@ -494,6 +508,23 @@ fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> Grap
         details: GraphNodeDetails::Processor {
             element: processors_to_json(elem),
             total_instances: elem.total_instances(),
+        },
+    }
+}
+
+fn data_mover_node_from_elem(id: String, name: &str, mover: &DataMover) -> GraphNode {
+    GraphNode {
+        id,
+        kind: GraphNodeKind::Processor,
+        name: name.to_string(),
+        label: name.to_string(),
+        dimensions: Vec::new(),
+        details: GraphNodeDetails::Processor {
+            element: GraphProcessors::Unit {
+                name: mover.name.clone(),
+                functionality: functionality_to_json(&mover.functionality),
+            },
+            total_instances: Some(1),
         },
     }
 }
@@ -796,10 +827,8 @@ mod tests {
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
-        let io = MeshNetworkInterface::new(
-            AffineMap::identity(core_dim.as_slice()),
-            Expr::Const(128),
-        );
+        let io =
+            MeshNetworkInterface::new(AffineMap::identity(core_dim.as_slice()), Expr::Const(128));
         let link = ScaleOutNetwork::mesh("l1_to_l2")
             .mem_region(&l1)
             .map(&map)
@@ -874,10 +903,8 @@ mod tests {
         .with_name("l1");
         let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
 
-        let io = MeshNetworkInterface::new(
-            AffineMap::identity(map_dim.as_slice()),
-            Expr::Const(64),
-        );
+        let io =
+            MeshNetworkInterface::new(AffineMap::identity(map_dim.as_slice()), Expr::Const(64));
         let link = ScaleOutNetwork::mesh("reduce")
             .mem_region(&l1)
             .map(&map)

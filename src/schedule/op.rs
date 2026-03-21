@@ -14,13 +14,34 @@ pub struct MlirTensorSymbolBinding {
     pub symbols: Vec<Sym>,
 }
 
-/// Detailed tensor interface metadata extracted from one MLIR function body.
+/// Relationship extracted from `loom.bind` for memref operands.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MlirMemrefSymbolBinding {
+    /// Memref SSA argument name, without `%`.
+    pub memref: String,
+    /// Symbols bound to this memref dimensions (in-order), without `%`.
+    pub symbols: Vec<Sym>,
+}
+
+/// Detailed interface metadata extracted from one MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirFuncDetails {
     /// Tensor argument names from the function signature, without `%`.
     pub tensor_args: Vec<String>,
+    /// Memref argument names from the function signature, without `%`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memref_args: Vec<String>,
     /// Tensor operands used as outputs (from `outs(...)`), without `%`.
     pub output_tensors: Vec<String>,
+    /// Memref operands inferred as copy sources (e.g. `memref.copy %src, %dst`), without `%`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_memrefs: Vec<String>,
+    /// Memref operands inferred as copy targets (e.g. `memref.copy %src, %dst`), without `%`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_memrefs: Vec<String>,
+    /// Explicit memref-to-symbol bindings from `loom.bind`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memref_symbol_bindings: Vec<MlirMemrefSymbolBinding>,
     /// Explicit tensor-to-symbol bindings from `loom.bind`.
     pub tensor_symbol_bindings: Vec<MlirTensorSymbolBinding>,
 }
@@ -126,11 +147,14 @@ impl MlirFunc {
         }
     }
 
-    /// Collect all symbols referenced by tensor bindings.
+    /// Collect all symbols referenced by tensor/memref bindings.
     pub fn shape_symbols(&self) -> HashSet<Sym> {
         let mut out = HashSet::new();
         if let Some(details) = self.mlir_details.as_ref() {
             for binding in &details.tensor_symbol_bindings {
+                out.extend(binding.symbols.iter().cloned());
+            }
+            for binding in &details.memref_symbol_bindings {
                 out.extend(binding.symbols.iter().cloned());
             }
         }
@@ -160,6 +184,7 @@ impl MlirFunc {
         let arg_list = &func_mlir[open_paren + 1..close_paren];
 
         let mut tensor_args = Vec::new();
+        let mut memref_args = Vec::new();
         let mut symbols = Vec::new();
         for raw_arg in split_top_level_commas(arg_list) {
             let arg = raw_arg.trim();
@@ -180,12 +205,38 @@ impl MlirFunc {
                 symbols.push(Sym::new(arg_name));
             } else if arg_ty.starts_with("tensor<") {
                 tensor_args.push(arg_name.to_string());
+            } else if arg_ty.starts_with("memref<") {
+                memref_args.push(arg_name.to_string());
             }
         }
 
         symbols.extend(parse_loom_syms(func_mlir));
 
-        let tensor_symbol_bindings = parse_loom_bindings(func_mlir)?;
+        let operand_symbol_bindings = parse_loom_bindings(func_mlir)?;
+        let tensor_symbol_bindings = operand_symbol_bindings
+            .iter()
+            .filter(|(operand, _)| tensor_args.iter().any(|arg| arg == operand))
+            .map(|(operand, symbols)| MlirTensorSymbolBinding {
+                tensor: operand.clone(),
+                symbols: symbols.clone(),
+            })
+            .collect();
+        let memref_symbol_bindings = operand_symbol_bindings
+            .iter()
+            .filter(|(operand, _)| memref_args.iter().any(|arg| arg == operand))
+            .map(|(operand, symbols)| MlirMemrefSymbolBinding {
+                memref: operand.clone(),
+                symbols: symbols.clone(),
+            })
+            .collect();
+        let (mut source_memrefs, mut target_memrefs) =
+            parse_memref_copy_interface(func_mlir, &memref_args)?;
+        if source_memrefs.is_empty() && !memref_args.is_empty() {
+            source_memrefs.push(memref_args[0].clone());
+        }
+        if target_memrefs.is_empty() && memref_args.len() >= 2 {
+            target_memrefs.push(memref_args[1].clone());
+        }
         let output_tensors = parse_output_tensors(func_mlir)?
             .into_iter()
             .filter(|tensor| tensor_args.iter().any(|arg| arg == tensor))
@@ -196,7 +247,11 @@ impl MlirFunc {
             symbols,
             mlir_details: Some(MlirFuncDetails {
                 tensor_args,
+                memref_args,
                 output_tensors,
+                source_memrefs,
+                target_memrefs,
+                memref_symbol_bindings,
                 tensor_symbol_bindings,
             }),
             sym_map: None,
@@ -288,7 +343,7 @@ fn parse_loom_syms(func_mlir: &str) -> Vec<Sym> {
     symbols
 }
 
-fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<MlirTensorSymbolBinding>, String> {
+fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
@@ -298,15 +353,15 @@ fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<MlirTensorSymbolBinding>, 
 
         let rest = trimmed["loom.bind ".len()..].trim_start();
         if !rest.starts_with('%') {
-            return Err(format!("invalid loom.bind tensor syntax: {}", trimmed));
+            return Err(format!("invalid loom.bind operand syntax: {}", trimmed));
         }
 
         let comma = rest
             .find(',')
             .ok_or_else(|| format!("invalid loom.bind missing comma: {}", trimmed))?;
-        let tensor = rest[1..comma].trim();
-        if tensor.is_empty() {
-            return Err(format!("invalid loom.bind empty tensor: {}", trimmed));
+        let operand = rest[1..comma].trim();
+        if operand.is_empty() {
+            return Err(format!("invalid loom.bind empty operand: {}", trimmed));
         }
 
         let sym_section = rest[comma + 1..].trim();
@@ -329,10 +384,7 @@ fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<MlirTensorSymbolBinding>, 
             symbols.push(Sym::new(sym_token.trim_start_matches('%')));
         }
 
-        bindings.push(MlirTensorSymbolBinding {
-            tensor: tensor.to_string(),
-            symbols,
-        });
+        bindings.push((operand.to_string(), symbols));
     }
     Ok(bindings)
 }
@@ -345,6 +397,41 @@ fn parse_output_tensors(func_mlir: &str) -> Result<Vec<String>, String> {
         }
     }
     Ok(outputs)
+}
+
+fn parse_memref_copy_interface(
+    func_mlir: &str,
+    memref_args: &[String],
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut sources = Vec::new();
+    let mut targets = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("memref.copy ") else {
+            continue;
+        };
+        let operands = rest
+            .split_once(':')
+            .map(|(before_colon, _)| before_colon)
+            .unwrap_or(rest)
+            .trim();
+        let tokens = split_top_level_commas(operands);
+        if tokens.len() < 2 {
+            return Err(format!("invalid memref.copy operands: {}", trimmed));
+        }
+        let src = parse_ssa_name(tokens[0].trim());
+        let dst = parse_ssa_name(tokens[1].trim());
+        if src.is_empty() || dst.is_empty() {
+            return Err(format!("invalid memref.copy operands: {}", trimmed));
+        }
+        if memref_args.iter().any(|arg| arg == src) && sources.iter().all(|s| s != src) {
+            sources.push(src.to_string());
+        }
+        if memref_args.iter().any(|arg| arg == dst) && targets.iter().all(|t| t != dst) {
+            targets.push(dst.to_string());
+        }
+    }
+    Ok((sources, targets))
 }
 
 fn parse_tensor_operands(func_mlir: &str, marker: &str) -> Result<Vec<String>, String> {
@@ -511,7 +598,11 @@ mod tests {
 
         assert_eq!(func.symbols, vec!["M".into(), "N".into(), "K".into()]);
         assert_eq!(details.tensor_args, vec!["A", "B", "C"]);
+        assert!(details.memref_args.is_empty());
         assert_eq!(details.output_tensors, vec!["C"]);
+        assert!(details.source_memrefs.is_empty());
+        assert!(details.target_memrefs.is_empty());
+        assert!(details.memref_symbol_bindings.is_empty());
         assert_eq!(details.tensor_symbol_bindings.len(), 3);
 
         assert_eq!(details.tensor_symbol_bindings[0].tensor, "A");
@@ -556,11 +647,48 @@ func.func @vec_add_f32(
             .as_ref()
             .expect("from_mlir should populate mlir_details");
         assert_eq!(details.tensor_args, vec!["a", "b", "out"]);
+        assert!(details.memref_args.is_empty());
         assert_eq!(details.output_tensors, vec!["out"]);
+        assert!(details.source_memrefs.is_empty());
+        assert!(details.target_memrefs.is_empty());
+        assert!(details.memref_symbol_bindings.is_empty());
         assert_eq!(details.tensor_symbol_bindings.len(), 3);
         assert_eq!(details.tensor_symbol_bindings[0].tensor, "a");
         assert_eq!(details.tensor_symbol_bindings[0].symbols, vec!["L".into()]);
         assert_eq!(alias_func, func);
+    }
+
+    #[test]
+    fn mlir_func_ref_from_mlir_parses_memref_copy_interface() {
+        let snippet = r#"
+func.func @dram_to_l1(
+    %src: memref<?xf16>,
+    %dst: memref<?xf16>
+) {
+  %L = loom.sym @L : index
+  loom.bind %src, [%L] : memref<?xf16>
+  loom.bind %dst, [%L] : memref<?xf16>
+  memref.copy %src, %dst : memref<?xf16> to memref<?xf16>
+  return
+}
+"#;
+
+        let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+        let details = func
+            .mlir_details
+            .as_ref()
+            .expect("from_mlir should populate mlir_details");
+        assert!(details.tensor_args.is_empty());
+        assert_eq!(details.memref_args, vec!["src", "dst"]);
+        assert_eq!(details.source_memrefs, vec!["src"]);
+        assert_eq!(details.target_memrefs, vec!["dst"]);
+        assert!(details.output_tensors.is_empty());
+        assert!(details.tensor_symbol_bindings.is_empty());
+        assert_eq!(details.memref_symbol_bindings.len(), 2);
+        assert_eq!(details.memref_symbol_bindings[0].memref, "src");
+        assert_eq!(details.memref_symbol_bindings[0].symbols, vec!["L".into()]);
+        assert_eq!(details.memref_symbol_bindings[1].memref, "dst");
+        assert_eq!(details.memref_symbol_bindings[1].symbols, vec!["L".into()]);
     }
 
     #[test]

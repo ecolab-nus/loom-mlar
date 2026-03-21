@@ -46,7 +46,12 @@ pub fn matrix_lane() -> Architecture {
     };
 
     let batch_mat_func_perf = FuncPerfModel {
-        symbols: vec![Sym::new("Batch"), Sym::new("M"), Sym::new("N"), Sym::new("K")],
+        symbols: vec![
+            Sym::new("Batch"),
+            Sym::new("M"),
+            Sym::new("N"),
+            Sym::new("K"),
+        ],
         constraints: ConstraintExpr::And(vec![
             ConstraintExpr::Ge(Expr::sym("Batch"), Expr::Const(1)),
             ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)),
@@ -62,7 +67,10 @@ pub fn matrix_lane() -> Architecture {
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(1),
                     volume: Expr::mul(
-                        Expr::mul(Expr::mul(Expr::sym("Batch"), Expr::sym("M")), Expr::sym("N")),
+                        Expr::mul(
+                            Expr::mul(Expr::sym("Batch"), Expr::sym("M")),
+                            Expr::sym("N"),
+                        ),
                         Expr::sym("K"),
                     ),
                     throughput: Expr::Const(1024),
@@ -76,7 +84,10 @@ pub fn matrix_lane() -> Architecture {
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: Expr::Const(1),
                     volume: Expr::mul(
-                        Expr::mul(Expr::mul(Expr::sym("Batch"), Expr::sym("M")), Expr::sym("N")),
+                        Expr::mul(
+                            Expr::mul(Expr::sym("Batch"), Expr::sym("M")),
+                            Expr::sym("N"),
+                        ),
                         Expr::sym("K"),
                     ),
                     throughput: Expr::mul(

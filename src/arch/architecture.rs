@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::architecture_graph::{ArchGraph, ArchNodeComponent};
+use super::data_mover::DataMover;
 use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::Processor;
@@ -98,6 +99,22 @@ impl Architecture {
         }
     }
 
+    /// Look up a named data-mover node (graph architecture only).
+    pub fn get_data_mover(&self, name: &str) -> Option<&DataMover> {
+        match self {
+            Architecture::Graph(graph) => {
+                graph.nodes.iter().find_map(|node| match &node.component {
+                    ArchNodeComponent::DataMover(mover) if mover.name.as_deref() == Some(name) => {
+                        Some(mover)
+                    }
+                    _ => None,
+                })
+            }
+            Architecture::Array { elem, .. } => elem.get_data_mover(name),
+            Architecture::Unit(_) => None,
+        }
+    }
+
     /// Scale this architecture by prepending dimensions.
     ///
     /// Wraps the architecture in an outer `Array`.
@@ -160,10 +177,7 @@ impl Architecture {
     pub fn with_connectivity(self, connectivity: Vec<ScaleOutNetwork>) -> Self {
         match self {
             Architecture::Array {
-                name,
-                dims,
-                elem,
-                ..
+                name, dims, elem, ..
             } => Architecture::Array {
                 name,
                 dims,

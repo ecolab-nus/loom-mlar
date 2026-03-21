@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::architecture::Architecture;
+use super::data_mover::DataMover;
 use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::Processor;
@@ -82,6 +83,7 @@ impl From<ArchEdgeId> for String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArchNodeComponent {
     Architecture(Architecture),
+    DataMover(DataMover),
     MemoryRegion(MemoryRegion),
     Router(Router),
 }
@@ -90,6 +92,7 @@ impl ArchNodeComponent {
     pub fn display_name(&self) -> Option<&str> {
         match self {
             ArchNodeComponent::Architecture(arch) => arch.name(),
+            ArchNodeComponent::DataMover(mover) => mover.name.as_deref(),
             ArchNodeComponent::MemoryRegion(region) => region.name(),
             ArchNodeComponent::Router(router) => Some(router.name.as_str()),
         }
@@ -98,6 +101,7 @@ impl ArchNodeComponent {
     fn id_prefix(&self) -> &'static str {
         match self {
             ArchNodeComponent::Architecture(_) => "arch",
+            ArchNodeComponent::DataMover(_) => "dm",
             ArchNodeComponent::MemoryRegion(_) => "mem",
             ArchNodeComponent::Router(_) => "router",
         }
@@ -128,6 +132,10 @@ impl ArchNode {
 
     pub fn from_processor(proc: &Processor) -> Self {
         Self::from_architecture(&Architecture::Unit(proc.clone()))
+    }
+
+    pub fn from_data_mover(mover: &DataMover) -> Self {
+        Self::from_component(ArchNodeComponent::DataMover(mover.clone()))
     }
 
     pub fn from_memory_region(region: &MemoryRegion) -> Self {
@@ -333,6 +341,12 @@ impl ArchGraph {
         })
     }
 
+    pub fn data_mover_ref(&self, name: &str) -> Option<ArchNodeId> {
+        self.node_id_by_name_and_kind(name, |component| {
+            matches!(component, ArchNodeComponent::DataMover(_))
+        })
+    }
+
     pub fn router_ref(&self, name: &str) -> Option<ArchNodeId> {
         self.node_id_by_name_and_kind(name, |component| {
             matches!(component, ArchNodeComponent::Router(_))
@@ -387,6 +401,10 @@ impl ArchGraph {
         self.add_component(ArchNodeComponent::Architecture(architecture.clone()))
     }
 
+    pub fn add_data_mover(&mut self, mover: &DataMover) -> ArchNodeId {
+        self.add_component(ArchNodeComponent::DataMover(mover.clone()))
+    }
+
     fn node_id_by_name_and_kind<F>(&self, name: &str, kind_check: F) -> Option<ArchNodeId>
     where
         F: Fn(&ArchNodeComponent) -> bool,
@@ -415,6 +433,7 @@ fn component_node_base_id(component: &ArchNodeComponent) -> String {
 fn default_component_name(component: &ArchNodeComponent) -> &'static str {
     match component {
         ArchNodeComponent::Architecture(_) => "unnamed_architecture",
+        ArchNodeComponent::DataMover(_) => "unnamed_data_mover",
         ArchNodeComponent::MemoryRegion(_) => "unnamed_memory",
         ArchNodeComponent::Router(_) => "unnamed_router",
     }
@@ -447,6 +466,12 @@ impl ArchGraphBuilder {
     /// Add a processor architecture (borrows and clones).
     pub fn processor(mut self, proc: &Architecture) -> Self {
         self.graph.add_architecture(proc);
+        self
+    }
+
+    /// Add a data-mover node (borrows and clones).
+    pub fn data_mover(mut self, mover: &DataMover) -> Self {
+        self.graph.add_data_mover(mover);
         self
     }
 
