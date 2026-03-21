@@ -387,7 +387,7 @@ mod tests {
             ],
         );
         let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
-            .region_mem(&scaled_l1)
+            .mem_region(&scaled_l1)
             .map(&torus_y_map)
             .io_bandwidth(64)
             .link_bandwidth(64)
@@ -405,7 +405,7 @@ mod tests {
             ],
         );
         let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
-            .region_mem(&scaled_l1)
+            .mem_region(&scaled_l1)
             .map(&torus_x_map)
             .io_bandwidth(64)
             .link_bandwidth(64)

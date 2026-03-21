@@ -149,21 +149,21 @@ pub struct MeshNetworkBuilder {
 }
 
 impl MeshNetworkBuilder {
-    fn set_region_memory(&mut self, region: MemoryRegion) {
+    fn set_memory_region(&mut self, region: MemoryRegion) {
         assert!(
             matches!(region, MemoryRegion::Array { .. }),
             "mesh region must be an Array memory region"
         );
         assert!(
             self.region.is_none(),
-            "mesh region is already set; provide exactly one region_mem()"
+            "mesh region is already set; provide exactly one mem_region()"
         );
         self.region = Some(region);
     }
 
     /// Set the array memory region attached to this mesh.
-    pub fn region_mem(mut self, region: &MemoryRegion) -> Self {
-        self.set_region_memory(region.clone());
+    pub fn mem_region(mut self, region: &MemoryRegion) -> Self {
+        self.set_memory_region(region.clone());
         self
     }
 
@@ -349,7 +349,7 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("torus")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .io_bandwidth(64)
             .link_bandwidth(64)
@@ -372,7 +372,7 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("reduce")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .io_bandwidth(64)
             .link_bandwidth(64)
@@ -406,7 +406,7 @@ mod tests {
         .with_name("l1");
 
         let link = ScaleOutNetwork::mesh("ring")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .io_bandwidth(64)
             .link_bandwidth(64)

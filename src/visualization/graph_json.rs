@@ -797,7 +797,7 @@ mod tests {
         let map = AffineMap::identity(core_dim.as_slice());
 
         let link = ScaleOutNetwork::mesh("l1_to_l2")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .bandwidth(128)
             .build();
@@ -870,7 +870,7 @@ mod tests {
         let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
 
         let link = ScaleOutNetwork::mesh("reduce")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .io_bandwidth(64)
             .link_bandwidth(64)
@@ -939,7 +939,7 @@ mod tests {
         );
 
         let link = ScaleOutNetwork::mesh("ring")
-            .region_mem(&l1)
+            .mem_region(&l1)
             .map(&map)
             .io_bandwidth(64)
             .link_bandwidth(64)
