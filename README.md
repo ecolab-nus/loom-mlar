@@ -19,11 +19,14 @@ src/
 ├── arch/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
-│   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost
+│   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr
 │   ├── processor.rs            # FunctionProcessor, Processor
 │   ├── memory.rs               # MemoryBank, MemoryRegion
-│   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, Router
-│   └── architecture.rs         # Architecture + graph composition primitives (ArchGraph, ArchNode, ArchEdge)
+│   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, MeshNetworkInterface
+│   ├── data_mover.rs           # DataMover, FunctionDataMover
+│   ├── router.rs               # Router, RouterSide
+│   ├── architecture.rs         # Architecture (Unit | Array | Graph)
+│   └── architecture_graph.rs   # ArchGraph, ArchNode, ArchEdge, ArchNodeComponent
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
 │   ├── expr.rs                 # Symbolic arithmetic expressions
@@ -38,7 +41,9 @@ src/
 │   └── module.rs               # Module, ModuleSource
 └── visualization/
     ├── mod.rs                  # Visualization re-exports
-    └── graph_json.rs           # JSON export for web visualization
+    ├── graph_json.rs           # Graph JSON export for web visualization
+    ├── hierarchy_json.rs       # Hierarchy tree JSON export
+    └── viewer_json.rs          # Combined viewer JSON (hierarchy + per-node graphs)
 ```
 
 ## Functionality Model
@@ -75,7 +80,11 @@ let matmul = MlirFunc {
     symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
     mlir_details: Some(MlirFuncDetails {
         tensor_args: vec!["A".into(), "B".into(), "C".into()],
+        memref_args: vec![],
         output_tensors: vec!["C".into()],
+        source_memrefs: vec![],
+        target_memrefs: vec![],
+        memref_symbol_bindings: vec![],
         tensor_symbol_bindings: vec![
             MlirTensorSymbolBinding {
                 tensor: "A".into(),
@@ -174,7 +183,7 @@ assert!(lane.get_function("vec_add_f32").is_some());
 Processor composition uses `Architecture`, with the recursive shape:
 
 - `Unit(Processor)`
-- `Array { name, dims, elem, connectivity, interface }`
+- `Array { name, dims, elem, connectivity }`
 - `Graph(ArchGraph)`
 
 ```rust
@@ -196,9 +205,9 @@ Memory uses the same recursive pattern:
 Connectivity is `ScaleOutNetwork` with:
 
 - one scaled array memory region (`MemoryRegion::Array`)
-- affine map (`AffineMap`)
-- bandwidth/latency expressions
-- optional constraints
+- affine map(s) (`AffineMap`) describing the mesh topology
+- per-link bandwidth expression
+- optional IO interface (`MeshNetworkInterface`)
 
 ```rust
 use mlar_rust::*;
@@ -213,7 +222,7 @@ let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
 let link = ScaleOutNetwork::mesh("l1_to_vector")
     .region_mem(&l1)
     .map(&all_to_one)
-    .bandwidth(128)
+    .link_bandwidth(128)
     .build();
 ```
 
@@ -222,8 +231,9 @@ let link = ScaleOutNetwork::mesh("l1_to_vector")
 `Architecture` is the single composition model for compute architecture:
 
 - `Unit(Processor)`: one processor as one architecture element
-- `Array { name, dims, elem, connectivity, interface }`: homogeneous scaling of one sub-architecture
-- `Graph(ArchGraph)`: heterogeneous composition of architecture/memory/router nodes
+- `Array { name, dims, elem, connectivity }`: homogeneous scaling of one sub-architecture
+- `Graph(ArchGraph)`: heterogeneous composition via `ArchNodeComponent` variants:
+  `Architecture`, `DataMover`, `MemoryRegion`, `Router`
 
 Build it directly via enum variants and helpers such as `Processor::into_elem()`,
 `Processor::replicate(...)`, `Architecture::from_graph(...)`, and `architecture.scale(...)`.
@@ -236,13 +246,13 @@ Raw MLIR extraction and parsing types are under `src/schedule/op.rs`:
 - `MlirFunc`
 - `MlirFuncDetails`
 - `MlirTensorSymbolBinding`
+- `MlirMemrefSymbolBinding`
 
-`MlirFunc` is intentionally lightweight (`name`, `symbols`) and keeps tensor-specific metadata under:
+`MlirFunc` is intentionally lightweight (`name`, `symbols`) and keeps tensor/memref metadata under:
 
 - `mlir_details: Option<MlirFuncDetails>`
-- `MlirFuncDetails.tensor_args`
-- `MlirFuncDetails.output_tensors`
-- `MlirFuncDetails.tensor_symbol_bindings`
+- `MlirFuncDetails.tensor_args`, `MlirFuncDetails.output_tensors`, `MlirFuncDetails.tensor_symbol_bindings`
+- `MlirFuncDetails.memref_args`, `MlirFuncDetails.source_memrefs`, `MlirFuncDetails.target_memrefs`, `MlirFuncDetails.memref_symbol_bindings`
 
 Each `MlirFunc` can also carry an optional `sym_map: Option<SymbolicMapping>` for
 per-invocation symbol substitutions. This mapping is applied during schedule evaluation.
@@ -251,9 +261,16 @@ These are useful for parsing and inspection, and are also the canonical function
 
 ## Visualization
 
-Use `architecture_to_graph_json_*` in `src/visualization/graph_json.rs`.
+Three JSON export formats in `src/visualization/`:
 
-Processor nodes now export functionality metadata:
+- **Graph JSON** (`graph_json.rs`): flat graph of nodes and edges for React Flow rendering.
+  Use `architecture_to_graph_json_*` functions.
+- **Hierarchy JSON** (`hierarchy_json.rs`): recursive tree reflecting the architecture nesting.
+  Use `architecture_to_hierarchy_json_*` functions.
+- **Viewer JSON** (`viewer_json.rs`): combined payload (hierarchy tree + per-node graph views).
+  Use `architecture_to_viewer_json_*` functions.
+
+Processor nodes export functionality metadata:
 
 - module name
 - MLIR source path/module name (when available)
@@ -269,18 +286,23 @@ Web UI lives in `tools/web-visualization/`.
 | `Expr` | Symbolic arithmetic expression | `src/math/expr.rs` |
 | `ConstraintExpr` | Boolean constraints over expressions | `src/math/constraint.rs` |
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
-| `MlirModule`, `MlirFunc`, `MlirFuncDetails` | Parsed MLIR references and parser | `src/schedule/op.rs` |
-| `Module` | Functionality module model | `src/schedule/module.rs` |
+| `MlirModule`, `MlirFunc`, `MlirFuncDetails`, `MlirTensorSymbolBinding`, `MlirMemrefSymbolBinding` | Parsed MLIR references and parser | `src/schedule/op.rs` |
+| `Module`, `ModuleSource` | Functionality module model | `src/schedule/module.rs` |
 | `Schedule` | Schedule tree (all nodes carry scenarios after evaluation) | `src/schedule/schedule.rs` |
 | `SymbolicMapping` | Per-function symbol substitution mapping | `src/schedule/schedule.rs` |
-| `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | Function-level performance model | `src/arch/perf.rs` |
+| `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost`, `TimeExpr` | Function-level performance model | `src/arch/perf.rs` |
 | `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
+| `DataMover`, `FunctionDataMover` | Data mover engine with per-function perf models | `src/arch/data_mover.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
-| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `Router` | Connectivity, routing, scale-out links | `src/arch/network.rs` |
-| `ArchGraph`, `ArchNode`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture.rs` |
+| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `MeshNetworkInterface` | Connectivity and scale-out links | `src/arch/network.rs` |
+| `Router`, `RouterSide` | General router node with numbered sides | `src/arch/router.rs` |
+| `ArchGraph`, `ArchNode`, `ArchEdge`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture_graph.rs` |
 | `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
-| `run_evaluator`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
+| `ArchitectureGraphJson` | Graph JSON export | `src/visualization/graph_json.rs` |
+| `ArchitectureHierarchyJson` | Hierarchy JSON export | `src/visualization/hierarchy_json.rs` |
+| `ArchitectureViewerJson` | Combined viewer JSON export | `src/visualization/viewer_json.rs` |
+| `run_evaluator`, `run_evaluator_from_json`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
 
 ## Evaluator Binary Generation
 
