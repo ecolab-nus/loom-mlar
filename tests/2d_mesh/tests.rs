@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use mlar_rust::*;
 use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
+use mlar_rust::*;
 
 use crate::scale::scaled_mesh_torus;
 
@@ -22,18 +22,35 @@ fn vec_func(prefix: &str) -> String {
         .name
 }
 
+fn mesh_node(arch: &Architecture) -> &Architecture {
+    let graph = match arch {
+        Architecture::Graph(graph) => graph,
+        _ => panic!("expected top-level architecture to be a Graph"),
+    };
+    graph
+        .nodes
+        .iter()
+        .find_map(|node| match &node.component {
+            ArchNodeComponent::Architecture(sub_arch) if sub_arch.name() == Some("mesh") => {
+                Some(sub_arch)
+            }
+            _ => None,
+        })
+        .expect("top-level graph should contain mesh architecture node")
+}
+
 #[test]
 fn test_2d_mesh_torus_perf_models() {
     let mesh = scaled_mesh_torus();
     assert_eq!(mesh.total_processing_elements(), Some(128));
 
     // === Verify processor functionality + per-function models survive scaling ===
-    let core_graph = match &mesh {
+    let core_graph = match mesh_node(&mesh) {
         Architecture::Array { elem, .. } => match elem.as_ref() {
             Architecture::Graph(graph) => graph,
             _ => panic!("expected core graph as array element"),
         },
-        _ => panic!("expected scaled mesh to be an Array"),
+        _ => panic!("expected mesh node to be an Array"),
     };
     let proc_nodes: Vec<&Architecture> = core_graph
         .nodes
@@ -76,13 +93,14 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/compute/matrix_lane.mlir")
     );
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
-    assert!(mat_module.ops.iter().any(|op| op.name.starts_with("matmul_")));
-    assert!(
-        mat_module
-            .ops
-            .iter()
-            .any(|op| op.name.starts_with("batch_matmul_"))
-    );
+    assert!(mat_module
+        .ops
+        .iter()
+        .any(|op| op.name.starts_with("matmul_")));
+    assert!(mat_module
+        .ops
+        .iter()
+        .any(|op| op.name.starts_with("batch_matmul_")));
     let matmul_details = mat_module
         .ops
         .iter()
@@ -190,14 +208,35 @@ fn test_2d_mesh_torus() {
 
     // === Verify topology ===
     assert_eq!(mesh.name(), Some("2d_mesh_torus"));
-    let (dims, connectivity, elem) = match &mesh {
+    let system_graph = match &mesh {
+        Architecture::Graph(graph) => graph,
+        _ => panic!("top-level architecture should be graph"),
+    };
+    assert!(
+        system_graph.nodes.iter().any(|n| n.name() == Some("mesh")),
+        "top-level graph should include mesh node"
+    );
+    assert!(
+        system_graph.nodes.iter().any(|n| n.name() == Some("DRAM")),
+        "top-level graph should include DRAM node"
+    );
+    assert!(
+        system_graph
+            .nodes
+            .iter()
+            .any(|n| n.name() == Some("mesh_dram_router")),
+        "top-level graph should include mesh_dram_router"
+    );
+    assert_eq!(system_graph.edges.len(), 2);
+
+    let (dims, connectivity, elem) = match mesh_node(&mesh) {
         Architecture::Array {
             dims,
             connectivity,
             elem,
             ..
         } => (dims, connectivity, elem),
-        _ => panic!("scaled mesh should be Array"),
+        _ => panic!("mesh node should be Array"),
     };
     assert_eq!(connectivity.len(), 2); // only torus scale-out networks
     match elem.as_ref() {
@@ -238,6 +277,8 @@ fn test_2d_mesh_torus() {
     assert_eq!(torus_y_link.region().name(), Some("L1"));
     assert_eq!(torus_y_link.io().link_bandwidth.eval_const(), Some(64));
     assert_eq!(torus_y_link.link_bandwidth().eval_const(), Some(64));
+    assert_eq!(torus_y_link.io().map.apply(&[0, 3]), vec![0, 3]); // left edge
+    assert_eq!(torus_y_link.io().map.apply(&[1, 3]), vec![7, 3]); // right edge
     assert_eq!(torus_y_link.map().apply(&[0, 0]), vec![0, 1]);
     assert_eq!(torus_y_link.map().apply(&[3, 5]), vec![3, 6]);
     assert_eq!(torus_y_link.map().apply(&[3, 7]), vec![3, 0]); // wraps
@@ -247,6 +288,8 @@ fn test_2d_mesh_torus() {
     assert_eq!(torus_x_link.region().name(), Some("L1"));
     assert_eq!(torus_x_link.io().link_bandwidth.eval_const(), Some(64));
     assert_eq!(torus_x_link.link_bandwidth().eval_const(), Some(64));
+    assert_eq!(torus_x_link.io().map.apply(&[0, 4]), vec![0, 4]); // left edge
+    assert_eq!(torus_x_link.io().map.apply(&[1, 4]), vec![7, 4]); // right edge
     assert_eq!(torus_x_link.map().apply(&[0, 0]), vec![1, 0]);
     assert_eq!(torus_x_link.map().apply(&[5, 3]), vec![6, 3]);
     assert_eq!(torus_x_link.map().apply(&[7, 3]), vec![0, 3]); // wraps
@@ -284,13 +327,11 @@ fn test_export_2d_mesh_torus_hierarchy_json() {
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("serialized JSON should be valid");
     assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
-    assert_eq!(value["root"]["kind"], "array");
+    assert_eq!(value["root"]["kind"], "graph");
     assert_eq!(value["root"]["name"], "2d_mesh_torus");
-    assert!(
-        value["root"]["children"]
-            .as_array()
-            .is_some_and(|v| !v.is_empty())
-    );
+    assert!(value["root"]["children"]
+        .as_array()
+        .is_some_and(|v| !v.is_empty()));
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/2d_mesh/2d_mesh_torus_hierarchy.json");
@@ -308,7 +349,8 @@ fn test_export_2d_mesh_torus_viewer_json() {
     assert_eq!(value["schema_version"], "mlar.arch-viewer.v1");
     assert_eq!(value["hierarchy"]["name"], "2d_mesh_torus");
     assert!(value["graphs"][""].is_object());
-    assert!(value["graphs"]["core"].is_object());
+    assert!(value["graphs"]["mesh"].is_object());
+    assert!(value["graphs"]["mesh/core"].is_object());
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tools/web-visualization/public/sample-viewer.json");

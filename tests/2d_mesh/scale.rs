@@ -2,6 +2,7 @@ use mlar_rust::*;
 
 use crate::core_arch::single_core;
 use crate::dimensions::{dim_x, dim_y};
+use crate::memory::dram;
 
 /// Scale a single core to an 8×8 mesh and add torus interconnects.
 ///
@@ -12,7 +13,8 @@ pub fn scaled_mesh_torus() -> Architecture {
     let core = single_core();
     let dim_x = dim_x();
     let dim_y = dim_y();
-    let mesh = core.scale([&dim_x, &dim_y]).with_name("2d_mesh_torus");
+    let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
+    let dram = dram();
 
     let scaled_l1 = mesh
         .get_memory_region("L1")
@@ -21,10 +23,13 @@ pub fn scaled_mesh_torus() -> Architecture {
         .scale(&[dim_x.clone(), dim_y.clone()])
         .with_name("L1");
 
-    let io = MeshNetworkInterface::new(
-        AffineMap::identity(&[dim_x.clone(), dim_y.clone()]),
-        Expr::Const(64),
-    );
+    // External IO is only at mesh boundaries: left edge (x = 0) and right edge (x = 7).
+    let io_side = Dimension::new_int("io_side", 2);
+    let io_map = AffineMapTemplate::parse("[io_side, y] -> [x, y]: (io_side * 7, y)")
+        .expect("invalid affine map")
+        .bind([&io_side, &dim_x, &dim_y])
+        .expect("failed to bind");
+    let io = MeshNetworkInterface::new(io_map, Expr::Const(64));
 
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
@@ -52,5 +57,42 @@ pub fn scaled_mesh_torus() -> Architecture {
         .link_bandwidth(64)
         .build();
 
-    mesh.with_connectivity(vec![torus_y, torus_x])
+    let mesh = mesh.with_connectivity(vec![torus_y, torus_x]);
+
+    let mut system: Architecture = ArchGraph::builder("2d_mesh_torus")
+        .processor(&mesh)
+        .mem(&dram)
+        .build()
+        .into();
+
+    let graph = system
+        .as_graph_mut()
+        .expect("system architecture should be a graph");
+
+    let router_id = graph.add_router(&Router::new("mesh_dram_router", 2));
+    let mesh_id = graph.processor_ref("mesh").expect("mesh node");
+    let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
+
+    let router_node = graph.get_node(&router_id).expect("router node").clone();
+    let mesh_node = graph.get_node(&mesh_id).expect("mesh node").clone();
+    let dram_node = graph.get_node(&dram_id).expect("DRAM node").clone();
+
+    graph.connect_with_attrs(
+        &mesh_node,
+        &router_node,
+        vec![
+            ArchEdgeAttr::Side(0),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
+    );
+    graph.connect_with_attrs(
+        &router_node,
+        &dram_node,
+        vec![
+            ArchEdgeAttr::Side(1),
+            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+        ],
+    );
+
+    system
 }

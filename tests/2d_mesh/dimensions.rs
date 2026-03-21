@@ -12,3 +12,7 @@ pub fn dim_x() -> Dimension {
 pub fn dim_y() -> Dimension {
     Dimension::new_int("y", 8)
 }
+
+pub fn dim_dram_channel() -> Dimension {
+    Dimension::new_int("dram_channel", 8)
+}
