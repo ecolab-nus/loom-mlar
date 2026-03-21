@@ -1,5 +1,9 @@
 use mlar_rust::*;
 
+fn make_io(dims: &[Dimension], bw: i64) -> MeshNetworkInterface {
+    MeshNetworkInterface::new(AffineMap::identity(dims), Expr::Const(bw))
+}
+
 fn example_gpu_memory_hierarchy() -> Architecture {
     let dram_dim = Dimension::new_int("dram_dim", 4);
     let warp_dim = Dimension::new_int("warp_dim", 32);
@@ -46,7 +50,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let dram_to_l2 = ScaleOutNetwork::mesh("DRAM_to_L2")
         .region_mem(&dram)
         .map(&dram_to_l2_map)
-        .bandwidth(256)
+        .io(&make_io(dram_dim.as_slice(), 256))
+        .link_bandwidth(256)
         .build();
 
     let l2_to_l1_map = AffineMapTemplate::parse("[dram_dim] -> [warp_dim]: (dram_dim * 8)")
@@ -57,7 +62,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l2_to_l1 = ScaleOutNetwork::mesh("L2_to_L1")
         .region_mem(&l2)
         .map(&l2_to_l1_map)
-        .bandwidth(128)
+        .io(&make_io(dram_dim.as_slice(), 128))
+        .link_bandwidth(128)
         .build();
 
     let l1_to_rf_map = AffineMapTemplate::parse("[warp_dim] -> [warp_dim]: (warp_dim)")
@@ -68,7 +74,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let l1_to_rf = ScaleOutNetwork::mesh("L1_to_RF")
         .region_mem(&l1)
         .map(&l1_to_rf_map)
-        .bandwidth(64)
+        .io(&make_io(warp_dim.as_slice(), 64))
+        .link_bandwidth(64)
         .build();
 
     let mat_lane = Processor::new("matmul_lane").replicate(warp_dim.as_slice());
@@ -81,7 +88,8 @@ fn example_gpu_memory_hierarchy() -> Architecture {
     let rf_to_mat = ScaleOutNetwork::mesh("RF_to_MatBuf")
         .region_mem(&rf)
         .map(&rf_to_mat_map)
-        .bandwidth(64)
+        .io(&make_io(warp_dim.as_slice(), 64))
+        .link_bandwidth(64)
         .build();
 
     let core: Architecture = ArchGraph::builder("GPU_core")

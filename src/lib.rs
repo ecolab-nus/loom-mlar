@@ -8,7 +8,8 @@ pub mod visualization;
 pub use arch::{
     ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
     ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, Dimension, FuncPerfModel,
-    FunctionProcessor, MemoryBank, MemoryRegion, MeshNetwork, PerfScenario, Processor, Router,
+    FunctionProcessor, MemoryBank, MemoryRegion, MeshNetwork, MeshNetworkInterface, PerfScenario,
+    Processor, Router,
     RouterSide, ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
 };
 

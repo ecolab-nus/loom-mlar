@@ -774,9 +774,9 @@ mod tests {
     use super::{architecture_to_graph_json, architecture_to_graph_json_value};
     use crate::arch::{
         ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Architecture, Dimension, MemoryBank,
-        MemoryRegion, Processor, Router, ScaleOutNetwork, SizeExpr,
+        MemoryRegion, MeshNetworkInterface, Processor, Router, ScaleOutNetwork, SizeExpr,
     };
-    use crate::math::{AffineExpr, AffineMap};
+    use crate::math::{AffineExpr, AffineMap, Expr};
 
     #[test]
     fn serializes_architecture_graph_schema() {
@@ -796,10 +796,15 @@ mod tests {
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
+        let io = MeshNetworkInterface::new(
+            AffineMap::identity(core_dim.as_slice()),
+            Expr::Const(128),
+        );
         let link = ScaleOutNetwork::mesh("l1_to_l2")
             .mem_region(&l1)
             .map(&map)
-            .bandwidth(128)
+            .io(&io)
+            .link_bandwidth(128)
             .build();
 
         let arch: Architecture = ArchGraph::builder("unit")
@@ -869,10 +874,14 @@ mod tests {
         .with_name("l1");
         let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
 
+        let io = MeshNetworkInterface::new(
+            AffineMap::identity(map_dim.as_slice()),
+            Expr::Const(64),
+        );
         let link = ScaleOutNetwork::mesh("reduce")
             .mem_region(&l1)
             .map(&map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -938,10 +947,14 @@ mod tests {
             ],
         );
 
+        let io = MeshNetworkInterface::new(
+            AffineMap::identity(&[x.clone(), y.clone()]),
+            Expr::Const(64),
+        );
         let link = ScaleOutNetwork::mesh("ring")
             .mem_region(&l1)
             .map(&map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 

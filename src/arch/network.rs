@@ -5,6 +5,42 @@ use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;
 
+/// IO interface for a mesh network: selects which subregions have external
+/// connections and specifies per-link IO bandwidth.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MeshNetworkInterface {
+    /// Affine map selecting which subregions have IO connections to the outside.
+    pub map: AffineMap,
+    /// Bandwidth per IO link for the selected subregions.
+    pub link_bandwidth: Expr,
+}
+
+impl MeshNetworkInterface {
+    pub fn new(map: AffineMap, link_bandwidth: Expr) -> Self {
+        Self {
+            map,
+            link_bandwidth,
+        }
+    }
+
+    /// Prepend identity dimensions to the IO map (used during scaling).
+    pub fn prepend_identity_dims(self, dims: &[Dimension]) -> Self {
+        let mut src_dims = dims.to_vec();
+        src_dims.extend(self.map.src_dims);
+
+        let mut dst_dims = dims.to_vec();
+        dst_dims.extend(self.map.dst_dims);
+
+        let mut exprs: Vec<AffineExpr> = dims.iter().cloned().map(AffineExpr::var).collect();
+        exprs.extend(self.map.exprs);
+
+        Self {
+            map: AffineMap::new(&src_dims, &dst_dims, exprs),
+            link_bandwidth: self.link_bandwidth,
+        }
+    }
+}
+
 /// A mesh network: endpoints connected via an affine-map topology with uniform
 /// per-link bandwidth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,8 +53,8 @@ pub struct MeshNetwork {
     pub map: AffineMap,
     /// Array memory region attached to this mesh network.
     pub region: MemoryRegion,
-    /// Aggregate ingress/egress bandwidth for the whole mesh.
-    pub io_bandwidth: Expr,
+    /// IO interface describing external connections and their bandwidth.
+    pub io: MeshNetworkInterface,
     /// Bandwidth per internal mesh link.
     pub link_bandwidth: Expr,
 }
@@ -40,7 +76,7 @@ impl ScaleOutNetwork {
             dimensions: None,
             region: None,
             map: None,
-            io_bandwidth: None,
+            io: None,
             link_bandwidth: None,
         }
     }
@@ -77,9 +113,9 @@ impl ScaleOutNetwork {
         }
     }
 
-    pub fn io_bandwidth(&self) -> &Expr {
+    pub fn io(&self) -> &MeshNetworkInterface {
         match self {
-            Self::Mesh(m) => &m.io_bandwidth,
+            Self::Mesh(m) => &m.io,
         }
     }
 
@@ -122,7 +158,7 @@ impl ScaleOutNetwork {
                     dimensions: network_dims,
                     region: m.region.scale(dims),
                     map: AffineMap::new(&src_dims, &dst_dims, exprs),
-                    io_bandwidth: m.io_bandwidth,
+                    io: m.io.prepend_identity_dims(dims),
                     link_bandwidth: m.link_bandwidth,
                 })
             }
@@ -171,7 +207,7 @@ pub struct MeshNetworkBuilder {
     dimensions: Option<Vec<Dimension>>,
     region: Option<MemoryRegion>,
     map: Option<AffineMap>,
-    io_bandwidth: Option<Expr>,
+    io: Option<MeshNetworkInterface>,
     link_bandwidth: Option<Expr>,
 }
 
@@ -228,15 +264,9 @@ impl MeshNetworkBuilder {
         self.mem_region(region)
     }
 
-    /// Set aggregate ingress/egress bandwidth as a concrete integer.
-    pub fn io_bandwidth(mut self, bw: i64) -> Self {
-        self.io_bandwidth = Some(Expr::Const(bw));
-        self
-    }
-
-    /// Set aggregate ingress/egress bandwidth as an expression.
-    pub fn io_bandwidth_expr(mut self, bw: Expr) -> Self {
-        self.io_bandwidth = Some(bw);
+    /// Set the IO interface describing external connections and their bandwidth.
+    pub fn io(mut self, io: &MeshNetworkInterface) -> Self {
+        self.io = Some(io.clone());
         self
     }
 
@@ -258,30 +288,11 @@ impl MeshNetworkBuilder {
         self
     }
 
-    /// Backward-compatible shorthand: set both io and per-link bandwidth.
-    pub fn bandwidth(mut self, bw: i64) -> Self {
-        let bw = Expr::Const(bw);
-        self.io_bandwidth = Some(bw.clone());
-        self.link_bandwidth = Some(bw);
-        self
-    }
-
-    /// Backward-compatible shorthand: set both io and per-link bandwidth.
-    pub fn bandwidth_expr(mut self, bw: Expr) -> Self {
-        self.io_bandwidth = Some(bw.clone());
-        self.link_bandwidth = Some(bw);
-        self
-    }
-
     pub fn build(self) -> ScaleOutNetwork {
-        let (io_bandwidth, link_bandwidth) = match (self.io_bandwidth, self.link_bandwidth) {
-            (Some(io), Some(link)) => (io, link),
-            (Some(io), None) => (io.clone(), io),
-            (None, Some(link)) => (link.clone(), link),
-            (None, None) => {
-                panic!("either bandwidth() or both io_bandwidth/link_bandwidth must be set")
-            }
-        };
+        let link_bandwidth = self
+            .link_bandwidth
+            .expect("link_bandwidth must be set");
+        let io = self.io.expect("io interface must be set via io()");
 
         let dimensions = self.dimensions.expect(
             "mesh dimensions must be set explicitly via dimensions()/dims(), \
@@ -300,7 +311,7 @@ or inferred from mem_region()/region_mem()/map()",
             dimensions,
             region,
             map,
-            io_bandwidth,
+            io,
             link_bandwidth,
         };
 
@@ -423,9 +434,13 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::ScaleOutNetwork;
+    use super::{MeshNetworkInterface, ScaleOutNetwork};
     use crate::arch::{Dimension, MemoryBank, MemoryRegion, SizeExpr};
-    use crate::math::{AffineExpr, AffineMap};
+    use crate::math::{AffineExpr, AffineMap, Expr};
+
+    fn make_io(dims: &[Dimension], bw: i64) -> MeshNetworkInterface {
+        MeshNetworkInterface::new(AffineMap::identity(dims), Expr::Const(bw))
+    }
 
     #[test]
     fn computes_one_to_one_domain_sizes() {
@@ -440,10 +455,11 @@ mod tests {
         .scale(&[dx.clone(), dy.clone()])
         .with_name("l1");
 
+        let io = make_io(&[dx.clone(), dy.clone()], 64);
         let link = ScaleOutNetwork::mesh("torus")
             .mem_region(&l1)
             .map(&map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -463,10 +479,11 @@ mod tests {
         .scale(bank.as_slice())
         .with_name("l1");
 
+        let io = make_io(bank.as_slice(), 64);
         let link = ScaleOutNetwork::mesh("reduce")
             .mem_region(&l1)
             .map(&map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -497,10 +514,11 @@ mod tests {
         .scale(&[x.clone(), y.clone()])
         .with_name("l1");
 
+        let io = make_io(&[x.clone(), y.clone()], 64);
         let link = ScaleOutNetwork::mesh("ring")
             .mem_region(&l1)
             .map(&map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -519,10 +537,12 @@ mod tests {
         .scale(&[x.clone(), y.clone()])
         .with_name("l1");
 
+        let io = make_io(&[x.clone(), y.clone()], 64);
         let link = ScaleOutNetwork::mesh("torus")
             .map(&map)
             .mem_region(&l1)
-            .bandwidth(64)
+            .io(&io)
+            .link_bandwidth(64)
             .build();
 
         assert_eq!(link.dimensions(), &[x, y]);

@@ -18,7 +18,7 @@ pub use architecture_graph::{
     ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId,
 };
 pub use memory::{MemoryBank, MemoryRegion};
-pub use network::{MeshNetwork, ScaleOutNetwork};
+pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{FunctionProcessor, Processor};
 pub use router::{Router, RouterSide};

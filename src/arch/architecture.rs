@@ -25,8 +25,6 @@ pub enum Architecture {
         elem: Box<Architecture>,
         /// Connectivity among array instances.
         connectivity: Vec<ScaleOutNetwork>,
-        /// Placeholder for outside-facing access interface.
-        interface: Option<String>,
     },
     /// Explicit graph architecture.
     Graph(ArchGraph),
@@ -112,7 +110,6 @@ impl Architecture {
             dims: dims.into_iter().cloned().collect(),
             elem: Box::new(self),
             connectivity: Vec::new(),
-            interface: None,
         }
     }
 
@@ -145,14 +142,12 @@ impl Architecture {
                 dims,
                 elem,
                 connectivity,
-                interface,
                 ..
             } => Architecture::Array {
                 name: Some(n.into()),
                 dims,
                 elem,
                 connectivity,
-                interface,
             },
             Architecture::Graph(mut graph) => {
                 graph.name = n.into();
@@ -168,34 +163,12 @@ impl Architecture {
                 name,
                 dims,
                 elem,
-                interface,
                 ..
             } => Architecture::Array {
                 name,
                 dims,
                 elem,
                 connectivity,
-                interface,
-            },
-            other => other,
-        }
-    }
-
-    /// Set placeholder outside-facing interface for array architectures.
-    pub fn with_interface(self, interface: impl Into<String>) -> Self {
-        match self {
-            Architecture::Array {
-                name,
-                dims,
-                elem,
-                connectivity,
-                ..
-            } => Architecture::Array {
-                name,
-                dims,
-                elem,
-                connectivity,
-                interface: Some(interface.into()),
             },
             other => other,
         }

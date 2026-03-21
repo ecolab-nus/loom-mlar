@@ -21,6 +21,11 @@ pub fn scaled_mesh_torus() -> Architecture {
         .scale(&[dim_x.clone(), dim_y.clone()])
         .with_name("L1");
 
+    let io = MeshNetworkInterface::new(
+        AffineMap::identity(&[dim_x.clone(), dim_y.clone()]),
+        Expr::Const(64),
+    );
+
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
         .expect("invalid affine map")
@@ -30,7 +35,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
         .mem_region(&scaled_l1)
         .map(&torus_y_map)
-        .io_bandwidth(64)
+        .io(&io)
         .link_bandwidth(64)
         .build();
 
@@ -43,7 +48,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
         .mem_region(&scaled_l1)
         .map(&torus_x_map)
-        .io_bandwidth(64)
+        .io(&io)
         .link_bandwidth(64)
         .build();
 

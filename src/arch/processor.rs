@@ -163,7 +163,6 @@ impl Processor {
             dims: dims.to_vec(),
             elem: Box::new(Architecture::Unit(self)),
             connectivity: Vec::new(),
-            interface: None,
         }
     }
 

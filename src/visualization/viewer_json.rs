@@ -85,10 +85,10 @@ fn sub_path(parent: &str, child: &str) -> String {
 mod tests {
     use super::*;
     use crate::arch::{
-        ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router,
-        ScaleOutNetwork, SizeExpr,
+        ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, MeshNetworkInterface,
+        Processor, Router, ScaleOutNetwork, SizeExpr,
     };
-    use crate::math::{AffineExpr, AffineMap};
+    use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn build_core_with_edges() -> (Architecture, MemoryRegion) {
         let dim_bank = Dimension::new_int("nbank", 16);
@@ -163,6 +163,11 @@ mod tests {
 
         let scaled_l1 = l1.scale(&[dim_x.clone(), dim_y.clone()]);
 
+        let io = MeshNetworkInterface::new(
+            AffineMap::identity(&[dim_x.clone(), dim_y.clone()]),
+            Expr::Const(64),
+        );
+
         let torus_y_map = AffineMap::new(
             &[dim_x.clone(), dim_y.clone()],
             &[dim_x.clone(), dim_y.clone()],
@@ -177,7 +182,7 @@ mod tests {
         let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
             .mem_region(&scaled_l1)
             .map(&torus_y_map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -195,7 +200,7 @@ mod tests {
         let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
             .mem_region(&scaled_l1)
             .map(&torus_x_map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -234,6 +239,11 @@ mod tests {
 
         let scaled_l1 = l1.scale(&[dim_x.clone(), dim_y.clone()]);
 
+        let io = MeshNetworkInterface::new(
+            AffineMap::identity(&[dim_x.clone(), dim_y.clone()]),
+            Expr::Const(64),
+        );
+
         let torus_y_map = AffineMap::new(
             &[dim_x.clone(), dim_y.clone()],
             &[dim_x.clone(), dim_y.clone()],
@@ -248,7 +258,7 @@ mod tests {
         let torus_y = ScaleOutNetwork::mesh("L1_torus_y")
             .mem_region(&scaled_l1)
             .map(&torus_y_map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
@@ -266,7 +276,7 @@ mod tests {
         let torus_x = ScaleOutNetwork::mesh("L1_torus_x")
             .mem_region(&scaled_l1)
             .map(&torus_x_map)
-            .io_bandwidth(64)
+            .io(&io)
             .link_bandwidth(64)
             .build();
 
