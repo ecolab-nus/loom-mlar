@@ -53,13 +53,20 @@ pub fn vector_lane() -> Architecture {
         }
     };
 
+    let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
+
     let perf_models: Vec<FuncPerfModel> = functionality
         .ops
         .iter()
         .map(|op| perf_for(op.name.as_str()))
         .collect();
 
-    Processor::from_module("vector_lane", functionality, perf_models)
-        .expect("vector_lane processor should link functionality and perf")
-        .into_elem()
+    let mut proc = Processor::from_module("vector_lane", functionality, perf_models)
+        .expect("vector_lane processor should link functionality and perf");
+
+    for fp in &mut proc.functions {
+        fp.hardware_properties = lane_shape.clone();
+    }
+
+    proc.into_elem()
 }

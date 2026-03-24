@@ -22,6 +22,6 @@ pub use data_mover::{DataMover, FunctionDataMover};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
-pub use processor::{FunctionProcessor, Processor};
+pub use processor::{FunctionProcessor, HardwareProperty, Processor};
 pub use router::{Router, RouterSide};
 pub use size_dim::{Dimension, SizeExpr, Sym};

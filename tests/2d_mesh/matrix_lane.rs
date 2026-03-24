@@ -99,11 +99,16 @@ pub fn matrix_lane() -> Architecture {
         ],
     };
 
-    Processor::from_module(
-        "matrix_lane",
-        functionality,
-        vec![mat_func_perf, batch_mat_func_perf],
-    )
-    .expect("matrix_lane processor should link functionality and perf")
-    .into_elem()
+    let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
+
+    let perf_models = vec![mat_func_perf, batch_mat_func_perf];
+
+    let mut proc = Processor::from_module("matrix_lane", functionality, perf_models)
+        .expect("matrix_lane processor should link functionality and perf");
+
+    for fp in &mut proc.functions {
+        fp.hardware_properties = lane_shape.clone();
+    }
+
+    proc.into_elem()
 }

@@ -4,16 +4,55 @@ use super::size_dim::Dimension;
 use crate::schedule::{MlirFunc, Module};
 use serde::{Deserialize, Serialize};
 
+/// A hardware characteristic attached to a `FunctionProcessor`.
+///
+/// Different processors expose different physical properties; this enum
+/// captures the ones that matter for scheduling and cost modelling.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HardwareProperty {
+    /// The native compute shape of a vector/matrix lane.
+    /// Each element is one dimension of the lane (e.g. `[16]` for a 16-wide
+    /// vector unit, `[4, 4]` for a 4×4 matrix unit).
+    LaneComputeShape(Vec<u64>),
+}
+
 /// One function-capable execution unit: function interface + performance model.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionProcessor {
     pub func: MlirFunc,
     pub perf: FuncPerfModel,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hardware_properties: Vec<HardwareProperty>,
 }
 
 impl FunctionProcessor {
     pub fn new(func: MlirFunc, perf: FuncPerfModel) -> Self {
-        Self { func, perf }
+        Self {
+            func,
+            perf,
+            hardware_properties: Vec::new(),
+        }
+    }
+
+    /// Attach hardware properties (builder-style, consumes self).
+    pub fn with_hardware_properties(mut self, props: Vec<HardwareProperty>) -> Self {
+        self.hardware_properties = props;
+        self
+    }
+
+    /// Look up the first property that matches the given predicate.
+    pub fn find_property<F>(&self, predicate: F) -> Option<&HardwareProperty>
+    where
+        F: Fn(&HardwareProperty) -> bool,
+    {
+        self.hardware_properties.iter().find(|p| predicate(p))
+    }
+
+    /// Return the `LaneComputeShape` if one is present.
+    pub fn lane_compute_shape(&self) -> Option<&[u64]> {
+        self.hardware_properties.iter().find_map(|p| match p {
+            HardwareProperty::LaneComputeShape(shape) => Some(shape.as_slice()),
+        })
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -162,7 +201,7 @@ impl From<&Architecture> for Architecture {
 
 #[cfg(test)]
 mod tests {
-    use super::{Architecture, FunctionProcessor, Processor};
+    use super::{Architecture, FunctionProcessor, HardwareProperty, Processor};
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
     use crate::schedule::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Module};
@@ -258,5 +297,51 @@ mod tests {
 
         assert_eq!(elem.total_instances(), Some(8));
         assert!(matches!(elem, Architecture::Array { .. }));
+    }
+
+    #[test]
+    fn hardware_properties_default_empty() {
+        let fp = FunctionProcessor::new(
+            MlirFunc::named("f"),
+            FuncPerfModel {
+                symbols: vec![],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![],
+            },
+        );
+        assert!(fp.hardware_properties.is_empty());
+        assert_eq!(fp.lane_compute_shape(), None);
+    }
+
+    #[test]
+    fn lane_compute_shape_round_trips() {
+        let fp = FunctionProcessor::new(
+            MlirFunc::named("vec_mac"),
+            FuncPerfModel {
+                symbols: vec![],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![],
+            },
+        )
+        .with_hardware_properties(vec![HardwareProperty::LaneComputeShape(vec![4, 4])]);
+
+        assert_eq!(fp.lane_compute_shape(), Some(&[4, 4][..]));
+        assert_eq!(fp.hardware_properties.len(), 1);
+    }
+
+    #[test]
+    fn find_property_locates_matching_variant() {
+        let fp = FunctionProcessor::new(
+            MlirFunc::named("f"),
+            FuncPerfModel {
+                symbols: vec![],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![],
+            },
+        )
+        .with_hardware_properties(vec![HardwareProperty::LaneComputeShape(vec![16])]);
+
+        let found = fp.find_property(|p| matches!(p, HardwareProperty::LaneComputeShape(_)));
+        assert_eq!(found, Some(&HardwareProperty::LaneComputeShape(vec![16])));
     }
 }
