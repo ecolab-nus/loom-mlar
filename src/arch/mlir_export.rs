@@ -105,7 +105,24 @@ impl MlirEmitter {
     fn emit_processor(&mut self, proc: &Processor) -> String {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
-        writeln!(self.output, "{} = df.processor \"{}\"", ssa, name).unwrap();
+
+        let module_ref = proc
+            .functionality
+            .source
+            .as_ref()
+            .and_then(|s| s.mlir_module_name.as_deref())
+            .or(proc.functionality.name.as_deref());
+
+        if let Some(mod_name) = module_ref {
+            writeln!(
+                self.output,
+                "{} = df.processor \"{}\" @{}",
+                ssa, name, mod_name
+            )
+            .unwrap();
+        } else {
+            writeln!(self.output, "{} = df.processor \"{}\"", ssa, name).unwrap();
+        }
 
         if let Some(ref source) = proc.functionality.source {
             if !self.mlir_sources.contains(&source.path) {

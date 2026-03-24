@@ -2,8 +2,8 @@ module @system {
   %0 = df.memory.bank "bank" {bsize = 128, nblk = 1024}
   %1 = df.spatial_dim "nbank", 16
   %2 = df.memory.array "L1" %0 {scaleout=(%1)}
-  %3 = df.processor "matrix_lane"
-  %4 = df.processor "vector_lane"
+  %3 = df.processor "matrix_lane" @matrix_lane
+  %4 = df.processor "vector_lane" @vector_lane
   %5 = df.arch.compose "core" [%2, %3, %4]
   %6 = df.spatial_dim "x", 8
   %7 = df.spatial_dim "y", 8
