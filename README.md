@@ -20,7 +20,7 @@ src/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr
-│   ├── processor.rs            # FunctionProcessor, Processor
+│   ├── processor.rs            # HardwareProperty, FunctionProcessor, Processor
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, MeshNetworkInterface
 │   ├── data_mover.rs           # DataMover, FunctionDataMover
@@ -139,6 +139,11 @@ Useful helpers:
 
 - `func: MlirFunc`
 - `perf: FuncPerfModel`
+- `hardware_properties: Vec<HardwareProperty>` — optional hardware characteristics (empty by default)
+
+`HardwareProperty` is an enum of hardware characteristics that vary by processor type:
+
+- `LaneComputeShape(Vec<u64>)` — native compute shape of a vector/matrix lane (e.g. `[32]` for a 32-wide vector unit, `[32, 32, 32]` for a 32×32×32 matrix unit)
 
 `Processor` then groups:
 
@@ -147,10 +152,11 @@ Useful helpers:
 
 ### Preferred constructor
 
-Use `Processor::from_module` to bind one perf model per function (in order):
+Use `Processor::from_module` to bind one perf model per function (in order).
+Hardware properties can then be attached to individual `FunctionProcessor`s:
 
 ```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, HardwareProperty, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
 
 let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
     .expect("MLIR should parse");
@@ -172,10 +178,20 @@ let perf_models: Vec<FuncPerfModel> = functionality
     })
     .collect();
 
-let lane = Processor::from_module("vector_lane", functionality, perf_models)
+let mut lane = Processor::from_module("vector_lane", functionality, perf_models)
     .expect("module/perf binding should validate");
 
+// Attach a 32-wide lane compute shape to every function in the processor
+let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
+for fp in &mut lane.functions {
+    fp.hardware_properties = lane_shape.clone();
+}
+
 assert!(lane.get_function("vec_add_f32").is_some());
+assert_eq!(
+    lane.get_function("vec_add_f32").unwrap().lane_compute_shape(),
+    Some(&[32][..]),
+);
 ```
 
 ## Processor Composition
@@ -291,7 +307,8 @@ Web UI lives in `tools/web-visualization/`.
 | `Schedule` | Schedule tree (all nodes carry scenarios after evaluation) | `src/schedule/schedule.rs` |
 | `SymbolicMapping` | Per-function symbol substitution mapping | `src/schedule/schedule.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost`, `TimeExpr` | Function-level performance model | `src/arch/perf.rs` |
-| `FunctionProcessor` | One function + one perf binding | `src/arch/processor.rs` |
+| `HardwareProperty` | Hardware characteristic enum (`LaneComputeShape`, …) | `src/arch/processor.rs` |
+| `FunctionProcessor` | One function + one perf binding + hardware properties | `src/arch/processor.rs` |
 | `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
 | `DataMover`, `FunctionDataMover` | Data mover engine with per-function perf models | `src/arch/data_mover.rs` |
 | `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
