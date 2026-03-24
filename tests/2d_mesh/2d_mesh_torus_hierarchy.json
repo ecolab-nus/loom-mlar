@@ -2,7 +2,7 @@
   "schema_version": "mlar.arch-hierarchy.v1",
   "root": {
     "kind": "graph",
-    "name": "2d_mesh_torus",
+    "name": "system",
     "total_instances": 128,
     "children": [
       {

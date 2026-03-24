@@ -242,7 +242,7 @@ fn test_2d_mesh_torus() {
     let mesh = scaled_mesh_torus();
 
     // === Verify topology ===
-    assert_eq!(mesh.name(), Some("2d_mesh_torus"));
+    assert_eq!(mesh.name(), Some("system"));
     let system_graph = match &mesh {
         Architecture::Graph(graph) => graph,
         _ => panic!("top-level architecture should be graph"),
@@ -348,7 +348,7 @@ fn test_export_2d_mesh_torus_graph_json() {
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("serialized JSON should be valid");
     assert_eq!(value["schema_version"], "mlar.arch-graph.v1");
-    assert_eq!(value["architecture"]["name"], "2d_mesh_torus");
+    assert_eq!(value["architecture"]["name"], "system");
     assert!(value["nodes"].as_array().is_some_and(|v| !v.is_empty()));
     assert!(value["edges"].as_array().is_some_and(|v| !v.is_empty()));
 
@@ -367,7 +367,7 @@ fn test_export_2d_mesh_torus_hierarchy_json() {
         serde_json::from_str(&json).expect("serialized JSON should be valid");
     assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
     assert_eq!(value["root"]["kind"], "graph");
-    assert_eq!(value["root"]["name"], "2d_mesh_torus");
+    assert_eq!(value["root"]["name"], "system");
     assert!(
         value["root"]["children"]
             .as_array()
@@ -388,7 +388,7 @@ fn test_export_2d_mesh_torus_viewer_json() {
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("serialized JSON should be valid");
     assert_eq!(value["schema_version"], "mlar.arch-viewer.v1");
-    assert_eq!(value["hierarchy"]["name"], "2d_mesh_torus");
+    assert_eq!(value["hierarchy"]["name"], "system");
     assert!(value["graphs"][""].is_object());
     assert!(value["graphs"]["mesh"].is_object());
     assert!(value["graphs"]["mesh/core"].is_object());
@@ -908,6 +908,80 @@ fn test_evaluate_system_data_mover_schedule() {
     let decoded: Schedule = serde_json::from_str(&json).expect("Schedule should deserialize");
     let decoded_json = serde_json::to_string(&decoded).expect("decoded Schedule should serialize");
     assert_eq!(json, decoded_json);
+}
+
+#[test]
+fn test_export_2d_mesh_torus_mlir() {
+    let mesh = scaled_mesh_torus();
+    let mlir = architecture_to_mlir(&mesh).expect("MLIR export should succeed for concrete dims");
+
+    println!("{}", mlir);
+
+    // Top-level module wrapping
+    assert!(
+        mlir.starts_with("module @system {\n"),
+        "output should be wrapped in a top-level module"
+    );
+    assert!(mlir.ends_with("}\n"), "top-level module should be closed");
+
+    // Dimensions
+    assert!(mlir.contains("df.spatial_dim \"nbank\", 16"));
+    assert!(mlir.contains("df.spatial_dim \"x\", 8"));
+    assert!(mlir.contains("df.spatial_dim \"y\", 8"));
+    assert!(mlir.contains("df.spatial_dim \"dram_channel\", 8"));
+
+    // Memory banks
+    assert!(mlir.contains("df.memory.bank"));
+    assert!(mlir.contains("bsize = 128, nblk = 1024")); // L1 bank
+    assert!(mlir.contains("bsize = 256, nblk = 8192")); // DRAM bank
+
+    // Memory arrays
+    assert!(mlir.contains("df.memory.array \"L1\""));
+    assert!(mlir.contains("df.memory.array \"DRAM\""));
+
+    // Processors
+    assert!(mlir.contains("df.processor \"matrix_lane\""));
+    assert!(mlir.contains("df.processor \"vector_lane\""));
+
+    // Composition and scaling
+    assert!(mlir.contains("df.arch.compose \"core\""));
+    assert!(mlir.contains("df.arch.scale \"mesh\""));
+    assert!(mlir.contains("df.arch.compose \"system\""));
+
+    // Each dimension emitted exactly once
+    assert_eq!(
+        mlir.matches("df.spatial_dim \"x\"").count(),
+        1,
+        "dim x emitted once"
+    );
+    assert_eq!(
+        mlir.matches("df.spatial_dim \"y\"").count(),
+        1,
+        "dim y emitted once"
+    );
+
+    // Processor MLIR sources appended inside the top-level module
+    assert!(
+        mlir.contains("module @matrix_lane {"),
+        "matrix_lane MLIR module should be appended"
+    );
+    assert!(
+        mlir.contains("module @vector_lane {"),
+        "vector_lane MLIR module should be appended"
+    );
+    assert!(
+        mlir.contains("func.func @matmul_f16"),
+        "matmul function should be present"
+    );
+    assert!(
+        mlir.contains("func.func @vec_add_f16"),
+        "vec_add function should be present"
+    );
+
+    // Write to file for inspection
+    let out_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.mlir");
+    fs::write(out_path, &mlir).expect("Failed to write MLIR file");
 }
 
 /// Generate a standalone system-level evaluator binary for the full 2D mesh

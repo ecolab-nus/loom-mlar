@@ -55,7 +55,7 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     let mesh = mesh.with_connectivity(vec![torus]);
 
-    let mut system: Architecture = ArchGraph::builder("2d_mesh_torus")
+    let mut system: Architecture = ArchGraph::builder("system")
         .processor(&mesh)
         .data_mover(&dram_to_l1)
         .mem(&dram)

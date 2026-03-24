@@ -1,7 +1,7 @@
 {
   "schema_version": "mlar.arch-graph.v1",
   "architecture": {
-    "name": "2d_mesh_torus",
+    "name": "system",
     "labels": []
   },
   "nodes": [

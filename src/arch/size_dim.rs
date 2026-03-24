@@ -103,6 +103,24 @@ impl SizeExpr {
             }
         }
     }
+
+    /// Attempt to reduce this expression to a constant by recursively
+    /// evaluating all arithmetic on concrete sub-expressions (constant folding).
+    ///
+    /// Returns `Some(value)` when the entire tree is free of symbolic terms
+    /// and can be collapsed to a single `u64`. Returns `None` otherwise.
+    pub fn simplify_constant(&self) -> Option<u64> {
+        match self {
+            SizeExpr::Const(v) => Some(*v),
+            SizeExpr::Sym(_) => None,
+            SizeExpr::Add(a, b) => {
+                Some(a.simplify_constant()?.checked_add(b.simplify_constant()?)?)
+            }
+            SizeExpr::Mul(a, b) => {
+                Some(a.simplify_constant()?.checked_mul(b.simplify_constant()?)?)
+            }
+        }
+    }
 }
 
 impl From<u64> for SizeExpr {
