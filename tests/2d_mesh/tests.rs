@@ -940,13 +940,13 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.contains("df.memory.array \"DRAM\""));
 
     // Processors (with module references)
-    assert!(mlir.contains("df.processor \"matrix_lane\" @matrix_lane"));
-    assert!(mlir.contains("df.processor \"vector_lane\" @vector_lane"));
+    assert!(mlir.contains("df.processor \"matrix_lane\", @matrix_lane"));
+    assert!(mlir.contains("df.processor \"vector_lane\", @vector_lane"));
 
     // Composition and scaling
-    assert!(mlir.contains("df.arch.compose \"core\""));
-    assert!(mlir.contains("df.arch.scale \"mesh\""));
-    assert!(mlir.contains("df.arch.compose \"system\""));
+    assert!(mlir.contains("df.arch.compose \"core\","));
+    assert!(mlir.contains("df.arch.scale \"mesh\","));
+    assert!(mlir.contains("df.arch.compose \"system\","));
 
     // Each dimension emitted exactly once
     assert_eq!(

@@ -71,8 +71,8 @@ impl MlirEmitter {
                 let scaleout = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.memory.array \"{}\" {} {{scaleout=({})}}",
-                    ssa, name_str, sub_ssa, scaleout
+                    "{} = df.memory.array \"{}\", ({}) of {}",
+                    ssa, name_str, scaleout, sub_ssa
                 )
                 .unwrap();
                 Some(ssa)
@@ -94,7 +94,7 @@ impl MlirEmitter {
         let name = bank.name.as_deref().unwrap_or("bank");
         writeln!(
             self.output,
-            "{} = df.memory.bank \"{}\" {{bsize = {}, nblk = {}}}",
+            "{} = df.memory.bank \"{}\", {{bsize = {}, nblk = {}}}",
             ssa, name, bsize, nblk
         )
         .unwrap();
@@ -116,7 +116,7 @@ impl MlirEmitter {
         if let Some(mod_name) = module_ref {
             writeln!(
                 self.output,
-                "{} = df.processor \"{}\" @{}",
+                "{} = df.processor \"{}\", @{}",
                 ssa, name, mod_name
             )
             .unwrap();
@@ -160,7 +160,7 @@ impl MlirEmitter {
                 let components = component_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.arch.compose \"{}\" [{}]",
+                    "{} = df.arch.compose \"{}\", [{}]",
                     ssa, graph.name, components
                 )
                 .unwrap();
@@ -182,8 +182,8 @@ impl MlirEmitter {
                 let dim_list = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.arch.scale \"{}\" {} [{}]",
-                    ssa, arch_name, elem_ssa, dim_list
+                    "{} = df.arch.scale \"{}\", ({}) of {}",
+                    ssa, arch_name, dim_list, elem_ssa
                 )
                 .unwrap();
                 Some(ssa)
