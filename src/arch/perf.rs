@@ -298,6 +298,7 @@ mod tests {
                     },
                 ],
                 mem_region_bindings: vec![],
+                copy_ops: vec![],
             }),
             sym_map: None,
         };

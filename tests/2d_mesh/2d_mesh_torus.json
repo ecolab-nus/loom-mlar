@@ -65,7 +65,8 @@
             "source_path": "tests/2d_mesh/data_movers/dram_to_l1.mlir",
             "source_mlir_module_name": "data_movers",
             "ops": [
-              "dram_to_l1_f16"
+              "dram_to_l1_f16",
+              "dram_to_l1_bcst_f16"
             ]
           }
         },

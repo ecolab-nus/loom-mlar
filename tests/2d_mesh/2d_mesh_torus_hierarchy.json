@@ -136,7 +136,8 @@
         "details": {
           "type": "processor",
           "functions": [
-            "dram_to_l1_f16"
+            "dram_to_l1_f16",
+            "dram_to_l1_bcst_f16"
           ]
         }
       },

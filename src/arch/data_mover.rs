@@ -271,16 +271,20 @@ mod tests {
     fn data_mover_from_module_requires_memref_bound_symbol_interface() {
         let functionality = Module::from_mlir("tests/2d_mesh/data_movers/dram_to_l1.mlir")
             .expect("dram_to_l1 data mover MLIR should parse");
-        let perf_models = vec![FuncPerfModel {
-            symbols: vec![Sym::new("M"), Sym::new("N")],
-            constraints: ConstraintExpr::True,
-            scenarios: vec![],
-        }];
+        let perf_models = vec![
+            FuncPerfModel {
+                symbols: vec![Sym::new("M"), Sym::new("N")],
+                constraints: ConstraintExpr::True,
+                scenarios: vec![],
+            };
+            functionality.ops.len()
+        ];
 
         let (src, dst) = stub_regions();
         let mover = DataMover::from_module("dram_to_l1_mover", functionality, perf_models, src, dst)
             .expect("data mover should validate");
         assert!(mover.get_function("dram_to_l1_f16").is_some());
+        assert!(mover.get_function("dram_to_l1_bcst_f16").is_some());
     }
 
     #[test]

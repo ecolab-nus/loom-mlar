@@ -33,6 +33,26 @@ pub struct MlirMemRegionBinding {
     pub region: String,
 }
 
+/// A `loom.copy` operation parsed from an MLIR function body.
+///
+/// Syntax: `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : [...], broadcast : [d0, d1, ...] : type to type`
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MlirCopyOp {
+    /// Source memref SSA name, without `%`.
+    pub src: String,
+    /// Source memory region name, without `@`.
+    pub src_region: String,
+    /// Destination memref SSA name, without `%`.
+    pub dst: String,
+    /// Destination memory region name, without `@`.
+    pub dst_region: String,
+    /// Interconnect specification (opaque strings for now).
+    pub interconnect: Vec<String>,
+    /// Broadcast dimensions — `[1, 1]` means no broadcast,
+    /// `[8, 8]` means broadcast over an 8x8 mesh, etc.
+    pub broadcast: Vec<u64>,
+}
+
 /// Detailed interface metadata extracted from one MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirFuncDetails {
@@ -57,6 +77,9 @@ pub struct MlirFuncDetails {
     /// Memref-to-memory-region bindings from `loom.bind_mem`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mem_region_bindings: Vec<MlirMemRegionBinding>,
+    /// Parsed `loom.copy` operations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub copy_ops: Vec<MlirCopyOp>,
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
@@ -244,6 +267,42 @@ impl MlirFunc {
             .collect();
         let (mut source_memrefs, mut target_memrefs) =
             parse_memref_copy_interface(func_mlir, &memref_args)?;
+
+        let copy_ops = parse_loom_copy(func_mlir)?;
+
+        // loom.copy contributes source/target memrefs and region bindings
+        let mut mem_region_bindings = parse_loom_bind_mem(func_mlir)?;
+        for cop in &copy_ops {
+            if memref_args.iter().any(|a| a == &cop.src)
+                && source_memrefs.iter().all(|s| s != &cop.src)
+            {
+                source_memrefs.push(cop.src.clone());
+            }
+            if memref_args.iter().any(|a| a == &cop.dst)
+                && target_memrefs.iter().all(|t| t != &cop.dst)
+            {
+                target_memrefs.push(cop.dst.clone());
+            }
+            if mem_region_bindings
+                .iter()
+                .all(|b| b.memref != cop.src || b.region != cop.src_region)
+            {
+                mem_region_bindings.push(MlirMemRegionBinding {
+                    memref: cop.src.clone(),
+                    region: cop.src_region.clone(),
+                });
+            }
+            if mem_region_bindings
+                .iter()
+                .all(|b| b.memref != cop.dst || b.region != cop.dst_region)
+            {
+                mem_region_bindings.push(MlirMemRegionBinding {
+                    memref: cop.dst.clone(),
+                    region: cop.dst_region.clone(),
+                });
+            }
+        }
+
         if source_memrefs.is_empty() && !memref_args.is_empty() {
             source_memrefs.push(memref_args[0].clone());
         }
@@ -254,7 +313,6 @@ impl MlirFunc {
             .into_iter()
             .filter(|tensor| tensor_args.iter().any(|arg| arg == tensor))
             .collect();
-        let mem_region_bindings = parse_loom_bind_mem(func_mlir)?;
 
         Ok(Self {
             name,
@@ -268,6 +326,7 @@ impl MlirFunc {
                 memref_symbol_bindings,
                 tensor_symbol_bindings,
                 mem_region_bindings,
+                copy_ops,
             }),
             sym_map: None,
         })
@@ -457,6 +516,120 @@ fn parse_loom_bind_mem(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, Str
         });
     }
     Ok(bindings)
+}
+
+/// Parse `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : [...], broadcast : [d0, d1, ...] : type to type`
+fn parse_loom_copy(func_mlir: &str) -> Result<Vec<MlirCopyOp>, String> {
+    let mut ops = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("loom.copy ") else {
+            continue;
+        };
+
+        let err = |msg: &str| format!("invalid loom.copy: {}: {}", msg, trimmed);
+
+        // Split on the *first* top-level colon that precedes "memref<" or similar type —
+        // but it's easier to split on ", interconnect" first.
+        let ic_marker = ", interconnect";
+        let ic_pos = rest
+            .find(ic_marker)
+            .ok_or_else(|| err("missing ', interconnect'"))?;
+        let operand_part = &rest[..ic_pos];
+        let after_ic = &rest[ic_pos + ic_marker.len()..];
+
+        // Parse src and dst from operand_part: "%src @SrcRegion, %dst @DstRegion"
+        let operand_tokens = split_top_level_commas(operand_part);
+        if operand_tokens.len() < 2 {
+            return Err(err("expected '%src @Region, %dst @Region'"));
+        }
+        let (src, src_region) = parse_memref_region(operand_tokens[0].trim())
+            .ok_or_else(|| err("invalid source '%memref @Region'"))?;
+        let (dst, dst_region) = parse_memref_region(operand_tokens[1].trim())
+            .ok_or_else(|| err("invalid destination '%memref @Region'"))?;
+
+        // Parse "interconnect : [...], broadcast : [...]" from after_ic
+        // after_ic looks like: " : [], broadcast : [8, 8] : memref<...> to memref<...>"
+        let after_ic = after_ic.trim();
+        let after_ic = after_ic
+            .strip_prefix(':')
+            .ok_or_else(|| err("expected ':' after 'interconnect'"))?
+            .trim();
+
+        let ic_open = after_ic
+            .find('[')
+            .ok_or_else(|| err("missing '[' for interconnect"))?;
+        let ic_close = find_matching_delimiter(after_ic, ic_open, '[', ']')
+            .ok_or_else(|| err("unbalanced '[' for interconnect"))?;
+        let ic_inner = after_ic[ic_open + 1..ic_close].trim();
+        let interconnect: Vec<String> = if ic_inner.is_empty() {
+            Vec::new()
+        } else {
+            split_top_level_commas(ic_inner)
+                .iter()
+                .map(|s| s.trim().to_string())
+                .collect()
+        };
+
+        let after_bc_label = &after_ic[ic_close + 1..].trim();
+        let after_bc_label = after_bc_label
+            .strip_prefix(',')
+            .ok_or_else(|| err("missing ',' before 'broadcast'"))?
+            .trim();
+        let after_bc_label = after_bc_label
+            .strip_prefix("broadcast")
+            .ok_or_else(|| err("missing 'broadcast' keyword"))?
+            .trim();
+        let after_bc_label = after_bc_label
+            .strip_prefix(':')
+            .ok_or_else(|| err("expected ':' after 'broadcast'"))?
+            .trim();
+
+        let bc_open = after_bc_label
+            .find('[')
+            .ok_or_else(|| err("missing '[' for broadcast"))?;
+        let bc_close = find_matching_delimiter(after_bc_label, bc_open, '[', ']')
+            .ok_or_else(|| err("unbalanced '[' for broadcast"))?;
+        let bc_inner = after_bc_label[bc_open + 1..bc_close].trim();
+        let broadcast: Vec<u64> = if bc_inner.is_empty() {
+            Vec::new()
+        } else {
+            split_top_level_commas(bc_inner)
+                .iter()
+                .map(|s| {
+                    s.trim()
+                        .parse::<u64>()
+                        .map_err(|_| err(&format!("non-integer broadcast dim '{}'", s.trim())))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        ops.push(MlirCopyOp {
+            src: src.to_string(),
+            src_region: src_region.to_string(),
+            dst: dst.to_string(),
+            dst_region: dst_region.to_string(),
+            interconnect,
+            broadcast,
+        });
+    }
+    Ok(ops)
+}
+
+/// Parse `%memref @Region` into (memref_name, region_name).
+fn parse_memref_region(token: &str) -> Option<(&str, &str)> {
+    let token = token.trim();
+    if !token.starts_with('%') {
+        return None;
+    }
+    let body = &token[1..];
+    let at_pos = body.find('@')?;
+    let memref = body[..at_pos].trim();
+    let region = body[at_pos + 1..].trim();
+    if memref.is_empty() || region.is_empty() {
+        return None;
+    }
+    Some((memref, region))
 }
 
 fn parse_output_tensors(func_mlir: &str) -> Result<Vec<String>, String> {
@@ -785,6 +958,48 @@ func.func @dram_to_l1(
             .as_ref()
             .expect("from_mlir should populate mlir_details");
         assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
+        assert_eq!(details.mem_region_bindings.len(), 2);
+        assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
+        assert_eq!(details.mem_region_bindings[0].region, "DRAM");
+        assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
+        assert_eq!(details.mem_region_bindings[1].region, "L1");
+    }
+
+    #[test]
+    fn mlir_func_ref_from_mlir_parses_loom_copy() {
+        let snippet = r#"
+func.func @dram_to_l1_bcst(
+    %dram_src: memref<?x?xf16>,
+    %l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#;
+
+        let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+        let details = func
+            .mlir_details
+            .as_ref()
+            .expect("from_mlir should populate mlir_details");
+
+        assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
+        assert_eq!(details.source_memrefs, vec!["dram_src"]);
+        assert_eq!(details.target_memrefs, vec!["l1_dst"]);
+
+        assert_eq!(details.copy_ops.len(), 1);
+        let cop = &details.copy_ops[0];
+        assert_eq!(cop.src, "dram_src");
+        assert_eq!(cop.src_region, "DRAM");
+        assert_eq!(cop.dst, "l1_dst");
+        assert_eq!(cop.dst_region, "L1");
+        assert!(cop.interconnect.is_empty());
+        assert_eq!(cop.broadcast, vec![8, 8]);
+
         assert_eq!(details.mem_region_bindings.len(), 2);
         assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
         assert_eq!(details.mem_region_bindings[0].region, "DRAM");

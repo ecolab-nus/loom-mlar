@@ -11,8 +11,8 @@ pub mod size_dim;
 
 // Re-export commonly used types
 pub use crate::schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemRegionBinding,
-    MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
+    MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };
 pub use architecture::Architecture;
 pub use architecture_graph::{
