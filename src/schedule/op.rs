@@ -5,7 +5,7 @@ use crate::arch::Sym;
 use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
 
-/// Relationship extracted from `loom.bind` in an MLIR function body.
+/// Relationship extracted from `loom.bind_shape` in an MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirTensorSymbolBinding {
     /// Tensor SSA argument name, without `%`.
@@ -14,13 +14,23 @@ pub struct MlirTensorSymbolBinding {
     pub symbols: Vec<Sym>,
 }
 
-/// Relationship extracted from `loom.bind` for memref operands.
+/// Relationship extracted from `loom.bind_shape` for memref operands.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirMemrefSymbolBinding {
     /// Memref SSA argument name, without `%`.
     pub memref: String,
     /// Symbols bound to this memref dimensions (in-order), without `%`.
     pub symbols: Vec<Sym>,
+}
+
+/// Relationship extracted from `loom.bind_mem` — associates a memref argument
+/// with a named memory region.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MlirMemRegionBinding {
+    /// Memref SSA argument name, without `%`.
+    pub memref: String,
+    /// Memory region name, without `@`.
+    pub region: String,
 }
 
 /// Detailed interface metadata extracted from one MLIR function body.
@@ -39,11 +49,14 @@ pub struct MlirFuncDetails {
     /// Memref operands inferred as copy targets (e.g. `memref.copy %src, %dst`), without `%`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub target_memrefs: Vec<String>,
-    /// Explicit memref-to-symbol bindings from `loom.bind`.
+    /// Explicit memref-to-symbol bindings from `loom.bind_shape`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_symbol_bindings: Vec<MlirMemrefSymbolBinding>,
-    /// Explicit tensor-to-symbol bindings from `loom.bind`.
+    /// Explicit tensor-to-symbol bindings from `loom.bind_shape`.
     pub tensor_symbol_bindings: Vec<MlirTensorSymbolBinding>,
+    /// Memref-to-memory-region bindings from `loom.bind_mem`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mem_region_bindings: Vec<MlirMemRegionBinding>,
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
@@ -241,6 +254,7 @@ impl MlirFunc {
             .into_iter()
             .filter(|tensor| tensor_args.iter().any(|arg| arg == tensor))
             .collect();
+        let mem_region_bindings = parse_loom_bind_mem(func_mlir)?;
 
         Ok(Self {
             name,
@@ -253,6 +267,7 @@ impl MlirFunc {
                 target_memrefs,
                 memref_symbol_bindings,
                 tensor_symbol_bindings,
+                mem_region_bindings,
             }),
             sym_map: None,
         })
@@ -347,29 +362,29 @@ fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, Strin
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
-        if !trimmed.starts_with("loom.bind ") {
+        if !trimmed.starts_with("loom.bind_shape ") {
             continue;
         }
 
-        let rest = trimmed["loom.bind ".len()..].trim_start();
+        let rest = trimmed["loom.bind_shape ".len()..].trim_start();
         if !rest.starts_with('%') {
-            return Err(format!("invalid loom.bind operand syntax: {}", trimmed));
+            return Err(format!("invalid loom.bind_shape operand syntax: {}", trimmed));
         }
 
         let comma = rest
             .find(',')
-            .ok_or_else(|| format!("invalid loom.bind missing comma: {}", trimmed))?;
+            .ok_or_else(|| format!("invalid loom.bind_shape missing comma: {}", trimmed))?;
         let operand = rest[1..comma].trim();
         if operand.is_empty() {
-            return Err(format!("invalid loom.bind empty operand: {}", trimmed));
+            return Err(format!("invalid loom.bind_shape empty operand: {}", trimmed));
         }
 
         let sym_section = rest[comma + 1..].trim();
         let open = sym_section
             .find('[')
-            .ok_or_else(|| format!("invalid loom.bind missing '[' : {}", trimmed))?;
+            .ok_or_else(|| format!("invalid loom.bind_shape missing '[' : {}", trimmed))?;
         let close = find_matching_delimiter(sym_section, open, '[', ']')
-            .ok_or_else(|| format!("invalid loom.bind unbalanced brackets: {}", trimmed))?;
+            .ok_or_else(|| format!("invalid loom.bind_shape unbalanced brackets: {}", trimmed))?;
         let sym_list = &sym_section[open + 1..close];
 
         let mut symbols = Vec::new();
@@ -379,12 +394,67 @@ fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, Strin
                 continue;
             }
             if !sym_token.starts_with('%') {
-                return Err(format!("invalid loom.bind symbol syntax: {}", trimmed));
+                return Err(format!("invalid loom.bind_shape symbol syntax: {}", trimmed));
             }
             symbols.push(Sym::new(sym_token.trim_start_matches('%')));
         }
 
         bindings.push((operand.to_string(), symbols));
+    }
+    Ok(bindings)
+}
+
+/// Parse `loom.bind_mem @RegionName %memref_arg` lines.
+fn parse_loom_bind_mem(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, String> {
+    let mut bindings = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("loom.bind_mem ") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        if !rest.starts_with('@') {
+            return Err(format!(
+                "invalid loom.bind_mem: expected @region name: {}",
+                trimmed
+            ));
+        }
+        let after_at = &rest[1..];
+        let region_end = after_at
+            .find(|c: char| c.is_whitespace())
+            .ok_or_else(|| {
+                format!(
+                    "invalid loom.bind_mem: expected memref operand after region name: {}",
+                    trimmed
+                )
+            })?;
+        let region = &after_at[..region_end];
+        if region.is_empty() {
+            return Err(format!(
+                "invalid loom.bind_mem: empty region name: {}",
+                trimmed
+            ));
+        }
+
+        let memref_part = after_at[region_end..].trim();
+        if !memref_part.starts_with('%') {
+            return Err(format!(
+                "invalid loom.bind_mem: expected %memref operand: {}",
+                trimmed
+            ));
+        }
+        let memref = parse_ssa_name(memref_part);
+        if memref.is_empty() {
+            return Err(format!(
+                "invalid loom.bind_mem: empty memref operand: {}",
+                trimmed
+            ));
+        }
+
+        bindings.push(MlirMemRegionBinding {
+            memref: memref.to_string(),
+            region: region.to_string(),
+        });
     }
     Ok(bindings)
 }
@@ -631,9 +701,9 @@ func.func @vec_add_f32(
     %out: tensor<?xf32>
 ) -> tensor<?xf32> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf32>
-  loom.bind %b, [%L] : tensor<?xf32>
-  loom.bind %out, [%L] : tensor<?xf32>
+  loom.bind_shape %a, [%L] : tensor<?xf32>
+  loom.bind_shape %b, [%L] : tensor<?xf32>
+  loom.bind_shape %out, [%L] : tensor<?xf32>
   return %out : tensor<?xf32>
 }
 "#;
@@ -666,8 +736,8 @@ func.func @dram_to_l1(
     %dst: memref<?xf16>
 ) {
   %L = loom.sym @L : index
-  loom.bind %src, [%L] : memref<?xf16>
-  loom.bind %dst, [%L] : memref<?xf16>
+  loom.bind_shape %src, [%L] : memref<?xf16>
+  loom.bind_shape %dst, [%L] : memref<?xf16>
   memref.copy %src, %dst : memref<?xf16> to memref<?xf16>
   return
 }
@@ -689,6 +759,37 @@ func.func @dram_to_l1(
         assert_eq!(details.memref_symbol_bindings[0].symbols, vec!["L".into()]);
         assert_eq!(details.memref_symbol_bindings[1].memref, "dst");
         assert_eq!(details.memref_symbol_bindings[1].symbols, vec!["L".into()]);
+    }
+
+    #[test]
+    fn mlir_func_ref_from_mlir_parses_bind_mem() {
+        let snippet = r#"
+func.func @dram_to_l1(
+    %dram_src: memref<?x?xf16>,
+    %l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem @DRAM %dram_src
+  loom.bind_mem @L1 %l1_dst
+  memref.copy %dram_src, %l1_dst : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#;
+
+        let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+        let details = func
+            .mlir_details
+            .as_ref()
+            .expect("from_mlir should populate mlir_details");
+        assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
+        assert_eq!(details.mem_region_bindings.len(), 2);
+        assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
+        assert_eq!(details.mem_region_bindings[0].region, "DRAM");
+        assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
+        assert_eq!(details.mem_region_bindings[1].region, "L1");
     }
 
     #[test]

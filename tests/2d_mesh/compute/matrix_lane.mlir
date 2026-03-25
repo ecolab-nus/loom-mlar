@@ -2,7 +2,7 @@
 //
 // C[M, N] = A[M, K] * B[K, N]
 //
-// @M, @N, @K are symbolic variables retrieved via `loom.sym`, then `loom.bind`
+// @M, @N, @K are symbolic variables retrieved via `loom.sym`, then `loom.bind_shape`
 // ties each tensor dimension to those symbols.
 //
 // This is the canonical matmul expressed in the linalg-on-tensors dialect.
@@ -17,9 +17,9 @@ func.func @matmul_f16(
   %M = loom.sym @M : index
   %N = loom.sym @N : index
   %K = loom.sym @K : index
-  loom.bind %A, [%M, %K] : tensor<?x?xf16>
-  loom.bind %B, [%K, %N] : tensor<?x?xf16>
-  loom.bind %C, [%M, %N] : tensor<?x?xf16>
+  loom.bind_shape %A, [%M, %K] : tensor<?x?xf16>
+  loom.bind_shape %B, [%K, %N] : tensor<?x?xf16>
+  loom.bind_shape %C, [%M, %N] : tensor<?x?xf16>
   %result = linalg.matmul
       ins(%A, %B : tensor<?x?xf16>, tensor<?x?xf16>)
       outs(%C : tensor<?x?xf16>) -> tensor<?x?xf16>
@@ -36,9 +36,9 @@ func.func @batch_matmul_f16(
   %M = loom.sym @M : index
   %N = loom.sym @N : index
   %K = loom.sym @K : index
-  loom.bind %A, [%Batch, %M, %K] : tensor<?x?x?xf16>
-  loom.bind %B, [%Batch, %K, %N] : tensor<?x?x?xf16>
-  loom.bind %C, [%Batch, %M, %N] : tensor<?x?x?xf16>
+  loom.bind_shape %A, [%Batch, %M, %K] : tensor<?x?x?xf16>
+  loom.bind_shape %B, [%Batch, %K, %N] : tensor<?x?x?xf16>
+  loom.bind_shape %C, [%Batch, %M, %N] : tensor<?x?x?xf16>
   %result = linalg.batch_matmul
       ins(%A, %B : tensor<?x?x?xf16>, tensor<?x?x?xf16>)
       outs(%C : tensor<?x?x?xf16>) -> tensor<?x?x?xf16>

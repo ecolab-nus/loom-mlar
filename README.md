@@ -56,7 +56,7 @@ Functionality is modeled explicitly in `schedule`:
 `Module` and `MlirFunc` correspond to MLIR module/function semantics:
 
 - `loom.sym` declares symbols
-- `loom.bind` maps tensor dims to symbols
+- `loom.bind_shape` maps tensor dims to symbols
 
 ### Build from MLIR
 

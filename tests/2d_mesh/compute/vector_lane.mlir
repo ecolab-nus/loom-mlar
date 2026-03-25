@@ -10,7 +10,7 @@
 //
 // Symbol convention:
 //   - @L: logical vector length
-//   - rank-1 tensors are bound to [%L] via `loom.bind`
+//   - rank-1 tensors are bound to [%L] via `loom.bind_shape`
 
 module @vector_lane {
 
@@ -21,9 +21,9 @@ func.func @vec_max_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -47,8 +47,8 @@ func.func @vec_exp_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -71,7 +71,7 @@ func.func @vec_sum_f16(
     %init: tensor<f16>
 ) -> tensor<f16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -94,8 +94,8 @@ func.func @vec_vsum_f16(
 ) -> tensor<?xf16> {
   %P = loom.sym @P : index
   %R = loom.sym @R : index
-  loom.bind %a, [%P, %R] : tensor<?x?xf16>
-  loom.bind %out, [%P] : tensor<?xf16>
+  loom.bind_shape %a, [%P, %R] : tensor<?x?xf16>
+  loom.bind_shape %out, [%P] : tensor<?xf16>
   %result = linalg.generic {
     indexing_maps = [
       affine_map<(d0, d1) -> (d0, d1)>,
@@ -119,9 +119,9 @@ func.func @vec_add_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -146,9 +146,9 @@ func.func @vec_mul_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -173,9 +173,9 @@ func.func @vec_div_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -200,9 +200,9 @@ func.func @vec_sub_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -227,9 +227,9 @@ func.func @vec_powf_f16(
     %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -254,8 +254,8 @@ func.func @vec_vmax_f16(
 ) -> tensor<?xf16> {
   %P = loom.sym @P : index
   %R = loom.sym @R : index
-  loom.bind %a, [%P, %R] : tensor<?x?xf16>
-  loom.bind %out, [%P] : tensor<?xf16>
+  loom.bind_shape %a, [%P, %R] : tensor<?x?xf16>
+  loom.bind_shape %out, [%P] : tensor<?xf16>
   %result = linalg.generic {
     indexing_maps = [
       affine_map<(d0, d1) -> (d0, d1)>,
@@ -278,9 +278,9 @@ func.func @vec_max1_f16(
   %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
     indexing_maps = [
       affine_map<(d0) -> (d0)>,
@@ -305,9 +305,9 @@ func.func @vec_cmpf_ogt_f16(
   %out: tensor<?xi1>
 ) -> tensor<?xi1> {
   %L = loom.sym @L : index
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xi1>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xi1>
   %result = linalg.generic {
     indexing_maps = [
       affine_map<(d0) -> (d0)>,
@@ -332,10 +332,10 @@ func.func @vec_select_f16(
   %out: tensor<?xf16>
 ) -> tensor<?xf16> {
   %L = loom.sym @L : index
-  loom.bind %cond, [%L] : tensor<?xi1>
-  loom.bind %a, [%L] : tensor<?xf16>
-  loom.bind %b, [%L] : tensor<?xf16>
-  loom.bind %out, [%L] : tensor<?xf16>
+  loom.bind_shape %cond, [%L] : tensor<?xi1>
+  loom.bind_shape %a, [%L] : tensor<?xf16>
+  loom.bind_shape %b, [%L] : tensor<?xf16>
+  loom.bind_shape %out, [%L] : tensor<?xf16>
   %result = linalg.generic {
     indexing_maps = [
       affine_map<(d0) -> (d0)>,

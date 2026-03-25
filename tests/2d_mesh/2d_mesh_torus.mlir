@@ -17,7 +17,7 @@ module @system {
   //
   // C[M, N] = A[M, K] * B[K, N]
   //
-  // @M, @N, @K are symbolic variables retrieved via `loom.sym`, then `loom.bind`
+  // @M, @N, @K are symbolic variables retrieved via `loom.sym`, then `loom.bind_shape`
   // ties each tensor dimension to those symbols.
   //
   // This is the canonical matmul expressed in the linalg-on-tensors dialect.
@@ -32,9 +32,9 @@ module @system {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
     %K = loom.sym @K : index
-    loom.bind %A, [%M, %K] : tensor<?x?xf16>
-    loom.bind %B, [%K, %N] : tensor<?x?xf16>
-    loom.bind %C, [%M, %N] : tensor<?x?xf16>
+    loom.bind_shape %A, [%M, %K] : tensor<?x?xf16>
+    loom.bind_shape %B, [%K, %N] : tensor<?x?xf16>
+    loom.bind_shape %C, [%M, %N] : tensor<?x?xf16>
     %result = linalg.matmul
         ins(%A, %B : tensor<?x?xf16>, tensor<?x?xf16>)
         outs(%C : tensor<?x?xf16>) -> tensor<?x?xf16>
@@ -51,9 +51,9 @@ module @system {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
     %K = loom.sym @K : index
-    loom.bind %A, [%Batch, %M, %K] : tensor<?x?x?xf16>
-    loom.bind %B, [%Batch, %K, %N] : tensor<?x?x?xf16>
-    loom.bind %C, [%Batch, %M, %N] : tensor<?x?x?xf16>
+    loom.bind_shape %A, [%Batch, %M, %K] : tensor<?x?x?xf16>
+    loom.bind_shape %B, [%Batch, %K, %N] : tensor<?x?x?xf16>
+    loom.bind_shape %C, [%Batch, %M, %N] : tensor<?x?x?xf16>
     %result = linalg.batch_matmul
         ins(%A, %B : tensor<?x?x?xf16>, tensor<?x?x?xf16>)
         outs(%C : tensor<?x?x?xf16>) -> tensor<?x?x?xf16>
@@ -74,7 +74,7 @@ module @system {
   //
   // Symbol convention:
   //   - @L: logical vector length
-  //   - rank-1 tensors are bound to [%L] via `loom.bind`
+  //   - rank-1 tensors are bound to [%L] via `loom.bind_shape`
 
   module @vector_lane {
 
@@ -85,9 +85,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -111,8 +111,8 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -135,7 +135,7 @@ module @system {
       %init: tensor<f16>
   ) -> tensor<f16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -158,8 +158,8 @@ module @system {
   ) -> tensor<?xf16> {
     %P = loom.sym @P : index
     %R = loom.sym @R : index
-    loom.bind %a, [%P, %R] : tensor<?x?xf16>
-    loom.bind %out, [%P] : tensor<?xf16>
+    loom.bind_shape %a, [%P, %R] : tensor<?x?xf16>
+    loom.bind_shape %out, [%P] : tensor<?xf16>
     %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0, d1) -> (d0, d1)>,
@@ -183,9 +183,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -210,9 +210,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -237,9 +237,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -264,9 +264,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -291,9 +291,9 @@ module @system {
       %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
         indexing_maps = [
           affine_map<(d0) -> (d0)>,
@@ -318,8 +318,8 @@ module @system {
   ) -> tensor<?xf16> {
     %P = loom.sym @P : index
     %R = loom.sym @R : index
-    loom.bind %a, [%P, %R] : tensor<?x?xf16>
-    loom.bind %out, [%P] : tensor<?xf16>
+    loom.bind_shape %a, [%P, %R] : tensor<?x?xf16>
+    loom.bind_shape %out, [%P] : tensor<?xf16>
     %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0, d1) -> (d0, d1)>,
@@ -342,9 +342,9 @@ module @system {
     %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -369,9 +369,9 @@ module @system {
     %out: tensor<?xi1>
   ) -> tensor<?xi1> {
     %L = loom.sym @L : index
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xi1>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xi1>
     %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -396,10 +396,10 @@ module @system {
     %out: tensor<?xf16>
   ) -> tensor<?xf16> {
     %L = loom.sym @L : index
-    loom.bind %cond, [%L] : tensor<?xi1>
-    loom.bind %a, [%L] : tensor<?xf16>
-    loom.bind %b, [%L] : tensor<?xf16>
-    loom.bind %out, [%L] : tensor<?xf16>
+    loom.bind_shape %cond, [%L] : tensor<?xi1>
+    loom.bind_shape %a, [%L] : tensor<?xf16>
+    loom.bind_shape %b, [%L] : tensor<?xf16>
+    loom.bind_shape %out, [%L] : tensor<?xf16>
     %result = linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,

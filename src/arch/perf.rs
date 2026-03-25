@@ -297,6 +297,7 @@ mod tests {
                         symbols: vec!["L".into()],
                     },
                 ],
+                mem_region_bindings: vec![],
             }),
             sym_map: None,
         };

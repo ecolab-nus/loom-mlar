@@ -1,4 +1,5 @@
 use super::architecture::Architecture;
+use super::memory::MemoryRegion;
 use super::perf::FuncPerfModel;
 use super::processor::{FunctionProcessor, Processor};
 use super::size_dim::Dimension;
@@ -14,31 +15,48 @@ pub type FunctionDataMover = FunctionProcessor;
 ///
 /// Compared with `Processor`, data-mover MLIR functions are expected to expose
 /// memref arguments for source/target memory regions and bind symbols directly
-/// on these memrefs via `loom.bind`.
+/// on these memrefs via `loom.bind_shape`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataMover {
     pub name: Option<String>,
     pub functionality: Module,
     pub functions: Vec<FunctionDataMover>,
+    /// Memory regions this data mover can read from.
+    pub src_regions: Vec<MemoryRegion>,
+    /// Memory regions this data mover can write to.
+    pub dst_regions: Vec<MemoryRegion>,
 }
 
 impl DataMover {
     /// Create a structural-only data mover.
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        src_regions: Vec<MemoryRegion>,
+        dst_regions: Vec<MemoryRegion>,
+    ) -> Self {
         Self {
             name: Some(name.into()),
             functionality: Module::unnamed(vec![]),
             functions: Vec::new(),
+            src_regions,
+            dst_regions,
         }
     }
 
     /// Create a data mover from pre-linked function bindings.
-    pub fn with_functions(name: impl Into<String>, functions: Vec<FunctionDataMover>) -> Self {
+    pub fn with_functions(
+        name: impl Into<String>,
+        functions: Vec<FunctionDataMover>,
+        src_regions: Vec<MemoryRegion>,
+        dst_regions: Vec<MemoryRegion>,
+    ) -> Self {
         let functionality = Module::unnamed(functions.iter().map(|fp| fp.func.clone()).collect());
         Self {
             name: Some(name.into()),
             functionality,
             functions,
+            src_regions,
+            dst_regions,
         }
     }
 
@@ -47,6 +65,8 @@ impl DataMover {
         name: impl Into<String>,
         functionality: Module,
         perf_models: Vec<FuncPerfModel>,
+        src_regions: Vec<MemoryRegion>,
+        dst_regions: Vec<MemoryRegion>,
     ) -> Result<Self, String> {
         if functionality.ops.len() != perf_models.len() {
             return Err(format!(
@@ -68,6 +88,8 @@ impl DataMover {
             name: Some(name.into()),
             functionality,
             functions,
+            src_regions,
+            dst_regions,
         };
         mover.validate()?;
         Ok(mover)
@@ -81,6 +103,20 @@ impl DataMover {
 
     /// Validate module/function binding consistency and data-mover interface constraints.
     pub fn validate(&self) -> Result<(), String> {
+        let dm_name = self.name.as_deref().unwrap_or("<unnamed>");
+        if self.src_regions.is_empty() {
+            return Err(format!(
+                "DataMover '{}' must have at least one source memory region",
+                dm_name
+            ));
+        }
+        if self.dst_regions.is_empty() {
+            return Err(format!(
+                "DataMover '{}' must have at least one destination memory region",
+                dm_name
+            ));
+        }
+
         if self.functions.len() != self.functionality.ops.len() {
             return Err(format!(
                 "DataMover '{}' has {} function bindings but functionality has {} ops",
@@ -190,7 +226,7 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
         }
     }
     if details.memref_symbol_bindings.is_empty() {
-        return Err("expected memref-symbol bindings from loom.bind".to_string());
+        return Err("expected memref-symbol bindings from loom.bind_shape".to_string());
     }
     for source in &details.source_memrefs {
         if details
@@ -199,7 +235,7 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
             .all(|binding| binding.memref != *source)
         {
             return Err(format!(
-                "source memref '{}' must have a loom.bind symbol binding",
+                "source memref '{}' must have a loom.bind_shape symbol binding",
                 source
             ));
         }
@@ -211,7 +247,7 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
             .all(|binding| binding.memref != *target)
         {
             return Err(format!(
-                "target memref '{}' must have a loom.bind symbol binding",
+                "target memref '{}' must have a loom.bind_shape symbol binding",
                 target
             ));
         }
@@ -222,9 +258,14 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::DataMover;
-    use crate::arch::{FuncPerfModel, Sym};
+    use crate::arch::{FuncPerfModel, MemoryRegion, Sym};
     use crate::math::ConstraintExpr;
     use crate::schedule::Module;
+
+    fn stub_regions() -> (Vec<MemoryRegion>, Vec<MemoryRegion>) {
+        let r = MemoryRegion::leaf_concrete(128, 1).with_name("stub");
+        (vec![r.clone()], vec![r])
+    }
 
     #[test]
     fn data_mover_from_module_requires_memref_bound_symbol_interface() {
@@ -236,7 +277,8 @@ mod tests {
             scenarios: vec![],
         }];
 
-        let mover = DataMover::from_module("dram_to_l1_mover", functionality, perf_models)
+        let (src, dst) = stub_regions();
+        let mover = DataMover::from_module("dram_to_l1_mover", functionality, perf_models, src, dst)
             .expect("data mover should validate");
         assert!(mover.get_function("dram_to_l1_f16").is_some());
     }
@@ -247,7 +289,8 @@ mod tests {
             .expect("vector_lane should parse");
         let perf_models = vec![FuncPerfModel::trivial(); functionality.ops.len()];
 
-        let err = DataMover::from_module("invalid_mover", functionality, perf_models)
+        let (src, dst) = stub_regions();
+        let err = DataMover::from_module("invalid_mover", functionality, perf_models, src, dst)
             .expect_err("vector lane functions should not satisfy data-mover interface");
         assert!(err.contains("memref args"));
     }

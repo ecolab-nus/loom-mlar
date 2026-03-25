@@ -21,8 +21,9 @@ pub use math::{
     ParseError,
 };
 pub use schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemrefSymbolBinding,
-    MlirModule, MlirTensorSymbolBinding, Module, ModuleSource, Schedule, SymbolicMapping, evaluate,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemRegionBinding,
+    MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding, Module, ModuleSource, Schedule,
+    SymbolicMapping, evaluate,
 };
 
 // Re-export visualization utilities

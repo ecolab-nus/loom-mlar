@@ -1,6 +1,8 @@
 use mlar_rust::*;
 
-/// Data mover that models copying a 2D tile from DRAM to per-core L1.
+use crate::memory::{dram, l1};
+
+/// Data mover that models bi-directional transfers between DRAM and per-core L1.
 pub fn dram_to_l1_mover() -> DataMover {
     let functionality = Module::from_mlir("tests/2d_mesh/data_movers/dram_to_l1.mlir")
         .expect("tests/2d_mesh/data_movers/dram_to_l1.mlir should parse");
@@ -22,6 +24,14 @@ pub fn dram_to_l1_mover() -> DataMover {
         })
         .collect();
 
-    DataMover::from_module("dram_to_l1_mover", functionality, perf_models)
-        .expect("dram_to_l1 data mover should link functionality and perf")
+    let dram = dram();
+    let l1 = l1();
+    DataMover::from_module(
+        "dram_to_l1_mover",
+        functionality,
+        perf_models,
+        vec![dram.clone(), l1.clone()],
+        vec![dram, l1],
+    )
+    .expect("dram_to_l1 data mover should link functionality and perf")
 }

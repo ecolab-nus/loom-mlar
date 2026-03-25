@@ -6,7 +6,7 @@ pub mod schedule;
 pub use evaluate::evaluate;
 pub use module::{Module, ModuleSource};
 pub use op::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemrefSymbolBinding,
-    MlirModule, MlirTensorSymbolBinding,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirMemRegionBinding,
+    MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };
 pub use schedule::{Schedule, SymbolicMapping};
