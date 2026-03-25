@@ -8,7 +8,7 @@ use super::processor::Processor;
 use super::size_dim::Dimension;
 
 /// SSA-based emitter that serialises an [`Architecture`] tree into the
-/// `df.*` MLIR dialect.
+/// `adl.*` MLIR dialect.
 struct MlirEmitter {
     counter: usize,
     output: String,
@@ -34,7 +34,7 @@ impl MlirEmitter {
         name
     }
 
-    /// Emit a `df.spatial_dim` if this dimension has not been emitted yet.
+    /// Emit a `adl.spatial_dim` if this dimension has not been emitted yet.
     /// Returns `None` when the size cannot be simplified to a constant.
     fn emit_dim(&mut self, dim: &Dimension) -> Option<String> {
         if let Some(existing) = self.dim_map.get(&dim.name.0) {
@@ -44,7 +44,7 @@ impl MlirEmitter {
         let ssa = self.next_ssa();
         writeln!(
             self.output,
-            "{} = df.spatial_dim \"{}\", {}",
+            "{} = adl.spatial_dim \"{}\", {}",
             ssa, dim.name.0, size
         )
         .unwrap();
@@ -52,7 +52,7 @@ impl MlirEmitter {
         Some(ssa)
     }
 
-    /// Emit the `df.memory.*` ops for a [`MemoryRegion`] tree.
+    /// Emit the `adl.memory.*` ops for a [`MemoryRegion`] tree.
     fn emit_memory(&mut self, region: &MemoryRegion) -> Option<String> {
         match region {
             MemoryRegion::Bank(bank) => self.emit_bank(bank),
@@ -71,7 +71,7 @@ impl MlirEmitter {
                 let scaleout = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.memory.array \"{}\", ({}) of {}",
+                    "{} = adl.memory.array \"{}\", ({}) of {}",
                     ssa, name_str, scaleout, sub_ssa
                 )
                 .unwrap();
@@ -80,7 +80,7 @@ impl MlirEmitter {
         }
     }
 
-    /// Emit a `df.memory.bank` op.
+    /// Emit a `adl.memory.bank` op.
     fn emit_bank(&mut self, bank: &MemoryBank) -> Option<String> {
         let (bsize, nblk) = if let Some(ref bs) = bank.block_size {
             let bsize = bs.simplify_constant()?;
@@ -94,14 +94,14 @@ impl MlirEmitter {
         let name = bank.name.as_deref().unwrap_or("bank");
         writeln!(
             self.output,
-            "{} = df.memory.bank \"{}\", {{bsize = {}, nblk = {}}}",
+            "{} = adl.memory.bank \"{}\", {{bsize = {}, nblk = {}}}",
             ssa, name, bsize, nblk
         )
         .unwrap();
         Some(ssa)
     }
 
-    /// Emit a `df.processor` op and record its MLIR source (if any).
+    /// Emit a `adl.processor` op and record its MLIR source (if any).
     fn emit_processor(&mut self, proc: &Processor) -> String {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
@@ -116,12 +116,12 @@ impl MlirEmitter {
         if let Some(mod_name) = module_ref {
             writeln!(
                 self.output,
-                "{} = df.processor \"{}\", @{}",
+                "{} = adl.processor \"{}\", @{}",
                 ssa, name, mod_name
             )
             .unwrap();
         } else {
-            writeln!(self.output, "{} = df.processor \"{}\"", ssa, name).unwrap();
+            writeln!(self.output, "{} = adl.processor \"{}\"", ssa, name).unwrap();
         }
 
         if let Some(ref source) = proc.functionality.source {
@@ -160,7 +160,7 @@ impl MlirEmitter {
                 let components = component_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.arch.compose \"{}\", [{}]",
+                    "{} = adl.arch.compose \"{}\", [{}]",
                     ssa, graph.name, components
                 )
                 .unwrap();
@@ -182,7 +182,7 @@ impl MlirEmitter {
                 let dim_list = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = df.arch.scale \"{}\", ({}) of {}",
+                    "{} = adl.arch.scale \"{}\", ({}) of {}",
                     ssa, arch_name, dim_list, elem_ssa
                 )
                 .unwrap();
@@ -208,7 +208,7 @@ fn indent(text: &str, indent: usize) -> String {
     result
 }
 
-/// Serialise an [`Architecture`] tree into the `df.*` MLIR dialect,
+/// Serialise an [`Architecture`] tree into the `adl.*` MLIR dialect,
 /// wrapped in a top-level `module @<name> { ... }`.
 ///
 /// Processor functionality MLIR sources (e.g. `matrix_lane.mlir`,
@@ -246,7 +246,7 @@ mod tests {
     fn single_processor_emits_df_processor() {
         let arch = Processor::new("vec_lane").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("df.processor \"vec_lane\""));
+        assert!(mlir.contains("adl.processor \"vec_lane\""));
     }
 
     #[test]
@@ -267,9 +267,9 @@ mod tests {
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("df.memory.bank"));
-        assert!(mlir.contains("df.processor \"lane\""));
-        assert!(mlir.contains("df.arch.compose \"core\""));
+        assert!(mlir.contains("adl.memory.bank"));
+        assert!(mlir.contains("adl.processor \"lane\""));
+        assert!(mlir.contains("adl.arch.compose \"core\""));
     }
 
     #[test]
@@ -278,8 +278,8 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let arch = lane.scale(&[dim]).with_name("mesh");
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("df.spatial_dim \"x\", 8"));
-        assert!(mlir.contains("df.arch.scale \"mesh\""));
+        assert!(mlir.contains("adl.spatial_dim \"x\", 8"));
+        assert!(mlir.contains("adl.arch.scale \"mesh\""));
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         let scaled = core.scale(&[dim_x]).with_name("mesh");
         let mlir = architecture_to_mlir(&scaled).expect("should emit");
         assert_eq!(
-            mlir.matches("df.spatial_dim \"x\"").count(),
+            mlir.matches("adl.spatial_dim \"x\"").count(),
             1,
             "dimension x should be emitted exactly once"
         );

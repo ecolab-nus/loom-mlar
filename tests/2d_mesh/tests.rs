@@ -925,37 +925,37 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.ends_with("}\n"), "top-level module should be closed");
 
     // Dimensions
-    assert!(mlir.contains("df.spatial_dim \"nbank\", 16"));
-    assert!(mlir.contains("df.spatial_dim \"x\", 8"));
-    assert!(mlir.contains("df.spatial_dim \"y\", 8"));
-    assert!(mlir.contains("df.spatial_dim \"dram_channel\", 8"));
+    assert!(mlir.contains("adl.spatial_dim \"nbank\", 16"));
+    assert!(mlir.contains("adl.spatial_dim \"x\", 8"));
+    assert!(mlir.contains("adl.spatial_dim \"y\", 8"));
+    assert!(mlir.contains("adl.spatial_dim \"dram_channel\", 8"));
 
     // Memory banks
-    assert!(mlir.contains("df.memory.bank"));
+    assert!(mlir.contains("adl.memory.bank"));
     assert!(mlir.contains("bsize = 128, nblk = 1024")); // L1 bank
     assert!(mlir.contains("bsize = 256, nblk = 8192")); // DRAM bank
 
     // Memory arrays
-    assert!(mlir.contains("df.memory.array \"L1\""));
-    assert!(mlir.contains("df.memory.array \"DRAM\""));
+    assert!(mlir.contains("adl.memory.array \"L1\""));
+    assert!(mlir.contains("adl.memory.array \"DRAM\""));
 
     // Processors (with module references)
-    assert!(mlir.contains("df.processor \"matrix_lane\", @matrix_lane"));
-    assert!(mlir.contains("df.processor \"vector_lane\", @vector_lane"));
+    assert!(mlir.contains("adl.processor \"matrix_lane\", @matrix_lane"));
+    assert!(mlir.contains("adl.processor \"vector_lane\", @vector_lane"));
 
     // Composition and scaling
-    assert!(mlir.contains("df.arch.compose \"core\","));
-    assert!(mlir.contains("df.arch.scale \"mesh\","));
-    assert!(mlir.contains("df.arch.compose \"system\","));
+    assert!(mlir.contains("adl.arch.compose \"core\","));
+    assert!(mlir.contains("adl.arch.scale \"mesh\","));
+    assert!(mlir.contains("adl.arch.compose \"system\","));
 
     // Each dimension emitted exactly once
     assert_eq!(
-        mlir.matches("df.spatial_dim \"x\"").count(),
+        mlir.matches("adl.spatial_dim \"x\"").count(),
         1,
         "dim x emitted once"
     );
     assert_eq!(
-        mlir.matches("df.spatial_dim \"y\"").count(),
+        mlir.matches("adl.spatial_dim \"y\"").count(),
         1,
         "dim y emitted once"
     );
