@@ -31,8 +31,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("invalid affine map")
         .bind([&io_side, &dim_x, &dim_y])
         .expect("failed to bind");
-    let io = MeshNetworkInterface::new(io_map, Expr::Const(64))
-        .with_data_mover(dram_to_l1.clone());
+    let io = MeshNetworkInterface::new(io_map, Expr::Const(64)).with_data_mover(dram_to_l1.clone());
 
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")

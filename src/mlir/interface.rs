@@ -207,8 +207,8 @@ impl MlirFunc {
     pub fn from_mlir(func_mlir: &str) -> Result<Self, String> {
         let func_mlir = func_mlir.trim();
 
-        let (_, (name, arg_content)) = func_header(func_mlir)
-            .map_err(|_| "missing 'func.func @' declaration".to_string())?;
+        let (_, (name, arg_content)) =
+            func_header(func_mlir).map_err(|_| "missing 'func.func @' declaration".to_string())?;
         let name = name.to_string();
 
         let mut tensor_args = Vec::new();
@@ -666,10 +666,7 @@ fn collect_outs_operands(func_mlir: &str) -> Result<Vec<String>, String> {
     Ok(operands)
 }
 
-fn collect_output_tensors(
-    func_mlir: &str,
-    tensor_args: &[String],
-) -> Result<Vec<String>, String> {
+fn collect_output_tensors(func_mlir: &str, tensor_args: &[String]) -> Result<Vec<String>, String> {
     let mut outputs = collect_outs_operands(func_mlir)?;
     for ret in collect_return_operands(func_mlir) {
         if outputs.iter().all(|e| e != &ret) {

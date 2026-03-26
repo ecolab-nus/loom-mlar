@@ -281,8 +281,9 @@ mod tests {
         ];
 
         let (src, dst) = stub_regions();
-        let mover = DataMover::from_module("dram_to_l1_mover", functionality, perf_models, src, dst)
-            .expect("data mover should validate");
+        let mover =
+            DataMover::from_module("dram_to_l1_mover", functionality, perf_models, src, dst)
+                .expect("data mover should validate");
         assert!(mover.get_function("dram_to_l1_f16").is_some());
         assert!(mover.get_function("dram_to_l1_bcst_f16").is_some());
     }

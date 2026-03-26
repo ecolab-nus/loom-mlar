@@ -9,10 +9,10 @@ pub mod mlir {
     };
 }
 
-pub use evaluate::evaluate;
-pub use module::{Module, ModuleSource};
 pub use crate::mlir::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };
+pub use evaluate::evaluate;
+pub use module::{Module, ModuleSource};
 pub use schedule::{Schedule, SymbolicMapping};

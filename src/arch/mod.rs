@@ -13,6 +13,7 @@ pub mod mlir_export {
 }
 
 // Re-export commonly used types
+pub use crate::mlir::architecture_to_mlir;
 pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
@@ -28,5 +29,4 @@ pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{FunctionProcessor, HardwareProperty, Processor};
 pub use router::{Router, RouterSide};
-pub use crate::mlir::architecture_to_mlir;
 pub use size_dim::{Dimension, SizeExpr, Sym};
