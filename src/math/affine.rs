@@ -23,15 +23,15 @@ pub struct AffineMap {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IndexExpr(pub Vec<AffineExprSimple>);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AffineExprSimple {
     Const(i64),
     Var(Dimension),
     Add(Box<AffineExprSimple>, Box<AffineExprSimple>),
     MulConst(i64, Box<AffineExprSimple>),
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IndexExpr(pub Vec<AffineExprSimple>);
 
 #[derive(Clone, Debug)]
 pub struct IndexSelector {

@@ -28,6 +28,22 @@ pub struct FunctionProcessor {
     pub hardware_properties: Vec<HardwareProperty>,
 }
 
+/// Processor — the atomic compute unit that executes a functionality module.
+///
+/// A processor is described by:
+/// - `functionality`: set of supported functions (module-level interface)
+/// - `functions`: per-function performance bindings (`FunctionProcessor`)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Processor {
+    pub name: Option<String>,
+    pub functionality: MlirModule,
+    pub functions: Vec<FunctionProcessor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub src_regions: Vec<MemoryRegion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dst_regions: Vec<MemoryRegion>,
+}
+
 /// Per-function data-mover binding: MLIR function interface + performance model.
 ///
 /// This reuses the same shape/perf representation as compute functions.
@@ -94,22 +110,6 @@ pub struct DataMoverBuilder {
 #[derive(Clone, Debug)]
 pub struct ComputeProcessorBuilder {
     inner: ProcessorModuleBuilder,
-}
-
-/// Processor — the atomic compute unit that executes a functionality module.
-///
-/// A processor is described by:
-/// - `functionality`: set of supported functions (module-level interface)
-/// - `functions`: per-function performance bindings (`FunctionProcessor`)
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Processor {
-    pub name: Option<String>,
-    pub functionality: MlirModule,
-    pub functions: Vec<FunctionProcessor>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub src_regions: Vec<MemoryRegion>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dst_regions: Vec<MemoryRegion>,
 }
 
 impl FunctionProcessor {

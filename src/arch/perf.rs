@@ -6,34 +6,6 @@ use super::size_dim::Sym;
 use crate::math::{ConstraintExpr, Expr};
 use crate::schedule::MlirFunc;
 
-/// A single performance scenario — constraints that select it and an associated time cost.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PerfScenario {
-    /// Constraints under which this scenario applies.
-    pub constraints: ConstraintExpr,
-    /// Time cost for this scenario — [`TimeCost::Simple`] in model definitions,
-    /// [`TimeCost::Concrete`] after evaluation.
-    pub time_cost: TimeCost,
-}
-
-/// Per-function performance model — explicit symbol declarations and scenario-based costs.
-///
-/// This model is intentionally independent from MLIR and operation metadata.
-/// It can be linked with an [`MlirFunc`] later (see `validate_for_func`).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FuncPerfModel {
-    /// The symbols this model depends on. All symbols used in `constraints`,
-    /// scenario `constraints`, and `time_cost` must be declared here.
-    pub symbols: Vec<Sym>,
-    /// Global constraints that apply to all scenarios. A scenario is only
-    /// applicable when both the global constraints and its own constraints
-    /// are satisfied.
-    pub constraints: ConstraintExpr,
-    /// The performance scenarios. Each scenario has its own constraints and
-    /// cost expressions.
-    pub scenarios: Vec<PerfScenario>,
-}
-
 /// A simple performance model: fixed startup cost plus volume-over-throughput.
 ///
 /// Total latency = `fixed_latency + volume / throughput`.
@@ -64,6 +36,34 @@ pub struct SimpleTimeCost {
 pub enum TimeCost {
     Simple(SimpleTimeCost),
     Concrete(Expr),
+}
+
+/// A single performance scenario — constraints that select it and an associated time cost.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PerfScenario {
+    /// Constraints under which this scenario applies.
+    pub constraints: ConstraintExpr,
+    /// Time cost for this scenario — [`TimeCost::Simple`] in model definitions,
+    /// [`TimeCost::Concrete`] after evaluation.
+    pub time_cost: TimeCost,
+}
+
+/// Per-function performance model — explicit symbol declarations and scenario-based costs.
+///
+/// This model is intentionally independent from MLIR and operation metadata.
+/// It can be linked with an [`MlirFunc`] later (see `validate_for_func`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FuncPerfModel {
+    /// The symbols this model depends on. All symbols used in `constraints`,
+    /// scenario `constraints`, and `time_cost` must be declared here.
+    pub symbols: Vec<Sym>,
+    /// Global constraints that apply to all scenarios. A scenario is only
+    /// applicable when both the global constraints and its own constraints
+    /// are satisfied.
+    pub constraints: ConstraintExpr,
+    /// The performance scenarios. Each scenario has its own constraints and
+    /// cost expressions.
+    pub scenarios: Vec<PerfScenario>,
 }
 
 impl SimpleTimeCost {

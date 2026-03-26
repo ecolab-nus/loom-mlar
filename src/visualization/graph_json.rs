@@ -10,66 +10,12 @@ use std::collections::{HashMap, HashSet};
 
 const GRAPH_SCHEMA_VERSION: &str = "mlar.arch-graph.v1";
 
-/// Top-level JSON payload for web visualization.
-#[derive(Debug, Clone, Serialize)]
-pub struct ArchitectureGraphJson {
-    pub schema_version: &'static str,
-    pub architecture: GraphArchitectureMeta,
-    pub nodes: Vec<GraphNode>,
-    pub edges: Vec<GraphEdge>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub intra_core: Option<Box<ArchitectureGraphJson>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphArchitectureMeta {
-    pub name: String,
-    pub labels: Vec<GraphArchitectureLabel>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphArchitectureLabel {
-    pub name: String,
-    pub dimensions: Vec<GraphDimension>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphNodeKind {
     Memory,
     Processor,
     Router,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphNode {
-    pub id: String,
-    pub kind: GraphNodeKind,
-    pub name: String,
-    pub label: String,
-    pub dimensions: Vec<GraphDimension>,
-    pub details: GraphNodeDetails,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum GraphNodeDetails {
-    Memory {
-        region: GraphMemoryRegion,
-    },
-    Processor {
-        element: GraphProcessors,
-        total_instances: Option<u64>,
-    },
-    Router {
-        router: GraphRouter,
-    },
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphRouter {
-    pub name: String,
-    pub side_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,35 +30,6 @@ pub enum GraphEdgeKind {
 pub enum GraphEdgeDirection {
     Directional,
     Bidirectional,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GraphEdge {
-    pub id: String,
-    pub kind: GraphEdgeKind,
-    pub name: String,
-    pub source: String,
-    pub target: String,
-    pub source_name: String,
-    pub target_name: String,
-    pub label: String,
-    pub direction: GraphEdgeDirection,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bandwidth: Option<GraphExpr>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub latency: Option<GraphExpr>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub constraints: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sharing: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub map_relation: Option<GraphMapRelation>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub topology: Option<GraphLinkTopology>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub map: Option<GraphAffineMap>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub side: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -184,6 +101,12 @@ pub struct GraphFunctionalityModule {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GraphRouter {
+    pub name: String,
+    pub side_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GraphProcessors {
     Unit {
@@ -217,6 +140,83 @@ pub enum GraphMemoryRegion {
         sub_region: Box<GraphMemoryRegion>,
         total_size_bytes: Option<u64>,
     },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum GraphNodeDetails {
+    Memory {
+        region: GraphMemoryRegion,
+    },
+    Processor {
+        element: GraphProcessors,
+        total_instances: Option<u64>,
+    },
+    Router {
+        router: GraphRouter,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphNode {
+    pub id: String,
+    pub kind: GraphNodeKind,
+    pub name: String,
+    pub label: String,
+    pub dimensions: Vec<GraphDimension>,
+    pub details: GraphNodeDetails,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphEdge {
+    pub id: String,
+    pub kind: GraphEdgeKind,
+    pub name: String,
+    pub source: String,
+    pub target: String,
+    pub source_name: String,
+    pub target_name: String,
+    pub label: String,
+    pub direction: GraphEdgeDirection,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<GraphExpr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency: Option<GraphExpr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map_relation: Option<GraphMapRelation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology: Option<GraphLinkTopology>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map: Option<GraphAffineMap>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphArchitectureLabel {
+    pub name: String,
+    pub dimensions: Vec<GraphDimension>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphArchitectureMeta {
+    pub name: String,
+    pub labels: Vec<GraphArchitectureLabel>,
+}
+
+/// Top-level JSON payload for web visualization.
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchitectureGraphJson {
+    pub schema_version: &'static str,
+    pub architecture: GraphArchitectureMeta,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intra_core: Option<Box<ArchitectureGraphJson>>,
 }
 
 /// Convert an architecture to a JSON-ready graph representation.

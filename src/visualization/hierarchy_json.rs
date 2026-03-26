@@ -9,28 +9,6 @@ use super::graph_json::{GraphDimension, GraphExpr, GraphMemoryRegion, GraphRoute
 const HIERARCHY_SCHEMA_VERSION: &str = "mlar.arch-hierarchy.v1";
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ArchitectureHierarchyJson {
-    pub schema_version: &'static str,
-    pub root: HierarchyNode,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct HierarchyNode {
-    pub kind: HierarchyNodeKind,
-    pub name: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub dimensions: Vec<GraphDimension>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_instances: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<HierarchyNodeDetails>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub connectivity: Vec<HierarchyConnectivity>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub children: Vec<HierarchyNode>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HierarchyNodeKind {
     Unit,
@@ -62,6 +40,28 @@ pub struct HierarchyConnectivity {
     pub bandwidth: GraphExpr,
     pub latency: Option<GraphExpr>,
     pub topology: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HierarchyNode {
+    pub kind: HierarchyNodeKind,
+    pub name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dimensions: Vec<GraphDimension>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_instances: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<HierarchyNodeDetails>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub connectivity: Vec<HierarchyConnectivity>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<HierarchyNode>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchitectureHierarchyJson {
+    pub schema_version: &'static str,
+    pub root: HierarchyNode,
 }
 
 pub fn architecture_to_hierarchy_json(arch: &Architecture) -> ArchitectureHierarchyJson {
