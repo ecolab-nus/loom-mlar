@@ -4,7 +4,7 @@ use super::architecture::Architecture;
 use super::memory::MemoryRegion;
 use super::perf::FuncPerfModel;
 use super::size_dim::Dimension;
-use crate::schedule::{MlirFunc, MlirModule as FunctionalityModule};
+use crate::schedule::{MlirFunc, MlirModule};
 use serde::{Deserialize, Serialize};
 
 /// A hardware characteristic attached to a `FunctionProcessor`.
@@ -197,7 +197,7 @@ pub struct ComputeProcessorBuilder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Processor {
     pub name: Option<String>,
-    pub functionality: FunctionalityModule,
+    pub functionality: MlirModule,
     pub functions: Vec<FunctionProcessor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub src_regions: Vec<MemoryRegion>,
@@ -210,7 +210,7 @@ impl Processor {
     pub fn new(name: impl Into<String>) -> Self {
         Processor {
             name: Some(name.into()),
-            functionality: FunctionalityModule::unnamed(vec![]),
+            functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
             src_regions: Vec::new(),
             dst_regions: Vec::new(),
@@ -220,7 +220,7 @@ impl Processor {
     /// Create a processor from pre-linked function processors.
     pub fn with_functions(name: impl Into<String>, functions: Vec<FunctionProcessor>) -> Self {
         let functionality =
-            FunctionalityModule::unnamed(functions.iter().map(|fp| fp.func.clone()).collect());
+            MlirModule::unnamed(functions.iter().map(|fp| fp.func.clone()).collect());
         Processor {
             name: Some(name.into()),
             functionality,
@@ -233,7 +233,7 @@ impl Processor {
     /// Build a processor by linking one perf model per module function (in-order).
     pub fn from_module(
         name: impl Into<String>,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<Self, String> {
         if functionality.functions.len() != perf_models.len() {
@@ -266,7 +266,7 @@ impl Processor {
     /// Build a processor with explicit source/destination memory regions.
     pub fn from_module_with_regions(
         name: impl Into<String>,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
         src_regions: Vec<MemoryRegion>,
         dst_regions: Vec<MemoryRegion>,
@@ -373,7 +373,7 @@ impl ProcessorModuleBuilder {
     pub fn finish(self) -> Module {
         let processor = Processor {
             name: self.name,
-            functionality: FunctionalityModule::unnamed(vec![]),
+            functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
             src_regions: self.src_regions,
             dst_regions: self.dst_regions,
@@ -387,7 +387,7 @@ impl ProcessorModuleBuilder {
     /// Build and validate from MLIR functionality + perf models.
     pub fn from_module(
         self,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<Module, String> {
         if functionality.functions.len() != perf_models.len() {
@@ -431,7 +431,7 @@ impl ProcessorModuleBuilder {
     /// Convenience helper when caller needs a `Processor`.
     pub fn from_module_processor(
         self,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<Processor, String> {
         self.from_module(functionality, perf_models)
@@ -460,7 +460,7 @@ impl DataMoverBuilder {
 
     pub fn from_module(
         self,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<DataMover, String> {
         self.inner
@@ -490,7 +490,7 @@ impl ComputeProcessorBuilder {
 
     pub fn from_module(
         self,
-        functionality: FunctionalityModule,
+        functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<ComputeProcessor, String> {
         self.inner
@@ -903,7 +903,7 @@ mod tests {
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
     use crate::schedule::{
-        MlirFunc, MlirFuncDetails, MlirModule as FunctionalityModule, MlirTensorSymbolBinding,
+        MlirFunc, MlirFuncDetails, MlirModule, MlirTensorSymbolBinding,
     };
     use crate::{Expr, FuncPerfModel, SimpleTimeCost, TimeCost};
 
@@ -949,7 +949,7 @@ mod tests {
 
     #[test]
     fn processor_from_module_links_per_op_perf() {
-        let module = FunctionalityModule::from_functions(
+        let module = MlirModule::from_functions(
             "toy",
             vec![MlirFunc::named("f1"), MlirFunc::named("f2")],
         );
@@ -980,7 +980,7 @@ mod tests {
     #[test]
     fn processor_from_module_rejects_loom_copy_functions() {
         let module =
-            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
                 .expect("data mover MLIR should parse");
         let perf_models: Vec<FuncPerfModel> = module
             .functions
@@ -999,7 +999,7 @@ mod tests {
 
     #[test]
     fn processor_can_store_memref_regions() {
-        let module = FunctionalityModule::from_functions("toy", vec![MlirFunc::named("f")]);
+        let module = MlirModule::from_functions("toy", vec![MlirFunc::named("f")]);
         let perf_models = vec![FuncPerfModel {
             symbols: vec![],
             constraints: ConstraintExpr::True,
@@ -1089,7 +1089,7 @@ mod tests {
     #[test]
     fn data_mover_from_module_requires_memref_bound_symbol_interface() {
         let functionality =
-            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
                 .expect("dram_to_l1 data mover MLIR should parse");
         let perf_models = vec![
             FuncPerfModel {
@@ -1113,7 +1113,7 @@ mod tests {
     #[test]
     fn data_mover_validation_rejects_missing_memref_interface() {
         let functionality =
-            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
                 .expect("vector_lane should parse");
         let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
 
@@ -1152,7 +1152,7 @@ func.func @tensor_compute(
 }
 "#;
         let func = MlirFunc::from_mlir(tensor_compute).expect("snippet should parse");
-        let functionality = FunctionalityModule::from_functions("tensor_compute", vec![func]);
+        let functionality = MlirModule::from_functions("tensor_compute", vec![func]);
         let perf_models = vec![FuncPerfModel {
             symbols: vec![crate::Sym::new("L")],
             constraints: ConstraintExpr::True,
@@ -1184,7 +1184,7 @@ func.func @mixed_copy_compute(
 }
 "#;
         let func = MlirFunc::from_mlir(mixed).expect("snippet should parse");
-        let functionality = FunctionalityModule::from_functions("mixed", vec![func]);
+        let functionality = MlirModule::from_functions("mixed", vec![func]);
         let perf_models = vec![FuncPerfModel {
             symbols: vec![crate::Sym::new("L")],
             constraints: ConstraintExpr::True,
