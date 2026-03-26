@@ -1,11 +1,11 @@
 pub mod evaluate;
 pub mod module;
-pub mod op;
+pub mod mlir;
 pub mod schedule;
 
 pub use evaluate::evaluate;
 pub use module::{Module, ModuleSource};
-pub use op::{
+pub use mlir::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };

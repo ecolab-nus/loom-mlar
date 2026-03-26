@@ -1,6 +1,12 @@
 use std::collections::HashSet;
 use std::fs;
 
+use nom::bytes::complete::{tag, take_while1};
+use nom::character::complete::{char, multispace0, multispace1, u64 as nom_u64};
+use nom::multi::separated_list0;
+use nom::sequence::delimited;
+use nom::{IResult, Parser};
+
 use crate::arch::Sym;
 use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
@@ -200,43 +206,21 @@ impl MlirFunc {
     /// Parse one `func.func` MLIR definition into a function reference.
     pub fn from_mlir(func_mlir: &str) -> Result<Self, String> {
         let func_mlir = func_mlir.trim();
-        let marker = "func.func @";
-        let marker_pos = func_mlir
-            .find(marker)
-            .ok_or_else(|| "missing 'func.func @' declaration".to_string())?;
-        let after_marker = &func_mlir[marker_pos + marker.len()..];
 
-        let open_paren_rel = after_marker
-            .find('(')
-            .ok_or_else(|| "missing function argument list".to_string())?;
-        let name = after_marker[..open_paren_rel].trim().to_string();
-        if name.is_empty() {
-            return Err("function name is empty".to_string());
-        }
-
-        let open_paren = marker_pos + marker.len() + open_paren_rel;
-        let close_paren = find_matching_delimiter(func_mlir, open_paren, '(', ')')
-            .ok_or_else(|| format!("unbalanced parentheses in function '{}'", name))?;
-        let arg_list = &func_mlir[open_paren + 1..close_paren];
+        let (_, (name, arg_content)) = func_header(func_mlir)
+            .map_err(|_| "missing 'func.func @' declaration".to_string())?;
+        let name = name.to_string();
 
         let mut tensor_args = Vec::new();
         let mut memref_args = Vec::new();
         let mut symbols = Vec::new();
-        for raw_arg in split_top_level_commas(arg_list) {
-            let arg = raw_arg.trim();
-            if arg.is_empty() || !arg.starts_with('%') {
+        for raw_arg in split_top_level_commas(arg_content) {
+            let trimmed = raw_arg.trim();
+            if trimmed.is_empty() || !trimmed.starts_with('%') {
                 continue;
             }
-
-            let colon = arg
-                .find(':')
-                .ok_or_else(|| format!("invalid argument syntax in '{}': {}", name, arg))?;
-            let arg_name = arg[1..colon].trim();
-            let arg_ty = arg[colon + 1..].trim();
-            if arg_name.is_empty() {
-                return Err(format!("invalid empty argument name in '{}'", name));
-            }
-
+            let (_, (arg_name, arg_ty)) = func_arg(trimmed)
+                .map_err(|_| format!("invalid argument syntax in '{}': {}", name, trimmed))?;
             if arg_ty.starts_with("loom.sym") {
                 symbols.push(Sym::new(arg_name));
             } else if arg_ty.starts_with("tensor<") {
@@ -246,32 +230,31 @@ impl MlirFunc {
             }
         }
 
-        symbols.extend(parse_loom_syms(func_mlir));
+        symbols.extend(collect_loom_syms(func_mlir));
 
-        let operand_symbol_bindings = parse_loom_bindings(func_mlir)?;
-        let tensor_symbol_bindings = operand_symbol_bindings
+        let operand_bindings = collect_bind_shapes(func_mlir)?;
+        let tensor_symbol_bindings = operand_bindings
             .iter()
-            .filter(|(operand, _)| tensor_args.iter().any(|arg| arg == operand))
-            .map(|(operand, symbols)| MlirTensorSymbolBinding {
-                tensor: operand.clone(),
-                symbols: symbols.clone(),
+            .filter(|(op, _)| tensor_args.iter().any(|a| a == op))
+            .map(|(op, syms)| MlirTensorSymbolBinding {
+                tensor: op.clone(),
+                symbols: syms.clone(),
             })
             .collect();
-        let memref_symbol_bindings = operand_symbol_bindings
+        let memref_symbol_bindings = operand_bindings
             .iter()
-            .filter(|(operand, _)| memref_args.iter().any(|arg| arg == operand))
-            .map(|(operand, symbols)| MlirMemrefSymbolBinding {
-                memref: operand.clone(),
-                symbols: symbols.clone(),
+            .filter(|(op, _)| memref_args.iter().any(|a| a == op))
+            .map(|(op, syms)| MlirMemrefSymbolBinding {
+                memref: op.clone(),
+                symbols: syms.clone(),
             })
             .collect();
+
         let (mut source_memrefs, mut target_memrefs) =
-            parse_memref_copy_interface(func_mlir, &memref_args)?;
+            collect_memref_copy_pairs(func_mlir, &memref_args)?;
+        let copy_ops = collect_loom_copies(func_mlir)?;
+        let mut mem_region_bindings = collect_bind_mems(func_mlir)?;
 
-        let copy_ops = parse_loom_copy(func_mlir)?;
-
-        // loom.copy contributes source/target memrefs and region bindings
-        let mut mem_region_bindings = parse_loom_bind_mem(func_mlir)?;
         for cop in &copy_ops {
             if memref_args.iter().any(|a| a == &cop.src)
                 && source_memrefs.iter().all(|s| s != &cop.src)
@@ -309,10 +292,7 @@ impl MlirFunc {
         if target_memrefs.is_empty() && memref_args.len() >= 2 {
             target_memrefs.push(memref_args[1].clone());
         }
-        let output_tensors = parse_output_tensors(func_mlir)?
-            .into_iter()
-            .filter(|tensor| tensor_args.iter().any(|arg| arg == tensor))
-            .collect();
+        let output_tensors = collect_output_tensors(func_mlir, &tensor_args)?;
 
         Ok(Self {
             name,
@@ -338,25 +318,206 @@ pub type MLIRModuleRef = MlirModule;
 pub type MLIRFuncRef = MlirFunc;
 pub type MLIRFunc = MlirFuncDetails;
 
-fn parse_single_module_name(source: &str) -> Result<String, String> {
-    let mut names = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with("module @") {
-            continue;
-        }
-        let tail = &trimmed["module @".len()..];
-        let end = tail
-            .find(|c: char| c.is_whitespace() || c == '{' || c == '(')
-            .unwrap_or(tail.len());
-        let name = tail[..end].trim();
-        if !name.is_empty() {
-            names.push(name.to_string());
+// ── nom primitives ──────────────────────────────────────────────────────────
+
+/// MLIR identifier: one or more alphanumeric / underscore characters.
+fn mlir_ident(input: &str) -> IResult<&str, &str> {
+    take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_').parse(input)
+}
+
+/// SSA value reference `%name` → `name` (without the `%`).
+fn ssa_ref(input: &str) -> IResult<&str, &str> {
+    let (input, _) = char('%').parse(input)?;
+    mlir_ident(input)
+}
+
+/// Symbol reference `@name` → `name` (without the `@`).
+fn symbol_ref(input: &str) -> IResult<&str, &str> {
+    let (input, _) = char('@').parse(input)?;
+    mlir_ident(input)
+}
+
+/// Comma surrounded by optional whitespace.
+fn comma_sep(input: &str) -> IResult<&str, char> {
+    delimited(multispace0, char(','), multispace0).parse(input)
+}
+
+/// Consume balanced `open…close` and return the inner content.
+fn parse_balanced<'a>(input: &'a str, open: char, close: char) -> IResult<&'a str, &'a str> {
+    let (rest, _) = char(open).parse(input)?;
+    let mut depth = 1u32;
+    for (i, c) in rest.char_indices() {
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
+            if depth == 0 {
+                return Ok((&rest[i + c.len_utf8()..], &rest[..i]));
+            }
         }
     }
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Char,
+    )))
+}
 
+// ── nom line-level parsers ──────────────────────────────────────────────────
+
+/// Parse `func.func @name(…)` from an MLIR block.
+/// Returns `(function_name, raw_argument_list_content)`.
+fn func_header<'a>(input: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
+    let marker = "func.func @";
+    let offset = input.find(marker).ok_or_else(|| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+    })?;
+    let (input, _) = tag(marker).parse(&input[offset..])?;
+    let (input, name) = mlir_ident(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, args) = parse_balanced(input, '(', ')')?;
+    Ok((input, (name, args)))
+}
+
+/// Parse a single function argument `%name : type_expression`.
+fn func_arg(input: &str) -> IResult<&str, (&str, &str)> {
+    let (input, name) = ssa_ref(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(':').parse(input)?;
+    let (input, _) = multispace0(input)?;
+    Ok(("", (name, input.trim())))
+}
+
+/// Parse `module @name` declaration line → module name.
+fn module_decl(input: &str) -> IResult<&str, &str> {
+    let (input, _) = tag("module").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    symbol_ref(input)
+}
+
+/// Parse `%ssa = loom.sym @name …` declaration → symbol name.
+fn loom_sym_decl(input: &str) -> IResult<&str, &str> {
+    let (input, _) = char('%').parse(input)?;
+    let (input, _) = mlir_ident(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char('=').parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("loom.sym").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    symbol_ref(input)
+}
+
+/// Parse `loom.bind_shape %operand, [%sym1, %sym2, …] : type`.
+/// Returns `(operand_name, [sym_names])`.
+fn bind_shape_decl(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
+    let (input, _) = tag("loom.bind_shape").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, operand) = ssa_ref(input)?;
+    let (input, _) = comma_sep(input)?;
+    let (input, syms) = delimited(
+        (char('['), multispace0),
+        separated_list0(comma_sep, ssa_ref),
+        (multispace0, char(']')),
+    )
+    .parse(input)?;
+    Ok((input, (operand, syms)))
+}
+
+/// Parse `loom.bind_mem @Region %memref`.
+/// Returns `(region_name, memref_name)`.
+fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str)> {
+    let (input, _) = tag("loom.bind_mem").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, region) = symbol_ref(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, memref) = ssa_ref(input)?;
+    Ok((input, (region, memref)))
+}
+
+/// Parse `%memref @Region` pair.
+fn memref_with_region(input: &str) -> IResult<&str, (&str, &str)> {
+    let (input, memref) = ssa_ref(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, region) = symbol_ref(input)?;
+    Ok((input, (memref, region)))
+}
+
+/// Parse `memref.copy %src, %dst …`.
+fn memref_copy_decl(input: &str) -> IResult<&str, (&str, &str)> {
+    let (input, _) = tag("memref.copy").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, src) = ssa_ref(input)?;
+    let (input, _) = comma_sep(input)?;
+    let (input, dst) = ssa_ref(input)?;
+    Ok((input, (src, dst)))
+}
+
+/// Parse `return %a, %b …` statement → list of SSA names.
+fn return_stmt(input: &str) -> IResult<&str, Vec<&str>> {
+    let (input, _) = tag("return").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    separated_list0(comma_sep, ssa_ref).parse(input)
+}
+
+/// Opaque token inside an interconnect bracket list.
+fn interconnect_item(input: &str) -> IResult<&str, &str> {
+    take_while1(|c: char| !matches!(c, ',' | ']' | '[')).parse(input)
+}
+
+/// Parse `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : […], broadcast : [d0, …] …`.
+fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
+    let (input, _) = tag("loom.copy").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, (src, src_region)) = memref_with_region(input)?;
+    let (input, _) = comma_sep(input)?;
+    let (input, (dst, dst_region)) = memref_with_region(input)?;
+    let (input, _) = comma_sep(input)?;
+    let (input, _) = tag("interconnect").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(':').parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, interconnect) = delimited(
+        (char('['), multispace0),
+        separated_list0(comma_sep, interconnect_item),
+        (multispace0, char(']')),
+    )
+    .parse(input)?;
+    let (input, _) = comma_sep(input)?;
+    let (input, _) = tag("broadcast").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(':').parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, broadcast) = delimited(
+        (char('['), multispace0),
+        separated_list0(comma_sep, nom_u64),
+        (multispace0, char(']')),
+    )
+    .parse(input)?;
+    Ok((
+        input,
+        MlirCopyOp {
+            src: src.to_string(),
+            src_region: src_region.to_string(),
+            dst: dst.to_string(),
+            dst_region: dst_region.to_string(),
+            interconnect: interconnect
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            broadcast,
+        },
+    ))
+}
+
+// ── Scanning / collection helpers ───────────────────────────────────────────
+
+fn parse_single_module_name(source: &str) -> Result<String, String> {
+    let names: Vec<&str> = source
+        .lines()
+        .filter_map(|line| module_decl(line.trim()).ok().map(|(_, name)| name))
+        .collect();
     match names.len() {
-        1 => Ok(names[0].clone()),
+        1 => Ok(names[0].to_string()),
         0 => Err("MLIR file must contain exactly one module, found 0".to_string()),
         n => Err(format!(
             "MLIR file must contain exactly one module, found {}",
@@ -372,10 +533,10 @@ fn extract_function_blocks(source: &str) -> Result<Vec<&str>, String> {
 
     while let Some(found) = source[cursor..].find(marker) {
         let start = cursor + found;
-        let open_rel = source[start..]
+        let open = source[start..]
             .find('{')
+            .map(|rel| start + rel)
             .ok_or_else(|| "missing '{' after function declaration".to_string())?;
-        let open = start + open_rel;
         let close = find_matching_delimiter(source, open, '{', '}')
             .ok_or_else(|| "unbalanced braces in function body".to_string())?;
         blocks.push(&source[start..=close]);
@@ -385,131 +546,40 @@ fn extract_function_blocks(source: &str) -> Result<Vec<&str>, String> {
     Ok(blocks)
 }
 
-/// Extract `loom.sym` declarations from the function body.
-///
-/// Matches lines of the form `%<ssa> = loom.sym @<name> : index`.
-fn parse_loom_syms(func_mlir: &str) -> Vec<Sym> {
-    let mut symbols = Vec::new();
-    for line in func_mlir.lines() {
-        let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix('%') else {
-            continue;
-        };
-        let Some(eq_pos) = rest.find('=') else {
-            continue;
-        };
-        let rhs = rest[eq_pos + 1..].trim();
-        let Some(after_marker) = rhs.strip_prefix("loom.sym") else {
-            continue;
-        };
-        let after_marker = after_marker.trim();
-        let Some(after_at) = after_marker.strip_prefix('@') else {
-            continue;
-        };
-        let end = after_at
-            .find(|c: char| c.is_whitespace() || c == ':')
-            .unwrap_or(after_at.len());
-        let sym_name = &after_at[..end];
-        if !sym_name.is_empty() {
-            symbols.push(Sym::new(sym_name));
-        }
-    }
-    symbols
+fn collect_loom_syms(func_mlir: &str) -> Vec<Sym> {
+    func_mlir
+        .lines()
+        .filter_map(|line| loom_sym_decl(line.trim()).ok())
+        .map(|(_, name)| Sym::new(name))
+        .collect()
 }
 
-fn parse_loom_bindings(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, String> {
+fn collect_bind_shapes(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
         if !trimmed.starts_with("loom.bind_shape ") {
             continue;
         }
-
-        let rest = trimmed["loom.bind_shape ".len()..].trim_start();
-        if !rest.starts_with('%') {
-            return Err(format!("invalid loom.bind_shape operand syntax: {}", trimmed));
-        }
-
-        let comma = rest
-            .find(',')
-            .ok_or_else(|| format!("invalid loom.bind_shape missing comma: {}", trimmed))?;
-        let operand = rest[1..comma].trim();
-        if operand.is_empty() {
-            return Err(format!("invalid loom.bind_shape empty operand: {}", trimmed));
-        }
-
-        let sym_section = rest[comma + 1..].trim();
-        let open = sym_section
-            .find('[')
-            .ok_or_else(|| format!("invalid loom.bind_shape missing '[' : {}", trimmed))?;
-        let close = find_matching_delimiter(sym_section, open, '[', ']')
-            .ok_or_else(|| format!("invalid loom.bind_shape unbalanced brackets: {}", trimmed))?;
-        let sym_list = &sym_section[open + 1..close];
-
-        let mut symbols = Vec::new();
-        for raw in split_top_level_commas(sym_list) {
-            let sym_token = raw.trim();
-            if sym_token.is_empty() {
-                continue;
-            }
-            if !sym_token.starts_with('%') {
-                return Err(format!("invalid loom.bind_shape symbol syntax: {}", trimmed));
-            }
-            symbols.push(Sym::new(sym_token.trim_start_matches('%')));
-        }
-
-        bindings.push((operand.to_string(), symbols));
+        let (_, (operand, syms)) = bind_shape_decl(trimmed)
+            .map_err(|_| format!("invalid loom.bind_shape syntax: {}", trimmed))?;
+        bindings.push((
+            operand.to_string(),
+            syms.into_iter().map(Sym::new).collect(),
+        ));
     }
     Ok(bindings)
 }
 
-/// Parse `loom.bind_mem @RegionName %memref_arg` lines.
-fn parse_loom_bind_mem(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, String> {
+fn collect_bind_mems(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("loom.bind_mem ") else {
+        if !trimmed.starts_with("loom.bind_mem ") {
             continue;
-        };
-        let rest = rest.trim_start();
-        if !rest.starts_with('@') {
-            return Err(format!(
-                "invalid loom.bind_mem: expected @region name: {}",
-                trimmed
-            ));
         }
-        let after_at = &rest[1..];
-        let region_end = after_at
-            .find(|c: char| c.is_whitespace())
-            .ok_or_else(|| {
-                format!(
-                    "invalid loom.bind_mem: expected memref operand after region name: {}",
-                    trimmed
-                )
-            })?;
-        let region = &after_at[..region_end];
-        if region.is_empty() {
-            return Err(format!(
-                "invalid loom.bind_mem: empty region name: {}",
-                trimmed
-            ));
-        }
-
-        let memref_part = after_at[region_end..].trim();
-        if !memref_part.starts_with('%') {
-            return Err(format!(
-                "invalid loom.bind_mem: expected %memref operand: {}",
-                trimmed
-            ));
-        }
-        let memref = parse_ssa_name(memref_part);
-        if memref.is_empty() {
-            return Err(format!(
-                "invalid loom.bind_mem: empty memref operand: {}",
-                trimmed
-            ));
-        }
-
+        let (_, (region, memref)) = bind_mem_decl(trimmed)
+            .map_err(|_| format!("invalid loom.bind_mem syntax: {}", trimmed))?;
         bindings.push(MlirMemRegionBinding {
             memref: memref.to_string(),
             region: region.to_string(),
@@ -518,131 +588,21 @@ fn parse_loom_bind_mem(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, Str
     Ok(bindings)
 }
 
-/// Parse `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : [...], broadcast : [d0, d1, ...] : type to type`
-fn parse_loom_copy(func_mlir: &str) -> Result<Vec<MlirCopyOp>, String> {
+fn collect_loom_copies(func_mlir: &str) -> Result<Vec<MlirCopyOp>, String> {
     let mut ops = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("loom.copy ") else {
+        if !trimmed.starts_with("loom.copy ") {
             continue;
-        };
-
-        let err = |msg: &str| format!("invalid loom.copy: {}: {}", msg, trimmed);
-
-        // Split on the *first* top-level colon that precedes "memref<" or similar type —
-        // but it's easier to split on ", interconnect" first.
-        let ic_marker = ", interconnect";
-        let ic_pos = rest
-            .find(ic_marker)
-            .ok_or_else(|| err("missing ', interconnect'"))?;
-        let operand_part = &rest[..ic_pos];
-        let after_ic = &rest[ic_pos + ic_marker.len()..];
-
-        // Parse src and dst from operand_part: "%src @SrcRegion, %dst @DstRegion"
-        let operand_tokens = split_top_level_commas(operand_part);
-        if operand_tokens.len() < 2 {
-            return Err(err("expected '%src @Region, %dst @Region'"));
         }
-        let (src, src_region) = parse_memref_region(operand_tokens[0].trim())
-            .ok_or_else(|| err("invalid source '%memref @Region'"))?;
-        let (dst, dst_region) = parse_memref_region(operand_tokens[1].trim())
-            .ok_or_else(|| err("invalid destination '%memref @Region'"))?;
-
-        // Parse "interconnect : [...], broadcast : [...]" from after_ic
-        // after_ic looks like: " : [], broadcast : [8, 8] : memref<...> to memref<...>"
-        let after_ic = after_ic.trim();
-        let after_ic = after_ic
-            .strip_prefix(':')
-            .ok_or_else(|| err("expected ':' after 'interconnect'"))?
-            .trim();
-
-        let ic_open = after_ic
-            .find('[')
-            .ok_or_else(|| err("missing '[' for interconnect"))?;
-        let ic_close = find_matching_delimiter(after_ic, ic_open, '[', ']')
-            .ok_or_else(|| err("unbalanced '[' for interconnect"))?;
-        let ic_inner = after_ic[ic_open + 1..ic_close].trim();
-        let interconnect: Vec<String> = if ic_inner.is_empty() {
-            Vec::new()
-        } else {
-            split_top_level_commas(ic_inner)
-                .iter()
-                .map(|s| s.trim().to_string())
-                .collect()
-        };
-
-        let after_bc_label = &after_ic[ic_close + 1..].trim();
-        let after_bc_label = after_bc_label
-            .strip_prefix(',')
-            .ok_or_else(|| err("missing ',' before 'broadcast'"))?
-            .trim();
-        let after_bc_label = after_bc_label
-            .strip_prefix("broadcast")
-            .ok_or_else(|| err("missing 'broadcast' keyword"))?
-            .trim();
-        let after_bc_label = after_bc_label
-            .strip_prefix(':')
-            .ok_or_else(|| err("expected ':' after 'broadcast'"))?
-            .trim();
-
-        let bc_open = after_bc_label
-            .find('[')
-            .ok_or_else(|| err("missing '[' for broadcast"))?;
-        let bc_close = find_matching_delimiter(after_bc_label, bc_open, '[', ']')
-            .ok_or_else(|| err("unbalanced '[' for broadcast"))?;
-        let bc_inner = after_bc_label[bc_open + 1..bc_close].trim();
-        let broadcast: Vec<u64> = if bc_inner.is_empty() {
-            Vec::new()
-        } else {
-            split_top_level_commas(bc_inner)
-                .iter()
-                .map(|s| {
-                    s.trim()
-                        .parse::<u64>()
-                        .map_err(|_| err(&format!("non-integer broadcast dim '{}'", s.trim())))
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        };
-
-        ops.push(MlirCopyOp {
-            src: src.to_string(),
-            src_region: src_region.to_string(),
-            dst: dst.to_string(),
-            dst_region: dst_region.to_string(),
-            interconnect,
-            broadcast,
-        });
+        let (_, cop) = loom_copy_decl(trimmed)
+            .map_err(|_| format!("invalid loom.copy syntax: {}", trimmed))?;
+        ops.push(cop);
     }
     Ok(ops)
 }
 
-/// Parse `%memref @Region` into (memref_name, region_name).
-fn parse_memref_region(token: &str) -> Option<(&str, &str)> {
-    let token = token.trim();
-    if !token.starts_with('%') {
-        return None;
-    }
-    let body = &token[1..];
-    let at_pos = body.find('@')?;
-    let memref = body[..at_pos].trim();
-    let region = body[at_pos + 1..].trim();
-    if memref.is_empty() || region.is_empty() {
-        return None;
-    }
-    Some((memref, region))
-}
-
-fn parse_output_tensors(func_mlir: &str) -> Result<Vec<String>, String> {
-    let mut outputs = parse_tensor_operands(func_mlir, "outs(")?;
-    for returned in parse_return_operands(func_mlir) {
-        if outputs.iter().all(|existing| existing != &returned) {
-            outputs.push(returned);
-        }
-    }
-    Ok(outputs)
-}
-
-fn parse_memref_copy_interface(
+fn collect_memref_copy_pairs(
     func_mlir: &str,
     memref_args: &[String],
 ) -> Result<(Vec<String>, Vec<String>), String> {
@@ -650,98 +610,96 @@ fn parse_memref_copy_interface(
     let mut targets = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("memref.copy ") else {
+        if !trimmed.starts_with("memref.copy ") {
             continue;
-        };
-        let operands = rest
-            .split_once(':')
-            .map(|(before_colon, _)| before_colon)
-            .unwrap_or(rest)
-            .trim();
-        let tokens = split_top_level_commas(operands);
-        if tokens.len() < 2 {
-            return Err(format!("invalid memref.copy operands: {}", trimmed));
         }
-        let src = parse_ssa_name(tokens[0].trim());
-        let dst = parse_ssa_name(tokens[1].trim());
-        if src.is_empty() || dst.is_empty() {
-            return Err(format!("invalid memref.copy operands: {}", trimmed));
-        }
-        if memref_args.iter().any(|arg| arg == src) && sources.iter().all(|s| s != src) {
+        let (_, (src, dst)) = memref_copy_decl(trimmed)
+            .map_err(|_| format!("invalid memref.copy syntax: {}", trimmed))?;
+        if memref_args.iter().any(|a| a == src) && sources.iter().all(|s: &String| s != src) {
             sources.push(src.to_string());
         }
-        if memref_args.iter().any(|arg| arg == dst) && targets.iter().all(|t| t != dst) {
+        if memref_args.iter().any(|a| a == dst) && targets.iter().all(|t: &String| t != dst) {
             targets.push(dst.to_string());
         }
     }
     Ok((sources, targets))
 }
 
-fn parse_tensor_operands(func_mlir: &str, marker: &str) -> Result<Vec<String>, String> {
+fn collect_return_operands(func_mlir: &str) -> Vec<String> {
     let mut operands = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("return") {
+            continue;
+        }
+        if let Ok((_, names)) = return_stmt(trimmed) {
+            for name in names {
+                if operands.iter().all(|e: &String| e != name) {
+                    operands.push(name.to_string());
+                }
+            }
+        }
+    }
+    operands
+}
+
+fn collect_outs_operands(func_mlir: &str) -> Result<Vec<String>, String> {
+    let mut operands = Vec::new();
+    let marker = "outs(";
     let mut cursor = 0usize;
 
     while let Some(found) = func_mlir[cursor..].find(marker) {
         let open = cursor + found + marker.len() - 1;
-        let close = find_matching_delimiter(func_mlir, open, '(', ')').ok_or_else(|| {
-            format!(
-                "unbalanced parentheses while parsing '{}' operands",
-                marker.trim_end_matches('(')
-            )
-        })?;
-        let operand_list = &func_mlir[open + 1..close];
-        for raw in split_top_level_commas(operand_list) {
-            let token = raw.trim();
-            if !token.starts_with('%') {
-                continue;
+        let close = find_matching_delimiter(func_mlir, open, '(', ')')
+            .ok_or_else(|| "unbalanced parentheses in 'outs' operands".to_string())?;
+        let content = &func_mlir[open + 1..close];
+        for raw in split_top_level_commas(content) {
+            if let Ok((_, name)) = ssa_ref(raw.trim()) {
+                if !operands.iter().any(|e: &String| e == name) {
+                    operands.push(name.to_string());
+                }
             }
-
-            let tensor = parse_ssa_name(token);
-            if tensor.is_empty() || operands.iter().any(|existing| existing == tensor) {
-                continue;
-            }
-            operands.push(tensor.to_string());
         }
-
         cursor = close + 1;
     }
 
     Ok(operands)
 }
 
-fn parse_ssa_name(token: &str) -> &str {
-    let body = token.trim_start_matches('%');
-    let end = body
-        .find(|c: char| c == ':' || c.is_whitespace() || c == ',' || c == ')')
-        .unwrap_or(body.len());
-    body[..end].trim()
-}
-
-fn parse_return_operands(func_mlir: &str) -> Vec<String> {
-    let mut operands = Vec::new();
-    for line in func_mlir.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with("return ") {
-            continue;
-        }
-
-        let lhs = trimmed["return ".len()..]
-            .split_once(':')
-            .map(|(before_colon, _)| before_colon)
-            .unwrap_or_else(|| &trimmed["return ".len()..]);
-        for raw in split_top_level_commas(lhs) {
-            let token = raw.trim();
-            if !token.starts_with('%') {
-                continue;
-            }
-            let name = parse_ssa_name(token);
-            if name.is_empty() || operands.iter().any(|existing| existing == name) {
-                continue;
-            }
-            operands.push(name.to_string());
+fn collect_output_tensors(
+    func_mlir: &str,
+    tensor_args: &[String],
+) -> Result<Vec<String>, String> {
+    let mut outputs = collect_outs_operands(func_mlir)?;
+    for ret in collect_return_operands(func_mlir) {
+        if outputs.iter().all(|e| e != &ret) {
+            outputs.push(ret);
         }
     }
-    operands
+    outputs.retain(|t| tensor_args.iter().any(|a| a == t));
+    Ok(outputs)
+}
+
+// ── Utility helpers ─────────────────────────────────────────────────────────
+
+fn find_matching_delimiter(
+    input: &str,
+    open_index: usize,
+    open_char: char,
+    close_char: char,
+) -> Option<usize> {
+    let mut depth = 0usize;
+    for (offset, ch) in input[open_index..].char_indices() {
+        if ch == open_char {
+            depth += 1;
+        } else if ch == close_char {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return Some(open_index + offset);
+            }
+        }
+    }
+    None
 }
 
 fn split_top_level_commas(input: &str) -> Vec<&str> {
@@ -768,26 +726,6 @@ fn split_top_level_commas(input: &str) -> Vec<&str> {
     }
     parts.push(&input[start..]);
     parts
-}
-
-fn find_matching_delimiter(
-    input: &str,
-    open_index: usize,
-    open_char: char,
-    close_char: char,
-) -> Option<usize> {
-    let mut depth = 0usize;
-    for (offset, ch) in input[open_index..].char_indices() {
-        if ch == open_char {
-            depth += 1;
-        } else if ch == close_char {
-            depth = depth.saturating_sub(1);
-            if depth == 0 {
-                return Some(open_index + offset);
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]
