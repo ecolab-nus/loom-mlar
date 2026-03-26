@@ -96,13 +96,13 @@ mod tests {
         let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane MLIR should parse");
         let add_func = module
-            .function_refs
+            .functions
             .iter()
             .find(|func| func.name.starts_with("vec_add_"))
             .cloned()
             .expect("vec_add_* should exist");
         let mul_func = module
-            .function_refs
+            .functions
             .iter()
             .find(|func| func.name.starts_with("vec_mul_"))
             .cloned()
@@ -171,8 +171,8 @@ mod tests {
             json!(add_name)
         );
         assert_eq!(
-            value["Sequential"]["schedules"][1]["Parallel"]["mlir_ref"]["functions"],
-            json!([mul_name])
+            value["Sequential"]["schedules"][1]["Parallel"]["mlir_ref"]["functions"][0]["name"],
+            json!(mul_name)
         );
         assert_eq!(
             value["Sequential"]["schedules"][1]["Parallel"]["processor"]["name"],
@@ -195,7 +195,7 @@ mod tests {
     fn schedule_serializes_and_deserializes_with_absent_optional_fields() {
         let func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane MLIR should parse")
-            .function_refs
+            .functions
             .into_iter()
             .find(|f| f.name.starts_with("vec_add_"))
             .expect("vec_add_* should exist");

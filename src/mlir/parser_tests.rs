@@ -1,0 +1,256 @@
+use super::{MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirModule};
+
+#[test]
+fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+        .expect("vector_lane.mlir should parse");
+    assert_eq!(
+        module.path.as_deref(),
+        Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    );
+    assert_eq!(module.module_name.as_deref(), Some("vector_lane"));
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|f| f.name.starts_with("vec_max_"))
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|f| f.name.starts_with("vec_div_"))
+    );
+
+    // Uppercase alias naming is also supported.
+    let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+        .expect("alias constructor should parse");
+    assert_eq!(alias_module.module_name.as_deref(), Some("vector_lane"));
+}
+
+#[test]
+fn mlir_module_ref_from_mlir_allows_unnamed_module() {
+    let tmp = std::env::temp_dir().join("mlar_unnamed_module_test.mlir");
+    std::fs::write(&tmp, "module {\n  func.func @f() { return }\n}\n")
+        .expect("write temporary MLIR");
+
+    let module = MlirModule::from_mlir(tmp.to_string_lossy().to_string())
+        .expect("unnamed module should parse");
+    assert_eq!(module.module_name, None);
+    assert_eq!(module.functions.len(), 1);
+    assert_eq!(module.functions[0].name, "f");
+
+    let _ = std::fs::remove_file(tmp);
+}
+
+#[test]
+fn mlir_module_ref_from_mlir_rejects_multiple_modules() {
+    let tmp = std::env::temp_dir().join("mlar_multi_module_test.mlir");
+    std::fs::write(&tmp, "module @a {\n}\nmodule @b {\n}\n").expect("write temporary MLIR");
+
+    let err = MlirModule::from_mlir(tmp.to_string_lossy().to_string())
+        .expect_err("multiple modules should be rejected");
+    assert!(err.contains("exactly one module"));
+    assert!(err.contains("found 2"));
+
+    let _ = std::fs::remove_file(tmp);
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
+        .expect("matrix_lane.mlir should parse");
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("matmul_"))
+        .expect("matmul_* function should exist");
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+
+    assert_eq!(func.symbols, vec!["M".into(), "N".into(), "K".into()]);
+    assert!(details.tensor_args.is_empty());
+    assert_eq!(details.memref_args, vec!["A", "B", "C"]);
+    assert!(details.output_tensors.is_empty());
+    assert!(details.source_memrefs.is_empty());
+    assert!(details.target_memrefs.is_empty());
+    assert_eq!(details.mem_region_bindings.len(), 3);
+    assert!(!details.linalg_ops.is_empty());
+    assert!(details.tensor_symbol_bindings.is_empty());
+    assert_eq!(details.memref_symbol_bindings.len(), 3);
+
+    assert_eq!(details.memref_symbol_bindings[0].memref, "A");
+    assert_eq!(
+        details.memref_symbol_bindings[0].symbols,
+        vec!["M".into(), "K".into()]
+    );
+    assert_eq!(details.memref_symbol_bindings[1].memref, "B");
+    assert_eq!(
+        details.memref_symbol_bindings[1].symbols,
+        vec!["K".into(), "N".into()]
+    );
+    assert_eq!(details.memref_symbol_bindings[2].memref, "C");
+    assert_eq!(
+        details.memref_symbol_bindings[2].symbols,
+        vec!["M".into(), "N".into()]
+    );
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_function_snippet_directly() {
+    let snippet = r#"
+func.func @vec_add_f32(
+%a: tensor<?xf32>,
+%b: tensor<?xf32>,
+%out: tensor<?xf32>
+) -> tensor<?xf32> {
+  %L = loom.sym @L : index
+  loom.bind_shape %a, [%L] : tensor<?xf32>
+  loom.bind_shape %b, [%L] : tensor<?xf32>
+  loom.bind_shape %out, [%L] : tensor<?xf32>
+  return %out : tensor<?xf32>
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    let alias_func = MLIRFuncRef::from_mlir(snippet).expect("alias parser should parse");
+    assert_eq!(func.name, "vec_add_f32");
+    assert_eq!(func.symbols, vec!["L".into()]);
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+    assert_eq!(details.tensor_args, vec!["a", "b", "out"]);
+    assert!(details.memref_args.is_empty());
+    assert_eq!(details.output_tensors, vec!["out"]);
+    assert!(details.source_memrefs.is_empty());
+    assert!(details.target_memrefs.is_empty());
+    assert!(details.memref_symbol_bindings.is_empty());
+    assert!(details.linalg_ops.is_empty());
+    assert_eq!(details.tensor_symbol_bindings.len(), 3);
+    assert_eq!(details.tensor_symbol_bindings[0].tensor, "a");
+    assert_eq!(details.tensor_symbol_bindings[0].symbols, vec!["L".into()]);
+    assert_eq!(alias_func, func);
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_memref_copy_interface() {
+    let snippet = r#"
+func.func @dram_to_l1(
+%src: memref<?xf16>,
+%dst: memref<?xf16>
+) {
+  %L = loom.sym @L : index
+  loom.bind_shape %src, [%L] : memref<?xf16>
+  loom.bind_shape %dst, [%L] : memref<?xf16>
+  memref.copy %src, %dst : memref<?xf16> to memref<?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+    assert!(details.tensor_args.is_empty());
+    assert_eq!(details.memref_args, vec!["src", "dst"]);
+    assert_eq!(details.source_memrefs, vec!["src"]);
+    assert_eq!(details.target_memrefs, vec!["dst"]);
+    assert!(details.output_tensors.is_empty());
+    assert!(details.tensor_symbol_bindings.is_empty());
+    assert!(details.linalg_ops.is_empty());
+    assert_eq!(details.memref_symbol_bindings.len(), 2);
+    assert_eq!(details.memref_symbol_bindings[0].memref, "src");
+    assert_eq!(details.memref_symbol_bindings[0].symbols, vec!["L".into()]);
+    assert_eq!(details.memref_symbol_bindings[1].memref, "dst");
+    assert_eq!(details.memref_symbol_bindings[1].symbols, vec!["L".into()]);
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_bind_mem() {
+    let snippet = r#"
+func.func @dram_to_l1(
+%dram_src: memref<?x?xf16>,
+%l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %dram_src, @DRAM
+  loom.bind_mem %l1_dst, @L1
+  memref.copy %dram_src, %l1_dst : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+    assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
+    assert_eq!(details.mem_region_bindings.len(), 2);
+    assert!(details.linalg_ops.is_empty());
+    assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
+    assert_eq!(details.mem_region_bindings[0].region, "DRAM");
+    assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
+    assert_eq!(details.mem_region_bindings[1].region, "L1");
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_loom_copy() {
+    let snippet = r#"
+func.func @dram_to_l1_bcst(
+%dram_src: memref<?x?xf16>,
+%l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %dram_src, @DRAM
+  loom.bind_mem %l1_dst, @L1
+  loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+
+    assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
+    assert_eq!(details.source_memrefs, vec!["dram_src"]);
+    assert_eq!(details.target_memrefs, vec!["l1_dst"]);
+    assert!(details.linalg_ops.is_empty());
+
+    assert_eq!(details.copy_ops.len(), 1);
+    let cop = &details.copy_ops[0];
+    assert_eq!(cop.src, "dram_src");
+    assert_eq!(cop.src_region, "DRAM");
+    assert_eq!(cop.dst, "l1_dst");
+    assert_eq!(cop.dst_region, "L1");
+    assert!(cop.interconnect.is_empty());
+    assert_eq!(cop.broadcast, vec![8, 8]);
+
+    assert_eq!(details.mem_region_bindings.len(), 2);
+    assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
+    assert_eq!(details.mem_region_bindings[0].region, "DRAM");
+    assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
+    assert_eq!(details.mem_region_bindings[1].region, "L1");
+}
+
+#[test]
+fn named_has_no_tensor_metadata() {
+    let func = MlirFunc::named("vec_add_f32");
+    assert_eq!(func.name, "vec_add_f32");
+    assert!(func.symbols.is_empty());
+    assert!(func.mlir_details.is_none());
+    assert!(func.shape_symbols().is_empty());
+}

@@ -1,8 +1,8 @@
 pub mod export;
-pub mod interface;
+pub mod parser;
 
 pub use export::architecture_to_mlir;
-pub use interface::{
+pub use parser::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };

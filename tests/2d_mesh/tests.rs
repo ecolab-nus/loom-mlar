@@ -13,9 +13,9 @@ const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors_mlir/vector_lane.mlir";
 /// from the vector-lane MLIR module. This makes tests resilient to datatype changes
 /// (f16 ↔ f32 ↔ bf16 etc.) in the `.mlir` files.
 fn vec_func(prefix: &str) -> String {
-    Module::from_mlir(VEC_LANE_MLIR)
+    MlirModule::from_mlir(VEC_LANE_MLIR)
         .expect("vector_lane MLIR should parse")
-        .ops
+        .functions
         .into_iter()
         .find(|op| op.name.starts_with(prefix))
         .unwrap_or_else(|| panic!("no function matching '{prefix}_*' in {VEC_LANE_MLIR}"))
@@ -71,9 +71,9 @@ fn test_2d_mesh_torus_perf_models() {
                 );
                 assert!(
                     p.functionality
-                        .source
+                        .path
                         .as_ref()
-                        .is_some_and(|s| s.path.ends_with(".mlir")),
+                        .is_some_and(|path| path.ends_with(".mlir")),
                     "functionality source for {:?} should point to MLIR",
                     p.name
                 );
@@ -89,24 +89,24 @@ fn test_2d_mesh_torus_perf_models() {
         .functionality()
         .expect("matrix_lane should have functionality");
     assert_eq!(
-        mat_module.source.as_ref().map(|s| s.path.as_str()),
+        mat_module.path.as_deref(),
         Some("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
     );
-    assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
+    assert_eq!(mat_module.module_name.as_deref(), Some("matrix_lane"));
     assert!(
         mat_module
-            .ops
+            .functions
             .iter()
             .any(|op| op.name.starts_with("matmul_"))
     );
     assert!(
         mat_module
-            .ops
+            .functions
             .iter()
             .any(|op| op.name.starts_with("batch_matmul_"))
     );
     let matmul_details = mat_module
-        .ops
+        .functions
         .iter()
         .find(|op| op.name.starts_with("matmul_"))
         .expect("matmul_* should exist")
@@ -158,11 +158,15 @@ fn test_2d_mesh_torus_perf_models() {
         .functionality()
         .expect("vector_lane should have functionality");
     assert_eq!(
-        vec_module.source.as_ref().map(|s| s.path.as_str()),
+        vec_module.path.as_deref(),
         Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
     );
-    assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
-    let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
+    assert_eq!(vec_module.module_name.as_deref(), Some("vector_lane"));
+    let op_names: Vec<&str> = vec_module
+        .functions
+        .iter()
+        .map(|op| op.name.as_str())
+        .collect();
     for prefix in [
         "vec_max_",
         "vec_exp_",
@@ -217,7 +221,7 @@ fn test_2d_mesh_torus_perf_models() {
         .expect("dram_l1_mover should exist");
     assert!(mover.validate().is_ok(), "data mover should validate");
     assert_eq!(
-        mover.functionality.source.as_ref().map(|s| s.path.as_str()),
+        mover.functionality.path.as_deref(),
         Some("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
     );
     let move_func = mover

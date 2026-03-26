@@ -5,7 +5,7 @@ use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::{DataMover, Processor};
 use super::size_dim::Dimension;
-use crate::schedule::Module;
+use crate::schedule::MlirModule;
 use std::ops::{Deref, DerefMut};
 
 /// Unified recursive architecture description.
@@ -139,7 +139,7 @@ impl Architecture {
     }
 
     /// Get functionality if this architecture is (or contains) a unit processor.
-    pub fn functionality(&self) -> Option<&Module> {
+    pub fn functionality(&self) -> Option<&MlirModule> {
         match self {
             Architecture::Unit(p) => Some(&p.functionality),
             Architecture::Array { elem, .. } => elem.functionality(),

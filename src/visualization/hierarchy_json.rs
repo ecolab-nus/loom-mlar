@@ -87,7 +87,7 @@ fn architecture_to_hierarchy_node(arch: &Architecture) -> HierarchyNode {
         Architecture::Unit(proc) => {
             let functions: Vec<String> = proc
                 .functionality
-                .ops
+                .functions
                 .iter()
                 .map(|op| op.name.clone())
                 .collect();
@@ -160,7 +160,7 @@ fn graph_node_to_hierarchy_node(component: &ArchNodeComponent) -> HierarchyNode 
             details: Some(HierarchyNodeDetails::Processor {
                 functions: mover
                     .functionality
-                    .ops
+                    .functions
                     .iter()
                     .map(|op| op.name.clone())
                     .collect(),

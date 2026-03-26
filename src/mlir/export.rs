@@ -118,12 +118,7 @@ impl MlirEmitter {
         let src_regions = format_region_list(&proc.src_regions);
         let dst_regions = format_region_list(&proc.dst_regions);
 
-        let module_ref = proc
-            .functionality
-            .source
-            .as_ref()
-            .and_then(|s| s.mlir_module_name.as_deref())
-            .or(proc.functionality.name.as_deref());
+        let module_ref = proc.functionality.module_name.as_deref();
 
         if let Some(mod_name) = module_ref {
             writeln!(
@@ -141,9 +136,9 @@ impl MlirEmitter {
             .unwrap();
         }
 
-        if let Some(source) = proc.functionality.source.as_ref() {
-            if !self.mlir_sources.contains(&source.path) {
-                self.mlir_sources.push(source.path.clone());
+        if let Some(source_path) = proc.functionality.path.as_ref() {
+            if !self.mlir_sources.contains(source_path) {
+                self.mlir_sources.push(source_path.clone());
             }
         }
 

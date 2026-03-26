@@ -13,7 +13,7 @@ use crate::memory::l1;
 /// - `vec_exp_*`: throughput = 128, latency = 16
 /// - `vec_div_*`: throughput = 256, latency = 8
 pub fn vector_lane() -> Architecture {
-    let functionality = Module::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
 
     let perf_for = |func: &str| -> FuncPerfModel {
@@ -59,7 +59,7 @@ pub fn vector_lane() -> Architecture {
     let l1_region = l1();
 
     let perf_models: Vec<FuncPerfModel> = functionality
-        .ops
+        .functions
         .iter()
         .map(|op| perf_for(op.name.as_str()))
         .collect();

@@ -1,5 +1,4 @@
 pub mod evaluate;
-pub mod module;
 pub mod schedule;
 
 pub mod mlir {
@@ -14,5 +13,4 @@ pub use crate::mlir::{
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };
 pub use evaluate::evaluate;
-pub use module::{Module, ModuleSource};
 pub use schedule::{Schedule, SymbolicMapping};

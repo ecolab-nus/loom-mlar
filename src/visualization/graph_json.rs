@@ -3,7 +3,7 @@ use crate::arch::{
     MemoryRegion, Router, SizeExpr,
 };
 use crate::math::{AffineExpr, AffineMap, Expr};
-use crate::schedule::Module;
+use crate::schedule::MlirModule;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -659,15 +659,12 @@ fn size_expr_to_json(expr: &SizeExpr) -> GraphSizeExpr {
     }
 }
 
-fn functionality_to_json(module: &Module) -> GraphFunctionalityModule {
+fn functionality_to_json(module: &MlirModule) -> GraphFunctionalityModule {
     GraphFunctionalityModule {
-        name: module.name.clone(),
-        source_path: module.source.as_ref().map(|s| s.path.clone()),
-        source_mlir_module_name: module
-            .source
-            .as_ref()
-            .and_then(|s| s.mlir_module_name.clone()),
-        ops: module.ops.iter().map(|op| op.name.clone()).collect(),
+        name: module.module_name.clone(),
+        source_path: module.path.clone(),
+        source_mlir_module_name: module.module_name.clone(),
+        ops: module.functions.iter().map(|op| op.name.clone()).collect(),
     }
 }
 

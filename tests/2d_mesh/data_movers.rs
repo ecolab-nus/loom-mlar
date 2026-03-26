@@ -4,11 +4,11 @@ use crate::memory::{dram, l1};
 
 /// Data mover that models bi-directional transfers between DRAM and per-core L1.
 pub fn dram_l1_mover() -> DataMover {
-    let functionality = Module::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
         .expect("tests/2d_mesh/processors_mlir/dram_to_l1.mlir should parse");
 
     let perf_models: Vec<FuncPerfModel> = functionality
-        .ops
+        .functions
         .iter()
         .map(|op| {
             let throughput = if op.name.contains("bcst") {
