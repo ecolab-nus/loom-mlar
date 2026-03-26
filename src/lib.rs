@@ -1,4 +1,5 @@
 pub mod arch;
+pub mod arch_query;
 pub mod evaluator;
 pub mod math;
 pub mod mlir;
@@ -41,4 +42,8 @@ pub use visualization::viewer_json::{
 };
 
 // Re-export evaluator utilities
+pub use arch_query::{
+    ArchitectureQuery, ArchitectureQueryResult, generate_arch_query_binary, query_architecture,
+    run_arch_query, run_arch_query_from_json,
+};
 pub use evaluator::{generate_evaluator_binary, run_evaluator, run_evaluator_from_json};

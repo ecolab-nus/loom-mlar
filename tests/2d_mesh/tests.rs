@@ -1132,3 +1132,52 @@ fn test_generate_system_evaluator_binary() {
     ]);
     assert_eq!(at_32x64.eval_const(), Some(21));
 }
+
+/// Generate a standalone architecture-query binary for the full system and
+/// verify the `mlir` query returns the same MLIR as in-process export.
+#[test]
+fn test_generate_system_arch_query_binary_mlir() {
+    let system = scaled_mesh_torus();
+
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let binary = generate_arch_query_binary(&system, "query_system", &output_dir)
+        .expect("system query binary generation should succeed");
+
+    assert!(
+        binary.exists(),
+        "generated binary should exist at {binary:?}"
+    );
+
+    let query_json =
+        serde_json::to_string(&ArchitectureQuery::Mlir).expect("query should serialize");
+
+    let output = Command::new(&binary)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(query_json.as_bytes())
+                .unwrap();
+            child.wait_with_output()
+        })
+        .expect("binary should execute");
+
+    assert!(
+        output.status.success(),
+        "binary exited with error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let mlir = String::from_utf8(output.stdout).expect("binary output should be valid UTF-8");
+
+    let expected =
+        architecture_to_mlir(&system).expect("MLIR export should succeed for concrete dims");
+    assert_eq!(mlir, expected);
+    assert!(mlir.starts_with("module @system {\n"));
+}

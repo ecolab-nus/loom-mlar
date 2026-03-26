@@ -209,6 +209,17 @@ Evaluator protocol:
 - stdin: `Schedule` JSON
 - stdout: evaluated `Schedule` JSON with filled `scenarios`
 
+## Architecture Query Binary Generation
+
+`arch_query.rs` supports three flows:
+1. `mlar_arch_query!(build_arch())` macro
+2. `run_arch_query(&arch)` for in-process binaries
+3. `generate_arch_query_binary(&arch, name, output_dir)` for programmatic standalone binaries
+
+Architecture-query protocol:
+- stdin: `ArchitectureQuery` JSON (currently supports `{"query":"mlir"}`)
+- stdout: raw query output (`mlir` writes plain MLIR text)
+
 ## Build and Test
 
 ```bash
@@ -241,6 +252,7 @@ cargo test -- --nocapture
 | `ArchitectureHierarchyJson` exports | `src/visualization/hierarchy_json.rs` |
 | `ArchitectureViewerJson` exports | `src/visualization/viewer_json.rs` |
 | `run_evaluator`, `generate_evaluator_binary` | `src/evaluator.rs` |
+| `run_arch_query`, `generate_arch_query_binary`, `ArchitectureQuery` | `src/arch_query.rs` |
 
 ## License
 
