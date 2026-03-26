@@ -8,10 +8,11 @@ module @system {
   %6 = adl.spatial_dim "x", 8
   %7 = adl.spatial_dim "y", 8
   %8 = adl.arch.scale "mesh", (%6, %7) of %5
-  %9 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
-  %10 = adl.spatial_dim "dram_channel", 8
-  %11 = adl.memory.array "DRAM", (%10) of %9
-  %12 = adl.arch.compose "system", [%8, %11]
+  %9 = adl.dmover "dram_to_l1_mover", @data_movers
+  %10 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
+  %11 = adl.spatial_dim "dram_channel", 8
+  %12 = adl.memory.array "DRAM", (%11) of %10
+  %13 = adl.arch.compose "system", [%8, %9, %12]
 
   // Matrix lane compute semantics — fp16 matrix multiplication.
   //
@@ -417,5 +418,40 @@ module @system {
     } -> tensor<?xf16>
     return %result : tensor<?xf16>
   }
+  }
+
+  // Data-mover semantics for DRAM -> L1 transfers.
+  //
+  // Interface convention:
+  // - memref args are the real transfer endpoints (source and destination)
+  // - symbols are bound directly to input/output memrefs via `loom.bind_shape`
+  // - `loom.copy` specifies the transfer with memory regions, interconnect, and broadcast
+
+  module @data_movers {
+
+  func.func @dram_to_l1_f16(
+      %dram_src: memref<?x?xf16>,
+      %l1_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
+  func.func @dram_to_l1_bcst_f16(
+      %dram_src: memref<?x?xf16>,
+      %l1_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
   }
 }

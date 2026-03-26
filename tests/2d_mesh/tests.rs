@@ -942,6 +942,7 @@ fn test_export_2d_mesh_torus_mlir() {
     // Processors (with module references)
     assert!(mlir.contains("adl.processor \"matrix_lane\", @matrix_lane"));
     assert!(mlir.contains("adl.processor \"vector_lane\", @vector_lane"));
+    assert!(mlir.contains("adl.dmover \"dram_to_l1_mover\", @data_movers"));
 
     // Composition and scaling
     assert!(mlir.contains("adl.arch.compose \"core\","));
@@ -970,6 +971,10 @@ fn test_export_2d_mesh_torus_mlir() {
         "vector_lane MLIR module should be appended"
     );
     assert!(
+        mlir.contains("module @data_movers {"),
+        "data_movers MLIR module should be appended"
+    );
+    assert!(
         mlir.contains("func.func @matmul_f16"),
         "matmul function should be present"
     );
@@ -977,10 +982,13 @@ fn test_export_2d_mesh_torus_mlir() {
         mlir.contains("func.func @vec_add_f16"),
         "vec_add function should be present"
     );
+    assert!(
+        mlir.contains("func.func @dram_to_l1_f16"),
+        "dram_to_l1 function should be present"
+    );
 
     // Write to file for inspection
-    let out_path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.mlir");
+    let out_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.mlir");
     fs::write(out_path, &mlir).expect("Failed to write MLIR file");
 }
 

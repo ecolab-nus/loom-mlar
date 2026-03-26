@@ -3,6 +3,7 @@ use std::fmt::Write;
 
 use super::architecture::Architecture;
 use super::architecture_graph::ArchNodeComponent;
+use super::data_mover::DataMover;
 use super::memory::{MemoryBank, MemoryRegion};
 use super::processor::Processor;
 use super::size_dim::Dimension;
@@ -14,7 +15,8 @@ struct MlirEmitter {
     output: String,
     /// Dimension name → SSA value (avoids emitting the same dim twice).
     dim_map: HashMap<String, String>,
-    /// MLIR source paths collected from processors (insertion-ordered, deduplicated).
+    /// MLIR source paths collected from functionality modules
+    /// (insertion-ordered, deduplicated).
     mlir_sources: Vec<String>,
 }
 
@@ -133,6 +135,38 @@ impl MlirEmitter {
         ssa
     }
 
+    /// Emit an `adl.dmover` op and record its MLIR source (if any).
+    fn emit_data_mover(&mut self, mover: &DataMover) -> String {
+        let ssa = self.next_ssa();
+        let name = mover.name.as_deref().unwrap_or("unnamed");
+
+        let module_ref = mover
+            .functionality
+            .source
+            .as_ref()
+            .and_then(|s| s.mlir_module_name.as_deref())
+            .or(mover.functionality.name.as_deref());
+
+        if let Some(mod_name) = module_ref {
+            writeln!(
+                self.output,
+                "{} = adl.dmover \"{}\", @{}",
+                ssa, name, mod_name
+            )
+            .unwrap();
+        } else {
+            writeln!(self.output, "{} = adl.dmover \"{}\"", ssa, name).unwrap();
+        }
+
+        if let Some(ref source) = mover.functionality.source {
+            if !self.mlir_sources.contains(&source.path) {
+                self.mlir_sources.push(source.path.clone());
+            }
+        }
+
+        ssa
+    }
+
     /// Recursively emit the full architecture tree, returning the SSA value
     /// for the top-level result.
     fn emit_architecture(&mut self, arch: &Architecture) -> Option<String> {
@@ -152,7 +186,10 @@ impl MlirEmitter {
                                 component_ssas.push(ssa);
                             }
                         }
-                        // Routers and data movers are not part of the df dialect.
+                        ArchNodeComponent::DataMover(mover) => {
+                            component_ssas.push(self.emit_data_mover(mover));
+                        }
+                        // Routers are not part of the df dialect.
                         _ => {}
                     }
                 }
@@ -175,10 +212,7 @@ impl MlirEmitter {
                     .map(|d| self.emit_dim(d))
                     .collect::<Option<Vec<_>>>()?;
                 let ssa = self.next_ssa();
-                let arch_name = name
-                    .as_deref()
-                    .or_else(|| elem.name())
-                    .unwrap_or("unnamed");
+                let arch_name = name.as_deref().or_else(|| elem.name()).unwrap_or("unnamed");
                 let dim_list = dim_ssas.join(", ");
                 writeln!(
                     self.output,
