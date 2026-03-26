@@ -1,5 +1,7 @@
 use mlar_rust::*;
 
+use crate::memory::l1;
+
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
@@ -54,6 +56,7 @@ pub fn vector_lane() -> Architecture {
     };
 
     let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
+    let l1_region = l1();
 
     let perf_models: Vec<FuncPerfModel> = functionality
         .ops
@@ -61,8 +64,12 @@ pub fn vector_lane() -> Architecture {
         .map(|op| perf_for(op.name.as_str()))
         .collect();
 
-    let mut proc = Processor::from_module("vector_lane", functionality, perf_models)
-        .expect("vector_lane processor should link functionality and perf");
+    let mut proc = ComputeProcessor::builder()
+        .named("vector_lane")
+        .with_regions(vec![l1_region.clone()], vec![l1_region])
+        .from_module(functionality, perf_models)
+        .expect("vector_lane processor should link functionality and perf")
+        .into_processor();
 
     for fp in &mut proc.functions {
         fp.hardware_properties = lane_shape.clone();

@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::architecture_graph::{ArchGraph, ArchNodeComponent};
-use super::data_mover::DataMover;
 use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
-use super::processor::Processor;
+use super::processor::{DataMover, Processor};
 use super::size_dim::Dimension;
 use crate::schedule::Module;
 use std::ops::{Deref, DerefMut};

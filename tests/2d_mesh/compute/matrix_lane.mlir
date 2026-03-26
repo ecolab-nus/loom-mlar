@@ -3,46 +3,53 @@
 // C[M, N] = A[M, K] * B[K, N]
 //
 // @M, @N, @K are symbolic variables retrieved via `loom.sym`, then `loom.bind_shape`
-// ties each tensor dimension to those symbols.
+// ties each memref dimension to those symbols.
+// Memrefs are bound to @L1 via `loom.bind_mem`.
 //
-// This is the canonical matmul expressed in the linalg-on-tensors dialect.
+// This is the canonical matmul expressed in linalg-on-memref style.
 
 module @matrix_lane {
 
 func.func @matmul_f16(
-    %A: tensor<?x?xf16>,
-    %B: tensor<?x?xf16>,
-    %C: tensor<?x?xf16>
-) -> tensor<?x?xf16> {
+    %A: memref<?x?xf16>,
+    %B: memref<?x?xf16>,
+    %C: memref<?x?xf16>
+) {
   %M = loom.sym @M : index
   %N = loom.sym @N : index
   %K = loom.sym @K : index
-  loom.bind_shape %A, [%M, %K] : tensor<?x?xf16>
-  loom.bind_shape %B, [%K, %N] : tensor<?x?xf16>
-  loom.bind_shape %C, [%M, %N] : tensor<?x?xf16>
-  %result = linalg.matmul
-      ins(%A, %B : tensor<?x?xf16>, tensor<?x?xf16>)
-      outs(%C : tensor<?x?xf16>) -> tensor<?x?xf16>
-  return %result : tensor<?x?xf16>
+  loom.bind_shape %A, [%M, %K] : memref<?x?xf16>
+  loom.bind_mem %A, @L1
+  loom.bind_shape %B, [%K, %N] : memref<?x?xf16>
+  loom.bind_mem %B, @L1
+  loom.bind_shape %C, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %C, @L1
+  linalg.matmul
+      ins(%A, %B : memref<?x?xf16>, memref<?x?xf16>)
+      outs(%C : memref<?x?xf16>)
+  return
 }
 
 // C[B, M, N] = A[B, M, K] * B[B, K, N]  (batched matmul)
 func.func @batch_matmul_f16(
-    %A: tensor<?x?x?xf16>,
-    %B: tensor<?x?x?xf16>,
-    %C: tensor<?x?x?xf16>
-) -> tensor<?x?x?xf16> {
+    %A: memref<?x?x?xf16>,
+    %B: memref<?x?x?xf16>,
+    %C: memref<?x?x?xf16>
+) {
   %Batch = loom.sym @Batch : index
   %M = loom.sym @M : index
   %N = loom.sym @N : index
   %K = loom.sym @K : index
-  loom.bind_shape %A, [%Batch, %M, %K] : tensor<?x?x?xf16>
-  loom.bind_shape %B, [%Batch, %K, %N] : tensor<?x?x?xf16>
-  loom.bind_shape %C, [%Batch, %M, %N] : tensor<?x?x?xf16>
-  %result = linalg.batch_matmul
-      ins(%A, %B : tensor<?x?x?xf16>, tensor<?x?x?xf16>)
-      outs(%C : tensor<?x?x?xf16>) -> tensor<?x?x?xf16>
-  return %result : tensor<?x?x?xf16>
+  loom.bind_shape %A, [%Batch, %M, %K] : memref<?x?x?xf16>
+  loom.bind_mem %A, @L1
+  loom.bind_shape %B, [%Batch, %K, %N] : memref<?x?x?xf16>
+  loom.bind_mem %B, @L1
+  loom.bind_shape %C, [%Batch, %M, %N] : memref<?x?x?xf16>
+  loom.bind_mem %C, @L1
+  linalg.batch_matmul
+      ins(%A, %B : memref<?x?x?xf16>, memref<?x?x?xf16>)
+      outs(%C : memref<?x?x?xf16>)
+  return
 }
 
 }

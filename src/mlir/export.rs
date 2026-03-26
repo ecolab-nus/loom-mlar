@@ -3,9 +3,8 @@ use std::fmt::Write;
 
 use crate::arch::architecture::Architecture;
 use crate::arch::architecture_graph::ArchNodeComponent;
-use crate::arch::data_mover::DataMover;
 use crate::arch::memory::{MemoryBank, MemoryRegion};
-use crate::arch::processor::Processor;
+use crate::arch::processor::{DataMover, Processor};
 use crate::arch::size_dim::Dimension;
 
 /// SSA-based emitter that serialises an [`Architecture`] tree into the
@@ -105,8 +104,19 @@ impl MlirEmitter {
 
     /// Emit a `adl.processor` op and record its MLIR source (if any).
     fn emit_processor(&mut self, proc: &Processor) -> String {
+        self.emit_processor_like("compute", proc)
+    }
+
+    /// Emit a `adl.processor.dmover` op and record its MLIR source (if any).
+    fn emit_data_mover(&mut self, mover: &DataMover) -> String {
+        self.emit_processor_like("dmover", mover)
+    }
+
+    fn emit_processor_like(&mut self, kind: &str, proc: &Processor) -> String {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
+        let src_regions = format_region_list(&proc.src_regions);
+        let dst_regions = format_region_list(&proc.dst_regions);
 
         let module_ref = proc
             .functionality
@@ -118,47 +128,20 @@ impl MlirEmitter {
         if let Some(mod_name) = module_ref {
             writeln!(
                 self.output,
-                "{} = adl.processor \"{}\", @{}",
-                ssa, name, mod_name
+                "{} = adl.processor.{} \"{}\", @{}, {}, {}",
+                ssa, kind, name, mod_name, src_regions, dst_regions
             )
             .unwrap();
         } else {
-            writeln!(self.output, "{} = adl.processor \"{}\"", ssa, name).unwrap();
-        }
-
-        if let Some(ref source) = proc.functionality.source {
-            if !self.mlir_sources.contains(&source.path) {
-                self.mlir_sources.push(source.path.clone());
-            }
-        }
-
-        ssa
-    }
-
-    /// Emit an `adl.dmover` op and record its MLIR source (if any).
-    fn emit_data_mover(&mut self, mover: &DataMover) -> String {
-        let ssa = self.next_ssa();
-        let name = mover.name.as_deref().unwrap_or("unnamed");
-
-        let module_ref = mover
-            .functionality
-            .source
-            .as_ref()
-            .and_then(|s| s.mlir_module_name.as_deref())
-            .or(mover.functionality.name.as_deref());
-
-        if let Some(mod_name) = module_ref {
             writeln!(
                 self.output,
-                "{} = adl.dmover \"{}\", @{}",
-                ssa, name, mod_name
+                "{} = adl.processor.{} \"{}\", {}, {}",
+                ssa, kind, name, src_regions, dst_regions
             )
             .unwrap();
-        } else {
-            writeln!(self.output, "{} = adl.dmover \"{}\"", ssa, name).unwrap();
         }
 
-        if let Some(ref source) = mover.functionality.source {
+        if let Some(source) = proc.functionality.source.as_ref() {
             if !self.mlir_sources.contains(&source.path) {
                 self.mlir_sources.push(source.path.clone());
             }
@@ -226,6 +209,14 @@ impl MlirEmitter {
     }
 }
 
+fn format_region_list(regions: &[MemoryRegion]) -> String {
+    let names: Vec<String> = regions
+        .iter()
+        .map(|region| format!("@{}", region.name().unwrap_or("unnamed")))
+        .collect();
+    format!("[{}]", names.join(", "))
+}
+
 /// Indent every line of `text` by `indent` spaces.
 fn indent(text: &str, indent: usize) -> String {
     let prefix = " ".repeat(indent);
@@ -280,7 +271,7 @@ mod tests {
     fn single_processor_emits_df_processor() {
         let arch = Processor::new("vec_lane").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.processor \"vec_lane\""));
+        assert!(mlir.contains("adl.processor.compute \"vec_lane\", [], []"));
     }
 
     #[test]
@@ -302,7 +293,7 @@ mod tests {
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
-        assert!(mlir.contains("adl.processor \"lane\""));
+        assert!(mlir.contains("adl.processor.compute \"lane\", [], []"));
         assert!(mlir.contains("adl.arch.compose \"core\""));
     }
 

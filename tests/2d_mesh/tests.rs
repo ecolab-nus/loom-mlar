@@ -113,33 +113,42 @@ fn test_2d_mesh_torus_perf_models() {
         .mlir_details
         .as_ref()
         .expect("matmul_* should include MLIR details");
+    assert!(matmul_details.tensor_args.is_empty());
+    assert_eq!(matmul_details.memref_args, vec!["A", "B", "C"]);
     assert_eq!(
         matmul_details
-            .tensor_symbol_bindings
+            .memref_symbol_bindings
             .iter()
-            .filter(|binding| binding.tensor != "C")
+            .filter(|binding| binding.memref != "C")
             .cloned()
             .collect::<Vec<_>>(),
         vec![
-            MlirTensorSymbolBinding {
-                tensor: "A".into(),
+            MlirMemrefSymbolBinding {
+                memref: "A".into(),
                 symbols: vec![Sym::new("M"), Sym::new("K")],
             },
-            MlirTensorSymbolBinding {
-                tensor: "B".into(),
+            MlirMemrefSymbolBinding {
+                memref: "B".into(),
                 symbols: vec![Sym::new("K"), Sym::new("N")],
             },
         ]
     );
-    assert_eq!(matmul_details.output_tensors, vec!["C".to_string()]);
+    assert!(matmul_details.output_tensors.is_empty());
     assert_eq!(
         matmul_details
-            .tensor_symbol_bindings
+            .memref_symbol_bindings
             .iter()
-            .find(|binding| binding.tensor == "C")
+            .find(|binding| binding.memref == "C")
             .expect("C binding should exist")
             .symbols,
         vec![Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(matmul_details.mem_region_bindings.len(), 3);
+    assert!(
+        matmul_details
+            .mem_region_bindings
+            .iter()
+            .all(|b| b.region == "L1")
     );
 
     // === Verify vector-lane functionality extracted from MLIR ===
@@ -202,10 +211,10 @@ fn test_2d_mesh_torus_perf_models() {
         _ => panic!("expected Unit"),
     }
 
-    // === Verify DRAM->L1 data mover interface and perf bindings ===
+    // === Verify bidirectional DRAM<->L1 data mover interface and perf bindings ===
     let mover = mesh
-        .get_data_mover("dram_to_l1_mover")
-        .expect("dram_to_l1_mover should exist");
+        .get_data_mover("dram_l1_mover")
+        .expect("dram_l1_mover should exist");
     assert!(mover.validate().is_ok(), "data mover should validate");
     assert_eq!(
         mover.functionality.source.as_ref().map(|s| s.path.as_str()),
@@ -214,6 +223,13 @@ fn test_2d_mesh_torus_perf_models() {
     let move_func = mover
         .get_function("dram_to_l1_f16")
         .expect("dram_to_l1_f16 binding");
+    let writeback_func = mover
+        .get_function("l1_to_dram_f16")
+        .expect("l1_to_dram_f16 binding");
+    assert!(
+        writeback_func.func.mlir_details.is_some(),
+        "l1_to_dram_f16 should include MLIR details"
+    );
     let move_details = move_func
         .func
         .mlir_details
@@ -234,6 +250,14 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(
         move_details.memref_symbol_bindings[1].symbols,
         vec![Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        move_details
+            .mem_region_bindings
+            .iter()
+            .map(|b| (b.memref.as_str(), b.region.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("dram_src", "DRAM"), ("l1_dst", "L1")]
     );
 }
 
@@ -266,8 +290,8 @@ fn test_2d_mesh_torus() {
         system_graph
             .nodes
             .iter()
-            .any(|n| n.name() == Some("dram_to_l1_mover")),
-        "top-level graph should include dram_to_l1_mover"
+            .any(|n| n.name() == Some("dram_l1_mover")),
+        "top-level graph should include dram_l1_mover"
     );
     assert_eq!(system_graph.edges.len(), 3);
 
@@ -940,9 +964,11 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.contains("adl.memory.array \"DRAM\""));
 
     // Processors (with module references)
-    assert!(mlir.contains("adl.processor \"matrix_lane\", @matrix_lane"));
-    assert!(mlir.contains("adl.processor \"vector_lane\", @vector_lane"));
-    assert!(mlir.contains("adl.dmover \"dram_to_l1_mover\", @data_movers"));
+    assert!(mlir.contains("adl.processor.compute \"matrix_lane\", @matrix_lane, [@L1], [@L1]"));
+    assert!(mlir.contains("adl.processor.compute \"vector_lane\", @vector_lane, [@L1], [@L1]"));
+    assert!(mlir.contains(
+        "adl.processor.dmover \"dram_l1_mover\", @data_movers, [@DRAM, @L1], [@L1, @DRAM]"
+    ));
 
     // Composition and scaling
     assert!(mlir.contains("adl.arch.compose \"core\","));
@@ -998,7 +1024,7 @@ fn test_export_2d_mesh_torus_mlir() {
 ///
 /// This mirrors `test_generate_core_evaluator_binary` but operates at the
 /// system level: the architecture includes the mesh, DRAM, routers, and the
-/// `dram_to_l1_mover` data mover.
+/// `dram_l1_mover` data mover.
 #[test]
 fn test_generate_system_evaluator_binary() {
     let system = scaled_mesh_torus();

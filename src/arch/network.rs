@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::data_mover::DataMover;
 use super::memory::MemoryRegion;
+use super::processor::DataMover;
 use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;

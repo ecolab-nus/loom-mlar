@@ -131,13 +131,14 @@
       },
       {
         "kind": "unit",
-        "name": "dram_to_l1_mover",
+        "name": "dram_l1_mover",
         "total_instances": 1,
         "details": {
           "type": "processor",
           "functions": [
             "dram_to_l1_f16",
-            "dram_to_l1_bcst_f16"
+            "dram_to_l1_bcst_f16",
+            "l1_to_dram_f16"
           ]
         }
       },

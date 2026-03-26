@@ -3,6 +3,7 @@ use std::fs;
 
 use nom::bytes::complete::{tag, take_while1};
 use nom::character::complete::{char, multispace0, multispace1, u64 as nom_u64};
+use nom::combinator::opt;
 use nom::multi::separated_list0;
 use nom::sequence::delimited;
 use nom::{IResult, Parser};
@@ -86,6 +87,9 @@ pub struct MlirFuncDetails {
     /// Parsed `loom.copy` operations.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copy_ops: Vec<MlirCopyOp>,
+    /// Parsed `linalg.*` operations (e.g. `linalg.matmul`, `linalg.generic`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linalg_ops: Vec<String>,
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
@@ -253,7 +257,8 @@ impl MlirFunc {
         let (mut source_memrefs, mut target_memrefs) =
             collect_memref_copy_pairs(func_mlir, &memref_args)?;
         let copy_ops = collect_loom_copies(func_mlir)?;
-        let mut mem_region_bindings = collect_bind_mems(func_mlir)?;
+        let linalg_ops = collect_linalg_ops(func_mlir);
+        let mem_region_bindings = collect_bind_mems(func_mlir)?;
 
         for cop in &copy_ops {
             if memref_args.iter().any(|a| a == &cop.src)
@@ -266,32 +271,8 @@ impl MlirFunc {
             {
                 target_memrefs.push(cop.dst.clone());
             }
-            if mem_region_bindings
-                .iter()
-                .all(|b| b.memref != cop.src || b.region != cop.src_region)
-            {
-                mem_region_bindings.push(MlirMemRegionBinding {
-                    memref: cop.src.clone(),
-                    region: cop.src_region.clone(),
-                });
-            }
-            if mem_region_bindings
-                .iter()
-                .all(|b| b.memref != cop.dst || b.region != cop.dst_region)
-            {
-                mem_region_bindings.push(MlirMemRegionBinding {
-                    memref: cop.dst.clone(),
-                    region: cop.dst_region.clone(),
-                });
-            }
         }
 
-        if source_memrefs.is_empty() && !memref_args.is_empty() {
-            source_memrefs.push(memref_args[0].clone());
-        }
-        if target_memrefs.is_empty() && memref_args.len() >= 2 {
-            target_memrefs.push(memref_args[1].clone());
-        }
         let output_tensors = collect_output_tensors(func_mlir, &tensor_args)?;
 
         Ok(Self {
@@ -307,6 +288,7 @@ impl MlirFunc {
                 tensor_symbol_bindings,
                 mem_region_bindings,
                 copy_ops,
+                linalg_ops,
             }),
             sym_map: None,
         })
@@ -422,15 +404,24 @@ fn bind_shape_decl(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
     Ok((input, (operand, syms)))
 }
 
-/// Parse `loom.bind_mem @Region %memref`.
+/// Parse `loom.bind_mem %memref, @Region` (preferred) or
+/// `loom.bind_mem @Region %memref` (legacy).
 /// Returns `(region_name, memref_name)`.
 fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str)> {
     let (input, _) = tag("loom.bind_mem").parse(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, region) = symbol_ref(input)?;
-    let (input, _) = multispace1(input)?;
-    let (input, memref) = ssa_ref(input)?;
-    Ok((input, (region, memref)))
+    if let Ok((input, memref)) = ssa_ref(input) {
+        let (input, _) = opt(delimited(multispace0, char(','), multispace0)).parse(input)?;
+        let (input, _) = multispace0(input)?;
+        let (input, region) = symbol_ref(input)?;
+        Ok((input, (region, memref)))
+    } else {
+        let (input, region) = symbol_ref(input)?;
+        let (input, _) = opt(delimited(multispace0, char(','), multispace0)).parse(input)?;
+        let (input, _) = multispace0(input)?;
+        let (input, memref) = ssa_ref(input)?;
+        Ok((input, (region, memref)))
+    }
 }
 
 /// Parse `%memref @Region` pair.
@@ -600,6 +591,40 @@ fn collect_loom_copies(func_mlir: &str) -> Result<Vec<MlirCopyOp>, String> {
         ops.push(cop);
     }
     Ok(ops)
+}
+
+fn collect_linalg_ops(func_mlir: &str) -> Vec<String> {
+    let mut ops = Vec::new();
+    for line in func_mlir.lines() {
+        let without_comment = line
+            .split_once("//")
+            .map(|(code, _)| code)
+            .unwrap_or(line)
+            .trim();
+        if without_comment.is_empty() {
+            continue;
+        }
+
+        let mut cursor = 0usize;
+        while let Some(found) = without_comment[cursor..].find("linalg.") {
+            let start = cursor + found;
+            let op_start = start + "linalg.".len();
+            let op_end = op_start
+                + without_comment[op_start..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .map(char::len_utf8)
+                    .sum::<usize>();
+            if op_end > op_start {
+                let op = format!("linalg.{}", &without_comment[op_start..op_end]);
+                if ops.iter().all(|existing| existing != &op) {
+                    ops.push(op);
+                }
+            }
+            cursor = op_start;
+        }
+    }
+    ops
 }
 
 fn collect_memref_copy_pairs(
@@ -775,27 +800,29 @@ mod tests {
             .expect("from_mlir should populate mlir_details");
 
         assert_eq!(func.symbols, vec!["M".into(), "N".into(), "K".into()]);
-        assert_eq!(details.tensor_args, vec!["A", "B", "C"]);
-        assert!(details.memref_args.is_empty());
-        assert_eq!(details.output_tensors, vec!["C"]);
+        assert!(details.tensor_args.is_empty());
+        assert_eq!(details.memref_args, vec!["A", "B", "C"]);
+        assert!(details.output_tensors.is_empty());
         assert!(details.source_memrefs.is_empty());
         assert!(details.target_memrefs.is_empty());
-        assert!(details.memref_symbol_bindings.is_empty());
-        assert_eq!(details.tensor_symbol_bindings.len(), 3);
+        assert_eq!(details.mem_region_bindings.len(), 3);
+        assert!(!details.linalg_ops.is_empty());
+        assert!(details.tensor_symbol_bindings.is_empty());
+        assert_eq!(details.memref_symbol_bindings.len(), 3);
 
-        assert_eq!(details.tensor_symbol_bindings[0].tensor, "A");
+        assert_eq!(details.memref_symbol_bindings[0].memref, "A");
         assert_eq!(
-            details.tensor_symbol_bindings[0].symbols,
+            details.memref_symbol_bindings[0].symbols,
             vec!["M".into(), "K".into()]
         );
-        assert_eq!(details.tensor_symbol_bindings[1].tensor, "B");
+        assert_eq!(details.memref_symbol_bindings[1].memref, "B");
         assert_eq!(
-            details.tensor_symbol_bindings[1].symbols,
+            details.memref_symbol_bindings[1].symbols,
             vec!["K".into(), "N".into()]
         );
-        assert_eq!(details.tensor_symbol_bindings[2].tensor, "C");
+        assert_eq!(details.memref_symbol_bindings[2].memref, "C");
         assert_eq!(
-            details.tensor_symbol_bindings[2].symbols,
+            details.memref_symbol_bindings[2].symbols,
             vec!["M".into(), "N".into()]
         );
     }
@@ -830,6 +857,7 @@ func.func @vec_add_f32(
         assert!(details.source_memrefs.is_empty());
         assert!(details.target_memrefs.is_empty());
         assert!(details.memref_symbol_bindings.is_empty());
+        assert!(details.linalg_ops.is_empty());
         assert_eq!(details.tensor_symbol_bindings.len(), 3);
         assert_eq!(details.tensor_symbol_bindings[0].tensor, "a");
         assert_eq!(details.tensor_symbol_bindings[0].symbols, vec!["L".into()]);
@@ -862,6 +890,7 @@ func.func @dram_to_l1(
         assert_eq!(details.target_memrefs, vec!["dst"]);
         assert!(details.output_tensors.is_empty());
         assert!(details.tensor_symbol_bindings.is_empty());
+        assert!(details.linalg_ops.is_empty());
         assert_eq!(details.memref_symbol_bindings.len(), 2);
         assert_eq!(details.memref_symbol_bindings[0].memref, "src");
         assert_eq!(details.memref_symbol_bindings[0].symbols, vec!["L".into()]);
@@ -880,8 +909,8 @@ func.func @dram_to_l1(
   %N = loom.sym @N : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-  loom.bind_mem @DRAM %dram_src
-  loom.bind_mem @L1 %l1_dst
+  loom.bind_mem %dram_src, @DRAM
+  loom.bind_mem %l1_dst, @L1
   memref.copy %dram_src, %l1_dst : memref<?x?xf16> to memref<?x?xf16>
   return
 }
@@ -894,6 +923,7 @@ func.func @dram_to_l1(
             .expect("from_mlir should populate mlir_details");
         assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
         assert_eq!(details.mem_region_bindings.len(), 2);
+        assert!(details.linalg_ops.is_empty());
         assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
         assert_eq!(details.mem_region_bindings[0].region, "DRAM");
         assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
@@ -911,6 +941,8 @@ func.func @dram_to_l1_bcst(
   %N = loom.sym @N : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %dram_src, @DRAM
+  loom.bind_mem %l1_dst, @L1
   loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
@@ -925,6 +957,7 @@ func.func @dram_to_l1_bcst(
         assert_eq!(details.memref_args, vec!["dram_src", "l1_dst"]);
         assert_eq!(details.source_memrefs, vec!["dram_src"]);
         assert_eq!(details.target_memrefs, vec!["l1_dst"]);
+        assert!(details.linalg_ops.is_empty());
 
         assert_eq!(details.copy_ops.len(), 1);
         let cop = &details.copy_ops[0];

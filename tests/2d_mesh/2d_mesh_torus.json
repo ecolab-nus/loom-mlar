@@ -50,23 +50,24 @@
       }
     },
     {
-      "id": "dm:dram_to_l1_mover",
+      "id": "dm:dram_l1_mover",
       "kind": "processor",
-      "name": "dram_to_l1_mover",
-      "label": "dram_to_l1_mover",
+      "name": "dram_l1_mover",
+      "label": "dram_l1_mover",
       "dimensions": [],
       "details": {
         "type": "processor",
         "element": {
           "kind": "unit",
-          "name": "dram_to_l1_mover",
+          "name": "dram_l1_mover",
           "functionality": {
             "name": "data_movers",
             "source_path": "tests/2d_mesh/data_movers/dram_to_l1.mlir",
             "source_mlir_module_name": "data_movers",
             "ops": [
               "dram_to_l1_f16",
-              "dram_to_l1_bcst_f16"
+              "dram_to_l1_bcst_f16",
+              "l1_to_dram_f16"
             ]
           }
         },
@@ -262,24 +263,24 @@
     {
       "id": "iedge:mesh_dram_router:1",
       "kind": "intra_graph",
-      "name": "mesh_dram_router↔dram_to_l1_mover",
+      "name": "mesh_dram_router↔dram_l1_mover",
       "source": "router:mesh_dram_router",
-      "target": "dm:dram_to_l1_mover",
+      "target": "dm:dram_l1_mover",
       "source_name": "mesh_dram_router",
-      "target_name": "dram_to_l1_mover",
-      "label": "mesh_dram_router ↔ dram_to_l1_mover (side 1)",
+      "target_name": "dram_l1_mover",
+      "label": "mesh_dram_router ↔ dram_l1_mover (side 1)",
       "direction": "bidirectional",
       "side": 1
     },
     {
-      "id": "iedge:dram_to_l1_mover:2",
+      "id": "iedge:dram_l1_mover:2",
       "kind": "intra_graph",
-      "name": "dram_to_l1_mover↔DRAM",
-      "source": "dm:dram_to_l1_mover",
+      "name": "dram_l1_mover↔DRAM",
+      "source": "dm:dram_l1_mover",
       "target": "mem:dram",
-      "source_name": "dram_to_l1_mover",
+      "source_name": "dram_l1_mover",
       "target_name": "DRAM",
-      "label": "dram_to_l1_mover ↔ DRAM (side 2)",
+      "label": "dram_l1_mover ↔ DRAM (side 2)",
       "direction": "bidirectional",
       "side": 2
     }

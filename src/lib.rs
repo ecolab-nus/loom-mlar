@@ -8,9 +8,10 @@ pub mod visualization;
 // Re-export commonly used architecture types
 pub use arch::{
     ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
-    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, DataMover, Dimension,
-    FuncPerfModel, FunctionDataMover, FunctionProcessor, HardwareProperty, MemoryBank,
-    MemoryRegion, MeshNetwork, MeshNetworkInterface, PerfScenario, Processor, Router, RouterSide,
+    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, ComputeProcessor,
+    ComputeProcessorBuilder, DataMover, DataMoverBuilder, Dimension, FuncPerfModel,
+    FunctionDataMover, FunctionProcessor, HardwareProperty, MemoryBank, MemoryRegion, MeshNetwork,
+    MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Router, RouterSide,
     ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr, architecture_to_mlir,
 };
 
@@ -35,8 +36,8 @@ pub use visualization::hierarchy_json::{
     architecture_to_hierarchy_json_string_pretty, architecture_to_hierarchy_json_value,
 };
 pub use visualization::viewer_json::{
-    ArchitectureViewerJson, architecture_to_viewer_json,
-    architecture_to_viewer_json_string_pretty, architecture_to_viewer_json_value,
+    ArchitectureViewerJson, architecture_to_viewer_json, architecture_to_viewer_json_string_pretty,
+    architecture_to_viewer_json_value,
 };
 
 // Re-export evaluator utilities

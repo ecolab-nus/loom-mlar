@@ -1,7 +1,7 @@
 use mlar_rust::*;
 
 use crate::core_arch::single_core;
-use crate::data_movers::dram_to_l1_mover;
+use crate::data_movers::dram_l1_mover;
 use crate::dimensions::{dim_x, dim_y};
 use crate::memory::dram;
 
@@ -16,7 +16,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let dim_y = dim_y();
     let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
     let dram = dram();
-    let dram_to_l1 = dram_to_l1_mover();
+    let dram_l1 = dram_l1_mover();
 
     let scaled_l1 = mesh
         .get_memory_region("L1")
@@ -31,7 +31,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("invalid affine map")
         .bind([&io_side, &dim_x, &dim_y])
         .expect("failed to bind");
-    let io = MeshNetworkInterface::new(io_map, Expr::Const(64)).with_data_mover(dram_to_l1.clone());
+    let io = MeshNetworkInterface::new(io_map, Expr::Const(64)).with_data_mover(dram_l1.clone());
 
     // Horizontal torus: y-neighbor with wraparound
     let torus_y_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
@@ -56,7 +56,7 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     let mut system: Architecture = ArchGraph::builder("system")
         .processor(&mesh)
-        .data_mover(&dram_to_l1)
+        .data_mover(&dram_l1)
         .mem(&dram)
         .build()
         .into();
@@ -68,8 +68,8 @@ pub fn scaled_mesh_torus() -> Architecture {
     let router_id = graph.add_router(&Router::new("mesh_dram_router", 3));
     let mesh_id = graph.processor_ref("mesh").expect("mesh node");
     let mover_id = graph
-        .data_mover_ref("dram_to_l1_mover")
-        .expect("dram_to_l1_mover node");
+        .data_mover_ref("dram_l1_mover")
+        .expect("dram_l1_mover node");
     let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
 
     let router_node = graph.get_node(&router_id).expect("router node").clone();
