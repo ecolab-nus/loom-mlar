@@ -973,9 +973,9 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.contains("adl.processor.dmover \"dram_l1_mover\", [(%2, %5), (%5, %2)]"));
 
     // Composition and scaling
-    assert!(mlir.contains("adl.arch.compose \"core\","));
+    assert!(mlir.contains("adl.arch.compose \"core\", arch[%6, %7], mem[%5]"));
     assert!(mlir.contains("adl.arch.scale \"mesh\","));
-    assert!(mlir.contains("adl.arch.compose \"system\","));
+    assert!(mlir.contains("adl.arch.compose \"system\", arch[%11, %12], mem[%2]"));
 
     // Each dimension emitted exactly once
     assert_eq!(

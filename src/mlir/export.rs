@@ -161,35 +161,36 @@ impl MlirEmitter {
         match arch {
             Architecture::Unit(proc) => self.emit_processor(proc),
             Architecture::Graph(graph) => {
-                let mut node_ssas: Vec<Option<String>> = vec![None; graph.nodes.len()];
+                let mut arch_components: Vec<String> = Vec::new();
+                let mut mem_components: Vec<String> = Vec::new();
 
                 // Emit memory first so processors can safely reference memory SSA values.
-                for (idx, node) in graph.nodes.iter().enumerate() {
+                for node in &graph.nodes {
                     if let ArchNodeComponent::MemoryRegion(region) = &node.component {
-                        node_ssas[idx] = Some(self.emit_memory(region)?);
+                        mem_components.push(self.emit_memory(region)?);
                     }
                 }
 
-                for (idx, node) in graph.nodes.iter().enumerate() {
+                for node in &graph.nodes {
                     match &node.component {
                         ArchNodeComponent::Architecture(sub_arch) => {
-                            node_ssas[idx] = Some(self.emit_architecture(sub_arch)?);
+                            arch_components.push(self.emit_architecture(sub_arch)?);
                         }
                         ArchNodeComponent::DataMover(mover) => {
-                            node_ssas[idx] = Some(self.emit_data_mover(mover)?);
+                            arch_components.push(self.emit_data_mover(mover)?);
                         }
                         ArchNodeComponent::MemoryRegion(_) => {}
                         // Routers are not part of the df dialect.
                         _ => {}
                     }
                 }
-                let component_ssas: Vec<String> = node_ssas.into_iter().flatten().collect();
                 let ssa = self.next_ssa();
-                let components = component_ssas.join(", ");
+                let arch = arch_components.join(", ");
+                let mem = mem_components.join(", ");
                 writeln!(
                     self.output,
-                    "{} = adl.arch.compose \"{}\", [{}]",
-                    ssa, graph.name, components
+                    "{} = adl.arch.compose \"{}\", arch[{}], mem[{}]",
+                    ssa, graph.name, arch, mem
                 )
                 .unwrap();
                 Some(ssa)
@@ -294,7 +295,8 @@ mod tests {
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
         assert!(mlir.contains("adl.processor.compute \"lane\", []"));
-        assert!(mlir.contains("adl.arch.compose \"core\""));
+        assert!(mlir.contains("adl.arch.compose \"core\", arch["));
+        assert!(mlir.contains("], mem["));
     }
 
     #[test]
