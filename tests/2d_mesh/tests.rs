@@ -968,11 +968,11 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.contains("adl.memory.array \"DRAM\""));
 
     // Processors (with module references)
-    assert!(mlir.contains("adl.processor.compute \"matrix_lane\", @matrix_lane, [@L1], [@L1]"));
-    assert!(mlir.contains("adl.processor.compute \"vector_lane\", @vector_lane, [@L1], [@L1]"));
-    assert!(mlir.contains(
-        "adl.processor.dmover \"dram_l1_mover\", @data_movers, [@DRAM, @L1], [@L1, @DRAM]"
-    ));
+    assert!(mlir.contains("adl.processor.compute \"matrix_lane\", @matrix_lane, [(%5, %5)]"));
+    assert!(mlir.contains("adl.processor.compute \"vector_lane\", @vector_lane, [(%5, %5)]"));
+    assert!(
+        mlir.contains("adl.processor.dmover \"dram_l1_mover\", @data_movers, [(%2, %5), (%5, %2)]")
+    );
 
     // Composition and scaling
     assert!(mlir.contains("adl.arch.compose \"core\","));

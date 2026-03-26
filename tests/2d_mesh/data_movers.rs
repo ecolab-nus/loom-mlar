@@ -43,7 +43,7 @@ pub fn dram_l1_mover() -> DataMover {
     let l1 = l1();
     DataMover::builder()
         .named("dram_l1_mover")
-        .with_regions(vec![dram.clone(), l1.clone()], vec![l1, dram])
+        .with_regions(vec![(dram.clone(), l1.clone()), (l1, dram)])
         .from_module(functionality, perf_models)
         .expect("dram_l1 data mover should link functionality and perf")
 }

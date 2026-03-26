@@ -82,7 +82,7 @@ pub fn vector_lane() -> Architecture {
 
     let mut proc = ComputeProcessor::builder()
         .named("vector_lane")
-        .with_regions(vec![l1_region.clone()], vec![l1_region])
+        .with_regions(vec![(l1_region.clone(), l1_region)])
         .from_module(functionality, perf_models)
         .expect("vector_lane processor should link functionality and perf")
         .into_processor();

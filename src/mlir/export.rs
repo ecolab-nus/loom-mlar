@@ -14,6 +14,8 @@ struct MlirEmitter {
     output: String,
     /// Dimension name → SSA value (avoids emitting the same dim twice).
     dim_map: HashMap<String, String>,
+    /// Memory-region name → SSA value.
+    memory_map: HashMap<String, String>,
     /// MLIR source paths collected from functionality modules
     /// (insertion-ordered, deduplicated).
     mlir_sources: Vec<String>,
@@ -25,6 +27,7 @@ impl MlirEmitter {
             counter: 0,
             output: String::new(),
             dim_map: HashMap::new(),
+            memory_map: HashMap::new(),
             mlir_sources: Vec::new(),
         }
     }
@@ -55,7 +58,7 @@ impl MlirEmitter {
 
     /// Emit the `adl.memory.*` ops for a [`MemoryRegion`] tree.
     fn emit_memory(&mut self, region: &MemoryRegion) -> Option<String> {
-        match region {
+        let ssa = match region {
             MemoryRegion::Bank(bank) => self.emit_bank(bank),
             MemoryRegion::Array {
                 name,
@@ -78,7 +81,12 @@ impl MlirEmitter {
                 .unwrap();
                 Some(ssa)
             }
+        }?;
+
+        if let Some(name) = region.name() {
+            self.memory_map.insert(name.to_string(), ssa.clone());
         }
+        Some(ssa)
     }
 
     /// Emit a `adl.memory.bank` op.
@@ -103,35 +111,34 @@ impl MlirEmitter {
     }
 
     /// Emit a `adl.processor` op and record its MLIR source (if any).
-    fn emit_processor(&mut self, proc: &Processor) -> String {
+    fn emit_processor(&mut self, proc: &Processor) -> Option<String> {
         self.emit_processor_like("compute", proc)
     }
 
     /// Emit a `adl.processor.dmover` op and record its MLIR source (if any).
-    fn emit_data_mover(&mut self, mover: &DataMover) -> String {
+    fn emit_data_mover(&mut self, mover: &DataMover) -> Option<String> {
         self.emit_processor_like("dmover", mover)
     }
 
-    fn emit_processor_like(&mut self, kind: &str, proc: &Processor) -> String {
+    fn emit_processor_like(&mut self, kind: &str, proc: &Processor) -> Option<String> {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
-        let src_regions = format_region_list(&proc.src_regions);
-        let dst_regions = format_region_list(&proc.dst_regions);
+        let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
 
         let module_ref = proc.functionality.module_name.as_deref();
 
         if let Some(mod_name) = module_ref {
             writeln!(
                 self.output,
-                "{} = adl.processor.{} \"{}\", @{}, {}, {}",
-                ssa, kind, name, mod_name, src_regions, dst_regions
+                "{} = adl.processor.{} \"{}\", @{}, {}",
+                ssa, kind, name, mod_name, region_pairs
             )
             .unwrap();
         } else {
             writeln!(
                 self.output,
-                "{} = adl.processor.{} \"{}\", {}, {}",
-                ssa, kind, name, src_regions, dst_regions
+                "{} = adl.processor.{} \"{}\", {}",
+                ssa, kind, name, region_pairs
             )
             .unwrap();
         }
@@ -142,35 +149,52 @@ impl MlirEmitter {
             }
         }
 
-        ssa
+        Some(ssa)
+    }
+
+    fn format_region_pairs(&self, region_pairs: &[(MemoryRegion, MemoryRegion)]) -> Option<String> {
+        let pairs: Vec<String> = region_pairs
+            .iter()
+            .map(|(src, dst)| {
+                let src_name = src.name()?;
+                let dst_name = dst.name()?;
+                let src_ssa = self.memory_map.get(src_name)?;
+                let dst_ssa = self.memory_map.get(dst_name)?;
+                Some(format!("({}, {})", src_ssa, dst_ssa))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(format!("[{}]", pairs.join(", ")))
     }
 
     /// Recursively emit the full architecture tree, returning the SSA value
     /// for the top-level result.
     fn emit_architecture(&mut self, arch: &Architecture) -> Option<String> {
         match arch {
-            Architecture::Unit(proc) => Some(self.emit_processor(proc)),
+            Architecture::Unit(proc) => self.emit_processor(proc),
             Architecture::Graph(graph) => {
-                let mut component_ssas = Vec::new();
-                for node in &graph.nodes {
+                let mut node_ssas: Vec<Option<String>> = vec![None; graph.nodes.len()];
+
+                // Emit memory first so processors can safely reference memory SSA values.
+                for (idx, node) in graph.nodes.iter().enumerate() {
+                    if let ArchNodeComponent::MemoryRegion(region) = &node.component {
+                        node_ssas[idx] = Some(self.emit_memory(region)?);
+                    }
+                }
+
+                for (idx, node) in graph.nodes.iter().enumerate() {
                     match &node.component {
                         ArchNodeComponent::Architecture(sub_arch) => {
-                            if let Some(ssa) = self.emit_architecture(sub_arch) {
-                                component_ssas.push(ssa);
-                            }
-                        }
-                        ArchNodeComponent::MemoryRegion(region) => {
-                            if let Some(ssa) = self.emit_memory(region) {
-                                component_ssas.push(ssa);
-                            }
+                            node_ssas[idx] = Some(self.emit_architecture(sub_arch)?);
                         }
                         ArchNodeComponent::DataMover(mover) => {
-                            component_ssas.push(self.emit_data_mover(mover));
+                            node_ssas[idx] = Some(self.emit_data_mover(mover)?);
                         }
+                        ArchNodeComponent::MemoryRegion(_) => {}
                         // Routers are not part of the df dialect.
                         _ => {}
                     }
                 }
+                let component_ssas: Vec<String> = node_ssas.into_iter().flatten().collect();
                 let ssa = self.next_ssa();
                 let components = component_ssas.join(", ");
                 writeln!(
@@ -202,14 +226,6 @@ impl MlirEmitter {
             }
         }
     }
-}
-
-fn format_region_list(regions: &[MemoryRegion]) -> String {
-    let names: Vec<String> = regions
-        .iter()
-        .map(|region| format!("@{}", region.name().unwrap_or("unnamed")))
-        .collect();
-    format!("[{}]", names.join(", "))
 }
 
 /// Indent every line of `text` by `indent` spaces.
@@ -266,7 +282,7 @@ mod tests {
     fn single_processor_emits_df_processor() {
         let arch = Processor::new("vec_lane").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.processor.compute \"vec_lane\", [], []"));
+        assert!(mlir.contains("adl.processor.compute \"vec_lane\", []"));
     }
 
     #[test]
@@ -288,7 +304,7 @@ mod tests {
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
-        assert!(mlir.contains("adl.processor.compute \"lane\", [], []"));
+        assert!(mlir.contains("adl.processor.compute \"lane\", []"));
         assert!(mlir.contains("adl.arch.compose \"core\""));
     }
 

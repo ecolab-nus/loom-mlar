@@ -39,9 +39,7 @@ pub struct Processor {
     pub functionality: MlirModule,
     pub functions: Vec<FunctionProcessor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub src_regions: Vec<MemoryRegion>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dst_regions: Vec<MemoryRegion>,
+    pub region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
 }
 
 /// Per-function data-mover binding: MLIR function interface + performance model.
@@ -74,8 +72,7 @@ pub struct ComputeProcessor(pub Processor);
 #[derive(Clone, Debug)]
 struct ProcessorModuleBuilder {
     name: Option<String>,
-    src_regions: Vec<MemoryRegion>,
-    dst_regions: Vec<MemoryRegion>,
+    region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
     module_ctor: fn(Processor) -> Module,
     kind_for_errors: &'static str,
 }
@@ -137,8 +134,7 @@ impl DataMover {
         DataMoverBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                src_regions: Vec::new(),
-                dst_regions: Vec::new(),
+                region_pairs: Vec::new(),
                 module_ctor: Module::DataMover,
                 kind_for_errors: "DataMover",
             },
@@ -167,8 +163,7 @@ impl ComputeProcessor {
         ComputeProcessorBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                src_regions: Vec::new(),
-                dst_regions: Vec::new(),
+                region_pairs: Vec::new(),
                 module_ctor: Module::Compute,
                 kind_for_errors: "Processor",
             },
@@ -199,8 +194,7 @@ impl Processor {
             name: Some(name.into()),
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            src_regions: Vec::new(),
-            dst_regions: Vec::new(),
+            region_pairs: Vec::new(),
         }
     }
 
@@ -212,8 +206,7 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            src_regions: Vec::new(),
-            dst_regions: Vec::new(),
+            region_pairs: Vec::new(),
         }
     }
 
@@ -243,24 +236,21 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            src_regions: Vec::new(),
-            dst_regions: Vec::new(),
+            region_pairs: Vec::new(),
         };
         processor.validate()?;
         Ok(processor)
     }
 
-    /// Build a processor with explicit source/destination memory regions.
+    /// Build a processor with explicit source/destination memory-region pairs.
     pub fn from_module_with_regions(
         name: impl Into<String>,
         functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
-        src_regions: Vec<MemoryRegion>,
-        dst_regions: Vec<MemoryRegion>,
+        region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
     ) -> Result<Self, String> {
         let mut proc = Self::from_module(name, functionality, perf_models)?;
-        proc.src_regions = src_regions;
-        proc.dst_regions = dst_regions;
+        proc.region_pairs = region_pairs;
         Ok(proc)
     }
 
@@ -270,14 +260,9 @@ impl Processor {
         self
     }
 
-    /// Attach source/destination memory regions (builder-style, consumes self).
-    pub fn with_regions(
-        mut self,
-        src_regions: Vec<MemoryRegion>,
-        dst_regions: Vec<MemoryRegion>,
-    ) -> Self {
-        self.src_regions = src_regions;
-        self.dst_regions = dst_regions;
+    /// Attach source/destination memory-region pairs (builder-style, consumes self).
+    pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
+        self.region_pairs = region_pairs;
         self
     }
 
@@ -346,13 +331,8 @@ impl ProcessorModuleBuilder {
         self
     }
 
-    pub fn with_regions(
-        mut self,
-        src_regions: Vec<MemoryRegion>,
-        dst_regions: Vec<MemoryRegion>,
-    ) -> Self {
-        self.src_regions = src_regions;
-        self.dst_regions = dst_regions;
+    pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
+        self.region_pairs = region_pairs;
         self
     }
 
@@ -360,8 +340,7 @@ impl ProcessorModuleBuilder {
     pub fn finish(self) -> Module {
         let ProcessorModuleBuilder {
             name,
-            src_regions,
-            dst_regions,
+            region_pairs,
             module_ctor,
             ..
         } = self;
@@ -369,8 +348,7 @@ impl ProcessorModuleBuilder {
             name,
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            src_regions,
-            dst_regions,
+            region_pairs,
         };
         module_ctor(processor)
     }
@@ -383,8 +361,7 @@ impl ProcessorModuleBuilder {
     ) -> Result<Module, String> {
         let ProcessorModuleBuilder {
             name,
-            src_regions,
-            dst_regions,
+            region_pairs,
             module_ctor,
             kind_for_errors,
         } = self;
@@ -409,8 +386,7 @@ impl ProcessorModuleBuilder {
             name,
             functionality,
             functions,
-            src_regions,
-            dst_regions,
+            region_pairs,
         };
 
         let module = module_ctor(processor);
@@ -435,12 +411,8 @@ impl DataMoverBuilder {
         self
     }
 
-    pub fn with_regions(
-        mut self,
-        src_regions: Vec<MemoryRegion>,
-        dst_regions: Vec<MemoryRegion>,
-    ) -> Self {
-        self.inner = self.inner.with_regions(src_regions, dst_regions);
+    pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
+        self.inner = self.inner.with_regions(region_pairs);
         self
     }
 
@@ -465,12 +437,8 @@ impl ComputeProcessorBuilder {
         self
     }
 
-    pub fn with_regions(
-        mut self,
-        src_regions: Vec<MemoryRegion>,
-        dst_regions: Vec<MemoryRegion>,
-    ) -> Self {
-        self.inner = self.inner.with_regions(src_regions, dst_regions);
+    pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
+        self.inner = self.inner.with_regions(region_pairs);
         self
     }
 
@@ -732,15 +700,9 @@ fn validate_pure_compute_interface(func: &MlirFunc) -> Result<(), String> {
 
 fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
     let dm_name = processor.name.as_deref().unwrap_or("<unnamed>");
-    if processor.src_regions.is_empty() {
+    if processor.region_pairs.is_empty() {
         return Err(format!(
-            "DataMover '{}' must have at least one source memory region",
-            dm_name
-        ));
-    }
-    if processor.dst_regions.is_empty() {
-        return Err(format!(
-            "DataMover '{}' must have at least one destination memory region",
+            "DataMover '{}' must have at least one source/destination memory-region pair",
             dm_name
         ));
     }
@@ -990,13 +952,13 @@ mod tests {
             constraints: ConstraintExpr::True,
             scenarios: vec![],
         }];
-        let src = vec![MemoryRegion::leaf_concrete(128, 1).with_name("src")];
-        let dst = vec![MemoryRegion::leaf_concrete(128, 1).with_name("dst")];
+        let src = MemoryRegion::leaf_concrete(128, 1).with_name("src");
+        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("dst");
+        let region_pairs = vec![(src, dst)];
 
-        let proc = Processor::from_module_with_regions("proc", module, perf_models, src, dst)
+        let proc = Processor::from_module_with_regions("proc", module, perf_models, region_pairs)
             .expect("processor with regions should build");
-        assert_eq!(proc.src_regions.len(), 1);
-        assert_eq!(proc.dst_regions.len(), 1);
+        assert_eq!(proc.region_pairs.len(), 1);
     }
 
     #[test]
@@ -1057,9 +1019,10 @@ mod tests {
         assert_eq!(fp.hardware_properties.len(), 1);
     }
 
-    fn stub_regions() -> (Vec<MemoryRegion>, Vec<MemoryRegion>) {
-        let r = MemoryRegion::leaf_concrete(128, 1).with_name("stub");
-        (vec![r.clone()], vec![r])
+    fn stub_region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
+        let src = MemoryRegion::leaf_concrete(128, 1).with_name("stub_src");
+        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("stub_dst");
+        vec![(src, dst)]
     }
 
     #[test]
@@ -1084,10 +1047,10 @@ mod tests {
             functionality.functions.len()
         ];
 
-        let (src, dst) = stub_regions();
+        let region_pairs = stub_region_pairs();
         let mover = DataMover::builder()
             .named("dram_l1_mover")
-            .with_regions(src, dst)
+            .with_regions(region_pairs)
             .from_module(functionality, perf_models)
             .expect("data mover should validate");
         assert!(mover.get_function("dram_to_l1_f16").is_some());
@@ -1100,10 +1063,10 @@ mod tests {
             .expect("vector_lane should parse");
         let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
 
-        let (src, dst) = stub_regions();
+        let region_pairs = stub_region_pairs();
         let err = DataMover::builder()
             .named("invalid_mover")
-            .with_regions(src, dst)
+            .with_regions(region_pairs)
             .from_module(functionality, perf_models)
             .expect_err("vector lane functions should not satisfy data-mover interface");
         assert!(err.contains("expected at least one source memref"));
@@ -1173,10 +1136,10 @@ func.func @mixed_copy_compute(
             constraints: ConstraintExpr::True,
             scenarios: vec![],
         }];
-        let (src, dst) = stub_regions();
+        let region_pairs = stub_region_pairs();
         let err = DataMover::builder()
             .named("mixed_mover")
-            .with_regions(src, dst)
+            .with_regions(region_pairs)
             .from_module(functionality, perf_models)
             .expect_err("mixed copy+compute should be rejected");
         assert!(err.contains("must not contain linalg ops"));
@@ -1184,15 +1147,15 @@ func.func @mixed_copy_compute(
 
     #[test]
     fn data_mover_into_processor_preserves_regions() {
-        let src = vec![MemoryRegion::leaf_concrete(128, 1).with_name("src")];
-        let dst = vec![MemoryRegion::leaf_concrete(128, 1).with_name("dst")];
+        let src = MemoryRegion::leaf_concrete(128, 1).with_name("src");
+        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("dst");
+        let region_pairs = vec![(src, dst)];
         let proc = DataMover::builder()
             .named("mover")
-            .with_regions(src, dst)
+            .with_regions(region_pairs)
             .finish()
             .into_processor();
-        assert_eq!(proc.src_regions.len(), 1);
-        assert_eq!(proc.dst_regions.len(), 1);
+        assert_eq!(proc.region_pairs.len(), 1);
     }
 
     #[test]

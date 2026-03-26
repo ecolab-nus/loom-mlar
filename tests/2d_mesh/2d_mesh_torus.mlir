@@ -1,18 +1,18 @@
 module @system {
-  %0 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
-  %1 = adl.spatial_dim "nbank", 16
-  %2 = adl.memory.array "L1", (%1) of %0
-  %3 = adl.processor.compute "matrix_lane", @matrix_lane, [@L1], [@L1]
-  %4 = adl.processor.compute "vector_lane", @vector_lane, [@L1], [@L1]
-  %5 = adl.arch.compose "core", [%2, %3, %4]
-  %6 = adl.spatial_dim "x", 8
-  %7 = adl.spatial_dim "y", 8
-  %8 = adl.arch.scale "mesh", (%6, %7) of %5
-  %9 = adl.processor.dmover "dram_l1_mover", @data_movers, [@DRAM, @L1], [@L1, @DRAM]
-  %10 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
-  %11 = adl.spatial_dim "dram_channel", 8
-  %12 = adl.memory.array "DRAM", (%11) of %10
-  %13 = adl.arch.compose "system", [%8, %9, %12]
+  %0 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
+  %1 = adl.spatial_dim "dram_channel", 8
+  %2 = adl.memory.array "DRAM", (%1) of %0
+  %3 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
+  %4 = adl.spatial_dim "nbank", 16
+  %5 = adl.memory.array "L1", (%4) of %3
+  %6 = adl.processor.compute "matrix_lane", @matrix_lane, [(%5, %5)]
+  %7 = adl.processor.compute "vector_lane", @vector_lane, [(%5, %5)]
+  %8 = adl.arch.compose "core", [%5, %6, %7]
+  %9 = adl.spatial_dim "x", 8
+  %10 = adl.spatial_dim "y", 8
+  %11 = adl.arch.scale "mesh", (%9, %10) of %8
+  %12 = adl.processor.dmover "dram_l1_mover", @data_movers, [(%2, %5), (%5, %2)]
+  %13 = adl.arch.compose "system", [%11, %12, %2]
 
   // Matrix lane compute semantics — fp16 matrix multiplication.
   //
