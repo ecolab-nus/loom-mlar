@@ -15,6 +15,22 @@ pub struct MemoryBank {
     pub perf: Option<FuncPerfModel>,
 }
 
+/// Recursive memory region — Bank or Array.
+///
+/// * `Bank` is the atomic leaf unit.
+/// * `Array` represents homogeneous scaling along dimensions.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MemoryRegion {
+    /// Leaf: a single memory bank
+    Bank(MemoryBank),
+    /// Homogeneous scaling along one or more dimensions
+    Array {
+        name: Option<String>,
+        dims: Vec<Dimension>,
+        sub_regions: Box<MemoryRegion>,
+    },
+}
+
 impl MemoryBank {
     /// Create a bank from block_size and num_blocks.
     /// capacity_bytes = Mul(block_size, num_blocks), access_granularity = block_size
@@ -49,22 +65,6 @@ impl MemoryBank {
         self.perf = Some(perf);
         self
     }
-}
-
-/// Recursive memory region — Bank or Array.
-///
-/// * `Bank` is the atomic leaf unit.
-/// * `Array` represents homogeneous scaling along dimensions.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MemoryRegion {
-    /// Leaf: a single memory bank
-    Bank(MemoryBank),
-    /// Homogeneous scaling along one or more dimensions
-    Array {
-        name: Option<String>,
-        dims: Vec<Dimension>,
-        sub_regions: Box<MemoryRegion>,
-    },
 }
 
 impl MemoryRegion {

@@ -14,6 +14,74 @@ const EDGE_ID_SUFFIX: &str = "::edge";
 #[serde(transparent)]
 pub struct ArchNodeId(String);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArchEdgeId(String);
+
+/// Abstract node payload for heterogeneous architecture graph composition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArchNodeComponent {
+    Architecture(Architecture),
+    DataMover(DataMover),
+    MemoryRegion(MemoryRegion),
+    Router(Router),
+}
+
+/// Abstract architecture graph node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchNode {
+    pub id: ArchNodeId,
+    pub component: ArchNodeComponent,
+}
+
+/// Alias name for graph nodes.
+pub type ArchGraphNode = ArchNode;
+
+/// Typed attribute that can be attached to an architecture graph edge.
+///
+/// Each variant represents a different kind of metadata. An edge carries a
+/// `Vec<ArchEdgeAttr>`, so it can hold zero or more attributes of any
+/// combination of types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchEdgeDirection {
+    /// The edge direction is from source node to target node.
+    Directional,
+    /// The edge connects both directions.
+    Bidirectional,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArchEdgeAttr {
+    /// The router side this edge connects through.
+    Side(RouterSide),
+    /// Edge direction metadata.
+    Direction(ArchEdgeDirection),
+}
+
+/// Edge between two architecture graph nodes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchEdge {
+    pub id: ArchEdgeId,
+    pub source: ArchNodeId,
+    pub target: ArchNodeId,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attrs: Vec<ArchEdgeAttr>,
+}
+
+/// Heterogeneous architecture composition using explicit nodes and edges.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchGraph {
+    pub name: String,
+    pub nodes: Vec<ArchGraphNode>,
+    pub edges: Vec<ArchEdge>,
+}
+
+/// Builder for constructing an `ArchGraph`.
+pub struct ArchGraphBuilder {
+    graph: ArchGraph,
+}
+
 impl ArchNodeId {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
@@ -43,10 +111,6 @@ impl From<ArchNodeId> for String {
         value.0
     }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ArchEdgeId(String);
 
 impl ArchEdgeId {
     pub fn as_str(&self) -> &str {
@@ -78,15 +142,6 @@ impl From<ArchEdgeId> for String {
     }
 }
 
-/// Abstract node payload for heterogeneous architecture graph composition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ArchNodeComponent {
-    Architecture(Architecture),
-    DataMover(DataMover),
-    MemoryRegion(MemoryRegion),
-    Router(Router),
-}
-
 impl ArchNodeComponent {
     pub fn display_name(&self) -> Option<&str> {
         match self {
@@ -105,13 +160,6 @@ impl ArchNodeComponent {
             ArchNodeComponent::Router(_) => "router",
         }
     }
-}
-
-/// Abstract architecture graph node.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchNode {
-    pub id: ArchNodeId,
-    pub component: ArchNodeComponent,
 }
 
 impl ArchNode {
@@ -146,45 +194,10 @@ impl ArchNode {
     }
 }
 
-/// Alias name for graph nodes.
-pub type ArchGraphNode = ArchNode;
-
-/// Typed attribute that can be attached to an architecture graph edge.
-///
-/// Each variant represents a different kind of metadata. An edge carries a
-/// `Vec<ArchEdgeAttr>`, so it can hold zero or more attributes of any
-/// combination of types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ArchEdgeDirection {
-    /// The edge direction is from source node to target node.
-    Directional,
-    /// The edge connects both directions.
-    Bidirectional,
-}
-
 impl Default for ArchEdgeDirection {
     fn default() -> Self {
         Self::Directional
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ArchEdgeAttr {
-    /// The router side this edge connects through.
-    Side(RouterSide),
-    /// Edge direction metadata.
-    Direction(ArchEdgeDirection),
-}
-
-/// Edge between two architecture graph nodes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchEdge {
-    pub id: ArchEdgeId,
-    pub source: ArchNodeId,
-    pub target: ArchNodeId,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub attrs: Vec<ArchEdgeAttr>,
 }
 
 impl ArchEdge {
@@ -236,14 +249,6 @@ impl ArchEdge {
         self.attrs.push(attr);
         self
     }
-}
-
-/// Heterogeneous architecture composition using explicit nodes and edges.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchGraph {
-    pub name: String,
-    pub nodes: Vec<ArchGraphNode>,
-    pub edges: Vec<ArchEdge>,
 }
 
 impl ArchGraph {
@@ -448,11 +453,6 @@ fn add_instance_tag(base: &str, instance: usize) -> String {
 
 fn strip_suffix<'a>(value: &'a str, suffix: &str) -> &'a str {
     value.strip_suffix(suffix).unwrap_or(value)
-}
-
-/// Builder for constructing an `ArchGraph`.
-pub struct ArchGraphBuilder {
-    graph: ArchGraph,
 }
 
 impl ArchGraphBuilder {

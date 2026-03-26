@@ -1,8 +1,28 @@
 use serde::{Deserialize, Serialize};
 
-/// Newtype for dimension names — stable identifier for a replication axis.
+/// Newtype for dimension names - stable identifier for a replication axis.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DimName(pub String);
+
+/// Newtype for symbolic names used in expressions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Sym(pub String);
+
+/// Represents a size that can be concrete, symbolic, or an arithmetic expression.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SizeExpr {
+    Const(u64),
+    Sym(Sym),
+    Add(Box<SizeExpr>, Box<SizeExpr>),
+    Mul(Box<SizeExpr>, Box<SizeExpr>),
+}
+
+/// Represents a dimension - a named axis of homogeneous replication.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Dimension {
+    pub name: DimName,
+    pub size: SizeExpr,
+}
 
 impl DimName {
     pub fn new(name: impl Into<String>) -> Self {
@@ -28,10 +48,6 @@ impl From<String> for DimName {
     }
 }
 
-/// Newtype for symbolic names used in expressions.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Sym(pub String);
-
 impl Sym {
     pub fn new(name: impl Into<String>) -> Self {
         Sym(name.into())
@@ -54,15 +70,6 @@ impl From<String> for Sym {
     fn from(s: String) -> Self {
         Sym(s)
     }
-}
-
-/// Represents a size that can be concrete, symbolic, or an arithmetic expression.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SizeExpr {
-    Const(u64),
-    Sym(Sym),
-    Add(Box<SizeExpr>, Box<SizeExpr>),
-    Mul(Box<SizeExpr>, Box<SizeExpr>),
 }
 
 impl SizeExpr {
@@ -150,13 +157,6 @@ impl std::fmt::Display for SizeExpr {
             SizeExpr::Mul(a, b) => write!(f, "({} * {})", a, b),
         }
     }
-}
-
-/// Represents a dimension — a named axis of homogeneous replication.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Dimension {
-    pub name: DimName,
-    pub size: SizeExpr,
 }
 
 impl Dimension {

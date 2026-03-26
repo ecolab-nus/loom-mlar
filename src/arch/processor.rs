@@ -28,48 +28,6 @@ pub struct FunctionProcessor {
     pub hardware_properties: Vec<HardwareProperty>,
 }
 
-impl FunctionProcessor {
-    pub fn new(func: MlirFunc, perf: FuncPerfModel) -> Self {
-        Self {
-            func,
-            perf,
-            hardware_properties: Vec::new(),
-        }
-    }
-
-    /// Attach hardware properties (builder-style, consumes self).
-    pub fn with_hardware_properties(mut self, props: Vec<HardwareProperty>) -> Self {
-        self.hardware_properties = props;
-        self
-    }
-
-    /// Look up the first property that matches the given predicate.
-    pub fn find_property<F>(&self, predicate: F) -> Option<&HardwareProperty>
-    where
-        F: Fn(&HardwareProperty) -> bool,
-    {
-        self.hardware_properties.iter().find(|p| predicate(p))
-    }
-
-    /// Return the `LaneComputeShape` if one is present.
-    pub fn lane_compute_shape(&self) -> Option<&[u64]> {
-        self.hardware_properties.iter().find_map(|p| match p {
-            HardwareProperty::LaneComputeShape(shape) => Some(shape.as_slice()),
-        })
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        self.perf
-            .validate_for_func(&self.func)
-            .map_err(|undeclared| {
-                format!(
-                    "FunctionProcessor for function '{}' has undeclared symbols: {:?}",
-                    self.func.name, undeclared
-                )
-            })
-    }
-}
-
 /// Per-function data-mover binding: MLIR function interface + performance model.
 ///
 /// This reuses the same shape/perf representation as compute functions.
@@ -95,54 +53,6 @@ pub struct DataMover(pub Processor);
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ComputeProcessor(pub Processor);
-
-impl DataMover {
-    pub fn builder() -> DataMoverBuilder {
-        DataMoverBuilder {
-            inner: build_data_mover(),
-        }
-    }
-
-    pub fn into_processor(self) -> Processor {
-        self.0
-    }
-
-    pub fn into_elem(self) -> Architecture {
-        self.0.into_elem()
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        validate_data_mover_processor(&self.0)
-    }
-
-    pub fn into_module(self) -> Module {
-        Module::DataMover(self.0)
-    }
-}
-
-impl ComputeProcessor {
-    pub fn builder() -> ComputeProcessorBuilder {
-        ComputeProcessorBuilder {
-            inner: build_compute_processor(),
-        }
-    }
-
-    pub fn into_processor(self) -> Processor {
-        self.0
-    }
-
-    pub fn into_elem(self) -> Architecture {
-        self.0.into_elem()
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        self.0.validate()
-    }
-
-    pub fn into_module(self) -> Module {
-        Module::Compute(self.0)
-    }
-}
 
 /// Unified builder for compute/data-mover modules.
 #[derive(Clone, Debug)]
@@ -200,6 +110,96 @@ pub struct Processor {
     pub src_regions: Vec<MemoryRegion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dst_regions: Vec<MemoryRegion>,
+}
+
+impl FunctionProcessor {
+    pub fn new(func: MlirFunc, perf: FuncPerfModel) -> Self {
+        Self {
+            func,
+            perf,
+            hardware_properties: Vec::new(),
+        }
+    }
+
+    /// Attach hardware properties (builder-style, consumes self).
+    pub fn with_hardware_properties(mut self, props: Vec<HardwareProperty>) -> Self {
+        self.hardware_properties = props;
+        self
+    }
+
+    /// Look up the first property that matches the given predicate.
+    pub fn find_property<F>(&self, predicate: F) -> Option<&HardwareProperty>
+    where
+        F: Fn(&HardwareProperty) -> bool,
+    {
+        self.hardware_properties.iter().find(|p| predicate(p))
+    }
+
+    /// Return the `LaneComputeShape` if one is present.
+    pub fn lane_compute_shape(&self) -> Option<&[u64]> {
+        self.hardware_properties.iter().find_map(|p| match p {
+            HardwareProperty::LaneComputeShape(shape) => Some(shape.as_slice()),
+        })
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.perf
+            .validate_for_func(&self.func)
+            .map_err(|undeclared| {
+                format!(
+                    "FunctionProcessor for function '{}' has undeclared symbols: {:?}",
+                    self.func.name, undeclared
+                )
+            })
+    }
+}
+
+impl DataMover {
+    pub fn builder() -> DataMoverBuilder {
+        DataMoverBuilder {
+            inner: build_data_mover(),
+        }
+    }
+
+    pub fn into_processor(self) -> Processor {
+        self.0
+    }
+
+    pub fn into_elem(self) -> Architecture {
+        self.0.into_elem()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        validate_data_mover_processor(&self.0)
+    }
+
+    pub fn into_module(self) -> Module {
+        Module::DataMover(self.0)
+    }
+}
+
+impl ComputeProcessor {
+    pub fn builder() -> ComputeProcessorBuilder {
+        ComputeProcessorBuilder {
+            inner: build_compute_processor(),
+        }
+    }
+
+    pub fn into_processor(self) -> Processor {
+        self.0
+    }
+
+    pub fn into_elem(self) -> Architecture {
+        self.0.into_elem()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.0.validate()
+    }
+
+    pub fn into_module(self) -> Module {
+        Module::Compute(self.0)
+    }
 }
 
 impl Processor {
@@ -902,9 +902,7 @@ mod tests {
     use crate::arch::MemoryRegion;
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
-    use crate::schedule::{
-        MlirFunc, MlirFuncDetails, MlirModule, MlirTensorSymbolBinding,
-    };
+    use crate::schedule::{MlirFunc, MlirFuncDetails, MlirModule, MlirTensorSymbolBinding};
     use crate::{Expr, FuncPerfModel, SimpleTimeCost, TimeCost};
 
     #[test]
@@ -949,10 +947,8 @@ mod tests {
 
     #[test]
     fn processor_from_module_links_per_op_perf() {
-        let module = MlirModule::from_functions(
-            "toy",
-            vec![MlirFunc::named("f1"), MlirFunc::named("f2")],
-        );
+        let module =
+            MlirModule::from_functions("toy", vec![MlirFunc::named("f1"), MlirFunc::named("f2")]);
 
         let p = Processor::from_module(
             "proc",
@@ -979,9 +975,8 @@ mod tests {
 
     #[test]
     fn processor_from_module_rejects_loom_copy_functions() {
-        let module =
-            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
-                .expect("data mover MLIR should parse");
+        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+            .expect("data mover MLIR should parse");
         let perf_models: Vec<FuncPerfModel> = module
             .functions
             .iter()
@@ -1088,9 +1083,8 @@ mod tests {
 
     #[test]
     fn data_mover_from_module_requires_memref_bound_symbol_interface() {
-        let functionality =
-            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
-                .expect("dram_to_l1 data mover MLIR should parse");
+        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+            .expect("dram_to_l1 data mover MLIR should parse");
         let perf_models = vec![
             FuncPerfModel {
                 symbols: vec![crate::Sym::new("M"), crate::Sym::new("N")],
@@ -1112,9 +1106,8 @@ mod tests {
 
     #[test]
     fn data_mover_validation_rejects_missing_memref_interface() {
-        let functionality =
-            MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-                .expect("vector_lane should parse");
+        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+            .expect("vector_lane should parse");
         let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
 
         let (src, dst) = stub_regions();

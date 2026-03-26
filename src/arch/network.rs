@@ -19,6 +19,43 @@ pub struct MeshNetworkInterface {
     pub data_mover: Option<DataMover>,
 }
 
+/// A mesh network: endpoints connected via an affine-map topology with uniform
+/// per-link bandwidth.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MeshNetwork {
+    pub name: String,
+    /// Canonical dimensions for this mesh network.
+    #[serde(default)]
+    pub dimensions: Vec<Dimension>,
+    /// Affine maps describing mesh topology links (src indices -> dst indices).
+    pub links: Vec<AffineMap>,
+    /// Array memory region attached to this mesh network.
+    pub region: MemoryRegion,
+    /// IO interface describing external connections and their bandwidth.
+    pub io: MeshNetworkInterface,
+    /// Bandwidth per internal mesh link.
+    pub link_bandwidth: Expr,
+}
+
+/// A connectivity network between architecture entities.
+///
+/// Each variant captures a different interconnect topology.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ScaleOutNetwork {
+    /// Mesh: endpoints connected via an affine-map topology with uniform per-link bandwidth.
+    Mesh(MeshNetwork),
+}
+
+/// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
+pub struct MeshNetworkBuilder {
+    name: String,
+    dimensions: Option<Vec<Dimension>>,
+    region: Option<MemoryRegion>,
+    links: Vec<AffineMap>,
+    io: Option<MeshNetworkInterface>,
+    link_bandwidth: Option<Expr>,
+}
+
 impl MeshNetworkInterface {
     pub fn new(map: AffineMap, link_bandwidth: Expr) -> Self {
         Self {
@@ -51,33 +88,6 @@ impl MeshNetworkInterface {
             data_mover: self.data_mover,
         }
     }
-}
-
-/// A mesh network: endpoints connected via an affine-map topology with uniform
-/// per-link bandwidth.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MeshNetwork {
-    pub name: String,
-    /// Canonical dimensions for this mesh network.
-    #[serde(default)]
-    pub dimensions: Vec<Dimension>,
-    /// Affine maps describing mesh topology links (src indices -> dst indices).
-    pub links: Vec<AffineMap>,
-    /// Array memory region attached to this mesh network.
-    pub region: MemoryRegion,
-    /// IO interface describing external connections and their bandwidth.
-    pub io: MeshNetworkInterface,
-    /// Bandwidth per internal mesh link.
-    pub link_bandwidth: Expr,
-}
-
-/// A connectivity network between architecture entities.
-///
-/// Each variant captures a different interconnect topology.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ScaleOutNetwork {
-    /// Mesh: endpoints connected via an affine-map topology with uniform per-link bandwidth.
-    Mesh(MeshNetwork),
 }
 
 impl ScaleOutNetwork {
@@ -239,16 +249,6 @@ impl ScaleOutNetwork {
         }
         ring_shift_axis(&links[0]).is_some()
     }
-}
-
-/// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
-pub struct MeshNetworkBuilder {
-    name: String,
-    dimensions: Option<Vec<Dimension>>,
-    region: Option<MemoryRegion>,
-    links: Vec<AffineMap>,
-    io: Option<MeshNetworkInterface>,
-    link_bandwidth: Option<Expr>,
 }
 
 impl MeshNetworkBuilder {
