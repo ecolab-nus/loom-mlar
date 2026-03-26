@@ -22,6 +22,6 @@ target
 
 *.png
 
-# Generated evaluator binaries (keep the folder via .gitkeep)
-tests/2d_mesh/evaluators/*
-!tests/2d_mesh/evaluators/.gitkeep
+# Generated evaluator/query binaries (keep the folder via .gitkeep)
+tests/2d_mesh/bin/*
+!tests/2d_mesh/bin/.gitkeep

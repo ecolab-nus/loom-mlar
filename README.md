@@ -188,7 +188,7 @@ Available at crate root (`mlar_rust::*`):
   - `architecture_to_viewer_json_value`
   - `architecture_to_viewer_json_string_pretty`
 
-The web viewer lives in `tools/web-visualization/`.
+The web viewer lives in `web-visualization/`.
 
 ## MLIR Export
 
@@ -200,7 +200,7 @@ Notes:
 
 ## Evaluator Binary Generation
 
-`evaluator.rs` supports three flows:
+`src/abi/evaluator.rs` supports three flows:
 1. `mlar_evaluator!(build_arch())` macro
 2. `run_evaluator(&arch)` for in-process binaries
 3. `generate_evaluator_binary(&arch, name, output_dir)` for programmatic standalone binaries
@@ -211,7 +211,7 @@ Evaluator protocol:
 
 ## Architecture Query Binary Generation
 
-`arch_query.rs` supports three flows:
+`src/abi/arch_query.rs` supports three flows:
 1. `mlar_arch_query!(build_arch())` macro
 2. `run_arch_query(&arch)` for in-process binaries
 3. `generate_arch_query_binary(&arch, name, output_dir)` for programmatic standalone binaries
@@ -251,8 +251,8 @@ cargo test -- --nocapture
 | `ArchitectureGraphJson` exports | `src/visualization/graph_json.rs` |
 | `ArchitectureHierarchyJson` exports | `src/visualization/hierarchy_json.rs` |
 | `ArchitectureViewerJson` exports | `src/visualization/viewer_json.rs` |
-| `run_evaluator`, `generate_evaluator_binary` | `src/evaluator.rs` |
-| `run_arch_query`, `generate_arch_query_binary`, `ArchitectureQuery` | `src/arch_query.rs` |
+| `run_evaluator`, `generate_evaluator_binary` | `src/abi/evaluator.rs` |
+| `run_arch_query`, `generate_arch_query_binary`, `ArchitectureQuery` | `src/abi/arch_query.rs` |
 
 ## License
 

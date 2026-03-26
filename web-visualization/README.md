@@ -27,7 +27,7 @@ Runtime parsing/validation is implemented in `src/schema.ts`.
 From repo root:
 
 ```bash
-cd tools/web-visualization
+cd web-visualization
 npm install
 npm run dev
 ```
@@ -35,7 +35,7 @@ npm run dev
 Fixed host/port:
 
 ```bash
-cd tools/web-visualization
+cd web-visualization
 npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
@@ -60,14 +60,14 @@ Graph payload:
 
 ```bash
 cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cp tests/2d_mesh/2d_mesh_torus.json tools/web-visualization/public/sample-graph.json
+cp tests/2d_mesh/2d_mesh_torus.json web-visualization/public/sample-graph.json
 ```
 
 Hierarchy payload:
 
 ```bash
 cargo test test_export_2d_mesh_torus_hierarchy_json --test 2d_mesh
-cp tests/2d_mesh/2d_mesh_torus_hierarchy.json tools/web-visualization/public/sample-hierarchy.json
+cp tests/2d_mesh/2d_mesh_torus_hierarchy.json web-visualization/public/sample-hierarchy.json
 ```
 
 ## Schema and Rust Source Mapping

@@ -422,7 +422,7 @@ fn test_export_2d_mesh_torus_viewer_json() {
     assert!(value["graphs"]["mesh/core"].is_object());
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tools/web-visualization/public/sample-viewer.json");
+        .join("web-visualization/public/sample-viewer.json");
     fs::write(out_path, &json).expect("Failed to write viewer JSON file");
 }
 
@@ -706,7 +706,7 @@ fn test_evaluate_with_sym_map() {
 fn test_generate_core_evaluator_binary() {
     let core = crate::core_arch::single_core();
 
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");
     let binary = generate_evaluator_binary(&core, "eval_core", &output_dir)
         .expect("binary generation should succeed");
 
@@ -1031,7 +1031,7 @@ fn test_export_2d_mesh_torus_mlir() {
 fn test_generate_system_evaluator_binary() {
     let system = scaled_mesh_torus();
 
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");
     let binary = generate_evaluator_binary(&system, "eval_system", &output_dir)
         .expect("system binary generation should succeed");
 
@@ -1139,7 +1139,7 @@ fn test_generate_system_evaluator_binary() {
 fn test_generate_system_arch_query_binary_mlir() {
     let system = scaled_mesh_torus();
 
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/evaluators");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");
     let binary = generate_arch_query_binary(&system, "query_system", &output_dir)
         .expect("system query binary generation should succeed");
 

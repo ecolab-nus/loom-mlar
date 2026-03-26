@@ -455,7 +455,7 @@ mod tests {
         let json_str = architecture_to_hierarchy_json_string_pretty(&mesh).unwrap();
 
         let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tools/web-visualization/public/sample-hierarchy.json");
+            .join("web-visualization/public/sample-hierarchy.json");
         std::fs::write(&out_path, &json_str).expect("Failed to write sample hierarchy JSON");
 
         let value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
