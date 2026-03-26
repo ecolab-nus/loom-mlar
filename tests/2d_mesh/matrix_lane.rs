@@ -2,16 +2,8 @@ use mlar_rust::*;
 
 use crate::memory::l1;
 
-/// Matrix lane processor with matmul performance model (M, N, K symbols).
-///
-/// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
-/// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
-/// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
-pub fn matrix_lane() -> Architecture {
-    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
-        .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
-
-    let mat_func_perf = FuncPerfModel {
+fn matmul_func_perf_model() -> FuncPerfModel {
+    FuncPerfModel {
         symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
         constraints: ConstraintExpr::And(vec![
             ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)),
@@ -45,9 +37,11 @@ pub fn matrix_lane() -> Architecture {
                 }),
             },
         ],
-    };
+    }
+}
 
-    let batch_mat_func_perf = FuncPerfModel {
+fn batch_matmul_func_perf_model() -> FuncPerfModel {
+    FuncPerfModel {
         symbols: vec![
             Sym::new("Batch"),
             Sym::new("M"),
@@ -99,12 +93,22 @@ pub fn matrix_lane() -> Architecture {
                 }),
             },
         ],
-    };
+    }
+}
+
+/// Matrix lane processor with matmul performance model (M, N, K symbols).
+///
+/// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
+/// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
+/// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
+pub fn matrix_lane() -> Architecture {
+    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
+        .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
 
     let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
     let l1_region = l1();
 
-    let perf_models = vec![mat_func_perf, batch_mat_func_perf];
+    let perf_models = vec![matmul_func_perf_model(), batch_matmul_func_perf_model()];
 
     let mut proc = ComputeProcessor::builder()
         .named("matrix_lane")

@@ -2,6 +2,56 @@ use mlar_rust::*;
 
 use crate::memory::l1;
 
+fn vector_op_prefix(func: &str) -> &str {
+    func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func)
+}
+
+fn vector_op_latency_throughput(func: &str, op_prefix: &str) -> (i64, i64) {
+    match op_prefix {
+        "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
+        "vec_exp" => (16, 128),
+        "vec_div" => (8, 256),
+        "vec_sub" => (1, 1024),
+        "vec_powf" => (32, 64),
+        "vec_vmax" => (1, 1024),
+        "vec_cmpf_ogt" => (1, 1024),
+        "vec_select" => (1, 1024),
+        "vec_max1" => (1, 1024),
+        "vec_vsum" => (1, 1024),
+        _ => panic!("unexpected vector op '{}'", func),
+    }
+}
+
+fn vector_op_symbols_and_volume(op_prefix: &str) -> (Vec<Sym>, Expr) {
+    if op_prefix == "vec_vsum" || op_prefix == "vec_vmax" {
+        (
+            vec![Sym::new("P"), Sym::new("R")],
+            Expr::mul(Expr::sym("P"), Expr::sym("R")),
+        )
+    } else {
+        (vec![Sym::new("L")], Expr::sym("L"))
+    }
+}
+
+fn vector_func_perf_model(func: &str) -> FuncPerfModel {
+    let op_prefix = vector_op_prefix(func);
+    let (fixed_latency, throughput) = vector_op_latency_throughput(func, op_prefix);
+    let (symbols, volume) = vector_op_symbols_and_volume(op_prefix);
+
+    FuncPerfModel {
+        symbols,
+        constraints: ConstraintExpr::True,
+        scenarios: vec![PerfScenario {
+            constraints: ConstraintExpr::True,
+            time_cost: TimeCost::Simple(SimpleTimeCost {
+                fixed_latency: Expr::Const(fixed_latency),
+                volume,
+                throughput: Expr::Const(throughput),
+            }),
+        }],
+    }
+}
+
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
@@ -16,52 +66,13 @@ pub fn vector_lane() -> Architecture {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
 
-    let perf_for = |func: &str| -> FuncPerfModel {
-        let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
-        let (fixed_latency, throughput) = match op_prefix {
-            "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
-            "vec_exp" => (16, 128),
-            "vec_div" => (8, 256),
-            "vec_sub" => (1, 1024),
-            "vec_powf" => (32, 64),
-            "vec_vmax" => (1, 1024),
-            "vec_cmpf_ogt" => (1, 1024),
-            "vec_select" => (1, 1024),
-            "vec_max1" => (1, 1024),
-            "vec_vsum" => (1, 1024),
-            _ => panic!("unexpected vector op '{}'", func),
-        };
-
-        let (symbols, volume) = if op_prefix == "vec_vsum" || op_prefix == "vec_vmax" {
-            (
-                vec![Sym::new("P"), Sym::new("R")],
-                Expr::mul(Expr::sym("P"), Expr::sym("R")),
-            )
-        } else {
-            (vec![Sym::new("L")], Expr::sym("L"))
-        };
-
-        FuncPerfModel {
-            symbols,
-            constraints: ConstraintExpr::True,
-            scenarios: vec![PerfScenario {
-                constraints: ConstraintExpr::True,
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(fixed_latency),
-                    volume,
-                    throughput: Expr::Const(throughput),
-                }),
-            }],
-        }
-    };
-
     let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
     let l1_region = l1();
 
     let perf_models: Vec<FuncPerfModel> = functionality
         .functions
         .iter()
-        .map(|op| perf_for(op.name.as_str()))
+        .map(|op| vector_func_perf_model(op.name.as_str()))
         .collect();
 
     let mut proc = ComputeProcessor::builder()
