@@ -2,38 +2,33 @@ use mlar_rust::*;
 
 use crate::memory::l1;
 
+fn expr(input: &str) -> Expr {
+    Expr::parse(input).expect("2d_mesh expression literal should parse")
+}
+
+fn constraint(input: &str) -> ConstraintExpr {
+    ConstraintExpr::parse(input).expect("2d_mesh constraint literal should parse")
+}
+
 fn matmul_func_perf_model() -> FuncPerfModel {
     FuncPerfModel {
         symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
-        constraints: ConstraintExpr::And(vec![
-            ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)),
-            ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(32)),
-            ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(32)),
-        ]),
+        constraints: constraint("M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
-                constraints: ConstraintExpr::Ge(
-                    Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                    Expr::Const(8192),
-                ),
+                constraints: constraint("M * N >= 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-                    throughput: Expr::Const(1024),
+                    fixed_latency: expr("1"),
+                    volume: expr("M * N * K"),
+                    throughput: expr("1024"),
                 }),
             },
             PerfScenario {
-                constraints: ConstraintExpr::Le(
-                    Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                    Expr::Const(8192),
-                ),
+                constraints: constraint("M * N <= 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-                    throughput: Expr::mul(
-                        Expr::div(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::Const(8192)),
-                        Expr::Const(1024),
-                    ),
+                    fixed_latency: expr("1"),
+                    volume: expr("M * N * K"),
+                    throughput: expr("(M * N / 8192) * 1024"),
                 }),
             },
         ],
@@ -48,48 +43,22 @@ fn batch_matmul_func_perf_model() -> FuncPerfModel {
             Sym::new("N"),
             Sym::new("K"),
         ],
-        constraints: ConstraintExpr::And(vec![
-            ConstraintExpr::Ge(Expr::sym("Batch"), Expr::Const(1)),
-            ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)),
-            ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(32)),
-            ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(32)),
-        ]),
+        constraints: constraint("Batch >= 1 && M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
-                constraints: ConstraintExpr::Ge(
-                    Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                    Expr::Const(8192),
-                ),
+                constraints: constraint("M * N >= 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(
-                        Expr::mul(
-                            Expr::mul(Expr::sym("Batch"), Expr::sym("M")),
-                            Expr::sym("N"),
-                        ),
-                        Expr::sym("K"),
-                    ),
-                    throughput: Expr::Const(1024),
+                    fixed_latency: expr("1"),
+                    volume: expr("Batch * M * N * K"),
+                    throughput: expr("1024"),
                 }),
             },
             PerfScenario {
-                constraints: ConstraintExpr::Le(
-                    Expr::mul(Expr::sym("M"), Expr::sym("N")),
-                    Expr::Const(8192),
-                ),
+                constraints: constraint("M * N <= 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(1),
-                    volume: Expr::mul(
-                        Expr::mul(
-                            Expr::mul(Expr::sym("Batch"), Expr::sym("M")),
-                            Expr::sym("N"),
-                        ),
-                        Expr::sym("K"),
-                    ),
-                    throughput: Expr::mul(
-                        Expr::div(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::Const(8192)),
-                        Expr::Const(1024),
-                    ),
+                    fixed_latency: expr("1"),
+                    volume: expr("Batch * M * N * K"),
+                    throughput: expr("(M * N / 8192) * 1024"),
                 }),
             },
         ],

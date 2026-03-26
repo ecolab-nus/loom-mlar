@@ -2,34 +2,39 @@ use mlar_rust::*;
 
 use crate::memory::l1;
 
+fn expr(input: &str) -> Expr {
+    Expr::parse(input).expect("2d_mesh expression literal should parse")
+}
+
+fn constraint(input: &str) -> ConstraintExpr {
+    ConstraintExpr::parse(input).expect("2d_mesh constraint literal should parse")
+}
+
 fn vector_op_prefix(func: &str) -> &str {
     func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func)
 }
 
-fn vector_op_latency_throughput(func: &str, op_prefix: &str) -> (i64, i64) {
+fn vector_op_latency_throughput(func: &str, op_prefix: &str) -> (&'static str, &'static str) {
     match op_prefix {
-        "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => (1, 1024),
-        "vec_exp" => (16, 128),
-        "vec_div" => (8, 256),
-        "vec_sub" => (1, 1024),
-        "vec_powf" => (32, 64),
-        "vec_vmax" => (1, 1024),
-        "vec_cmpf_ogt" => (1, 1024),
-        "vec_select" => (1, 1024),
-        "vec_max1" => (1, 1024),
-        "vec_vsum" => (1, 1024),
+        "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => ("1", "1024"),
+        "vec_exp" => ("16", "128"),
+        "vec_div" => ("8", "256"),
+        "vec_sub" => ("1", "1024"),
+        "vec_powf" => ("32", "64"),
+        "vec_vmax" => ("1", "1024"),
+        "vec_cmpf_ogt" => ("1", "1024"),
+        "vec_select" => ("1", "1024"),
+        "vec_max1" => ("1", "1024"),
+        "vec_vsum" => ("1", "1024"),
         _ => panic!("unexpected vector op '{}'", func),
     }
 }
 
-fn vector_op_symbols_and_volume(op_prefix: &str) -> (Vec<Sym>, Expr) {
+fn vector_op_symbols_and_volume(op_prefix: &str) -> (Vec<Sym>, &'static str) {
     if op_prefix == "vec_vsum" || op_prefix == "vec_vmax" {
-        (
-            vec![Sym::new("P"), Sym::new("R")],
-            Expr::mul(Expr::sym("P"), Expr::sym("R")),
-        )
+        (vec![Sym::new("P"), Sym::new("R")], "P * R")
     } else {
-        (vec![Sym::new("L")], Expr::sym("L"))
+        (vec![Sym::new("L")], "L")
     }
 }
 
@@ -40,13 +45,13 @@ fn vector_func_perf_model(func: &str) -> FuncPerfModel {
 
     FuncPerfModel {
         symbols,
-        constraints: ConstraintExpr::True,
+        constraints: constraint("true"),
         scenarios: vec![PerfScenario {
-            constraints: ConstraintExpr::True,
+            constraints: constraint("true"),
             time_cost: TimeCost::Simple(SimpleTimeCost {
-                fixed_latency: Expr::Const(fixed_latency),
-                volume,
-                throughput: Expr::Const(throughput),
+                fixed_latency: expr(fixed_latency),
+                volume: expr(volume),
+                throughput: expr(throughput),
             }),
         }],
     }
