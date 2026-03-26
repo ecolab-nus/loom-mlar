@@ -5,13 +5,13 @@ module @system {
   %3 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
   %4 = adl.spatial_dim "nbank", 16
   %5 = adl.memory.array "L1", (%4) of %3
-  %6 = adl.processor.compute "matrix_lane", @matrix_lane, [(%5, %5)]
-  %7 = adl.processor.compute "vector_lane", @vector_lane, [(%5, %5)]
+  %6 = adl.processor.compute "matrix_lane", [(%5, %5)]
+  %7 = adl.processor.compute "vector_lane", [(%5, %5)]
   %8 = adl.arch.compose "core", [%5, %6, %7]
   %9 = adl.spatial_dim "x", 8
   %10 = adl.spatial_dim "y", 8
   %11 = adl.arch.scale "mesh", (%9, %10) of %8
-  %12 = adl.processor.dmover "dram_l1_mover", @data_movers, [(%2, %5), (%5, %2)]
+  %12 = adl.processor.dmover "dram_l1_mover", [(%2, %5), (%5, %2)]
   %13 = adl.arch.compose "system", [%11, %12, %2]
 
   // Matrix lane compute semantics — fp16 matrix multiplication.

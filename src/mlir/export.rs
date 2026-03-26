@@ -125,23 +125,12 @@ impl MlirEmitter {
         let name = proc.name.as_deref().unwrap_or("unnamed");
         let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
 
-        let module_ref = proc.functionality.module_name.as_deref();
-
-        if let Some(mod_name) = module_ref {
-            writeln!(
-                self.output,
-                "{} = adl.processor.{} \"{}\", @{}, {}",
-                ssa, kind, name, mod_name, region_pairs
-            )
-            .unwrap();
-        } else {
-            writeln!(
-                self.output,
-                "{} = adl.processor.{} \"{}\", {}",
-                ssa, kind, name, region_pairs
-            )
-            .unwrap();
-        }
+        writeln!(
+            self.output,
+            "{} = adl.processor.{} \"{}\", {}",
+            ssa, kind, name, region_pairs
+        )
+        .unwrap();
 
         if let Some(source_path) = proc.functionality.path.as_ref() {
             if !self.mlir_sources.contains(source_path) {
