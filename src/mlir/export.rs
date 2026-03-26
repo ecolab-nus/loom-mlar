@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use super::architecture::Architecture;
-use super::architecture_graph::ArchNodeComponent;
-use super::data_mover::DataMover;
-use super::memory::{MemoryBank, MemoryRegion};
-use super::processor::Processor;
-use super::size_dim::Dimension;
+use crate::arch::architecture::Architecture;
+use crate::arch::architecture_graph::ArchNodeComponent;
+use crate::arch::data_mover::DataMover;
+use crate::arch::memory::{MemoryBank, MemoryRegion};
+use crate::arch::processor::Processor;
+use crate::arch::size_dim::Dimension;
 
 /// SSA-based emitter that serialises an [`Architecture`] tree into the
 /// `adl.*` MLIR dialect.

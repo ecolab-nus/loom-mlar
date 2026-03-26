@@ -1,6 +1,7 @@
 pub mod arch;
 pub mod evaluator;
 pub mod math;
+pub mod mlir;
 pub mod schedule;
 pub mod visualization;
 

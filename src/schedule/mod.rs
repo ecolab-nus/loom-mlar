@@ -1,11 +1,17 @@
 pub mod evaluate;
 pub mod module;
-pub mod mlir;
 pub mod schedule;
+
+pub mod mlir {
+    pub use crate::mlir::{
+        MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
+        MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
+    };
+}
 
 pub use evaluate::evaluate;
 pub use module::{Module, ModuleSource};
-pub use mlir::{
+pub use crate::mlir::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };

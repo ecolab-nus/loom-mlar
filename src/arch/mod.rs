@@ -2,12 +2,15 @@ pub mod architecture;
 pub mod architecture_graph;
 pub mod data_mover;
 pub mod memory;
-pub mod mlir_export;
 pub mod network;
 pub mod perf;
 pub mod processor;
 pub mod router;
 pub mod size_dim;
+
+pub mod mlir_export {
+    pub use crate::mlir::architecture_to_mlir;
+}
 
 // Re-export commonly used types
 pub use crate::schedule::{
@@ -25,5 +28,5 @@ pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{FunctionProcessor, HardwareProperty, Processor};
 pub use router::{Router, RouterSide};
-pub use mlir_export::architecture_to_mlir;
+pub use crate::mlir::architecture_to_mlir;
 pub use size_dim::{Dimension, SizeExpr, Sym};
