@@ -34,6 +34,10 @@ pub use visualization::hierarchy_json::{
     ArchitectureHierarchyJson, architecture_to_hierarchy_json,
     architecture_to_hierarchy_json_string_pretty, architecture_to_hierarchy_json_value,
 };
+pub use visualization::viewer_json::{
+    ArchitectureViewerJson, architecture_to_viewer_json,
+    architecture_to_viewer_json_string_pretty, architecture_to_viewer_json_value,
+};
 
 // Re-export evaluator utilities
 pub use evaluator::{generate_evaluator_binary, run_evaluator, run_evaluator_from_json};

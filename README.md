@@ -1,64 +1,65 @@
 # MLAR Rust Front-end
 
-A Rust implementation of the Multi-Level Architecture Representation (MLAR) for architecture description and symbolic performance modeling.
+Rust implementation of MLAR (Multi-Level Architecture Representation) for:
+- architecture description
+- MLIR-backed functionality interfaces
+- symbolic performance modeling
+- schedule evaluation
+- JSON/MLIR export
 
-## Design Principles
-
-- Composable and indexable: hierarchical components via recursive enums
-- Self-describing: components carry their own names
-- Compiler-oriented: regular structure, mapping, and cost modeling
-- Symbolic-friendly: dimensions and costs can stay symbolic
-- Performance-aware: conditional performance scenarios via constraints
-
-## Module Structure
+## Current Project Layout
 
 ```text
 src/
 ├── lib.rs                      # Public API and re-exports
-├── evaluator.rs                # Binary evaluator generation (run_evaluator, generate_evaluator_binary)
+├── evaluator.rs                # Standalone evaluator generation and runtime
 ├── arch/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
-│   ├── perf.rs                 # FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr
+│   ├── perf.rs                 # FuncPerfModel, PerfScenario, TimeCost, TimeExpr
 │   ├── processor.rs            # HardwareProperty, FunctionProcessor, Processor
-│   ├── memory.rs               # MemoryBank, MemoryRegion
-│   ├── network.rs              # ScaleOutNetwork (enum: Mesh), MeshNetwork, MeshNetworkInterface
 │   ├── data_mover.rs           # DataMover, FunctionDataMover
+│   ├── memory.rs               # MemoryBank, MemoryRegion
+│   ├── network.rs              # ScaleOutNetwork, MeshNetwork, MeshNetworkInterface
 │   ├── router.rs               # Router, RouterSide
 │   ├── architecture.rs         # Architecture (Unit | Array | Graph)
 │   └── architecture_graph.rs   # ArchGraph, ArchNode, ArchEdge, ArchNodeComponent
+├── mlir/
+│   ├── mod.rs                  # MLIR re-exports
+│   ├── interface.rs            # MlirModule/MlirFunc parser and interface metadata
+│   └── export.rs               # architecture_to_mlir (adl.* dialect emitter)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
 │   ├── expr.rs                 # Symbolic arithmetic expressions
 │   ├── constraint.rs           # Boolean constraints
-│   ├── affine.rs               # Affine maps and index expressions
-│   └── parse.rs                # Parsers
+│   ├── affine.rs               # Affine maps and affine expressions
+│   └── parse.rs                # Expression parser utilities
 ├── schedule/
-│   ├── mod.rs                  # Scheduling-domain re-exports
+│   ├── mod.rs                  # Schedule-domain re-exports
+│   ├── module.rs               # Module, ModuleSource
 │   ├── schedule.rs             # Schedule, SymbolicMapping
-│   ├── evaluate.rs             # evaluate()
-│   ├── op.rs                   # MlirModule, MlirFunc, MlirFuncDetails, MLIR parser
-│   └── module.rs               # Module, ModuleSource
+│   └── evaluate.rs             # evaluate()
 └── visualization/
-    ├── mod.rs                  # Visualization re-exports
-    ├── graph_json.rs           # Graph JSON export for web visualization
-    ├── hierarchy_json.rs       # Hierarchy tree JSON export
-    └── viewer_json.rs          # Combined viewer JSON (hierarchy + per-node graphs)
+    ├── mod.rs                  # Visualization modules
+    ├── graph_json.rs           # Graph JSON export
+    ├── hierarchy_json.rs       # Hierarchy JSON export
+    └── viewer_json.rs          # Combined viewer JSON export
 ```
 
-## Functionality Model
+## Core Concepts
 
-Functionality is modeled explicitly in `schedule`:
+### 1. MLIR interface extraction
 
-- `Module`: set of supported functions
-- `MlirFunc`: one callable function interface
+`MlirModule::from_mlir(path)` parses one MLIR module file and builds function references (`MlirFunc`).
 
-`Module` and `MlirFunc` correspond to MLIR module/function semantics:
+`MlirFuncDetails` can include:
+- tensor args and output tensors
+- memref args plus source/target memref inference
+- `loom.bind_shape` bindings for tensor/memref symbols
+- `loom.bind_mem` region bindings (`MlirMemRegionBinding`)
+- `loom.copy` ops (`MlirCopyOp`)
 
-- `loom.sym` declares symbols
-- `loom.bind_shape` maps tensor dims to symbols
-
-### Build from MLIR
+Example:
 
 ```rust
 use mlar_rust::Module;
@@ -67,96 +68,15 @@ let module = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
     .expect("MLIR should parse");
 
 assert_eq!(module.name.as_deref(), Some("vector_lane"));
-assert!(module.op("vec_add_f32").is_some());
+assert!(module.op("vec_add_f16").is_some() || module.op("vec_add_f32").is_some());
 ```
 
-### Build manually
+### 2. Functionality + performance binding
+
+A `Processor` binds each parsed function (`MlirFunc`) to a `FuncPerfModel` via `FunctionProcessor`.
 
 ```rust
-use mlar_rust::{MlirFunc, MlirFuncDetails, MlirTensorSymbolBinding, Sym};
-
-let matmul = MlirFunc {
-    name: "matmul_f32".into(),
-    symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
-    mlir_details: Some(MlirFuncDetails {
-        tensor_args: vec!["A".into(), "B".into(), "C".into()],
-        memref_args: vec![],
-        output_tensors: vec!["C".into()],
-        source_memrefs: vec![],
-        target_memrefs: vec![],
-        memref_symbol_bindings: vec![],
-        tensor_symbol_bindings: vec![
-            MlirTensorSymbolBinding {
-                tensor: "A".into(),
-                symbols: vec![Sym::new("M"), Sym::new("K")],
-            },
-            MlirTensorSymbolBinding {
-                tensor: "B".into(),
-                symbols: vec![Sym::new("K"), Sym::new("N")],
-            },
-            MlirTensorSymbolBinding {
-                tensor: "C".into(),
-                symbols: vec![Sym::new("M"), Sym::new("N")],
-            },
-        ],
-    }),
-    sym_map: None,
-};
-```
-
-## Performance Model
-
-`FuncPerfModel` is independent of MLIR and operation metadata. It only models symbols, constraints, and costs.
-
-```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost, Sym, TimeCost};
-
-let perf = FuncPerfModel {
-    symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
-    constraints: ConstraintExpr::True,
-    scenarios: vec![PerfScenario {
-        constraints: ConstraintExpr::True,
-        time_cost: TimeCost::Simple(SimpleTimeCost {
-            fixed_latency: Expr::Const(8),
-            volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-            throughput: Expr::Const(1024),
-        }),
-    }],
-};
-
-assert!(perf.validate().is_ok());
-```
-
-Useful helpers:
-
-- `validate()`: all used symbols are declared
-- `validate_for_func(&MlirFunc)`: validate symbols against linked tensor-symbol bindings
-- `num_scenarios()` and `total_latency_for(i)`
-
-## Linking Functionality and Performance
-
-`FunctionProcessor` is the per-function link point:
-
-- `func: MlirFunc`
-- `perf: FuncPerfModel`
-- `hardware_properties: Vec<HardwareProperty>` — optional hardware characteristics (empty by default)
-
-`HardwareProperty` is an enum of hardware characteristics that vary by processor type:
-
-- `LaneComputeShape(Vec<u64>)` — native compute shape of a vector/matrix lane (e.g. `[32]` for a 32-wide vector unit, `[32, 32, 32]` for a 32×32×32 matrix unit)
-
-`Processor` then groups:
-
-- `functionality: Module`
-- `functions: Vec<FunctionProcessor>`
-
-### Preferred constructor
-
-Use `Processor::from_module` to bind one perf model per function (in order).
-Hardware properties can then be attached to individual `FunctionProcessor`s:
-
-```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, HardwareProperty, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
 
 let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
     .expect("MLIR should parse");
@@ -178,402 +98,116 @@ let perf_models: Vec<FuncPerfModel> = functionality
     })
     .collect();
 
-let mut lane = Processor::from_module("vector_lane", functionality, perf_models)
+let lane = Processor::from_module("vector_lane", functionality, perf_models)
     .expect("module/perf binding should validate");
 
-// Attach a 32-wide lane compute shape to every function in the processor
-let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
-for fp in &mut lane.functions {
-    fp.hardware_properties = lane_shape.clone();
-}
-
-assert!(lane.get_function("vec_add_f32").is_some());
-assert_eq!(
-    lane.get_function("vec_add_f32").unwrap().lane_compute_shape(),
-    Some(&[32][..]),
-);
+assert!(lane.get_function("vec_mul_f16").is_some() || lane.get_function("vec_mul_f32").is_some());
 ```
 
-## Processor Composition
+`DataMover` uses the same function/perf binding model, with additional validation for memref source/target interfaces.
 
-Processor composition uses `Architecture`, with the recursive shape:
+### 3. Architecture composition
 
+`Architecture` is recursive:
 - `Unit(Processor)`
 - `Array { name, dims, elem, connectivity }`
 - `Graph(ArchGraph)`
 
+Example:
+
 ```rust
 use mlar_rust::{Dimension, Processor};
 
-let lane = Processor::new("lane");
-let lanes = lane.replicate(Dimension::new_int("warp", 32).as_slice());
+let lane = Processor::new("lane").into_elem();
+let mesh = lane
+    .scale([&Dimension::new_int("x", 8), &Dimension::new_int("y", 8)])
+    .with_name("mesh");
 
-assert_eq!(lanes.total_instances(), Some(32));
+assert_eq!(mesh.total_instances(), Some(64));
 ```
 
-## Memory and Connectivity
+### 4. Connectivity and memory
 
-Memory uses the same recursive pattern:
-
-- `MemoryRegion::Bank`
-- `MemoryRegion::Array`
-
-Connectivity is `ScaleOutNetwork` with:
-
-- one scaled array memory region (`MemoryRegion::Array`)
-- affine map(s) (`AffineMap`) describing the mesh topology
-- per-link bandwidth expression
-- optional IO interface (`MeshNetworkInterface`)
+Mesh connectivity is built with `ScaleOutNetwork::mesh(...)` and requires:
+- a scaled `MemoryRegion::Array`
+- one or more affine maps (`map` or `links`)
+- an IO interface (`MeshNetworkInterface`)
+- link bandwidth
 
 ```rust
-use mlar_rust::*;
+use mlar_rust::{AffineMap, Dimension, Expr, MemoryBank, MemoryRegion, MeshNetworkInterface, ScaleOutNetwork, SizeExpr};
 
-let bank_dim = Dimension::new_int("nbank", 16);
-let l1 = MemoryRegion::bank(MemoryBank::from_blocks(SizeExpr::Const(128), SizeExpr::Const(1024)))
-    .scale(bank_dim.as_slice())
-    .with_name("l1");
+let x = Dimension::new_int("x", 8);
+let y = Dimension::new_int("y", 8);
 
-let all_to_one = AffineMap::new(bank_dim.as_slice(), &[], vec![]);
+let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+    SizeExpr::Const(128),
+    SizeExpr::Const(1024),
+))
+.scale(&[x.clone(), y.clone()])
+.with_name("l1");
 
-let link = ScaleOutNetwork::mesh("l1_to_vector")
-    .region_mem(&l1)
-    .map(&all_to_one)
-    .link_bandwidth(128)
+let map = AffineMap::identity(&[x.clone(), y.clone()]);
+let io = MeshNetworkInterface::new(AffineMap::identity(&[x.clone(), y.clone()]), Expr::Const(64));
+
+let _link = ScaleOutNetwork::mesh("l1_mesh")
+    .mem_region(&l1)
+    .map(&map)
+    .io(&io)
+    .link_bandwidth(64)
     .build();
 ```
 
-## Architecture Composition
+### 5. Schedule evaluation
 
-`Architecture` is the single composition model for compute architecture:
+`evaluate(&schedule, &arch)` fills `scenarios` on all evaluated nodes.
 
-- `Unit(Processor)`: one processor as one architecture element
-- `Array { name, dims, elem, connectivity }`: homogeneous scaling of one sub-architecture
-- `Graph(ArchGraph)`: heterogeneous composition via `ArchNodeComponent` variants:
-  `Architecture`, `DataMover`, `MemoryRegion`, `Router`
+Supported today:
+- `Schedule::Func`
+- `Schedule::Sequential`
 
-Build it directly via enum variants and helpers such as `Processor::into_elem()`,
-`Processor::replicate(...)`, `Architecture::from_graph(...)`, and `architecture.scale(...)`.
+Not supported yet:
+- `Schedule::Parallel` (currently `unimplemented!`)
 
-## MLIR Types
+`SymbolicMapping` (`func.sym_map`) is applied per function invocation before composing scenario costs.
 
-Raw MLIR extraction and parsing types are under `src/schedule/op.rs`:
+## JSON Export
 
-- `MlirModule`
-- `MlirFunc`
-- `MlirFuncDetails`
-- `MlirTensorSymbolBinding`
-- `MlirMemrefSymbolBinding`
+Available at crate root (`mlar_rust::*`):
+- Graph JSON (`mlar.arch-graph.v1`):
+  - `architecture_to_graph_json`
+  - `architecture_to_graph_json_value`
+  - `architecture_to_graph_json_string`
+  - `architecture_to_graph_json_string_pretty`
+- Hierarchy JSON (`mlar.arch-hierarchy.v1`):
+  - `architecture_to_hierarchy_json`
+  - `architecture_to_hierarchy_json_value`
+  - `architecture_to_hierarchy_json_string_pretty`
+- Viewer JSON (`mlar.arch-viewer.v1`):
+  - `architecture_to_viewer_json`
+  - `architecture_to_viewer_json_value`
+  - `architecture_to_viewer_json_string_pretty`
 
-`MlirFunc` is intentionally lightweight (`name`, `symbols`) and keeps tensor/memref metadata under:
+The web viewer lives in `tools/web-visualization/`.
 
-- `mlir_details: Option<MlirFuncDetails>`
-- `MlirFuncDetails.tensor_args`, `MlirFuncDetails.output_tensors`, `MlirFuncDetails.tensor_symbol_bindings`
-- `MlirFuncDetails.memref_args`, `MlirFuncDetails.source_memrefs`, `MlirFuncDetails.target_memrefs`, `MlirFuncDetails.memref_symbol_bindings`
+## MLIR Export
 
-Each `MlirFunc` can also carry an optional `sym_map: Option<SymbolicMapping>` for
-per-invocation symbol substitutions. This mapping is applied during schedule evaluation.
+`architecture_to_mlir(&Architecture) -> Option<String>` serializes architecture into the internal `adl.*` MLIR dialect (`src/mlir/export.rs`).
 
-These are useful for parsing and inspection, and are also the canonical function interface types used by processors and schedules.
-
-## Visualization
-
-Three JSON export formats in `src/visualization/`:
-
-- **Graph JSON** (`graph_json.rs`): flat graph of nodes and edges for React Flow rendering.
-  Use `architecture_to_graph_json_*` functions.
-- **Hierarchy JSON** (`hierarchy_json.rs`): recursive tree reflecting the architecture nesting.
-  Use `architecture_to_hierarchy_json_*` functions.
-- **Viewer JSON** (`viewer_json.rs`): combined payload (hierarchy tree + per-node graph views).
-  Use `architecture_to_viewer_json_*` functions.
-
-Processor nodes export functionality metadata:
-
-- module name
-- MLIR source path/module name (when available)
-- operation list
-
-Web UI lives in `tools/web-visualization/`.
-
-## Type Reference
-
-| Type | Description | Module |
-|------|-------------|--------|
-| `Sym`, `SizeExpr`, `Dimension` | Symbolic dimension and size model | `src/arch/size_dim.rs` |
-| `Expr` | Symbolic arithmetic expression | `src/math/expr.rs` |
-| `ConstraintExpr` | Boolean constraints over expressions | `src/math/constraint.rs` |
-| `AffineExpr`, `AffineMap`, `AffineMapTemplate` | Affine connectivity model | `src/math/affine.rs` |
-| `MlirModule`, `MlirFunc`, `MlirFuncDetails`, `MlirTensorSymbolBinding`, `MlirMemrefSymbolBinding` | Parsed MLIR references and parser | `src/schedule/op.rs` |
-| `Module`, `ModuleSource` | Functionality module model | `src/schedule/module.rs` |
-| `Schedule` | Schedule tree (all nodes carry scenarios after evaluation) | `src/schedule/schedule.rs` |
-| `SymbolicMapping` | Per-function symbol substitution mapping | `src/schedule/schedule.rs` |
-| `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost`, `TimeExpr` | Function-level performance model | `src/arch/perf.rs` |
-| `HardwareProperty` | Hardware characteristic enum (`LaneComputeShape`, …) | `src/arch/processor.rs` |
-| `FunctionProcessor` | One function + one perf binding + hardware properties | `src/arch/processor.rs` |
-| `Processor` | Atomic processor with functionality and per-function bindings | `src/arch/processor.rs` |
-| `DataMover`, `FunctionDataMover` | Data mover engine with per-function perf models | `src/arch/data_mover.rs` |
-| `MemoryBank`, `MemoryRegion` | Recursive memory model | `src/arch/memory.rs` |
-| `ScaleOutNetwork` (enum: `Mesh`), `MeshNetwork`, `MeshNetworkInterface` | Connectivity and scale-out links | `src/arch/network.rs` |
-| `Router`, `RouterSide` | General router node with numbered sides | `src/arch/router.rs` |
-| `ArchGraph`, `ArchNode`, `ArchEdge`, `ArchNodeComponent` | Graph-style heterogeneous composition types | `src/arch/architecture_graph.rs` |
-| `Architecture` | Recursive architecture (Unit \| Array \| Graph) | `src/arch/architecture.rs` |
-| `ArchitectureGraphJson` | Graph JSON export | `src/visualization/graph_json.rs` |
-| `ArchitectureHierarchyJson` | Hierarchy JSON export | `src/visualization/hierarchy_json.rs` |
-| `ArchitectureViewerJson` | Combined viewer JSON export | `src/visualization/viewer_json.rs` |
-| `run_evaluator`, `run_evaluator_from_json`, `generate_evaluator_binary` | Evaluator binary generation | `src/evaluator.rs` |
+Notes:
+- returns `None` when symbolic dimensions/sizes cannot be simplified to constants
+- appends referenced functionality MLIR source files into the generated module
 
 ## Evaluator Binary Generation
 
-MLAR can produce **standalone evaluator binaries** for any architecture.
-External (non-Rust) tools invoke the binary, pass a `Schedule` as JSON on
-**stdin**, and receive the evaluated `Schedule` (with `scenarios` filled on
-every node — `Func`, `Sequential`, and `Parallel`) as JSON on **stdout**.
+`evaluator.rs` supports three flows:
+1. `mlar_evaluator!(build_arch())` macro
+2. `run_evaluator(&arch)` for in-process binaries
+3. `generate_evaluator_binary(&arch, name, output_dir)` for programmatic standalone binaries
 
-### Protocol
-
-```text
-stdin  →  Schedule JSON
-stdout ←  Schedule JSON  (with scenarios filled)
-```
-
-### Three ways to create an evaluator binary
-
-#### 1. `mlar_evaluator!` macro
-
-Create a binary target with a one-liner. The architecture is built in Rust
-code and compiled into the binary.
-
-```rust
-// src/bin/eval_my_arch.rs
-use mlar_rust::mlar_evaluator;
-
-fn build_arch() -> mlar_rust::Architecture {
-    // ... construct your architecture ...
-}
-
-mlar_evaluator!(build_arch());
-```
-
-Build with `cargo build --release --bin eval_my_arch`.
-
-#### 2. `run_evaluator()` library function
-
-Call from your own `main()` for full control over setup and error handling:
-
-```rust
-fn main() {
-    let arch = build_architecture();
-    if let Err(e) = mlar_rust::run_evaluator(&arch) {
-        eprintln!("{e}");
-        std::process::exit(1);
-    }
-}
-```
-
-#### 3. `generate_evaluator_binary()` — fully programmatic
-
-Takes a runtime `Architecture` value, serializes it to JSON, compiles a
-self-contained binary, and returns the path. Requires a Rust toolchain on
-`$PATH`.
-
-```rust
-use std::path::Path;
-use mlar_rust::generate_evaluator_binary;
-
-let arch = build_architecture();
-let binary = generate_evaluator_binary(
-    &arch,
-    "my_arch_eval",
-    Path::new("output/"),
-).expect("binary generation should succeed");
-// `binary` is now the path to the compiled executable
-```
-
-The generated binary embeds the architecture JSON — no external files
-needed at runtime.
-
-### Usage from external tools
-
-Once you have an evaluator binary (e.g. `eval_core`), any language can
-call it:
-
-**Shell:**
-
-```bash
-echo '{"Sequential":{"schedules":[
-  {"Func":{"func":{"name":"vec_add_f16","symbols":["L"],
-    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
-  {"Func":{"func":{"name":"vec_mul_f16","symbols":["L"],
-    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
-]}}' | ./eval_core
-```
-
-**Python:**
-
-```python
-import subprocess, json
-
-sym_map = {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
-schedule_input = {
-    "Sequential": {
-        "schedules": [
-            {"Func": {"func": {"name": "vec_add_f16", "symbols": ["L"], "sym_map": sym_map}}},
-            {"Func": {"func": {"name": "vec_mul_f16", "symbols": ["L"], "sym_map": sym_map}}},
-        ]
-    },
-}
-
-result = subprocess.run(
-    ["./eval_core"],
-    input=json.dumps(schedule_input),
-    capture_output=True, text=True, check=True,
-)
-evaluated_schedule = json.loads(result.stdout)
-```
-
-### Input format
-
-The binary accepts a `Schedule` JSON tree. Symbol substitutions are specified
-per-function via the optional `sym_map` field on each `MlirFunc`:
-
-```json
-{"Func": {"func": {"name": "vec_add_f16", "symbols": ["L"],
-  "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}}}}
-```
-
-The `sym_map` records per-invocation symbol substitutions (e.g. MLIR symbol
-`L` → `BM * BN`) that are applied during evaluation.
-
-### Output format
-
-The output is the same `Schedule` JSON with `scenarios` filled on every node:
-
-- **Func**: scenarios come from the architecture's performance model (one
-  scenario per `PerfScenario` in the `FuncPerfModel`).
-- **Sequential**: scenarios are the **cartesian product** of all sub-schedule
-  scenarios — time costs are summed and constraints are AND-ed.
-- **Parallel**: not yet supported (panics).
-
-```json
-{"Func": {
-  "func": {"name": "vec_add_f16", "symbols": ["L"],
-    "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}},
-  "scenarios": [
-    {
-      "constraints": "True",
-      "time_cost": {"Concrete": {"Add": [{"Const": 1}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}]}}
-    }
-  ]
-}}
-```
-
-Each scenario contains:
-
-- `constraints` — a boolean constraint expression describing when this
-  scenario applies. For combined (Sequential) scenarios, constraints from
-  each sub-schedule are joined with AND.
-- `time_cost` — a symbolic `Concrete` expression for the cycle cost. For
-  combined scenarios, this is the sum of all sub-schedule costs.
-
-### Example: 2D mesh core architecture
-
-The `tests/2d_mesh/` directory includes a complete example. The test
-`test_generate_core_evaluator_binary` builds the single-core architecture
-(matrix lane + vector lane + L1 memory + router) and generates an evaluator
-binary under `tests/2d_mesh/evaluators/`:
-
-```bash
-# Generate the binary (runs the test that calls generate_evaluator_binary)
-cargo test test_generate_core_evaluator_binary
-
-# Use the generated binary
-echo '{"Sequential":{"schedules":[
-  {"Func":{"func":{"name":"vec_add_f16","symbols":["L"],
-    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}},
-  {"Func":{"func":{"name":"vec_exp_f16","symbols":["L"],
-    "sym_map":{"entries":[["L",{"Mul":[{"Sym":"BM"},{"Sym":"BN"}]}]]}}}}
-]}}' \
-  | ./tests/2d_mesh/evaluators/eval_core
-```
-
-Example output (pretty-printed):
-
-```json
-{
-  "Sequential": {
-    "schedules": [
-      {
-        "Func": {
-          "func": {
-            "name": "vec_add_f16",
-            "symbols": ["L"],
-            "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
-          },
-          "scenarios": [
-            {
-              "constraints": "True",
-              "time_cost": {
-                "Concrete": {
-                  "Add": [
-                    {"Const": 1},
-                    {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "Func": {
-          "func": {
-            "name": "vec_exp_f16",
-            "symbols": ["L"],
-            "sym_map": {"entries": [["L", {"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}]]}
-          },
-          "scenarios": [
-            {
-              "constraints": "True",
-              "time_cost": {
-                "Concrete": {
-                  "Add": [
-                    {"Const": 16},
-                    {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 128}]}
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      }
-    ],
-    "scenarios": [
-      {
-        "constraints": "True",
-        "time_cost": {
-          "Concrete": {
-            "Add": [
-              {"Add": [{"Const": 1}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 1024}]}]},
-              {"Add": [{"Const": 16}, {"Div": [{"Mul": [{"Sym": "BM"}, {"Sym": "BN"}]}, {"Const": 128}]}]}
-            ]
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-Every node now has `scenarios` filled in. Each leaf `Func` carries its own
-per-function scenarios, and the `Sequential` node carries the **cartesian
-product** of all sub-schedule scenarios. In this example both functions have a
-single `True`-constrained scenario, so the Sequential has one combined
-scenario whose `time_cost` is the sum:
-`(1 + (BM*BN)/1024) + (16 + (BM*BN)/128)`.
-
-When sub-schedules have multiple scenarios, the cartesian product produces all
-combinations. For instance, if `func0` has scenarios A, B and `func1` has
-scenarios C, D, the Sequential would have four combined scenarios: AC, AD, BC,
-BD — each with summed time costs and AND-ed constraints.
+Evaluator protocol:
+- stdin: `Schedule` JSON
+- stdout: evaluated `Schedule` JSON with filled `scenarios`
 
 ## Build and Test
 
@@ -582,6 +216,31 @@ cargo build
 cargo test
 cargo test -- --nocapture
 ```
+
+## Public Type Reference
+
+| Type / API | Module file |
+|---|---|
+| `Sym`, `SizeExpr`, `Dimension` | `src/arch/size_dim.rs` |
+| `Expr`, `ConstraintExpr` | `src/math/expr.rs`, `src/math/constraint.rs` |
+| `AffineExpr`, `AffineMap`, `AffineMapTemplate` | `src/math/affine.rs` |
+| `MlirModule`, `MlirFunc`, `MlirFuncDetails`, `MlirMemRegionBinding`, `MlirCopyOp` | `src/mlir/interface.rs` |
+| `Module`, `ModuleSource` | `src/schedule/module.rs` |
+| `Schedule`, `SymbolicMapping` | `src/schedule/schedule.rs` |
+| `evaluate` | `src/schedule/evaluate.rs` |
+| `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | `src/arch/perf.rs` |
+| `FunctionProcessor`, `Processor`, `HardwareProperty` | `src/arch/processor.rs` |
+| `FunctionDataMover`, `DataMover` | `src/arch/data_mover.rs` |
+| `MemoryBank`, `MemoryRegion` | `src/arch/memory.rs` |
+| `ScaleOutNetwork`, `MeshNetwork`, `MeshNetworkInterface` | `src/arch/network.rs` |
+| `Router`, `RouterSide` | `src/arch/router.rs` |
+| `ArchGraph`, `ArchNode`, `ArchEdge`, `ArchNodeComponent` | `src/arch/architecture_graph.rs` |
+| `Architecture` | `src/arch/architecture.rs` |
+| `architecture_to_mlir` | `src/mlir/export.rs` |
+| `ArchitectureGraphJson` exports | `src/visualization/graph_json.rs` |
+| `ArchitectureHierarchyJson` exports | `src/visualization/hierarchy_json.rs` |
+| `ArchitectureViewerJson` exports | `src/visualization/viewer_json.rs` |
+| `run_evaluator`, `generate_evaluator_binary` | `src/evaluator.rs` |
 
 ## License
 
