@@ -72,13 +72,13 @@ mod tests {
 
     #[test]
     fn module_from_mlir_keeps_source_and_ops() {
-        let module = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let module = Module::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane MLIR should parse");
 
         assert_eq!(module.name.as_deref(), Some("vector_lane"));
         assert_eq!(
             module.source.as_ref().map(|s| s.path.as_str()),
-            Some("tests/2d_mesh/compute/vector_lane.mlir")
+            Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         );
         assert!(module.ops.iter().any(|op| op.name.starts_with("vec_add_")));
     }

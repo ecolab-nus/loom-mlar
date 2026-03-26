@@ -5,7 +5,7 @@ use crate::memory::l1;
 /// Vector lane processor with per-function performance models.
 ///
 /// Each function in the functionality module has its own `FuncPerfModel`:
-/// - Most vector kernels in `compute/vector_lane.mlir` declare
+/// - Most vector kernels in `processors_mlir/vector_lane.mlir` declare
 ///   `%L = loom.sym @L : index` as the logical vector length.
 /// - `vec_vsum_*` declares `%P = loom.sym @P` and `%R = loom.sym @R`.
 /// - `vec_max_*`, `vec_add_*`, `vec_sum_*`, `vec_mul_*`:
@@ -13,8 +13,8 @@ use crate::memory::l1;
 /// - `vec_exp_*`: throughput = 128, latency = 16
 /// - `vec_div_*`: throughput = 256, latency = 8
 pub fn vector_lane() -> Architecture {
-    let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
-        .expect("tests/2d_mesh/compute/vector_lane.mlir should parse");
+    let functionality = Module::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+        .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
 
     let perf_for = |func: &str| -> FuncPerfModel {
         let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);

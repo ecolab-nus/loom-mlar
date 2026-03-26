@@ -8,8 +8,8 @@ use crate::memory::l1;
 /// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
 /// - Scenario 2: M*N ≤ 8192 → throughput = (M*N / 8192) * 1024, latency = 1
 pub fn matrix_lane() -> Architecture {
-    let functionality = Module::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
-        .expect("tests/2d_mesh/compute/matrix_lane.mlir should parse");
+    let functionality = Module::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
+        .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
 
     let mat_func_perf = FuncPerfModel {
         symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],

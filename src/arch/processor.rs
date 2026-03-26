@@ -977,8 +977,9 @@ mod tests {
 
     #[test]
     fn processor_from_module_rejects_loom_copy_functions() {
-        let module = FunctionalityModule::from_mlir("tests/2d_mesh/data_movers/dram_to_l1.mlir")
-            .expect("data mover MLIR should parse");
+        let module =
+            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+                .expect("data mover MLIR should parse");
         let perf_models: Vec<FuncPerfModel> = module
             .ops
             .iter()
@@ -1086,7 +1087,7 @@ mod tests {
     #[test]
     fn data_mover_from_module_requires_memref_bound_symbol_interface() {
         let functionality =
-            FunctionalityModule::from_mlir("tests/2d_mesh/data_movers/dram_to_l1.mlir")
+            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
                 .expect("dram_to_l1 data mover MLIR should parse");
         let perf_models = vec![
             FuncPerfModel {
@@ -1110,7 +1111,7 @@ mod tests {
     #[test]
     fn data_mover_validation_rejects_missing_memref_interface() {
         let functionality =
-            FunctionalityModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+            FunctionalityModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
                 .expect("vector_lane should parse");
         let perf_models = vec![FuncPerfModel::trivial(); functionality.ops.len()];
 

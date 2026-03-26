@@ -756,19 +756,20 @@ mod tests {
 
     #[test]
     fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
-        let module = MlirModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane.mlir should parse");
         assert_eq!(
             module.path.as_deref(),
-            Some("tests/2d_mesh/compute/vector_lane.mlir")
+            Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         );
         assert_eq!(module.module_name, "vector_lane");
         assert!(module.functions.iter().any(|f| f.starts_with("vec_max_")));
         assert!(module.functions.iter().any(|f| f.starts_with("vec_div_")));
 
         // Uppercase alias naming is also supported.
-        let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
-            .expect("alias constructor should parse");
+        let alias_module =
+            MLIRModuleRef::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+                .expect("alias constructor should parse");
         assert_eq!(alias_module.module_name, "vector_lane");
     }
 
@@ -787,7 +788,7 @@ mod tests {
 
     #[test]
     fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
-        let module = MlirModule::from_mlir("tests/2d_mesh/compute/matrix_lane.mlir")
+        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
             .expect("matrix_lane.mlir should parse");
         let func = module
             .function_refs

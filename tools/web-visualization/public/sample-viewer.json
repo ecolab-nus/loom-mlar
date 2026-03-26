@@ -257,7 +257,7 @@
               "name": "matrix_lane",
               "functionality": {
                 "name": "matrix_lane",
-                "source_path": "tests/2d_mesh/compute/matrix_lane.mlir",
+                "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
                 "source_mlir_module_name": "matrix_lane",
                 "ops": [
                   "matmul_f16",
@@ -281,7 +281,7 @@
               "name": "vector_lane",
               "functionality": {
                 "name": "vector_lane",
-                "source_path": "tests/2d_mesh/compute/vector_lane.mlir",
+                "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
                 "source_mlir_module_name": "vector_lane",
                 "ops": [
                   "vec_max_f16",
@@ -421,7 +421,7 @@
               "name": "dram_l1_mover",
               "functionality": {
                 "name": "data_movers",
-                "source_path": "tests/2d_mesh/data_movers/dram_to_l1.mlir",
+                "source_path": "tests/2d_mesh/processors_mlir/dram_to_l1.mlir",
                 "source_mlir_module_name": "data_movers",
                 "ops": [
                   "dram_to_l1_f16",
@@ -893,7 +893,7 @@
                 "name": "matrix_lane",
                 "functionality": {
                   "name": "matrix_lane",
-                  "source_path": "tests/2d_mesh/compute/matrix_lane.mlir",
+                  "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
                   "source_mlir_module_name": "matrix_lane",
                   "ops": [
                     "matmul_f16",
@@ -917,7 +917,7 @@
                 "name": "vector_lane",
                 "functionality": {
                   "name": "vector_lane",
-                  "source_path": "tests/2d_mesh/compute/vector_lane.mlir",
+                  "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
                   "source_mlir_module_name": "vector_lane",
                   "ops": [
                     "vec_max_f16",

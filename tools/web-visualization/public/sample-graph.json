@@ -131,7 +131,7 @@
             "kind": "unit",
             "name": "matrix_lane",
             "compute": {
-              "path": "tests/2d_mesh/compute/matrix_lane.mlir",
+              "path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
               "module_name": "matrix_lane",
               "functions": [
                 "matmul_f32"
@@ -189,7 +189,7 @@
             "kind": "unit",
             "name": "vector_lane",
             "compute": {
-              "path": "tests/2d_mesh/compute/vector_lane.mlir",
+              "path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
               "module_name": "vector_lane",
               "functions": [
                 "vec_max_f32",
@@ -477,7 +477,7 @@
             "kind": "unit",
             "name": "matrix_lane",
             "compute": {
-              "path": "tests/2d_mesh/compute/matrix_lane.mlir",
+              "path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
               "module_name": "matrix_lane",
               "functions": [
                 "matmul_f32"
@@ -508,7 +508,7 @@
             "kind": "unit",
             "name": "vector_lane",
             "compute": {
-              "path": "tests/2d_mesh/compute/vector_lane.mlir",
+              "path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
               "module_name": "vector_lane",
               "functions": [
                 "vec_max_f32",

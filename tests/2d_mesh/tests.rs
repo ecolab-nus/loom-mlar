@@ -7,7 +7,7 @@ use mlar_rust::*;
 
 use crate::scale::scaled_mesh_torus;
 
-const VEC_LANE_MLIR: &str = "tests/2d_mesh/compute/vector_lane.mlir";
+const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors_mlir/vector_lane.mlir";
 
 /// Look up the full function name for a given operation prefix (e.g. `"vec_add"`)
 /// from the vector-lane MLIR module. This makes tests resilient to datatype changes
@@ -90,7 +90,7 @@ fn test_2d_mesh_torus_perf_models() {
         .expect("matrix_lane should have functionality");
     assert_eq!(
         mat_module.source.as_ref().map(|s| s.path.as_str()),
-        Some("tests/2d_mesh/compute/matrix_lane.mlir")
+        Some("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
     );
     assert_eq!(mat_module.name.as_deref(), Some("matrix_lane"));
     assert!(
@@ -159,7 +159,7 @@ fn test_2d_mesh_torus_perf_models() {
         .expect("vector_lane should have functionality");
     assert_eq!(
         vec_module.source.as_ref().map(|s| s.path.as_str()),
-        Some("tests/2d_mesh/compute/vector_lane.mlir")
+        Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
     );
     assert_eq!(vec_module.name.as_deref(), Some("vector_lane"));
     let op_names: Vec<&str> = vec_module.ops.iter().map(|op| op.name.as_str()).collect();
@@ -218,7 +218,7 @@ fn test_2d_mesh_torus_perf_models() {
     assert!(mover.validate().is_ok(), "data mover should validate");
     assert_eq!(
         mover.functionality.source.as_ref().map(|s| s.path.as_str()),
-        Some("tests/2d_mesh/data_movers/dram_to_l1.mlir")
+        Some("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
     );
     let move_func = mover
         .get_function("dram_to_l1_f16")

@@ -62,7 +62,7 @@
           "name": "dram_l1_mover",
           "functionality": {
             "name": "data_movers",
-            "source_path": "tests/2d_mesh/data_movers/dram_to_l1.mlir",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_to_l1.mlir",
             "source_mlir_module_name": "data_movers",
             "ops": [
               "dram_to_l1_f16",

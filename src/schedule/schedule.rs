@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn schedule_serializes_and_deserializes() {
-        let module = MlirModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane MLIR should parse");
         let add_func = module
             .function_refs
@@ -153,7 +153,7 @@ mod tests {
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
         assert_eq!(
             value["Sequential"]["mlir_ref"]["path"],
-            json!("tests/2d_mesh/compute/vector_lane.mlir")
+            json!("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         );
         assert_eq!(value["Sequential"]["processor"]["name"], json!("mesh"));
         assert!(value["Sequential"]["scenarios"].is_array());
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn schedule_serializes_and_deserializes_with_absent_optional_fields() {
-        let func = MlirModule::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+        let func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
             .expect("vector_lane MLIR should parse")
             .function_refs
             .into_iter()
