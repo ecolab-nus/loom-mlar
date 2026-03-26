@@ -80,28 +80,6 @@ struct ProcessorModuleBuilder {
     kind_for_errors: &'static str,
 }
 
-/// Start building a pure data-mover module.
-fn build_data_mover() -> ProcessorModuleBuilder {
-    ProcessorModuleBuilder {
-        name: None,
-        src_regions: Vec::new(),
-        dst_regions: Vec::new(),
-        module_ctor: Module::DataMover,
-        kind_for_errors: "DataMover",
-    }
-}
-
-/// Start building a pure compute module.
-fn build_compute_processor() -> ProcessorModuleBuilder {
-    ProcessorModuleBuilder {
-        name: None,
-        src_regions: Vec::new(),
-        dst_regions: Vec::new(),
-        module_ctor: Module::Compute,
-        kind_for_errors: "Processor",
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct DataMoverBuilder {
     inner: ProcessorModuleBuilder,
@@ -157,7 +135,13 @@ impl FunctionProcessor {
 impl DataMover {
     pub fn builder() -> DataMoverBuilder {
         DataMoverBuilder {
-            inner: build_data_mover(),
+            inner: ProcessorModuleBuilder {
+                name: None,
+                src_regions: Vec::new(),
+                dst_regions: Vec::new(),
+                module_ctor: Module::DataMover,
+                kind_for_errors: "DataMover",
+            },
         }
     }
 
@@ -181,7 +165,13 @@ impl DataMover {
 impl ComputeProcessor {
     pub fn builder() -> ComputeProcessorBuilder {
         ComputeProcessorBuilder {
-            inner: build_compute_processor(),
+            inner: ProcessorModuleBuilder {
+                name: None,
+                src_regions: Vec::new(),
+                dst_regions: Vec::new(),
+                module_ctor: Module::Compute,
+                kind_for_errors: "Processor",
+            },
         }
     }
 
