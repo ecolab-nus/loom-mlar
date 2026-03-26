@@ -966,6 +966,8 @@ fn test_export_2d_mesh_torus_mlir() {
     // Memory arrays
     assert!(mlir.contains("adl.memory.array \"L1\""));
     assert!(mlir.contains("adl.memory.array \"DRAM\""));
+    assert!(mlir.contains("adl.memory.array \"L1\", ["));
+    assert!(mlir.contains("adl.memory.array \"DRAM\", ["));
 
     // Processors
     assert!(mlir.contains("adl.processor.compute \"matrix_lane\", [(%5, %5)]"));
@@ -974,7 +976,7 @@ fn test_export_2d_mesh_torus_mlir() {
 
     // Composition and scaling
     assert!(mlir.contains("adl.arch.compose \"core\", arch[%6, %7], mem[%5]"));
-    assert!(mlir.contains("adl.arch.scale \"mesh\","));
+    assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
     assert!(mlir.contains("adl.arch.compose \"system\", arch[%11, %12], mem[%2]"));
 
     // Each dimension emitted exactly once

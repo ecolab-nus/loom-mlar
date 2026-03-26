@@ -75,7 +75,7 @@ impl MlirEmitter {
                 let scaleout = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = adl.memory.array \"{}\", ({}) of {}",
+                    "{} = adl.memory.array \"{}\", [{}] of {}",
                     ssa, name_str, scaleout, sub_ssa
                 )
                 .unwrap();
@@ -208,7 +208,7 @@ impl MlirEmitter {
                 let dim_list = dim_ssas.join(", ");
                 writeln!(
                     self.output,
-                    "{} = adl.arch.scale \"{}\", ({}) of {}",
+                    "{} = adl.arch.scale \"{}\", [{}] of {}",
                     ssa, arch_name, dim_list, elem_ssa
                 )
                 .unwrap();
@@ -306,7 +306,7 @@ mod tests {
         let arch = lane.scale(&[dim]).with_name("mesh");
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.spatial_dim \"x\", 8"));
-        assert!(mlir.contains("adl.arch.scale \"mesh\""));
+        assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
     }
 
     #[test]
@@ -334,6 +334,8 @@ mod tests {
             .into();
         let scaled = core.scale(&[dim_x]).with_name("mesh");
         let mlir = architecture_to_mlir(&scaled).expect("should emit");
+        assert!(mlir.contains("adl.memory.array \"L1\", ["));
+        assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
         assert_eq!(
             mlir.matches("adl.spatial_dim \"x\"").count(),
             1,

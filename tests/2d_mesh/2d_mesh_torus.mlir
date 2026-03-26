@@ -1,16 +1,16 @@
 module @system {
   %0 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
   %1 = adl.spatial_dim "dram_channel", 8
-  %2 = adl.memory.array "DRAM", (%1) of %0
+  %2 = adl.memory.array "DRAM", [%1] of %0
   %3 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
   %4 = adl.spatial_dim "nbank", 16
-  %5 = adl.memory.array "L1", (%4) of %3
+  %5 = adl.memory.array "L1", [%4] of %3
   %6 = adl.processor.compute "matrix_lane", [(%5, %5)]
   %7 = adl.processor.compute "vector_lane", [(%5, %5)]
   %8 = adl.arch.compose "core", arch[%6, %7], mem[%5]
   %9 = adl.spatial_dim "x", 8
   %10 = adl.spatial_dim "y", 8
-  %11 = adl.arch.scale "mesh", (%9, %10) of %8
+  %11 = adl.arch.scale "mesh", [%9, %10] of %8
   %12 = adl.processor.dmover "dram_l1_mover", [(%2, %5), (%5, %2)]
   %13 = adl.arch.compose "system", arch[%11, %12], mem[%2]
 
