@@ -144,38 +144,35 @@ impl ComputeProcessor {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ProcessorModuleKind {
-    Compute,
-    DataMover,
-}
-
 /// Unified builder for compute/data-mover modules.
 #[derive(Clone, Debug)]
 struct ProcessorModuleBuilder {
-    kind: ProcessorModuleKind,
     name: Option<String>,
     src_regions: Vec<MemoryRegion>,
     dst_regions: Vec<MemoryRegion>,
+    module_ctor: fn(Processor) -> Module,
+    kind_for_errors: &'static str,
 }
 
 /// Start building a pure data-mover module.
 fn build_data_mover() -> ProcessorModuleBuilder {
     ProcessorModuleBuilder {
-        kind: ProcessorModuleKind::DataMover,
         name: None,
         src_regions: Vec::new(),
         dst_regions: Vec::new(),
+        module_ctor: Module::DataMover,
+        kind_for_errors: "DataMover",
     }
 }
 
 /// Start building a pure compute module.
 fn build_compute_processor() -> ProcessorModuleBuilder {
     ProcessorModuleBuilder {
-        kind: ProcessorModuleKind::Compute,
         name: None,
         src_regions: Vec::new(),
         dst_regions: Vec::new(),
+        module_ctor: Module::Compute,
+        kind_for_errors: "Processor",
     }
 }
 
@@ -371,17 +368,21 @@ impl ProcessorModuleBuilder {
 
     /// Build an empty module without interface validation.
     pub fn finish(self) -> Module {
+        let ProcessorModuleBuilder {
+            name,
+            src_regions,
+            dst_regions,
+            module_ctor,
+            ..
+        } = self;
         let processor = Processor {
-            name: self.name,
+            name,
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            src_regions: self.src_regions,
-            dst_regions: self.dst_regions,
+            src_regions,
+            dst_regions,
         };
-        match self.kind {
-            ProcessorModuleKind::Compute => Module::Compute(processor),
-            ProcessorModuleKind::DataMover => Module::DataMover(processor),
-        }
+        module_ctor(processor)
     }
 
     /// Build and validate from MLIR functionality + perf models.
@@ -390,15 +391,17 @@ impl ProcessorModuleBuilder {
         functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<Module, String> {
+        let ProcessorModuleBuilder {
+            name,
+            src_regions,
+            dst_regions,
+            module_ctor,
+            kind_for_errors,
+        } = self;
         if functionality.functions.len() != perf_models.len() {
-            let kind = if self.kind == ProcessorModuleKind::DataMover {
-                "DataMover"
-            } else {
-                "Processor"
-            };
             return Err(format!(
                 "{} has {} perf models but functionality module has {} ops",
-                kind,
+                kind_for_errors,
                 perf_models.len(),
                 functionality.functions.len()
             ));
@@ -413,17 +416,14 @@ impl ProcessorModuleBuilder {
             .collect();
 
         let processor = Processor {
-            name: self.name,
+            name,
             functionality,
             functions,
-            src_regions: self.src_regions,
-            dst_regions: self.dst_regions,
+            src_regions,
+            dst_regions,
         };
 
-        let module = match self.kind {
-            ProcessorModuleKind::Compute => Module::Compute(processor),
-            ProcessorModuleKind::DataMover => Module::DataMover(processor),
-        };
+        let module = module_ctor(processor);
         module.validate()?;
         Ok(module)
     }

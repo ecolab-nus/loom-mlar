@@ -196,294 +196,6 @@
     ]
   },
   "graphs": {
-    "": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "system",
-        "labels": []
-      },
-      "nodes": [
-        {
-          "id": "proc:mesh",
-          "kind": "processor",
-          "name": "mesh",
-          "label": "mesh [x=8, y=8]",
-          "dimensions": [
-            {
-              "name": "x",
-              "size_expr": "8",
-              "size_const": 8
-            },
-            {
-              "name": "y",
-              "size_expr": "8",
-              "size_const": 8
-            }
-          ],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "array",
-              "name": "mesh",
-              "dimensions": [
-                {
-                  "name": "x",
-                  "size_expr": "8",
-                  "size_const": 8
-                },
-                {
-                  "name": "y",
-                  "size_expr": "8",
-                  "size_const": 8
-                }
-              ],
-              "elem": {
-                "kind": "graph",
-                "name": "core",
-                "processor_count": 2,
-                "link_count": 0
-              }
-            },
-            "total_instances": 128
-          }
-        },
-        {
-          "id": "dm:dram_l1_mover",
-          "kind": "processor",
-          "name": "dram_l1_mover",
-          "label": "dram_l1_mover",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "dram_l1_mover",
-              "functionality": {
-                "name": "data_movers",
-                "source_path": "tests/2d_mesh/processors_mlir/dram_to_l1.mlir",
-                "source_mlir_module_name": "data_movers",
-                "ops": [
-                  "dram_to_l1_f16",
-                  "dram_to_l1_bcst_f16",
-                  "l1_to_dram_f16"
-                ]
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "mem:dram",
-          "kind": "memory",
-          "name": "DRAM",
-          "label": "DRAM [dram_channel=8]",
-          "dimensions": [
-            {
-              "name": "dram_channel",
-              "size_expr": "8",
-              "size_const": 8
-            }
-          ],
-          "details": {
-            "type": "memory",
-            "region": {
-              "kind": "array",
-              "name": "DRAM",
-              "dimensions": [
-                {
-                  "name": "dram_channel",
-                  "size_expr": "8",
-                  "size_const": 8
-                }
-              ],
-              "sub_region": {
-                "kind": "bank",
-                "name": "DRAM_bank",
-                "capacity_bytes": {
-                  "expr": "(256 * 8192)",
-                  "const_value": 2097152
-                },
-                "access_granularity": {
-                  "expr": "256",
-                  "const_value": 256
-                },
-                "total_size_bytes": 2097152
-              },
-              "total_size_bytes": 16777216
-            }
-          }
-        },
-        {
-          "id": "router:mesh_dram_router",
-          "kind": "router",
-          "name": "mesh_dram_router",
-          "label": "mesh_dram_router",
-          "dimensions": [],
-          "details": {
-            "type": "router",
-            "router": {
-              "name": "mesh_dram_router",
-              "side_count": 3
-            }
-          }
-        },
-        {
-          "id": "mem:l1",
-          "kind": "memory",
-          "name": "L1",
-          "label": "L1 [x=8, y=8, nbank=16]",
-          "dimensions": [
-            {
-              "name": "x",
-              "size_expr": "8",
-              "size_const": 8
-            },
-            {
-              "name": "y",
-              "size_expr": "8",
-              "size_const": 8
-            },
-            {
-              "name": "nbank",
-              "size_expr": "16",
-              "size_const": 16
-            }
-          ],
-          "details": {
-            "type": "memory",
-            "region": {
-              "kind": "array",
-              "name": "L1",
-              "dimensions": [
-                {
-                  "name": "x",
-                  "size_expr": "8",
-                  "size_const": 8
-                },
-                {
-                  "name": "y",
-                  "size_expr": "8",
-                  "size_const": 8
-                }
-              ],
-              "sub_region": {
-                "kind": "array",
-                "name": "L1",
-                "dimensions": [
-                  {
-                    "name": "nbank",
-                    "size_expr": "16",
-                    "size_const": 16
-                  }
-                ],
-                "sub_region": {
-                  "kind": "bank",
-                  "name": null,
-                  "capacity_bytes": {
-                    "expr": "(128 * 1024)",
-                    "const_value": 131072
-                  },
-                  "access_granularity": {
-                    "expr": "128",
-                    "const_value": 128
-                  },
-                  "total_size_bytes": 131072
-                },
-                "total_size_bytes": 2097152
-              },
-              "total_size_bytes": 134217728
-            }
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "edge:l1_torus:0",
-          "kind": "scale_out_network",
-          "name": "L1_torus",
-          "source": "mem:l1",
-          "target": "mem:l1",
-          "source_name": "L1",
-          "target_name": "L1",
-          "label": "L1_torus (64 B/cycle)",
-          "direction": "directional",
-          "bandwidth": {
-            "expr": "64",
-            "const_value": 64
-          },
-          "constraints": "",
-          "sharing": "mesh",
-          "map_relation": "one_to_one",
-          "topology": "general",
-          "map": {
-            "source_dimensions": [
-              {
-                "name": "x",
-                "size_expr": "8",
-                "size_const": 8
-              },
-              {
-                "name": "y",
-                "size_expr": "8",
-                "size_const": 8
-              }
-            ],
-            "target_dimensions": [
-              {
-                "name": "x",
-                "size_expr": "8",
-                "size_const": 8
-              },
-              {
-                "name": "y",
-                "size_expr": "8",
-                "size_const": 8
-              }
-            ],
-            "expressions": [
-              "x",
-              "((y + 1) mod 8)"
-            ]
-          }
-        },
-        {
-          "id": "iedge:mesh:0",
-          "kind": "intra_graph",
-          "name": "mesh↔mesh_dram_router",
-          "source": "proc:mesh",
-          "target": "router:mesh_dram_router",
-          "source_name": "mesh",
-          "target_name": "mesh_dram_router",
-          "label": "mesh ↔ mesh_dram_router (side 0)",
-          "direction": "bidirectional",
-          "side": 0
-        },
-        {
-          "id": "iedge:mesh_dram_router:1",
-          "kind": "intra_graph",
-          "name": "mesh_dram_router↔dram_l1_mover",
-          "source": "router:mesh_dram_router",
-          "target": "dm:dram_l1_mover",
-          "source_name": "mesh_dram_router",
-          "target_name": "dram_l1_mover",
-          "label": "mesh_dram_router ↔ dram_l1_mover (side 1)",
-          "direction": "bidirectional",
-          "side": 1
-        },
-        {
-          "id": "iedge:dram_l1_mover:2",
-          "kind": "intra_graph",
-          "name": "dram_l1_mover↔DRAM",
-          "source": "dm:dram_l1_mover",
-          "target": "mem:dram",
-          "source_name": "dram_l1_mover",
-          "target_name": "DRAM",
-          "label": "dram_l1_mover ↔ DRAM (side 2)",
-          "direction": "bidirectional",
-          "side": 2
-        }
-      ]
-    },
     "mesh": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
@@ -832,6 +544,294 @@
           }
         ]
       }
+    },
+    "": {
+      "schema_version": "mlar.arch-graph.v1",
+      "architecture": {
+        "name": "system",
+        "labels": []
+      },
+      "nodes": [
+        {
+          "id": "proc:mesh",
+          "kind": "processor",
+          "name": "mesh",
+          "label": "mesh [x=8, y=8]",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "array",
+              "name": "mesh",
+              "dimensions": [
+                {
+                  "name": "x",
+                  "size_expr": "8",
+                  "size_const": 8
+                },
+                {
+                  "name": "y",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "elem": {
+                "kind": "graph",
+                "name": "core",
+                "processor_count": 2,
+                "link_count": 0
+              }
+            },
+            "total_instances": 128
+          }
+        },
+        {
+          "id": "dm:dram_l1_mover",
+          "kind": "processor",
+          "name": "dram_l1_mover",
+          "label": "dram_l1_mover",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "dram_l1_mover",
+              "functionality": {
+                "name": "data_movers",
+                "source_path": "tests/2d_mesh/processors_mlir/dram_to_l1.mlir",
+                "source_mlir_module_name": "data_movers",
+                "ops": [
+                  "dram_to_l1_f16",
+                  "dram_to_l1_bcst_f16",
+                  "l1_to_dram_f16"
+                ]
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "mem:dram",
+          "kind": "memory",
+          "name": "DRAM",
+          "label": "DRAM [dram_channel=8]",
+          "dimensions": [
+            {
+              "name": "dram_channel",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "DRAM",
+              "dimensions": [
+                {
+                  "name": "dram_channel",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "sub_region": {
+                "kind": "bank",
+                "name": "DRAM_bank",
+                "capacity_bytes": {
+                  "expr": "(256 * 8192)",
+                  "const_value": 2097152
+                },
+                "access_granularity": {
+                  "expr": "256",
+                  "const_value": 256
+                },
+                "total_size_bytes": 2097152
+              },
+              "total_size_bytes": 16777216
+            }
+          }
+        },
+        {
+          "id": "router:mesh_dram_router",
+          "kind": "router",
+          "name": "mesh_dram_router",
+          "label": "mesh_dram_router",
+          "dimensions": [],
+          "details": {
+            "type": "router",
+            "router": {
+              "name": "mesh_dram_router",
+              "side_count": 3
+            }
+          }
+        },
+        {
+          "id": "mem:l1",
+          "kind": "memory",
+          "name": "L1",
+          "label": "L1 [x=8, y=8, nbank=16]",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "L1",
+              "dimensions": [
+                {
+                  "name": "x",
+                  "size_expr": "8",
+                  "size_const": 8
+                },
+                {
+                  "name": "y",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "sub_region": {
+                "kind": "array",
+                "name": "L1",
+                "dimensions": [
+                  {
+                    "name": "nbank",
+                    "size_expr": "16",
+                    "size_const": 16
+                  }
+                ],
+                "sub_region": {
+                  "kind": "bank",
+                  "name": null,
+                  "capacity_bytes": {
+                    "expr": "(128 * 1024)",
+                    "const_value": 131072
+                  },
+                  "access_granularity": {
+                    "expr": "128",
+                    "const_value": 128
+                  },
+                  "total_size_bytes": 131072
+                },
+                "total_size_bytes": 2097152
+              },
+              "total_size_bytes": 134217728
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge:l1_torus:0",
+          "kind": "scale_out_network",
+          "name": "L1_torus",
+          "source": "mem:l1",
+          "target": "mem:l1",
+          "source_name": "L1",
+          "target_name": "L1",
+          "label": "L1_torus (64 B/cycle)",
+          "direction": "directional",
+          "bandwidth": {
+            "expr": "64",
+            "const_value": 64
+          },
+          "constraints": "",
+          "sharing": "mesh",
+          "map_relation": "one_to_one",
+          "topology": "general",
+          "map": {
+            "source_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "target_dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ],
+            "expressions": [
+              "x",
+              "((y + 1) mod 8)"
+            ]
+          }
+        },
+        {
+          "id": "iedge:mesh:0",
+          "kind": "intra_graph",
+          "name": "mesh↔mesh_dram_router",
+          "source": "proc:mesh",
+          "target": "router:mesh_dram_router",
+          "source_name": "mesh",
+          "target_name": "mesh_dram_router",
+          "label": "mesh ↔ mesh_dram_router (side 0)",
+          "direction": "bidirectional",
+          "side": 0
+        },
+        {
+          "id": "iedge:mesh_dram_router:1",
+          "kind": "intra_graph",
+          "name": "mesh_dram_router↔dram_l1_mover",
+          "source": "router:mesh_dram_router",
+          "target": "dm:dram_l1_mover",
+          "source_name": "mesh_dram_router",
+          "target_name": "dram_l1_mover",
+          "label": "mesh_dram_router ↔ dram_l1_mover (side 1)",
+          "direction": "bidirectional",
+          "side": 1
+        },
+        {
+          "id": "iedge:dram_l1_mover:2",
+          "kind": "intra_graph",
+          "name": "dram_l1_mover↔DRAM",
+          "source": "dm:dram_l1_mover",
+          "target": "mem:dram",
+          "source_name": "dram_l1_mover",
+          "target_name": "DRAM",
+          "label": "dram_l1_mover ↔ DRAM (side 2)",
+          "direction": "bidirectional",
+          "side": 2
+        }
+      ]
     },
     "mesh/core": {
       "schema_version": "mlar.arch-graph.v1",
