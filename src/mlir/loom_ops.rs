@@ -1,4 +1,4 @@
-use nom::bytes::complete::{tag, take_while1};
+use nom::bytes::complete::tag;
 use nom::character::complete::{char, multispace0, multispace1, u64 as nom_u64};
 use nom::combinator::opt;
 use nom::multi::separated_list0;
@@ -40,7 +40,8 @@ pub struct MlirMemRegionBinding {
 
 /// A `loom.copy` operation parsed from an MLIR function body.
 ///
-/// Syntax: `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : [...], broadcast : [d0, d1, ...] : type to type`
+/// Syntax:
+/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, d1, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirCopyOp {
     /// Source memref SSA name, without `%`.
@@ -51,8 +52,6 @@ pub struct MlirCopyOp {
     pub dst: String,
     /// Destination memory region name, without `@`.
     pub dst_region: String,
-    /// Interconnect specification (opaque strings for now).
-    pub interconnect: Vec<String>,
     /// Broadcast dimensions — `[1, 1]` means no broadcast,
     /// `[8, 8]` means broadcast over an 8x8 mesh, etc.
     pub broadcast: Vec<u64>,
@@ -106,37 +105,22 @@ fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str)> {
     }
 }
 
-/// Parse `%memref @Region` pair.
-fn memref_with_region(input: &str) -> IResult<&str, (&str, &str)> {
-    let (input, memref) = ssa_ref(input)?;
-    let (input, _) = multispace1(input)?;
-    let (input, region) = symbol_ref(input)?;
-    Ok((input, (memref, region)))
-}
-
-/// Opaque token inside an interconnect bracket list.
-fn interconnect_item(input: &str) -> IResult<&str, &str> {
-    take_while1(|c: char| !matches!(c, ',' | ']' | '[')).parse(input)
-}
-
-/// Parse `loom.copy %src @SrcRegion, %dst @DstRegion, interconnect : [...], broadcast : [d0, ...] ...`.
+/// Parse
+/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, ...] ...`.
 fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = tag("loom.copy").parse(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, (src, src_region)) = memref_with_region(input)?;
+    let (input, src) = ssa_ref(input)?;
     let (input, _) = comma_sep(input)?;
-    let (input, (dst, dst_region)) = memref_with_region(input)?;
-    let (input, _) = comma_sep(input)?;
-    let (input, _) = tag("interconnect").parse(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, _) = char(':').parse(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, interconnect) = delimited(
-        (char('['), multispace0),
-        separated_list0(comma_sep, interconnect_item),
-        (multispace0, char(']')),
-    )
-    .parse(input)?;
+    let (input, dst) = ssa_ref(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, _) = tag("src_mem_space").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, src_region) = symbol_ref(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, _) = tag("dst_mem_space").parse(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, dst_region) = symbol_ref(input)?;
     let (input, _) = comma_sep(input)?;
     let (input, _) = tag("broadcast").parse(input)?;
     let (input, _) = multispace0(input)?;
@@ -155,11 +139,6 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
             src_region: src_region.to_string(),
             dst: dst.to_string(),
             dst_region: dst_region.to_string(),
-            interconnect: interconnect
-                .into_iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
             broadcast,
         },
     ))

@@ -124,11 +124,16 @@ impl MlirEmitter {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
         let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
+        let proc_ref = if kind == "compute" {
+            format!("@{}", name)
+        } else {
+            format!("\"{}\"", name)
+        };
 
         writeln!(
             self.output,
-            "{} = adl.processor.{} \"{}\", {}",
-            ssa, kind, name, region_pairs
+            "{} = adl.processor.{} {}, {}",
+            ssa, kind, proc_ref, region_pairs
         )
         .unwrap();
 
@@ -272,7 +277,7 @@ mod tests {
     fn single_processor_emits_df_processor() {
         let arch = Processor::new("vec_lane").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.processor.compute \"vec_lane\", []"));
+        assert!(mlir.contains("adl.processor.compute @vec_lane, []"));
     }
 
     #[test]
@@ -294,7 +299,7 @@ mod tests {
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
-        assert!(mlir.contains("adl.processor.compute \"lane\", []"));
+        assert!(mlir.contains("adl.processor.compute @lane, []"));
         assert!(mlir.contains("adl.arch.compose \"core\", arch["));
         assert!(mlir.contains("], mem["));
     }

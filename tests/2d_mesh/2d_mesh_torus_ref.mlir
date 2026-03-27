@@ -469,7 +469,7 @@ module @system {
   // Interface convention:
   // - memref args are the real transfer endpoints (source and destination)
   // - symbols are bound directly to input/output memrefs via `loom.bind_shape`
-  // - `loom.copy` specifies the transfer with memory regions, interconnect, and broadcast
+  // - `loom.copy` specifies the transfer with explicit source/destination memory spaces and broadcast
 
   module @data_movers {
 
@@ -483,7 +483,7 @@ module @system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, interconnect : [], broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -497,7 +497,7 @@ module @system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -511,7 +511,7 @@ module @system {
     loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %l1_src, @L1 : memref<?x?xf16>
     loom.bind_mem %dram_dst, @DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @L1 dst_mem_space @DRAM, interconnect : [], broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @L1 dst_mem_space @DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

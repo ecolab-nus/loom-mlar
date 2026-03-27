@@ -214,7 +214,7 @@ func.func @dram_to_l1_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM
   loom.bind_mem %l1_dst, @L1
-  loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
 "#;
@@ -236,7 +236,6 @@ func.func @dram_to_l1_bcst(
     assert_eq!(cop.src_region, "DRAM");
     assert_eq!(cop.dst, "l1_dst");
     assert_eq!(cop.dst_region, "L1");
-    assert!(cop.interconnect.is_empty());
     assert_eq!(cop.broadcast, vec![8, 8]);
 
     assert_eq!(details.mem_region_bindings.len(), 2);

@@ -224,7 +224,7 @@ mod tests {
         match result {
             ArchitectureQueryResult::Mlir(mlir) => {
                 assert!(mlir.starts_with("module @vec_lane {\n"));
-                assert!(mlir.contains("adl.processor.compute \"vec_lane\", []"));
+                assert!(mlir.contains("adl.processor.compute @vec_lane, []"));
             }
         }
     }

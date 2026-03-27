@@ -5,8 +5,8 @@ module @system {
   %3 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
   %4 = adl.spatial_dim "nbank", 16
   %5 = adl.memory.array "L1", [%4] of %3
-  %6 = adl.processor.compute "matrix_lane", [(%5, %5)]
-  %7 = adl.processor.compute "vector_lane", [(%5, %5)]
+  %6 = adl.processor.compute @matrix_lane, [(%5, %5)]
+  %7 = adl.processor.compute @vector_lane, [(%5, %5)]
   %8 = adl.arch.compose "core", arch[%6, %7], mem[%5]
   %9 = adl.spatial_dim "x", 8
   %10 = adl.spatial_dim "y", 8
@@ -469,7 +469,7 @@ module @system {
   // Interface convention:
   // - memref args are the real transfer endpoints (source and destination)
   // - symbols are bound directly to input/output memrefs via `loom.bind_shape`
-  // - `loom.copy` specifies the transfer with memory regions, interconnect, and broadcast
+  // - `loom.copy` specifies the transfer with explicit source/destination memory spaces and broadcast
 
   module @data_movers {
 
@@ -479,11 +479,11 @@ module @system {
   ) {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %dram_src, [%M, %N] 
+    loom.bind_shape %l1_dst, [%M, %N] 
     loom.bind_mem %dram_src, @DRAM
     loom.bind_mem %l1_dst, @L1
-    loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -493,11 +493,11 @@ module @system {
   ) {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %dram_src, [%M, %N] 
+    loom.bind_shape %l1_dst, [%M, %N] 
     loom.bind_mem %dram_src, @DRAM
     loom.bind_mem %l1_dst, @L1
-    loom.copy %dram_src @DRAM, %l1_dst @L1, interconnect : [], broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -507,11 +507,11 @@ module @system {
   ) {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
-    loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_src, [%M, %N] 
+    loom.bind_shape %dram_dst, [%M, %N] 
     loom.bind_mem %l1_src, @L1
     loom.bind_mem %dram_dst, @DRAM
-    loom.copy %l1_src @L1, %dram_dst @DRAM, interconnect : [], broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @L1 dst_mem_space @DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

@@ -1124,7 +1124,7 @@ func.func @mixed_copy_compute(
   loom.bind_shape %dst, [%L] : memref<?xf16>
   loom.bind_mem %src, @DRAM
   loom.bind_mem %dst, @L1
-  loom.copy %src @DRAM, %dst @L1, interconnect : [], broadcast : [1] : memref<?xf16> to memref<?xf16>
+  loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [1] : memref<?xf16> to memref<?xf16>
   %tmp = linalg.matmul ins(%src, %src : memref<?xf16>, memref<?xf16>) outs(%dst : memref<?xf16>)
   return
 }
