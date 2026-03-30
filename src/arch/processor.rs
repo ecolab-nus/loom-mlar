@@ -1056,6 +1056,7 @@ mod tests {
         assert!(mover.get_function("dram_to_l1_f16").is_some());
         assert!(mover.get_function("dram_to_l1_2d_bcst_f16").is_some());
         assert!(mover.get_function("dram_to_l1_1d_bcst_f16").is_some());
+        assert!(mover.get_function("dram_to_l1_1d_bcst_m_f16").is_some());
     }
 
     #[test]
