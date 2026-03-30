@@ -216,6 +216,14 @@ impl Processor {
         functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<Self, String> {
+        let name = name.into();
+        validate_name_matches_mlir_module(
+            "Processor",
+            Some(name.as_str()),
+            functionality.module_name.as_deref(),
+            functionality.path.as_deref(),
+        )?;
+
         if functionality.functions.len() != perf_models.len() {
             return Err(format!(
                 "Processor has {} perf models but functionality module has {} ops",
@@ -233,7 +241,7 @@ impl Processor {
             .collect();
 
         let processor = Processor {
-            name: Some(name.into()),
+            name: Some(name),
             functionality,
             functions,
             region_pairs: Vec::new(),
@@ -365,6 +373,14 @@ impl ProcessorModuleBuilder {
             module_ctor,
             kind_for_errors,
         } = self;
+
+        validate_name_matches_mlir_module(
+            kind_for_errors,
+            name.as_deref(),
+            functionality.module_name.as_deref(),
+            functionality.path.as_deref(),
+        )?;
+
         if functionality.functions.len() != perf_models.len() {
             return Err(format!(
                 "{} has {} perf models but functionality module has {} ops",
@@ -698,6 +714,35 @@ fn validate_pure_compute_interface(func: &MlirFunc) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_name_matches_mlir_module(
+    kind_for_errors: &str,
+    module_name: Option<&str>,
+    mlir_module_name: Option<&str>,
+    mlir_path: Option<&str>,
+) -> Result<(), String> {
+    // Only enforce consistency for modules loaded from MLIR files
+    // (`MlirModule::from_mlir`), where the module symbol is author-provided.
+    if mlir_path.is_none() {
+        return Ok(());
+    }
+
+    let (Some(module_name), Some(mlir_module_name)) = (module_name, mlir_module_name) else {
+        return Ok(());
+    };
+    if module_name == mlir_module_name {
+        return Ok(());
+    }
+
+    let mut message = format!(
+        "{} name '{}' does not match MLIR module name '{}'",
+        kind_for_errors, module_name, mlir_module_name
+    );
+    if let Some(path) = mlir_path {
+        message.push_str(&format!(" (from '{}')", path));
+    }
+    Err(message)
+}
+
 fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
     let dm_name = processor.name.as_deref().unwrap_or("<unnamed>");
     if processor.region_pairs.is_empty() {
@@ -939,9 +984,24 @@ mod tests {
             })
             .collect();
 
-        let err = Processor::from_module("invalid_compute", module, perf_models)
+        let err = Processor::from_module("dram_l1_mover", module, perf_models)
             .expect_err("processor should reject loom.copy ops");
         assert!(err.contains("must not contain loom.copy"));
+    }
+
+    #[test]
+    fn processor_from_module_rejects_name_mismatch_with_mlir_module() {
+        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+            .expect("vector_lane should parse");
+        let perf_models = vec![FuncPerfModel::trivial(); module.functions.len()];
+
+        let err = Processor::from_module("wrong_name", module, perf_models)
+            .expect_err("name mismatch should fail before interface validation");
+        assert!(
+            err.contains(
+                "Processor name 'wrong_name' does not match MLIR module name 'vector_lane'"
+            )
+        );
     }
 
     #[test]
@@ -1067,11 +1127,26 @@ mod tests {
 
         let region_pairs = stub_region_pairs();
         let err = DataMover::builder()
-            .named("invalid_mover")
+            .named("vector_lane")
             .with_regions(region_pairs)
             .from_module(functionality, perf_models)
             .expect_err("vector lane functions should not satisfy data-mover interface");
         assert!(err.contains("expected at least one source memref"));
+    }
+
+    #[test]
+    fn data_mover_builder_rejects_name_mismatch_with_mlir_module() {
+        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+            .expect("dram_to_l1 should parse");
+        let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
+
+        let err = DataMover::builder()
+            .named("wrong_name")
+            .from_module(functionality, perf_models)
+            .expect_err("name mismatch should fail before data-mover validation");
+        assert!(err.contains(
+            "DataMover name 'wrong_name' does not match MLIR module name 'dram_l1_mover'"
+        ));
     }
 
     #[test]

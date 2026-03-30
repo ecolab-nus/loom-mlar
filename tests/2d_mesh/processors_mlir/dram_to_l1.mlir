@@ -5,7 +5,7 @@
 // - symbols are bound directly to input/output memrefs via `loom.bind_shape`
 // - `loom.copy` specifies the transfer with explicit source/destination memory spaces and broadcast
 
-module @data_movers {
+module @dram_l1_mover {
 
 func.func @dram_to_l1_f16(
     %dram_src: memref<?x?xf16>,

@@ -1001,8 +1001,8 @@ fn test_export_2d_mesh_torus_mlir() {
         "vector_lane MLIR module should be appended"
     );
     assert!(
-        mlir.contains("module @data_movers {"),
-        "data_movers MLIR module should be appended"
+        mlir.contains("module @dram_l1_mover {"),
+        "dram_l1_mover MLIR module should be appended"
     );
     assert!(
         mlir.contains("func.func @matmul_f16"),
