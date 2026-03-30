@@ -6,5 +6,5 @@ pub mod parse;
 // Re-export commonly used math types
 pub use affine::{AffineExpr, AffineMap, AffineMapTemplate, IndexExpr, IndexSelector};
 pub use constraint::ConstraintExpr;
-pub use expr::Expr;
+pub use expr::{Const, Expr, Sym};
 pub use parse::ParseError;

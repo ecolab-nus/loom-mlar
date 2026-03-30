@@ -14,8 +14,8 @@ use nom::{Finish, IResult, Parser};
 
 use super::affine::{AffineExpr, AffineExprTemplate, AffineMap, AffineMapTemplate};
 use super::constraint::ConstraintExpr;
-use super::expr::Expr;
-use crate::arch::size_dim::{Dimension, Sym};
+use super::expr::{Expr, Sym};
+use crate::arch::size_dim::Dimension;
 
 /// Parse error with position information.
 #[derive(Debug, Clone)]

@@ -4,7 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use super::constraint::ConstraintExpr;
 use super::parse::ParseError;
-use crate::arch::size_dim::Sym;
+
+/// Scalar type used by constant leaves in [`Expr`].
+pub type Const = i64;
+
+/// Newtype for symbolic names used in expressions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Sym(pub String);
 
 /// General symbolic expression for cost modeling (latency, throughput, bandwidth, etc.).
 ///
@@ -21,9 +27,9 @@ use crate::arch::size_dim::Sym;
 /// let e = Expr::parse("M * N / 64").unwrap();
 /// let e: Expr = "min(M, 1024) + N".parse().unwrap();
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Expr {
-    Const(i64),
+    Const(Const),
     Sym(Sym),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -44,7 +50,7 @@ mod tests {
 
     use super::ConstraintExpr;
     use super::Expr;
-    use crate::arch::size_dim::Sym;
+    use super::Sym;
 
     #[test]
     fn expr_json_round_trip() {
@@ -203,6 +209,38 @@ impl Expr {
         }
     }
 
+    /// Convenience helper used by architecture size expressions.
+    pub fn int(value: Const) -> Self {
+        Expr::Const(value)
+    }
+
+    /// Check if this expression is a concrete constant.
+    pub fn is_const(&self) -> bool {
+        matches!(self, Expr::Const(_))
+    }
+
+    /// Check if this expression is a symbolic leaf.
+    pub fn is_sym(&self) -> bool {
+        matches!(self, Expr::Sym(_))
+    }
+
+    /// Evaluate this expression to a non-negative constant, if possible.
+    pub fn as_const(&self) -> Option<u64> {
+        let v = self.eval_const()?;
+        u64::try_from(v).ok()
+    }
+
+    /// Attempt to reduce this expression to a non-negative constant.
+    pub fn simplify_constant(&self) -> Option<u64> {
+        match self {
+            Expr::Const(v) => u64::try_from(*v).ok(),
+            Expr::Sym(_) => None,
+            Expr::Add(a, b) => Some(a.simplify_constant()?.checked_add(b.simplify_constant()?)?),
+            Expr::Mul(a, b) => Some(a.simplify_constant()?.checked_mul(b.simplify_constant()?)?),
+            _ => self.as_const(),
+        }
+    }
+
     /// Collect all symbols referenced in this expression.
     pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
@@ -263,6 +301,58 @@ impl Expr {
                 else_expr.collect_symbols(out);
             }
         }
+    }
+}
+
+impl Sym {
+    pub fn new(name: impl Into<String>) -> Self {
+        Sym(name.into())
+    }
+}
+
+impl std::fmt::Display for Sym {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for Sym {
+    fn from(s: &str) -> Self {
+        Sym(s.to_string())
+    }
+}
+
+impl From<String> for Sym {
+    fn from(s: String) -> Self {
+        Sym(s)
+    }
+}
+
+impl From<Const> for Expr {
+    fn from(value: Const) -> Self {
+        Expr::Const(value)
+    }
+}
+
+impl From<u64> for Expr {
+    fn from(value: u64) -> Self {
+        Expr::Const(
+            i64::try_from(value).expect("u64 constant cannot be represented as i64 expression"),
+        )
+    }
+}
+
+impl From<usize> for Expr {
+    fn from(value: usize) -> Self {
+        Expr::Const(
+            i64::try_from(value).expect("usize constant cannot be represented as i64 expression"),
+        )
+    }
+}
+
+impl From<&str> for Expr {
+    fn from(name: &str) -> Self {
+        Expr::Sym(Sym::new(name))
     }
 }
 

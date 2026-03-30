@@ -76,8 +76,8 @@ impl MemoryRegion {
     /// Create a convenience leaf with concrete block sizes.
     pub fn leaf_concrete(block_size: u64, num_blocks: u64) -> Self {
         MemoryRegion::Bank(MemoryBank::from_blocks(
-            SizeExpr::Const(block_size),
-            SizeExpr::Const(num_blocks),
+            SizeExpr::from(block_size),
+            SizeExpr::from(num_blocks),
         ))
     }
 

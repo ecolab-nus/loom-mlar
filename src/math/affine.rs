@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use super::expr::Sym;
 use super::parse::ParseError;
-use crate::arch::size_dim::{Dimension, Sym};
+use crate::arch::size_dim::Dimension;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

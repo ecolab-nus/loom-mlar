@@ -2,9 +2,8 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::expr::Expr;
+use super::expr::{Expr, Sym};
 use super::parse::ParseError;
-use crate::arch::size_dim::Sym;
 
 /// Constraint expression — composable, evaluable predicate for performance model applicability.
 ///
@@ -23,7 +22,7 @@ use crate::arch::size_dim::Sym;
 /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
 /// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ConstraintExpr {
     /// Always true
     True,
