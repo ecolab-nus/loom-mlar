@@ -38,18 +38,18 @@ fn matmul_func_perf_model() -> FuncPerfModel {
 fn batch_matmul_func_perf_model() -> FuncPerfModel {
     FuncPerfModel {
         symbols: vec![
-            Sym::new("Batch"),
+            Sym::new("B"),
             Sym::new("M"),
             Sym::new("N"),
             Sym::new("K"),
         ],
-        constraints: constraint("Batch >= 1 && M >= 32 && N >= 32 && K >= 32"),
+        constraints: constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
                 constraints: constraint("M * N >= 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: expr("1"),
-                    volume: expr("Batch * M * N * K"),
+                    volume: expr("B * M * N * K"),
                     throughput: expr("1024"),
                 }),
             },
@@ -57,7 +57,7 @@ fn batch_matmul_func_perf_model() -> FuncPerfModel {
                 constraints: constraint("M * N < 8192"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
                     fixed_latency: expr("1"),
-                    volume: expr("Batch * M * N * K"),
+                    volume: expr("B * M * N * K"),
                     throughput: expr("(M * N / 8192) * 1024"),
                 }),
             },
