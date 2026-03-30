@@ -19,6 +19,10 @@
 //! 2. **Sequential**: recursively evaluate every sub-schedule, then compute the
 //!    cartesian product of all sub-schedule scenarios. Each product element
 //!    sums the time costs and ANDs the constraints.
+//!
+//! Overlapping [`PerfScenario`] constraints are not detected or resolved here.
+//! Model authors are expected to provide mutually exclusive scenarios per
+//! [`FuncPerfModel`].
 
 use crate::arch::ArchNodeComponent;
 use crate::arch::architecture::Architecture;
@@ -36,6 +40,9 @@ use crate::schedule::schedule::Schedule;
 /// - **Sequential**: scenarios are the cartesian product of all sub-schedule
 ///   scenarios (times summed, constraints AND-ed).
 /// - **Parallel**: not yet supported — panics.
+///
+/// Overlapping constraints are preserved as-is; evaluation does not check
+/// scenario exclusivity.
 ///
 /// # Errors
 ///

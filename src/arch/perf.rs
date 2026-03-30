@@ -39,9 +39,15 @@ pub enum TimeCost {
 }
 
 /// A single performance scenario — constraints that select it and an associated time cost.
+///
+/// When a [`FuncPerfModel`] contains multiple scenarios, authors are expected
+/// to make scenario constraints mutually exclusive.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerfScenario {
     /// Constraints under which this scenario applies.
+    ///
+    /// For models with multiple scenarios, these constraints should be
+    /// pairwise mutually exclusive across the model.
     pub constraints: ConstraintExpr,
     /// Time cost for this scenario — [`TimeCost::Simple`] in model definitions,
     /// [`TimeCost::Concrete`] after evaluation.
@@ -52,6 +58,12 @@ pub struct PerfScenario {
 ///
 /// This model is intentionally independent from MLIR and operation metadata.
 /// It can be linked with an [`MlirFunc`] later (see `validate_for_func`).
+///
+/// # Scenario constraint contract
+///
+/// If `scenarios.len() > 1`, scenario constraints are expected to be mutually
+/// exclusive. This crate currently does not perform overlap detection or
+/// enforce exclusivity at runtime.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FuncPerfModel {
     /// The symbols this model depends on. All symbols used in `constraints`,
@@ -63,6 +75,10 @@ pub struct FuncPerfModel {
     pub constraints: ConstraintExpr,
     /// The performance scenarios. Each scenario has its own constraints and
     /// cost expressions.
+    ///
+    /// If multiple scenarios are present, their constraints must be mutually
+    /// exclusive. This is a caller/model-author responsibility; no automatic
+    /// exclusivity check is performed.
     pub scenarios: Vec<PerfScenario>,
 }
 
@@ -149,6 +165,9 @@ impl FuncPerfModel {
 
     /// Validate that all symbols in global `constraints`, scenario `constraints`,
     /// and `time_cost` are declared in `symbols`.
+    ///
+    /// This validation checks symbol declaration only. It does not validate
+    /// that scenario constraints are mutually exclusive.
     ///
     /// Returns `Ok(())` if valid, or `Err(undeclared)` with undeclared symbols.
     pub fn validate(&self) -> Result<(), Vec<Sym>> {

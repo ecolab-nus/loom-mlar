@@ -106,6 +106,10 @@ assert!(lane.get_function("vec_mul_f16").is_some() || lane.get_function("vec_mul
 
 `DataMover` uses the same function/perf binding model, with additional validation for memref source/target interfaces.
 
+Important:
+- if a `FuncPerfModel` has multiple `PerfScenario` entries, scenario `constraints` must be mutually exclusive.
+- exclusivity is a model-author responsibility; current validation does not check for overlapping scenario constraints.
+
 ### 3. Architecture composition
 
 `Architecture` is recursive:
@@ -161,6 +165,9 @@ let _link = ScaleOutNetwork::mesh("l1_mesh")
 ### 5. Schedule evaluation
 
 `evaluate(&schedule, &arch)` fills `scenarios` on all evaluated nodes.
+
+Note:
+- evaluation preserves scenario constraints as provided by the model and does not enforce exclusivity or resolve overlaps.
 
 Supported today:
 - `Schedule::Func`
