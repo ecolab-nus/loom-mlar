@@ -124,7 +124,7 @@ impl MlirEmitter {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
         let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
-        let proc_ref = if kind == "compute" {
+        let proc_ref = if matches!(kind, "compute" | "dmover") {
             format!("@{}", name)
         } else {
             format!("\"{}\"", name)

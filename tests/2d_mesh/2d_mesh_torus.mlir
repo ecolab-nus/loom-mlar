@@ -11,7 +11,7 @@ module @system {
   %9 = adl.spatial_dim "x", 8
   %10 = adl.spatial_dim "y", 8
   %11 = adl.arch.scale "mesh", [%9, %10] of %8
-  %12 = adl.processor.dmover "dram_l1_mover", [(%2, %5), (%5, %2)]
+  %12 = adl.processor.dmover @dram_l1_mover, [(%2, %5), (%5, %2)]
   %13 = adl.arch.compose "system", arch[%11, %12], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix multiplication.

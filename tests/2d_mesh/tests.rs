@@ -972,7 +972,7 @@ fn test_export_2d_mesh_torus_mlir() {
     // Processors
     assert!(mlir.contains("adl.processor.compute @matrix_lane, [(%5, %5)]"));
     assert!(mlir.contains("adl.processor.compute @vector_lane, [(%5, %5)]"));
-    assert!(mlir.contains("adl.processor.dmover \"dram_l1_mover\", [(%2, %5), (%5, %2)]"));
+    assert!(mlir.contains("adl.processor.dmover @dram_l1_mover, [(%2, %5), (%5, %2)]"));
 
     // Composition and scaling
     assert!(mlir.contains("adl.arch.compose \"core\", arch[%6, %7], mem[%5]"));
