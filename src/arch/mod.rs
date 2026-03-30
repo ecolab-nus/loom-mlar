@@ -4,7 +4,6 @@ pub mod memory;
 pub mod network;
 pub mod perf;
 pub mod processor;
-pub mod router;
 pub mod size_dim;
 
 pub mod mlir_export {
@@ -20,7 +19,7 @@ pub use crate::schedule::{
 pub use architecture::Architecture;
 pub use architecture_graph::{
     ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
-    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId,
+    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Router, RouterSide,
 };
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork};
@@ -29,5 +28,4 @@ pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
     FunctionProcessor, HardwareProperty, Module as ProcessorModule, Processor,
 };
-pub use router::{Router, RouterSide};
 pub use size_dim::{Dimension, SizeExpr, Sym};
