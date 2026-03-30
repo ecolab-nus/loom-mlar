@@ -1199,8 +1199,8 @@ func.func @mixed_copy_compute(
   %L = loom.sym @L : index
   loom.bind_shape %src, [%L] : memref<?xf16>
   loom.bind_shape %dst, [%L] : memref<?xf16>
-  loom.bind_mem %src, @DRAM
-  loom.bind_mem %dst, @L1
+  loom.bind_mem %src, @DRAM : memref<?xf16>
+  loom.bind_mem %dst, @L1 : memref<?xf16>
   loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [1] : memref<?xf16> to memref<?xf16>
   %tmp = linalg.matmul ins(%src, %src : memref<?xf16>, memref<?xf16>) outs(%dst : memref<?xf16>)
   return

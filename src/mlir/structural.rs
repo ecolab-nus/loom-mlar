@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use crate::arch::Sym;
@@ -14,6 +14,10 @@ use super::{
     extract_function_blocks, func_arg, func_header, parse_single_module_name,
     split_top_level_commas,
 };
+
+fn normalize_mlir_type(input: &str) -> String {
+    input.chars().filter(|c| !c.is_ascii_whitespace()).collect()
+}
 
 /// Detailed interface metadata extracted from one MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -194,6 +198,7 @@ impl MlirFunc {
         let mut tensor_args = Vec::new();
         let mut memref_args = Vec::new();
         let mut symbols = Vec::new();
+        let mut arg_types = HashMap::new();
         for raw_arg in split_top_level_commas(arg_content) {
             let trimmed = raw_arg.trim();
             if trimmed.is_empty() || !trimmed.starts_with('%') {
@@ -201,6 +206,7 @@ impl MlirFunc {
             }
             let (_, (arg_name, arg_ty)) = func_arg(trimmed)
                 .map_err(|_| format!("invalid argument syntax in '{}': {}", name, trimmed))?;
+            arg_types.insert(arg_name.to_string(), normalize_mlir_type(arg_ty));
             if arg_ty.starts_with("loom.sym") {
                 symbols.push(Sym::new(arg_name));
             } else if arg_ty.starts_with("tensor<") {
@@ -213,18 +219,29 @@ impl MlirFunc {
         symbols.extend(collect_loom_syms(func_mlir));
 
         let operand_bindings = collect_bind_shapes(func_mlir)?;
+        for (operand, _, bind_ty) in &operand_bindings {
+            if let Some(arg_ty) = arg_types.get(operand) {
+                let normalized_bind_ty = normalize_mlir_type(bind_ty);
+                if *arg_ty != normalized_bind_ty {
+                    return Err(format!(
+                        "loom.bind_shape type mismatch for '%{}': expected '{}', got '{}'",
+                        operand, arg_ty, normalized_bind_ty
+                    ));
+                }
+            }
+        }
         let tensor_symbol_bindings = operand_bindings
             .iter()
-            .filter(|(op, _)| tensor_args.iter().any(|a| a == op))
-            .map(|(op, syms)| MlirTensorSymbolBinding {
+            .filter(|(op, _, _)| tensor_args.iter().any(|a| a == op))
+            .map(|(op, syms, _)| MlirTensorSymbolBinding {
                 tensor: op.clone(),
                 symbols: syms.clone(),
             })
             .collect();
         let memref_symbol_bindings = operand_bindings
             .iter()
-            .filter(|(op, _)| memref_args.iter().any(|a| a == op))
-            .map(|(op, syms)| MlirMemrefSymbolBinding {
+            .filter(|(op, _, _)| memref_args.iter().any(|a| a == op))
+            .map(|(op, syms, _)| MlirMemrefSymbolBinding {
                 memref: op.clone(),
                 symbols: syms.clone(),
             })
@@ -234,7 +251,22 @@ impl MlirFunc {
             collect_memref_copy_pairs(func_mlir, &memref_args)?;
         let copy_ops = collect_loom_copies(func_mlir)?;
         let linalg_ops = collect_linalg_ops(func_mlir);
-        let mem_region_bindings = collect_bind_mems(func_mlir)?;
+        let mem_region_bindings_with_types = collect_bind_mems(func_mlir)?;
+        for (binding, bind_ty) in &mem_region_bindings_with_types {
+            if let Some(arg_ty) = arg_types.get(&binding.memref) {
+                let normalized_bind_ty = normalize_mlir_type(bind_ty);
+                if *arg_ty != normalized_bind_ty {
+                    return Err(format!(
+                        "loom.bind_mem type mismatch for '%{}': expected '{}', got '{}'",
+                        binding.memref, arg_ty, normalized_bind_ty
+                    ));
+                }
+            }
+        }
+        let mem_region_bindings = mem_region_bindings_with_types
+            .into_iter()
+            .map(|(binding, _)| binding)
+            .collect();
 
         for cop in &copy_ops {
             if memref_args.iter().any(|a| a == &cop.src)

@@ -69,9 +69,23 @@ fn loom_sym_decl(input: &str) -> IResult<&str, &str> {
     symbol_ref(input)
 }
 
+/// Parse trailing `: type` annotation and consume the rest of the line.
+fn bind_type_annotation(input: &str) -> IResult<&str, &str> {
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(':').parse(input)?;
+    let ty = input.trim();
+    if ty.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Eof,
+        )));
+    }
+    Ok(("", ty))
+}
+
 /// Parse `loom.bind_shape %operand, [%sym1, %sym2, ...] : type`.
-/// Returns `(operand_name, [sym_names])`.
-fn bind_shape_decl(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
+/// Returns `(operand_name, [sym_names], type_annotation)`.
+fn bind_shape_decl(input: &str) -> IResult<&str, (&str, Vec<&str>, &str)> {
     let (input, _) = tag("loom.bind_shape").parse(input)?;
     let (input, _) = multispace1(input)?;
     let (input, operand) = ssa_ref(input)?;
@@ -82,16 +96,23 @@ fn bind_shape_decl(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
         (multispace0, char(']')),
     )
     .parse(input)?;
-    Ok((input, (operand, syms)))
+    let (input, ty) = bind_type_annotation(input)?;
+    if !(ty.starts_with("memref<") || ty.starts_with("tensor<")) || !ty.ends_with('>') {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
+    }
+    Ok((input, (operand, syms, ty)))
 }
 
 /// Parse `loom.bind_mem %memref, @Region` (preferred) or
-/// `loom.bind_mem @Region %memref` (legacy).
-/// Returns `(region_name, memref_name)`.
-fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str)> {
+/// `loom.bind_mem @Region %memref` (legacy), followed by `: memref<...>`.
+/// Returns `(region_name, memref_name, type_annotation)`.
+fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str, &str)> {
     let (input, _) = tag("loom.bind_mem").parse(input)?;
     let (input, _) = multispace1(input)?;
-    if let Ok((input, memref)) = ssa_ref(input) {
+    let (input, (region, memref)) = if let Ok((input, memref)) = ssa_ref(input) {
         let (input, _) = opt(delimited(multispace0, char(','), multispace0)).parse(input)?;
         let (input, _) = multispace0(input)?;
         let (input, region) = symbol_ref(input)?;
@@ -102,7 +123,15 @@ fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str)> {
         let (input, _) = multispace0(input)?;
         let (input, memref) = ssa_ref(input)?;
         Ok((input, (region, memref)))
+    }?;
+    let (input, ty) = bind_type_annotation(input)?;
+    if !ty.starts_with("memref<") || !ty.ends_with('>') {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
+    Ok((input, (region, memref, ty)))
 }
 
 /// Parse
@@ -152,36 +181,40 @@ pub(super) fn collect_loom_syms(func_mlir: &str) -> Vec<Sym> {
         .collect()
 }
 
-pub(super) fn collect_bind_shapes(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>)>, String> {
+pub(super) fn collect_bind_shapes(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>, String)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
         if !trimmed.starts_with("loom.bind_shape ") {
             continue;
         }
-        let (_, (operand, syms)) = bind_shape_decl(trimmed)
+        let (_, (operand, syms, ty)) = bind_shape_decl(trimmed)
             .map_err(|_| format!("invalid loom.bind_shape syntax: {}", trimmed))?;
         bindings.push((
             operand.to_string(),
             syms.into_iter().map(Sym::new).collect(),
+            ty.to_string(),
         ));
     }
     Ok(bindings)
 }
 
-pub(super) fn collect_bind_mems(func_mlir: &str) -> Result<Vec<MlirMemRegionBinding>, String> {
+pub(super) fn collect_bind_mems(func_mlir: &str) -> Result<Vec<(MlirMemRegionBinding, String)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
         if !trimmed.starts_with("loom.bind_mem ") {
             continue;
         }
-        let (_, (region, memref)) = bind_mem_decl(trimmed)
+        let (_, (region, memref, ty)) = bind_mem_decl(trimmed)
             .map_err(|_| format!("invalid loom.bind_mem syntax: {}", trimmed))?;
-        bindings.push(MlirMemRegionBinding {
-            memref: memref.to_string(),
-            region: region.to_string(),
-        });
+        bindings.push((
+            MlirMemRegionBinding {
+                memref: memref.to_string(),
+                region: region.to_string(),
+            },
+            ty.to_string(),
+        ));
     }
     Ok(bindings)
 }

@@ -19,11 +19,11 @@ func.func @matmul_f16(
   %N = loom.sym @N : index
   %K = loom.sym @K : index
   loom.bind_shape %A, [%M, %K] : memref<?x?xf16>
-  loom.bind_mem %A, @L1
+  loom.bind_mem %A, @L1 : memref<?x?xf16>
   loom.bind_shape %B, [%K, %N] : memref<?x?xf16>
-  loom.bind_mem %B, @L1
+  loom.bind_mem %B, @L1 : memref<?x?xf16>
   loom.bind_shape %C, [%M, %N] : memref<?x?xf16>
-  loom.bind_mem %C, @L1
+  loom.bind_mem %C, @L1 : memref<?x?xf16>
   linalg.matmul
       ins(%A, %B : memref<?x?xf16>, memref<?x?xf16>)
       outs(%C : memref<?x?xf16>)
@@ -41,11 +41,11 @@ func.func @batch_matmul_f16(
   %N = loom.sym @N : index
   %K = loom.sym @K : index
   loom.bind_shape %A, [%B, %M, %K] : memref<?x?x?xf16>
-  loom.bind_mem %A, @L1
+  loom.bind_mem %A, @L1 : memref<?x?x?xf16>
   loom.bind_shape %Bmat, [%B, %K, %N] : memref<?x?x?xf16>
-  loom.bind_mem %Bmat, @L1
+  loom.bind_mem %Bmat, @L1 : memref<?x?x?xf16>
   loom.bind_shape %C, [%B, %M, %N] : memref<?x?x?xf16>
-  loom.bind_mem %C, @L1
+  loom.bind_mem %C, @L1 : memref<?x?x?xf16>
   linalg.batch_matmul
       ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16>)
       outs(%C : memref<?x?x?xf16>)

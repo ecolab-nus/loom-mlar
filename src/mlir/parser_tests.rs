@@ -180,8 +180,8 @@ func.func @dram_to_l1(
   %N = loom.sym @N : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-  loom.bind_mem %dram_src, @DRAM
-  loom.bind_mem %l1_dst, @L1
+  loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
+  loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
   memref.copy %dram_src, %l1_dst : memref<?x?xf16> to memref<?x?xf16>
   return
 }
@@ -212,8 +212,8 @@ func.func @dram_to_l1_2d_bcst(
   %N = loom.sym @N : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-  loom.bind_mem %dram_src, @DRAM
-  loom.bind_mem %l1_dst, @L1
+  loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
+  loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
   loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
@@ -252,4 +252,40 @@ fn named_has_no_tensor_metadata() {
     assert!(func.symbols.is_empty());
     assert!(func.mlir_details.is_none());
     assert!(func.shape_symbols().is_empty());
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_rejects_untyped_bind_mem_and_bind_shape() {
+    let untyped_shape = r#"
+func.func @f(%a: memref<?xf16>) {
+  %L = loom.sym @L : index
+  loom.bind_shape %a, [%L]
+  return
+}
+"#;
+    let err = MlirFunc::from_mlir(untyped_shape).expect_err("missing bind_shape type should fail");
+    assert!(err.contains("invalid loom.bind_shape syntax"));
+
+    let untyped_mem = r#"
+func.func @f(%a: memref<?xf16>) {
+  loom.bind_mem %a, @L1
+  return
+}
+"#;
+    let err = MlirFunc::from_mlir(untyped_mem).expect_err("missing bind_mem type should fail");
+    assert!(err.contains("invalid loom.bind_mem syntax"));
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_rejects_bind_type_mismatch() {
+    let mismatch = r#"
+func.func @f(%a: memref<?xf16>) {
+  %L = loom.sym @L : index
+  loom.bind_shape %a, [%L] : memref<?xf32>
+  loom.bind_mem %a, @L1 : memref<?xf32>
+  return
+}
+"#;
+    let err = MlirFunc::from_mlir(mismatch).expect_err("bind type mismatch should fail");
+    assert!(err.contains("type mismatch"));
 }
