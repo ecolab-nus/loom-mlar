@@ -12,7 +12,7 @@ fn constraint(input: &str) -> ConstraintExpr {
 
 fn matmul_func_perf_model() -> FuncPerfModel {
     FuncPerfModel {
-        symbols: vec![Sym::new("M"), Sym::new("N"), Sym::new("K")],
+        symbols: Sym::from_names(["M", "N", "K"]),
         constraints: constraint("M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
@@ -37,12 +37,7 @@ fn matmul_func_perf_model() -> FuncPerfModel {
 
 fn batch_matmul_func_perf_model() -> FuncPerfModel {
     FuncPerfModel {
-        symbols: vec![
-            Sym::new("B"),
-            Sym::new("M"),
-            Sym::new("N"),
-            Sym::new("K"),
-        ],
+        symbols: Sym::from_names(["B", "M", "N", "K"]),
         constraints: constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {

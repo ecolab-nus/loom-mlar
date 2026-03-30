@@ -106,6 +106,19 @@ mod tests {
             .collect();
         assert_eq!(syms, expected);
     }
+
+    #[test]
+    fn sym_from_names() {
+        assert_eq!(
+            Sym::from_names(["M", "N", "K"]),
+            vec![Sym::new("M"), Sym::new("N"), Sym::new("K")]
+        );
+
+        assert_eq!(
+            Sym::from_names(vec!["B".to_string(), "L".to_string()]),
+            vec![Sym::new("B"), Sym::new("L")]
+        );
+    }
 }
 
 impl Expr {
@@ -307,6 +320,24 @@ impl Expr {
 impl Sym {
     pub fn new(name: impl Into<String>) -> Self {
         Sym(name.into())
+    }
+
+    /// Build a vector of symbols from an iterable of symbol-like names.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mlar_rust::Sym;
+    ///
+    /// let syms = Sym::from_names(["M", "N", "K"]);
+    /// assert_eq!(syms, vec![Sym::new("M"), Sym::new("N"), Sym::new("K")]);
+    /// ```
+    pub fn from_names<I, S>(names: I) -> Vec<Sym>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<Sym>,
+    {
+        names.into_iter().map(Into::into).collect()
     }
 }
 
