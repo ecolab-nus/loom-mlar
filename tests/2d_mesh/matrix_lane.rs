@@ -16,19 +16,35 @@ fn matmul_func_perf_model() -> FuncPerfModel {
         constraints: constraint("M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
-                constraints: constraint("M * N >= 8192"),
+                constraints: constraint("M * N >= 8192 && M == N"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
+                    fixed_latency: expr("100"),
                     volume: expr("M * N * K"),
                     throughput: expr("1024"),
                 }),
             },
             PerfScenario {
-                constraints: constraint("M * N < 8192"),
+                constraints: constraint("(M * N >= 8192) && (M != N)"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
+                    fixed_latency: expr("100"),
+                    volume: expr("M * N * K"),
+                    throughput: expr("716"), // 1024 * 0.7
+                }),
+            },
+            PerfScenario {
+                constraints: constraint("M * N < 8192 && M == N"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("100"),
                     volume: expr("M * N * K"),
                     throughput: expr("(M * N / 8192) * 1024"),
+                }),
+            },
+            PerfScenario {
+                constraints: constraint("M * N < 8192 && M != N"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("100"),
+                    volume: expr("M * N * K"),
+                    throughput: expr("(M * N / 8192) * 716"),
                 }),
             },
         ],
@@ -41,19 +57,35 @@ fn batch_matmul_func_perf_model() -> FuncPerfModel {
         constraints: constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"),
         scenarios: vec![
             PerfScenario {
-                constraints: constraint("M * N >= 8192"),
+                constraints: constraint("(B * B * M * N >= 8192) && (M == N)"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
+                    fixed_latency: expr("100"),
                     volume: expr("B * M * N * K"),
                     throughput: expr("1024"),
                 }),
             },
             PerfScenario {
-                constraints: constraint("M * N < 8192"),
+                constraints: constraint("(B * B * M * N >= 8192) && (M != N)"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
+                    fixed_latency: expr("100"),
                     volume: expr("B * M * N * K"),
-                    throughput: expr("(M * N / 8192) * 1024"),
+                    throughput: expr("716"), // 1024 * 0.7
+                }),
+            },
+            PerfScenario {
+                constraints: constraint("(B * B * M * N < 8192) && (M == N)"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("100"),
+                    volume: expr("B * M * N * K"),
+                    throughput: expr("(B * B * M * N / 8192) * 1024"),
+                }),
+            },
+            PerfScenario {
+                constraints: constraint("(B * B * M * N < 8192) && (M != N)"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("100"),
+                    volume: expr("B * M * N * K"),
+                    throughput: expr("(B * B * M * N / 8192) * 716"),
                 }),
             },
         ],

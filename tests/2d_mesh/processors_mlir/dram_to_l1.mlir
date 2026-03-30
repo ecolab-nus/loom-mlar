@@ -21,7 +21,7 @@ func.func @dram_to_l1_f16(
   return
 }
 
-func.func @dram_to_l1_2d_bcst_f16(
+func.func @dram_to_l1_1d_bcst_f16(
     %dram_src: memref<?x?xf16>,
     %l1_dst: memref<?x?xf16>
 ) {
@@ -35,7 +35,7 @@ func.func @dram_to_l1_2d_bcst_f16(
   return
 }
 
-func.func @dram_to_l1_1d_bcst_f16(
+func.func @dram_to_l1_1d_bcst_v_f16(
     %dram_src: memref<?x?xf16>,
     %l1_dst: memref<?x?xf16>
 ) {
@@ -49,7 +49,7 @@ func.func @dram_to_l1_1d_bcst_f16(
   return
 }
 
-func.func @dram_to_l1_1d_bcst_m_f16(
+func.func @dram_to_l1_1d_bcst_h_f16(
     %dram_src: memref<?x?xf16>,
     %l1_dst: memref<?x?xf16>
 ) {

@@ -302,6 +302,7 @@ fn constraint_cmp(input: &str) -> IResult<&str, ConstraintExpr> {
         i,
         match op {
             "==" => ConstraintExpr::Eq(lhs, rhs),
+            "!=" => ConstraintExpr::Ne(lhs, rhs),
             "<=" => ConstraintExpr::Le(lhs, rhs),
             "<" => ConstraintExpr::Lt(lhs, rhs),
             ">=" => ConstraintExpr::Ge(lhs, rhs),
@@ -312,7 +313,15 @@ fn constraint_cmp(input: &str) -> IResult<&str, ConstraintExpr> {
 }
 
 fn cmp_op(input: &str) -> IResult<&str, &str> {
-    ws(alt((tag("=="), tag("<="), tag(">="), tag("<"), tag(">")))).parse(input)
+    ws(alt((
+        tag("=="),
+        tag("!="),
+        tag("<="),
+        tag(">="),
+        tag("<"),
+        tag(">"),
+    )))
+    .parse(input)
 }
 
 fn affine_expr<'a>(
@@ -598,6 +607,8 @@ mod tests {
         );
         assert_eq!(parse_constraint("3 < 2").unwrap().eval_const(), Some(false));
         assert_eq!(parse_constraint("7 == 7").unwrap().eval_const(), Some(true));
+        assert_eq!(parse_constraint("7 != 8").unwrap().eval_const(), Some(true));
+        assert_eq!(parse_constraint("7 != 7").unwrap().eval_const(), Some(false));
     }
     #[test]
     fn c_sym() {

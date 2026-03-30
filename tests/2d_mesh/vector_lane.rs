@@ -17,15 +17,15 @@ fn vector_op_prefix(func: &str) -> &str {
 fn vector_op_latency_throughput(func: &str, op_prefix: &str) -> (&'static str, &'static str) {
     match op_prefix {
         "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => ("1", "1024"),
-        "vec_exp" => ("16", "128"),
-        "vec_div" => ("8", "256"),
-        "vec_sub" => ("1", "1024"),
-        "vec_powf" => ("32", "64"),
-        "vec_vmax" => ("1", "1024"),
-        "vec_cmpf_ogt" => ("1", "1024"),
-        "vec_select" => ("1", "1024"),
-        "vec_max1" => ("1", "1024"),
-        "vec_vsum" => ("1", "1024"),
+        "vec_exp" => ("16", "32"),
+        "vec_div" => ("8", "32"),
+        "vec_sub" => ("1", "128"),
+        "vec_powf" => ("32", "32"),
+        "vec_vmax" => ("1", "128"),
+        "vec_cmpf_ogt" => ("1", "128"),
+        "vec_select" => ("1", "128"),
+        "vec_max1" => ("1", "128"),
+        "vec_vsum" => ("1", "128"),
         _ => panic!("unexpected vector op '{}'", func),
     }
 }

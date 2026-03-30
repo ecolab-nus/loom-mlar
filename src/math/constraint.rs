@@ -36,6 +36,7 @@ pub enum ConstraintExpr {
 
     // Comparisons over Expr
     Eq(Expr, Expr),
+    Ne(Expr, Expr),
     Le(Expr, Expr),
     Lt(Expr, Expr),
     Ge(Expr, Expr),
@@ -105,7 +106,7 @@ impl ConstraintExpr {
     ///             | 'in_range' '(' expr ',' expr ',' expr ')'
     ///             | '(' constraint ')'
     ///             | expr cmp_op expr
-    /// cmp_op     := '==' | '<=' | '<' | '>=' | '>'
+    /// cmp_op     := '==' | '!=' | '<=' | '<' | '>=' | '>'
     /// ```
     ///
     /// # Examples
@@ -142,6 +143,7 @@ impl ConstraintExpr {
             }
             ConstraintExpr::Not(c) => Some(!c.eval_const()?),
             ConstraintExpr::Eq(a, b) => Some(a.eval_const()? == b.eval_const()?),
+            ConstraintExpr::Ne(a, b) => Some(a.eval_const()? != b.eval_const()?),
             ConstraintExpr::Le(a, b) => Some(a.eval_const()? <= b.eval_const()?),
             ConstraintExpr::Lt(a, b) => Some(a.eval_const()? < b.eval_const()?),
             ConstraintExpr::Ge(a, b) => Some(a.eval_const()? >= b.eval_const()?),
@@ -182,6 +184,9 @@ impl ConstraintExpr {
             ConstraintExpr::Eq(a, b) => {
                 ConstraintExpr::Eq(a.substitute(mappings), b.substitute(mappings))
             }
+            ConstraintExpr::Ne(a, b) => {
+                ConstraintExpr::Ne(a.substitute(mappings), b.substitute(mappings))
+            }
             ConstraintExpr::Le(a, b) => {
                 ConstraintExpr::Le(a.substitute(mappings), b.substitute(mappings))
             }
@@ -216,6 +221,7 @@ impl ConstraintExpr {
             }
             ConstraintExpr::Not(c) => c.collect_symbols(out),
             ConstraintExpr::Eq(a, b)
+            | ConstraintExpr::Ne(a, b)
             | ConstraintExpr::Le(a, b)
             | ConstraintExpr::Lt(a, b)
             | ConstraintExpr::Ge(a, b)
@@ -269,6 +275,7 @@ impl std::fmt::Display for ConstraintExpr {
                 _ => write!(f, "!({})", c),
             },
             ConstraintExpr::Eq(a, b) => write!(f, "{} == {}", a, b),
+            ConstraintExpr::Ne(a, b) => write!(f, "{} != {}", a, b),
             ConstraintExpr::Le(a, b) => write!(f, "{} <= {}", a, b),
             ConstraintExpr::Lt(a, b) => write!(f, "{} < {}", a, b),
             ConstraintExpr::Ge(a, b) => write!(f, "{} >= {}", a, b),

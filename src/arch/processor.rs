@@ -1114,9 +1114,9 @@ mod tests {
             .from_module(functionality, perf_models)
             .expect("data mover should validate");
         assert!(mover.get_function("dram_to_l1_f16").is_some());
-        assert!(mover.get_function("dram_to_l1_2d_bcst_f16").is_some());
         assert!(mover.get_function("dram_to_l1_1d_bcst_f16").is_some());
-        assert!(mover.get_function("dram_to_l1_1d_bcst_m_f16").is_some());
+        assert!(mover.get_function("dram_to_l1_1d_bcst_h_f16").is_some());
+        assert!(mover.get_function("dram_to_l1_1d_bcst_v_f16").is_some());
     }
 
     #[test]
