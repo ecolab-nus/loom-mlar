@@ -204,7 +204,7 @@ func.func @dram_to_l1(
 #[test]
 fn mlir_func_ref_from_mlir_parses_loom_copy() {
     let snippet = r#"
-func.func @dram_to_l1_bcst(
+func.func @dram_to_l1_2d_bcst(
 %dram_src: memref<?x?xf16>,
 %l1_dst: memref<?x?xf16>
 ) {
