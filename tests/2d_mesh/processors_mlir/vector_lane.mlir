@@ -96,32 +96,6 @@ func.func @vec_sum_f16(
   return
 }
 
-func.func @vec_vsum_f16(
-  %a: memref<?x?xf16>,
-  %out: memref<?xf16>
-) {
-  %P = loom.sym @P : index
-  %R = loom.sym @R : index
-  loom.bind_shape %a, [%P, %R] : memref<?x?xf16>
-  loom.bind_mem %a, @L1 : memref<?x?xf16>
-  loom.bind_shape %out, [%P] : memref<?xf16>
-  loom.bind_mem %out, @L1 : memref<?xf16>
-  linalg.generic {
-    indexing_maps = [
-      affine_map<(d0, d1) -> (d0, d1)>,
-      affine_map<(d0, d1) -> (d0)>
-    ],
-    iterator_types = ["parallel", "reduction"]
-  }
-  ins(%a : memref<?x?xf16>)
-  outs(%out : memref<?xf16>) {
-    ^bb0(%x: f16, %acc: f16):
-      %s = arith.addf %x, %acc : f16
-      linalg.yield %s : f16
-  }
-  return
-}
-
 // out[i] = a[i] + b[i], for i in [0, L)
 func.func @vec_add_f16(
     %a: memref<?xf16>,
@@ -268,63 +242,6 @@ func.func @vec_powf_f16(
     ^bb0(%x: f16, %y: f16, %z: f16):
       %r = math.powf %x, %y : f16
       linalg.yield %r : f16
-  }
-  return
-}
-
-// out[j] = max(a[j, k]) for k in [0, R), for j in [0, P)
-func.func @vec_vmax_f16(
-  %a: memref<?x?xf16>,
-  %out: memref<?xf16>
-) {
-  %P = loom.sym @P : index
-  %R = loom.sym @R : index
-  loom.bind_shape %a, [%P, %R] : memref<?x?xf16>
-  loom.bind_mem %a, @L1 : memref<?x?xf16>
-  loom.bind_shape %out, [%P] : memref<?xf16>
-  loom.bind_mem %out, @L1 : memref<?xf16>
-  linalg.generic {
-    indexing_maps = [
-      affine_map<(d0, d1) -> (d0, d1)>,
-      affine_map<(d0, d1) -> (d0)>
-    ],
-    iterator_types = ["parallel", "reduction"]
-  }
-  ins(%a : memref<?x?xf16>)
-  outs(%out : memref<?xf16>) {
-    ^bb0(%x: f16, %acc: f16):
-      %m = arith.maximumf %x, %acc : f16
-      linalg.yield %m : f16
-  }
-  return
-}
-
-func.func @vec_max1_f16(
-  %a: memref<?xf16>,
-  %b: memref<?xf16>,
-  %out: memref<?xf16>
-) {
-  %L = loom.sym @L : index
-  loom.bind_shape %a, [%L] : memref<?xf16>
-  loom.bind_mem %a, @L1 : memref<?xf16>
-  loom.bind_shape %b, [%L] : memref<?xf16>
-  loom.bind_mem %b, @L1 : memref<?xf16>
-  loom.bind_shape %out, [%L] : memref<?xf16>
-  loom.bind_mem %out, @L1 : memref<?xf16>
-  linalg.generic {
-    indexing_maps = [
-      affine_map<(d0) -> (d0)>,
-      affine_map<(d0) -> (d0)>,
-      affine_map<(d0) -> (d0)>
-    ],
-    iterator_types = ["parallel"]
-  }
-  ins(%a, %b : memref<?xf16>, memref<?xf16>)
-  outs(%out : memref<?xf16>) {
-    ^bb0(%x: f16, %y: f16, %z: f16):
-      %cmp = arith.cmpf ogt, %x, %y : f16
-      %sel = arith.select %cmp, %x, %y : f16
-      linalg.yield %sel : f16
   }
   return
 }

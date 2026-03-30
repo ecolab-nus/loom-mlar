@@ -105,6 +105,16 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .any(|op| op.name.starts_with("batch_matmul_"))
     );
+    for prefix in ["vec_vsum_", "vec_vmax_", "vec_max1_"] {
+        assert!(
+            mat_module
+                .functions
+                .iter()
+                .any(|op| op.name.starts_with(prefix)),
+            "expected a function starting with '{}' in matrix_lane ops",
+            prefix
+        );
+    }
     let matmul_details = mat_module
         .functions
         .iter()
@@ -171,7 +181,6 @@ fn test_2d_mesh_torus_perf_models() {
         "vec_max_",
         "vec_exp_",
         "vec_sum_",
-        "vec_vsum_",
         "vec_add_",
         "vec_mul_",
         "vec_div_",

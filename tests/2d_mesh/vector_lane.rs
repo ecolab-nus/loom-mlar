@@ -17,25 +17,19 @@ fn vector_op_prefix(func: &str) -> &str {
 fn vector_op_latency_throughput(func: &str, op_prefix: &str) -> (&'static str, &'static str) {
     match op_prefix {
         "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => ("1", "1024"),
-        "vec_exp" => ("16", "32"),
-        "vec_div" => ("8", "32"),
-        "vec_sub" => ("1", "128"),
-        "vec_powf" => ("32", "32"),
-        "vec_vmax" => ("1", "128"),
-        "vec_cmpf_ogt" => ("1", "128"),
-        "vec_select" => ("1", "128"),
-        "vec_max1" => ("1", "128"),
-        "vec_vsum" => ("1", "128"),
+        "vec_exp" => ("1", "7"),
+        "vec_div" => ("1", "6"),
+        "vec_sub" => ("1", "4"),
+        "vec_powf" => ("1", "7"),
+        "vec_cmpf_ogt" => ("1", "8"),
+        "vec_select" => ("1", "8"),
         _ => panic!("unexpected vector op '{}'", func),
     }
 }
 
 fn vector_op_symbols_and_volume(op_prefix: &str) -> (Vec<Sym>, &'static str) {
-    if op_prefix == "vec_vsum" || op_prefix == "vec_vmax" {
-        (vec![Sym::new("P"), Sym::new("R")], "P * R")
-    } else {
-        (vec![Sym::new("L")], "L")
-    }
+    let _ = op_prefix;
+    (vec![Sym::new("L")], "L")
 }
 
 fn vector_func_perf_model(func: &str) -> FuncPerfModel {
@@ -62,11 +56,12 @@ fn vector_func_perf_model(func: &str) -> FuncPerfModel {
 /// Each function in the functionality module has its own `FuncPerfModel`:
 /// - Most vector kernels in `processors_mlir/vector_lane.mlir` declare
 ///   `%L = loom.sym @L : index` as the logical vector length.
-/// - `vec_vsum_*` declares `%P = loom.sym @P` and `%R = loom.sym @R`.
-/// - `vec_max_*`, `vec_add_*`, `vec_sum_*`, `vec_mul_*`:
-///   throughput = 1024, latency = 1
-/// - `vec_exp_*`: throughput = 128, latency = 16
-/// - `vec_div_*`: throughput = 256, latency = 8
+/// - `vec_max_*`, `vec_sum_*`, `vec_add_*`, `vec_mul_*`:
+///   throughput = 1024, latency = 1.
+/// - `vec_exp_*` and `vec_powf_*`: throughput = 7, latency = 1.
+/// - `vec_div_*`: throughput = 6, latency = 1.
+/// - `vec_sub_*`: throughput = 4, latency = 1.
+/// - `vec_cmpf_ogt_*` and `vec_select_*`: throughput = 8, latency = 1.
 pub fn vector_lane() -> Architecture {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");

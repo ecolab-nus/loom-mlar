@@ -10,6 +10,10 @@ fn constraint(input: &str) -> ConstraintExpr {
     ConstraintExpr::parse(input).expect("2d_mesh constraint literal should parse")
 }
 
+fn matrix_op_prefix(func: &str) -> &str {
+    func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func)
+}
+
 fn matmul_func_perf_model() -> FuncPerfModel {
     FuncPerfModel {
         symbols: Sym::from_names(["M", "N", "K"]),
@@ -92,11 +96,43 @@ fn batch_matmul_func_perf_model() -> FuncPerfModel {
     }
 }
 
-/// Matrix lane processor with matmul performance model (M, N, K symbols).
+fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
+    match matrix_op_prefix(func) {
+        "matmul" => matmul_func_perf_model(),
+        "batch_matmul" => batch_matmul_func_perf_model(),
+        "vec_vsum" | "vec_vmax" => FuncPerfModel {
+            symbols: Sym::from_names(["P", "R"]),
+            constraints: constraint("true"),
+            scenarios: vec![PerfScenario {
+                constraints: constraint("true"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("1"),
+                    volume: expr("P * R"),
+                    throughput: expr("128"),
+                }),
+            }],
+        },
+        "vec_max1" => FuncPerfModel {
+            symbols: Sym::from_names(["L"]),
+            constraints: constraint("true"),
+            scenarios: vec![PerfScenario {
+                constraints: constraint("true"),
+                time_cost: TimeCost::Simple(SimpleTimeCost {
+                    fixed_latency: expr("1"),
+                    volume: expr("L"),
+                    throughput: expr("128"),
+                }),
+            }],
+        },
+        _ => panic!("unexpected matrix op '{}'", func),
+    }
+}
+
+/// Matrix lane processor with matmul plus vector-reduction performance models.
 ///
-/// - Global constraints: M ≥ 32, N ≥ 32, K ≥ 32
-/// - Scenario 1: M*N ≥ 8192 → throughput = 1024, latency = 1
-/// - Scenario 2: M*N < 8192 → throughput = (M*N / 8192) * 1024, latency = 1
+/// - `matmul_*`/`batch_matmul_*` use shape-aware throughput scenarios.
+/// - `vec_vsum_*`/`vec_vmax_*`: symbols `P, R`, volume `P * R`, throughput `128`, latency `1`.
+/// - `vec_max1_*`: symbol `L`, volume `L`, throughput `128`, latency `1`.
 pub fn matrix_lane() -> Architecture {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
@@ -104,7 +140,11 @@ pub fn matrix_lane() -> Architecture {
     let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
     let l1_region = l1();
 
-    let perf_models = vec![matmul_func_perf_model(), batch_matmul_func_perf_model()];
+    let perf_models: Vec<FuncPerfModel> = functionality
+        .functions
+        .iter()
+        .map(|op| matrix_func_perf_model(op.name.as_str()))
+        .collect();
 
     let mut proc = ComputeProcessor::builder()
         .named("matrix_lane")
