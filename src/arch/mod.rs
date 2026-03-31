@@ -23,7 +23,9 @@ pub use architecture_graph::{
     ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Router, RouterSide,
 };
 pub use memory::{MemoryBank, MemoryRegion};
-pub use network::{MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings};
+pub use network::{
+    MeshLink, MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings,
+};
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,

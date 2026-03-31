@@ -57,7 +57,7 @@ impl Resource {
     }
 
     /// Convenience: create a resource with capacity 1 (exclusive).
-    pub fn exclusive(id: impl Into<String>) -> Self {
+    pub fn new_exclusive(id: impl Into<String>) -> Self {
         Self::new(id, 1)
     }
 }
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn resource_exclusive_has_capacity_one() {
-        let r = Resource::exclusive("alu");
+        let r = Resource::new_exclusive("alu");
         assert_eq!(r.capacity, 1);
         assert_eq!(r.id.as_str(), "alu");
     }

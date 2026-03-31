@@ -1,6 +1,7 @@
 use mlar_rust::*;
 
 use crate::memory::{dram, l1};
+use crate::mesh::{h_link_resource, v_link_resource};
 
 fn expr(input: &str) -> Expr {
     Expr::parse(input).expect("2d_mesh expression literal should parse")
@@ -8,14 +9,6 @@ fn expr(input: &str) -> Expr {
 
 fn constraint(input: &str) -> ConstraintExpr {
     ConstraintExpr::parse(input).expect("2d_mesh constraint literal should parse")
-}
-
-pub fn mesh_h_links() -> Resource {
-    Resource::exclusive("mesh_h_links")
-}
-
-pub fn mesh_v_links() -> Resource {
-    Resource::exclusive("mesh_v_links")
 }
 
 /// Unicast and full-broadcast DRAM <-> L1 transfers.
@@ -70,7 +63,7 @@ pub fn dram_l1_mover() -> DataMover {
         .from_module(functionality, perf_models)
         .expect("dram_l1_mover data mover should link functionality and perf");
 
-    mover.resources = vec![mesh_h_links(), mesh_v_links()];
+    mover.resources = vec![h_link_resource(), v_link_resource()];
     mover
 }
 
@@ -104,7 +97,7 @@ pub fn dram_l1_bcst_v_mover() -> DataMover {
         .from_module(functionality, vec![perf_model])
         .expect("dram_l1_bcst_v data mover should link functionality and perf");
 
-    mover.resources = vec![mesh_v_links()];
+    mover.resources = vec![v_link_resource()];
     mover
 }
 
@@ -138,6 +131,6 @@ pub fn dram_l1_bcst_h_mover() -> DataMover {
         .from_module(functionality, vec![perf_model])
         .expect("dram_l1_bcst_h data mover should link functionality and perf");
 
-    mover.resources = vec![mesh_h_links()];
+    mover.resources = vec![h_link_resource()];
     mover
 }

@@ -208,14 +208,14 @@ fn test_2d_mesh_torus_perf_models() {
         .expect("dram_l1_bcst_v should exist");
     assert!(bcst_v.validate().is_ok(), "bcst_v data mover should validate");
     assert_eq!(bcst_v.resources.len(), 1, "bcst_v uses only v links");
-    assert_eq!(bcst_v.resources[0].id.as_str(), "mesh_v_links");
+    assert_eq!(bcst_v.resources[0].id.as_str(), "L1_torus::v");
 
     let bcst_h = mesh
         .get_data_mover("dram_l1_bcst_h")
         .expect("dram_l1_bcst_h should exist");
     assert!(bcst_h.validate().is_ok(), "bcst_h data mover should validate");
     assert_eq!(bcst_h.resources.len(), 1, "bcst_h uses only h links");
-    assert_eq!(bcst_h.resources[0].id.as_str(), "mesh_h_links");
+    assert_eq!(bcst_h.resources[0].id.as_str(), "L1_torus::h");
 
     // Verify the fused mover's function details
     let move_func = mover

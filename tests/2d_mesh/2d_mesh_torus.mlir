@@ -2,23 +2,21 @@ module @system {
   %0 = adl.memory.bank "DRAM_bank", {bsize = 8192, nblk = 196608}
   %1 = adl.spatial_dim "dram_channel", 8
   %2 = adl.memory.array "DRAM", [%1] of %0
-  %3 = adl.resource "L1_torus::link::0"
-  %4 = adl.resource "L1_torus::link::1"
-  %5 = adl.resource "mesh_h_links"
-  %6 = adl.resource "mesh_v_links"
-  %7 = adl.memory.bank "bank", {bsize = 16, nblk = 5856}
-  %8 = adl.spatial_dim "nbank", 16
-  %9 = adl.memory.array "L1", [%8] of %7
-  %10 = adl.processor.compute @matrix_lane, [(%9, %9)]
-  %11 = adl.processor.compute @vector_lane, [(%9, %9)]
-  %12 = adl.arch.compose "core", arch[%10, %11], mem[%9]
-  %13 = adl.spatial_dim "x", 8
-  %14 = adl.spatial_dim "y", 8
-  %15 = adl.arch.scale "mesh", [%13, %14] of %12
-  %16 = adl.processor.dmover @dram_l1_mover, [(%2, %9), (%9, %2)], with [%5, %6]
-  %17 = adl.processor.dmover @dram_l1_bcst_v, [(%2, %9), (%9, %2)], with [%6]
-  %18 = adl.processor.dmover @dram_l1_bcst_h, [(%2, %9), (%9, %2)], with [%5]
-  %19 = adl.arch.compose "system", arch[%15, %16, %17, %18], mem[%2]
+  %3 = adl.resource "L1_torus::h"
+  %4 = adl.resource "L1_torus::v"
+  %5 = adl.memory.bank "bank", {bsize = 16, nblk = 5856}
+  %6 = adl.spatial_dim "nbank", 16
+  %7 = adl.memory.array "L1", [%6] of %5
+  %8 = adl.processor.compute @matrix_lane, [(%7, %7)]
+  %9 = adl.processor.compute @vector_lane, [(%7, %7)]
+  %10 = adl.arch.compose "core", arch[%8, %9], mem[%7]
+  %11 = adl.spatial_dim "x", 8
+  %12 = adl.spatial_dim "y", 8
+  %13 = adl.arch.scale "mesh", [%11, %12] of %10
+  %14 = adl.processor.dmover @dram_l1_mover, [(%2, %7), (%7, %2)], with [%3, %4]
+  %15 = adl.processor.dmover @dram_l1_bcst_v, [(%2, %7), (%7, %2)], with [%4]
+  %16 = adl.processor.dmover @dram_l1_bcst_h, [(%2, %7), (%7, %2)], with [%3]
+  %17 = adl.arch.compose "system", arch[%13, %14, %15, %16], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
   //

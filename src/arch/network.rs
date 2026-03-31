@@ -26,6 +26,53 @@ pub struct MeshNetworkInterface {
     pub data_movers: Vec<DataMover>,
 }
 
+/// A named or unnamed link in a mesh network topology.
+///
+/// Each link describes a connectivity pattern via an [`AffineMap`].  An optional
+/// name is used for resource-id generation: named links produce
+/// `"{network}::{name}"`, unnamed links produce `"{network}::link::{idx}"`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MeshLink {
+    /// The affine map describing this link's connectivity pattern.
+    pub map: AffineMap,
+    /// Optional human-readable name for this link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl MeshLink {
+    /// Create an unnamed link from an affine map.
+    pub fn new(map: AffineMap) -> Self {
+        Self { map, name: None }
+    }
+
+    /// Create a named link from an affine map.
+    pub fn named(name: impl Into<String>, map: AffineMap) -> Self {
+        Self {
+            map,
+            name: Some(name.into()),
+        }
+    }
+
+    /// Generate the resource id for this link within a network.
+    pub fn resource_id(&self, network_name: &str, index: usize) -> String {
+        match &self.name {
+            Some(n) => format!("{network_name}::{n}"),
+            None => format!("{network_name}::link::{index}"),
+        }
+    }
+
+    pub fn apply(&self, args: &[i64]) -> Vec<i64> {
+        self.map.apply(args)
+    }
+}
+
+impl From<AffineMap> for MeshLink {
+    fn from(map: AffineMap) -> Self {
+        Self::new(map)
+    }
+}
+
 /// A mesh network: endpoints connected via an affine-map topology with uniform
 /// per-link bandwidth.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,8 +81,8 @@ pub struct MeshNetwork {
     /// Canonical dimensions for this mesh network.
     #[serde(default)]
     pub dimensions: Vec<Dimension>,
-    /// Affine maps describing mesh topology links (src indices -> dst indices).
-    pub links: Vec<AffineMap>,
+    /// Topology links (src indices -> dst indices).
+    pub links: Vec<MeshLink>,
     /// Array memory region attached to this mesh network.
     pub region: MemoryRegion,
     /// IO interface describing external connections and their bandwidth.
@@ -66,7 +113,7 @@ pub struct MeshNetworkBuilder {
     name: String,
     dimensions: Option<Vec<Dimension>>,
     region: Option<MemoryRegion>,
-    links: Vec<AffineMap>,
+    links: Vec<MeshLink>,
     io: Option<MeshNetworkInterface>,
     link_bandwidth: Option<Expr>,
 }
@@ -119,7 +166,7 @@ impl ScaleOutNetworkBindings for MeshNetwork {
         self.links
             .iter()
             .enumerate()
-            .map(|(idx, _)| Resource::exclusive(format!("{}::link::{idx}", self.name)))
+            .map(|(idx, link)| Resource::new_exclusive(link.resource_id(&self.name, idx)))
             .collect()
     }
 
@@ -194,17 +241,25 @@ impl ScaleOutNetwork {
 
     pub fn map(&self) -> &AffineMap {
         match self {
-            Self::Mesh(m) => m
+            Self::Mesh(m) => &m
                 .links
                 .first()
-                .expect("mesh network must contain at least one topology link map"),
+                .expect("mesh network must contain at least one topology link map")
+                .map,
+        }
+    }
+
+    /// Return all mesh links describing this network topology.
+    pub fn mesh_links(&self) -> &[MeshLink] {
+        match self {
+            Self::Mesh(m) => &m.links,
         }
     }
 
     /// Return all affine maps describing this mesh network topology.
-    pub fn links(&self) -> &[AffineMap] {
+    pub fn links(&self) -> Vec<&AffineMap> {
         match self {
-            Self::Mesh(m) => &m.links,
+            Self::Mesh(m) => m.links.iter().map(|l| &l.map).collect(),
         }
     }
 
@@ -243,19 +298,23 @@ impl ScaleOutNetwork {
             Self::Mesh(m) => {
                 let links = m
                     .links
-                    .iter()
-                    .map(|link| {
+                    .into_iter()
+                    .map(|mesh_link| {
+                        let map = &mesh_link.map;
                         let mut src_dims = dims.to_vec();
-                        src_dims.extend(link.src_dims.clone());
+                        src_dims.extend(map.src_dims.clone());
 
                         let mut dst_dims = dims.to_vec();
-                        dst_dims.extend(link.dst_dims.clone());
+                        dst_dims.extend(map.dst_dims.clone());
 
                         let mut exprs: Vec<AffineExpr> =
                             dims.iter().cloned().map(AffineExpr::var).collect();
-                        exprs.extend(link.exprs.clone());
+                        exprs.extend(map.exprs.clone());
 
-                        AffineMap::new(&src_dims, &dst_dims, exprs)
+                        MeshLink {
+                            map: AffineMap::new(&src_dims, &dst_dims, exprs),
+                            name: mesh_link.name,
+                        }
                     })
                     .collect();
 
@@ -316,7 +375,7 @@ impl ScaleOutNetwork {
         if links.len() != 1 {
             return false;
         }
-        ring_shift_axis(&links[0]).is_some()
+        ring_shift_axis(links[0]).is_some()
     }
 }
 
@@ -342,9 +401,9 @@ impl MeshNetworkBuilder {
         self.region = Some(region);
     }
 
-    fn set_map(&mut self, map: AffineMap) {
-        self.ensure_dimensions(&map.src_dims, "map source dimensions");
-        self.links.push(map);
+    fn push_link(&mut self, mesh_link: MeshLink) {
+        self.ensure_dimensions(&mesh_link.map.src_dims, "map source dimensions");
+        self.links.push(mesh_link);
     }
 
     /// Set mesh dimensions explicitly.
@@ -387,17 +446,32 @@ impl MeshNetworkBuilder {
         self
     }
 
-    /// Set the affine map describing the mesh topology.
+    /// Add a single unnamed link from an affine map.
     pub fn map(mut self, map: &AffineMap) -> Self {
-        self.set_map(map.clone());
+        self.push_link(MeshLink::new(map.clone()));
         self
     }
 
-    /// Append multiple affine maps describing mesh topology links.
+    /// Add a single [`MeshLink`] (named or unnamed).
+    pub fn link(mut self, mesh_link: MeshLink) -> Self {
+        self.push_link(mesh_link);
+        self
+    }
+
+    /// Append multiple unnamed links from affine maps (backward-compatible).
     pub fn links(mut self, links: &[AffineMap]) -> Self {
         assert!(!links.is_empty(), "mesh links cannot be empty");
-        for link in links {
-            self.set_map(link.clone());
+        for l in links {
+            self.push_link(MeshLink::new(l.clone()));
+        }
+        self
+    }
+
+    /// Append multiple [`MeshLink`]s (named or unnamed).
+    pub fn mesh_links(mut self, links: Vec<MeshLink>) -> Self {
+        assert!(!links.is_empty(), "mesh links cannot be empty");
+        for l in links {
+            self.push_link(l);
         }
         self
     }
@@ -420,7 +494,7 @@ or inferred from mem_region()/region_mem()/map()/links()",
 
         assert_matching_dimensions(&dimensions, region.dims(), "memory region dimensions");
         for link in &self.links {
-            assert_matching_dimensions(&dimensions, &link.src_dims, "map source dimensions");
+            assert_matching_dimensions(&dimensions, &link.map.src_dims, "map source dimensions");
         }
 
         let mesh = MeshNetwork {

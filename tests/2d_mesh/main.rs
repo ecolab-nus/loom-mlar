@@ -3,6 +3,7 @@ mod data_movers;
 mod dimensions;
 mod matrix_lane;
 mod memory;
+mod mesh;
 mod scale;
 mod tests;
 mod vector_lane;
