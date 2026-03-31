@@ -13,8 +13,9 @@ pub use arch::{
     ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, ComputeProcessor,
     ComputeProcessorBuilder, DataMover, DataMoverBuilder, Dimension, FuncPerfModel,
     FunctionDataMover, FunctionProcessor, HardwareProperty, MemoryBank, MemoryRegion, MeshNetwork,
-    MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Router, RouterSide,
-    ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr, architecture_to_mlir,
+    MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource, ResourceId, Router,
+    RouterSide, ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
+    architecture_to_mlir,
 };
 
 // Re-export commonly used math types

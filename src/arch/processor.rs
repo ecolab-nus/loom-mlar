@@ -3,6 +3,7 @@ use std::ops::{Deref, DerefMut};
 use super::architecture::Architecture;
 use super::memory::MemoryRegion;
 use super::perf::FuncPerfModel;
+use super::resource::Resource;
 use super::size_dim::Dimension;
 use crate::schedule::{MlirFunc, MlirModule};
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,16 @@ pub struct Processor {
     pub functions: Vec<FunctionProcessor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
+    /// Resources this processor requires when executing.
+    ///
+    /// When the processor is added to an [`super::architecture_graph::ArchGraph`],
+    /// each resource is auto-registered in the graph and the node-to-resource
+    /// association is recorded in the graph's resource map.
+    ///
+    /// If empty, the processor is treated as the sole consumer of itself —
+    /// no contention with other nodes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<Resource>,
 }
 
 /// Per-function data-mover binding: MLIR function interface + performance model.
@@ -195,6 +206,7 @@ impl Processor {
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
             region_pairs: Vec::new(),
+            resources: Vec::new(),
         }
     }
 
@@ -207,6 +219,7 @@ impl Processor {
             functionality,
             functions,
             region_pairs: Vec::new(),
+            resources: Vec::new(),
         }
     }
 
@@ -245,6 +258,7 @@ impl Processor {
             functionality,
             functions,
             region_pairs: Vec::new(),
+            resources: Vec::new(),
         };
         processor.validate()?;
         Ok(processor)
@@ -271,6 +285,12 @@ impl Processor {
     /// Attach source/destination memory-region pairs (builder-style, consumes self).
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
         self.region_pairs = region_pairs;
+        self
+    }
+
+    /// Declare which shared resources this processor requires (builder-style).
+    pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
+        self.resources = resources;
         self
     }
 
@@ -357,6 +377,7 @@ impl ProcessorModuleBuilder {
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
             region_pairs,
+            resources: Vec::new(),
         };
         module_ctor(processor)
     }
@@ -403,6 +424,7 @@ impl ProcessorModuleBuilder {
             functionality,
             functions,
             region_pairs,
+            resources: Vec::new(),
         };
 
         let module = module_ctor(processor);

@@ -19,6 +19,7 @@ src/
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, TimeCost, TimeExpr
 │   ├── processor.rs            # HardwareProperty, FunctionProcessor, Processor
 │   ├── data_mover.rs           # DataMover, FunctionDataMover
+│   ├── resource.rs             # Resource, ResourceId
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── network.rs              # ScaleOutNetwork, MeshNetwork, MeshNetworkInterface
 │   ├── router.rs               # Router, RouterSide
@@ -162,7 +163,51 @@ let _link = ScaleOutNetwork::mesh("l1_mesh")
     .build();
 ```
 
-### 5. Schedule evaluation
+### 5. Resource contention
+
+A `Resource` represents a shared hardware resource with a unique ID and a concurrency capacity.
+Processors that declare the same resource cannot execute in parallel (unless the resource has
+enough capacity for both).
+
+Resources are attached directly to a `Processor` (or `DataMover`). When the processor is added
+to an `ArchGraph`, its resources are auto-registered in the graph's resource pool and mapped to
+the corresponding node. Nodes without any declared resources are treated as sole consumers of
+themselves — they never contend with other nodes.
+
+```rust
+use mlar_rust::{Resource, Processor};
+
+// Exclusive resource (capacity 1): only one consumer at a time.
+let h_links = Resource::exclusive("mesh_h_links");
+let v_links = Resource::exclusive("mesh_v_links");
+
+// A processor that uses both links contends with any other user of either.
+let mover = Processor::new("dram_l1_mover")
+    .with_resources(vec![h_links.clone(), v_links.clone()]);
+
+// A processor that uses only vertical links can run in parallel with
+// horizontal-only consumers.
+let bcst_v = Processor::new("dram_l1_bcst_v")
+    .with_resources(vec![v_links]);
+```
+
+`ArchGraph` provides query methods for inspecting resource relationships:
+- `node_resources(id)` — resources used by a node
+- `resource_consumers(resource_id)` — all nodes using a given resource
+- `nodes_share_resource(a, b)` — whether two nodes contend
+
+The MLIR export emits resources as `adl.resource` declarations and references them
+on processor/dmover ops with `with [%r1, %r2]`:
+
+```text
+%0 = adl.resource "mesh_h_links"
+%1 = adl.resource "mesh_v_links"
+%2 = adl.processor.dmover @dram_l1_mover, [...], with [%0, %1]
+%3 = adl.processor.dmover @dram_l1_bcst_v, [...], with [%1]
+%4 = adl.processor.dmover @dram_l1_bcst_h, [...], with [%0]
+```
+
+### 6. Schedule evaluation
 
 `evaluate(&schedule, &arch)` fills `scenarios` on all evaluated nodes.
 
@@ -204,6 +249,8 @@ The web viewer lives in `web-visualization/`.
 Notes:
 - returns `None` when symbolic dimensions/sizes cannot be simplified to constants
 - appends referenced functionality MLIR source files into the generated module
+- emits `adl.resource "name"` for each resource in a graph scope
+- processor/dmover ops include `, with [%r1, ...]` when they declare resources
 
 ## Evaluator Binary Generation
 
@@ -249,6 +296,7 @@ cargo test -- --nocapture
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | `src/arch/perf.rs` |
 | `FunctionProcessor`, `Processor`, `HardwareProperty` | `src/arch/processor.rs` |
 | `FunctionDataMover`, `DataMover` | `src/arch/data_mover.rs` |
+| `Resource`, `ResourceId` | `src/arch/resource.rs` |
 | `MemoryBank`, `MemoryRegion` | `src/arch/memory.rs` |
 | `ScaleOutNetwork`, `MeshNetwork`, `MeshNetworkInterface` | `src/arch/network.rs` |
 | `Router`, `RouterSide` | `src/arch/router.rs` |

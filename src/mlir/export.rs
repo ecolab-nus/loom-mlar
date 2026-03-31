@@ -5,6 +5,7 @@ use crate::arch::architecture::Architecture;
 use crate::arch::architecture_graph::ArchNodeComponent;
 use crate::arch::memory::{MemoryBank, MemoryRegion};
 use crate::arch::processor::{DataMover, Processor};
+use crate::arch::resource::Resource;
 use crate::arch::size_dim::Dimension;
 
 /// SSA-based emitter that serialises an [`Architecture`] tree into the
@@ -16,6 +17,8 @@ struct MlirEmitter {
     dim_map: HashMap<String, String>,
     /// Memory-region name → SSA value.
     memory_map: HashMap<String, String>,
+    /// Resource id → SSA value.
+    resource_map: HashMap<String, String>,
     /// MLIR source paths collected from functionality modules
     /// (insertion-ordered, deduplicated).
     mlir_sources: Vec<String>,
@@ -28,6 +31,7 @@ impl MlirEmitter {
             output: String::new(),
             dim_map: HashMap::new(),
             memory_map: HashMap::new(),
+            resource_map: HashMap::new(),
             mlir_sources: Vec::new(),
         }
     }
@@ -110,6 +114,24 @@ impl MlirEmitter {
         Some(ssa)
     }
 
+    /// Emit a `adl.resource` op if not already emitted, returning the SSA value.
+    fn emit_resource(&mut self, resource: &Resource) -> String {
+        if let Some(existing) = self.resource_map.get(resource.id.as_str()) {
+            return existing.clone();
+        }
+        let ssa = self.next_ssa();
+        writeln!(
+            self.output,
+            "{} = adl.resource \"{}\"",
+            ssa,
+            resource.id.as_str()
+        )
+        .unwrap();
+        self.resource_map
+            .insert(resource.id.as_str().to_string(), ssa.clone());
+        ssa
+    }
+
     /// Emit a `adl.processor` op and record its MLIR source (if any).
     fn emit_processor(&mut self, proc: &Processor) -> Option<String> {
         self.emit_processor_like("compute", proc)
@@ -130,10 +152,12 @@ impl MlirEmitter {
             format!("\"{}\"", name)
         };
 
+        let resource_clause = self.format_resource_clause(&proc.resources);
+
         writeln!(
             self.output,
-            "{} = adl.processor.{} {}, {}",
-            ssa, kind, proc_ref, region_pairs
+            "{} = adl.processor.{} {}, {}{}",
+            ssa, kind, proc_ref, region_pairs, resource_clause
         )
         .unwrap();
 
@@ -144,6 +168,21 @@ impl MlirEmitter {
         }
 
         Some(ssa)
+    }
+
+    fn format_resource_clause(&self, resources: &[Resource]) -> String {
+        if resources.is_empty() {
+            return String::new();
+        }
+        let ssas: Vec<&str> = resources
+            .iter()
+            .filter_map(|r| self.resource_map.get(r.id.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+        if ssas.is_empty() {
+            return String::new();
+        }
+        format!(", with [{}]", ssas.join(", "))
     }
 
     fn format_region_pairs(&self, region_pairs: &[(MemoryRegion, MemoryRegion)]) -> Option<String> {
@@ -174,6 +213,11 @@ impl MlirEmitter {
                     if let ArchNodeComponent::MemoryRegion(region) = &node.component {
                         mem_components.push(self.emit_memory(region)?);
                     }
+                }
+
+                // Emit resources so processors can reference them.
+                for resource in &graph.resources {
+                    self.emit_resource(resource);
                 }
 
                 for node in &graph.nodes {

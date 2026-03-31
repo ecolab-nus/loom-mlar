@@ -1,7 +1,7 @@
 use mlar_rust::*;
 
 use crate::core_arch::single_core;
-use crate::data_movers::dram_l1_mover;
+use crate::data_movers::{dram_l1_bcst_h_mover, dram_l1_bcst_v_mover, dram_l1_mover};
 use crate::dimensions::{dim_x, dim_y};
 use crate::memory::dram;
 
@@ -16,7 +16,10 @@ pub fn scaled_mesh_torus() -> Architecture {
     let dim_y = dim_y();
     let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
     let dram = dram();
+
     let dram_l1 = dram_l1_mover();
+    let bcst_v = dram_l1_bcst_v_mover();
+    let bcst_h = dram_l1_bcst_h_mover();
 
     let scaled_l1 = mesh
         .get_memory_region("L1")
@@ -57,6 +60,8 @@ pub fn scaled_mesh_torus() -> Architecture {
     let mut system: Architecture = ArchGraph::builder("system")
         .processor(&mesh)
         .data_mover(&dram_l1)
+        .data_mover(&bcst_v)
+        .data_mover(&bcst_h)
         .mem(&dram)
         .build()
         .into();
@@ -70,12 +75,22 @@ pub fn scaled_mesh_torus() -> Architecture {
     let mover_id = graph
         .data_mover_ref("dram_l1_mover")
         .expect("dram_l1_mover node");
+    let bcst_v_id = graph
+        .data_mover_ref("dram_l1_bcst_v")
+        .expect("dram_l1_bcst_v node");
+    let bcst_h_id = graph
+        .data_mover_ref("dram_l1_bcst_h")
+        .expect("dram_l1_bcst_h node");
     let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
 
     let router_node = graph.get_node(&router_id).expect("router node").clone();
     let mesh_node = graph.get_node(&mesh_id).expect("mesh node").clone();
-    let mover_node = graph.get_node(&mover_id).expect("mover node").clone();
     let dram_node = graph.get_node(&dram_id).expect("DRAM node").clone();
+
+    let mover_nodes: Vec<_> = [mover_id, bcst_v_id, bcst_h_id]
+        .iter()
+        .map(|id| graph.get_node(id).expect("mover node").clone())
+        .collect();
 
     graph.connect_with_attrs(
         &mesh_node,
@@ -85,22 +100,25 @@ pub fn scaled_mesh_torus() -> Architecture {
             ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
         ],
     );
-    graph.connect_with_attrs(
-        &router_node,
-        &mover_node,
-        vec![
-            ArchEdgeAttr::Side(1),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
-    graph.connect_with_attrs(
-        &mover_node,
-        &dram_node,
-        vec![
-            ArchEdgeAttr::Side(2),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
+
+    for mover_node in &mover_nodes {
+        graph.connect_with_attrs(
+            &router_node,
+            mover_node,
+            vec![
+                ArchEdgeAttr::Side(1),
+                ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+            ],
+        );
+        graph.connect_with_attrs(
+            mover_node,
+            &dram_node,
+            vec![
+                ArchEdgeAttr::Side(2),
+                ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+            ],
+        );
+    }
 
     system
 }

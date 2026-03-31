@@ -229,6 +229,8 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             name: arch.name().unwrap_or("architecture").to_string(),
             nodes: vec![ArchNode::from_architecture(arch)],
             edges: Vec::new(),
+            resources: Vec::new(),
+            resource_map: std::collections::HashMap::new(),
         };
         &synthetic_graph
     };

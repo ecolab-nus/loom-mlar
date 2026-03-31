@@ -140,9 +140,29 @@
           "functions": [
             "dram_to_l1_f16",
             "dram_to_l1_1d_bcst_f16",
-            "dram_to_l1_1d_bcst_v_f16",
-            "dram_to_l1_1d_bcst_h_f16",
             "l1_to_dram_f16"
+          ]
+        }
+      },
+      {
+        "kind": "unit",
+        "name": "dram_l1_bcst_v",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "dram_to_l1_1d_bcst_v_f16"
+          ]
+        }
+      },
+      {
+        "kind": "unit",
+        "name": "dram_l1_bcst_h",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "dram_to_l1_1d_bcst_h_f16"
           ]
         }
       },

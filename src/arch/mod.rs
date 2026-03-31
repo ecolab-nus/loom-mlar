@@ -29,5 +29,5 @@ pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
     FunctionProcessor, HardwareProperty, Module as ProcessorModule, Processor,
 };
-pub use resource::{Resource, ResourceId, ResourceKind, ResourcePool, ResourceRequirement, ResourceRequirements};
+pub use resource::{Resource, ResourceId};
 pub use size_dim::{Dimension, SizeExpr, Sym};

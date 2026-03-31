@@ -2,17 +2,21 @@ module @system {
   %0 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
   %1 = adl.spatial_dim "dram_channel", 8
   %2 = adl.memory.array "DRAM", [%1] of %0
-  %3 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
-  %4 = adl.spatial_dim "nbank", 16
-  %5 = adl.memory.array "L1", [%4] of %3
-  %6 = adl.processor.compute @matrix_lane, [(%5, %5)]
-  %7 = adl.processor.compute @vector_lane, [(%5, %5)]
-  %8 = adl.arch.compose "core", arch[%6, %7], mem[%5]
-  %9 = adl.spatial_dim "x", 8
-  %10 = adl.spatial_dim "y", 8
-  %11 = adl.arch.scale "mesh", [%9, %10] of %8
-  %12 = adl.processor.dmover @dram_l1_mover, [(%2, %5), (%5, %2)]
-  %13 = adl.arch.compose "system", arch[%11, %12], mem[%2]
+  %3 = adl.resource "mesh_h_links"
+  %4 = adl.resource "mesh_v_links"
+  %5 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
+  %6 = adl.spatial_dim "nbank", 16
+  %7 = adl.memory.array "L1", [%6] of %5
+  %8 = adl.processor.compute @matrix_lane, [(%7, %7)]
+  %9 = adl.processor.compute @vector_lane, [(%7, %7)]
+  %10 = adl.arch.compose "core", arch[%8, %9], mem[%7]
+  %11 = adl.spatial_dim "x", 8
+  %12 = adl.spatial_dim "y", 8
+  %13 = adl.arch.scale "mesh", [%11, %12] of %10
+  %14 = adl.processor.dmover @dram_l1_mover, [(%2, %7), (%7, %2)], with [%3, %4]
+  %15 = adl.processor.dmover @dram_l1_bcst_v, [(%2, %7), (%7, %2)], with [%4]
+  %16 = adl.processor.dmover @dram_l1_bcst_h, [(%2, %7), (%7, %2)], with [%3]
+  %17 = adl.arch.compose "system", arch[%13, %14, %15, %16], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
   //
@@ -504,12 +508,8 @@ module @system {
   }
   }
 
-  // Data-mover semantics for DRAM <-> L1 transfers.
-  //
-  // Interface convention:
-  // - memref args are the real transfer endpoints (source and destination)
-  // - symbols are bound directly to input/output memrefs via `loom.bind_shape`
-  // - `loom.copy` specifies the transfer with explicit source/destination memory spaces and broadcast
+  // DRAM <-> L1 transfers that use both horizontal and vertical mesh links:
+  // unicast (dram_to_l1, l1_to_dram) and full 2D broadcast.
 
   module @dram_l1_mover {
 
@@ -541,6 +541,28 @@ module @system {
     return
   }
 
+  func.func @l1_to_dram_f16(
+      %l1_src: memref<?x?xf16>,
+      %dram_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %l1_src, @L1 : memref<?x?xf16>
+    loom.bind_mem %dram_dst, @DRAM : memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @L1 dst_mem_space @DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
+  }
+
+  // Vertical broadcast from DRAM to per-core L1.
+  //
+  // Uses only vertical mesh links — can run in parallel with horizontal broadcasts.
+
+  module @dram_l1_bcst_v {
+
   func.func @dram_to_l1_1d_bcst_v_f16(
       %dram_src: memref<?x?xf16>,
       %l1_dst: memref<?x?xf16>
@@ -555,6 +577,14 @@ module @system {
     return
   }
 
+  }
+
+  // Horizontal broadcast from DRAM to per-core L1.
+  //
+  // Uses only horizontal mesh links — can run in parallel with vertical broadcasts.
+
+  module @dram_l1_bcst_h {
+
   func.func @dram_to_l1_1d_bcst_h_f16(
       %dram_src: memref<?x?xf16>,
       %l1_dst: memref<?x?xf16>
@@ -566,20 +596,6 @@ module @system {
     loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
     loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [8, 1] : memref<?x?xf16> to memref<?x?xf16>
-    return
-  }
-
-  func.func @l1_to_dram_f16(
-      %l1_src: memref<?x?xf16>,
-      %dram_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %l1_src, @L1 : memref<?x?xf16>
-    loom.bind_mem %dram_dst, @DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @L1 dst_mem_space @DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

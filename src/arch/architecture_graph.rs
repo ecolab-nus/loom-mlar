@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
 
 use super::architecture::Architecture;
 use super::memory::MemoryRegion;
 use super::network::ScaleOutNetwork;
 use super::processor::{DataMover, Processor};
-use std::fmt;
+use super::resource::{Resource, ResourceId};
 
 const NODE_ID_SUFFIX: &str = "::node";
 const EDGE_ID_SUFFIX: &str = "::edge";
@@ -95,11 +97,22 @@ pub struct ArchEdge {
 }
 
 /// Heterogeneous architecture composition using explicit nodes and edges.
+///
+/// An `ArchGraph` also owns a set of [`Resource`]s and a map recording which
+/// nodes consume which resources.  Nodes that do **not** appear in the
+/// resource map are treated as the sole consumer of an implicit private
+/// resource — they never contend with other nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchGraph {
     pub name: String,
     pub nodes: Vec<ArchGraphNode>,
     pub edges: Vec<ArchEdge>,
+    /// Resources available within the scope of this graph.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<Resource>,
+    /// Per-node resource associations.  Only nodes with contention need entries.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub resource_map: HashMap<ArchNodeId, Vec<ResourceId>>,
 }
 
 /// Builder for constructing an `ArchGraph`.
@@ -282,6 +295,8 @@ impl ArchGraph {
             name: name.into(),
             nodes: Vec::new(),
             edges: Vec::new(),
+            resources: Vec::new(),
+            resource_map: HashMap::new(),
         }
     }
 
@@ -346,11 +361,20 @@ impl ArchGraph {
     }
 
     pub fn add_component(&mut self, component: ArchNodeComponent) -> ArchNodeId {
+        let resources = extract_resources(&component);
         let id = self.next_node_id_for_component(&component);
         self.nodes.push(ArchNode {
             id: id.clone(),
             component,
         });
+        if !resources.is_empty() {
+            let mut ids = Vec::with_capacity(resources.len());
+            for r in resources {
+                ids.push(r.id.clone());
+                self.register_resource(r);
+            }
+            self.resource_map.insert(id.clone(), ids);
+        }
         id
     }
 
@@ -444,11 +468,123 @@ impl ArchGraph {
             .map(|node| node.id.clone())
     }
 
+    // ── Resource API ────────────────────────────────────────────────────
+
+    /// Register a resource, deduplicating by ID.
+    ///
+    /// If a resource with the same ID already exists, asserts that the
+    /// capacity matches (two processors sharing a resource must agree on
+    /// its capacity).
+    fn register_resource(&mut self, resource: Resource) {
+        if let Some(existing) = self.resources.iter().find(|r| r.id == resource.id) {
+            assert_eq!(
+                existing.capacity, resource.capacity,
+                "resource '{}' registered with conflicting capacities ({} vs {}) in graph '{}'",
+                resource.id, existing.capacity, resource.capacity, self.name
+            );
+            return;
+        }
+        self.resources.push(resource);
+    }
+
+    /// Look up a resource definition by ID.
+    pub fn get_resource(&self, id: &ResourceId) -> Option<&Resource> {
+        self.resources.iter().find(|r| r.id == *id)
+    }
+
+    /// Return the resource IDs associated with a given node.
+    ///
+    /// Returns an empty slice for nodes not in the resource map (implicitly
+    /// treated as sole consumers of their own private resource).
+    pub fn node_resources(&self, node: &ArchNodeId) -> &[ResourceId] {
+        self.resource_map
+            .get(node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Collect all node IDs that are associated with a given resource.
+    pub fn resource_consumers(&self, resource: &ResourceId) -> Vec<&ArchNodeId> {
+        self.resource_map
+            .iter()
+            .filter(|(_, ids)| ids.iter().any(|id| id == resource))
+            .map(|(node_id, _)| node_id)
+            .collect()
+    }
+
+    /// Extract the set of distinct `ResourceId`s referenced in the resource map.
+    pub fn resource_ids_in_use(&self) -> Vec<ResourceId> {
+        let mut seen = std::collections::HashSet::new();
+        for ids in self.resource_map.values() {
+            for id in ids {
+                seen.insert(id.clone());
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Check whether two nodes share any resource.
+    ///
+    /// A node **not** in the resource map never conflicts with anything
+    /// (it is the sole user of its own implicit resource).
+    pub fn nodes_share_resource(&self, a: &ArchNodeId, b: &ArchNodeId) -> bool {
+        let a_ids = match self.resource_map.get(a) {
+            Some(v) => v,
+            None => return false,
+        };
+        let b_ids = match self.resource_map.get(b) {
+            Some(v) => v,
+            None => return false,
+        };
+        a_ids.iter().any(|id| b_ids.contains(id))
+    }
+
+    /// Validate that every resource referenced in the resource map exists in
+    /// `self.resources` and every node in the map exists in the graph.
+    pub fn validate_resources(&self) -> Result<(), String> {
+        for (node_id, ids) in &self.resource_map {
+            if !self.has_node_id(node_id) {
+                return Err(format!(
+                    "resource map references unknown node '{}' in graph '{}'",
+                    node_id, self.name
+                ));
+            }
+            for rid in ids {
+                if self.get_resource(rid).is_none() {
+                    return Err(format!(
+                        "node '{}' references unknown resource '{}' in graph '{}'",
+                        node_id, rid, self.name
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // ── Builder entry point ─────────────────────────────────────────────
+
     /// Create a builder for constructing an `ArchGraph`.
     pub fn builder(name: impl Into<String>) -> ArchGraphBuilder {
         ArchGraphBuilder {
             graph: ArchGraph::new(name),
         }
+    }
+}
+
+/// Extract resources from a component's underlying processor (if any).
+fn extract_resources(component: &ArchNodeComponent) -> Vec<Resource> {
+    match component {
+        ArchNodeComponent::Architecture(arch) => arch_resources(arch),
+        ArchNodeComponent::DataMover(dm) => dm.0.resources.clone(),
+        ArchNodeComponent::MemoryRegion(_) | ArchNodeComponent::Router(_) => Vec::new(),
+    }
+}
+
+fn arch_resources(arch: &Architecture) -> Vec<Resource> {
+    match arch {
+        Architecture::Unit(proc) => proc.resources.clone(),
+        Architecture::Array { elem, .. } => arch_resources(elem),
+        Architecture::Graph(_) => Vec::new(),
     }
 }
 

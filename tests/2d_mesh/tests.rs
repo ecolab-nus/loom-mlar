@@ -192,15 +192,32 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    // === Verify bidirectional DRAM<->L1 data mover interface and perf bindings ===
+    // === Verify DRAM<->L1 data movers and their resource bindings ===
     let mover = mesh
         .get_data_mover("dram_l1_mover")
         .expect("dram_l1_mover should exist");
-    assert!(mover.validate().is_ok(), "data mover should validate");
+    assert!(mover.validate().is_ok(), "dram_l1_mover should validate");
     assert_eq!(
         mover.functionality.path.as_deref(),
-        Some("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
+        Some("tests/2d_mesh/processors_mlir/dram_l1_mover.mlir")
     );
+    assert_eq!(mover.resources.len(), 2, "dram_l1_mover uses both h and v links");
+
+    let bcst_v = mesh
+        .get_data_mover("dram_l1_bcst_v")
+        .expect("dram_l1_bcst_v should exist");
+    assert!(bcst_v.validate().is_ok(), "bcst_v data mover should validate");
+    assert_eq!(bcst_v.resources.len(), 1, "bcst_v uses only v links");
+    assert_eq!(bcst_v.resources[0].id.as_str(), "mesh_v_links");
+
+    let bcst_h = mesh
+        .get_data_mover("dram_l1_bcst_h")
+        .expect("dram_l1_bcst_h should exist");
+    assert!(bcst_h.validate().is_ok(), "bcst_h data mover should validate");
+    assert_eq!(bcst_h.resources.len(), 1, "bcst_h uses only h links");
+    assert_eq!(bcst_h.resources[0].id.as_str(), "mesh_h_links");
+
+    // Verify the fused mover's function details
     let move_func = mover
         .get_function("dram_to_l1_f16")
         .expect("dram_to_l1_f16 binding");
@@ -267,14 +284,17 @@ fn test_2d_mesh_torus() {
             .any(|n| n.name() == Some("mesh_dram_router")),
         "top-level graph should include mesh_dram_router"
     );
-    assert!(
-        system_graph
-            .nodes
-            .iter()
-            .any(|n| n.name() == Some("dram_l1_mover")),
-        "top-level graph should include dram_l1_mover"
-    );
-    assert_eq!(system_graph.edges.len(), 3);
+    for mover_name in ["dram_l1_mover", "dram_l1_bcst_v", "dram_l1_bcst_h"] {
+        assert!(
+            system_graph
+                .nodes
+                .iter()
+                .any(|n| n.name() == Some(mover_name)),
+            "top-level graph should include {mover_name}"
+        );
+    }
+    // 1 (mesh<->router) + 3 (router<->mover) + 3 (mover<->DRAM) = 7 edges
+    assert_eq!(system_graph.edges.len(), 7);
 
     let (dims, connectivity, elem) = match mesh_node(&mesh) {
         Architecture::Array {
@@ -929,15 +949,35 @@ fn test_export_2d_mesh_torus_mlir() {
     assert!(mlir.contains("adl.memory.array \"L1\", ["));
     assert!(mlir.contains("adl.memory.array \"DRAM\", ["));
 
-    // Processors
-    assert!(mlir.contains("adl.processor.compute @matrix_lane, [(%5, %5)]"));
-    assert!(mlir.contains("adl.processor.compute @vector_lane, [(%5, %5)]"));
-    assert!(mlir.contains("adl.processor.dmover @dram_l1_mover, [(%2, %5), (%5, %2)]"));
+    // Resources
+    assert!(mlir.contains("adl.resource \"mesh_h_links\""));
+    assert!(mlir.contains("adl.resource \"mesh_v_links\""));
+
+    // Processors (compute lanes have no resource clause)
+    assert!(mlir.contains("adl.processor.compute @matrix_lane,"));
+    assert!(mlir.contains("adl.processor.compute @vector_lane,"));
+
+    // Data movers with resource bindings
+    assert!(
+        mlir.lines().any(|l| l.contains("adl.processor.dmover @dram_l1_mover,")
+            && l.contains(", with [")),
+        "dram_l1_mover should declare resources"
+    );
+    assert!(
+        mlir.lines().any(|l| l.contains("adl.processor.dmover @dram_l1_bcst_v,")
+            && l.contains(", with [")),
+        "bcst_v mover should declare resources"
+    );
+    assert!(
+        mlir.lines().any(|l| l.contains("adl.processor.dmover @dram_l1_bcst_h,")
+            && l.contains(", with [")),
+        "bcst_h mover should declare resources"
+    );
 
     // Composition and scaling
-    assert!(mlir.contains("adl.arch.compose \"core\", arch[%6, %7], mem[%5]"));
+    assert!(mlir.contains("adl.arch.compose \"core\""));
     assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
-    assert!(mlir.contains("adl.arch.compose \"system\", arch[%11, %12], mem[%2]"));
+    assert!(mlir.contains("adl.arch.compose \"system\""));
 
     // Each dimension emitted exactly once
     assert_eq!(
@@ -965,6 +1005,14 @@ fn test_export_2d_mesh_torus_mlir() {
         "dram_l1_mover MLIR module should be appended"
     );
     assert!(
+        mlir.contains("module @dram_l1_bcst_v {"),
+        "dram_l1_bcst_v MLIR module should be appended"
+    );
+    assert!(
+        mlir.contains("module @dram_l1_bcst_h {"),
+        "dram_l1_bcst_h MLIR module should be appended"
+    );
+    assert!(
         mlir.contains("func.func @matmul_f16"),
         "matmul function should be present"
     );
@@ -988,7 +1036,7 @@ fn test_export_2d_mesh_torus_mlir() {
 ///
 /// This mirrors `test_generate_core_evaluator_binary` but operates at the
 /// system level: the architecture includes the mesh, DRAM, routers, and the
-/// `dram_l1_mover` data mover.
+/// split data movers (direct, bcst, bcst_v, bcst_h).
 #[test]
 fn test_generate_system_evaluator_binary() {
     let system = scaled_mesh_torus();

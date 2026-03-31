@@ -62,14 +62,58 @@
           "name": "dram_l1_mover",
           "functionality": {
             "name": "dram_l1_mover",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_to_l1.mlir",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_mover.mlir",
             "source_mlir_module_name": "dram_l1_mover",
             "ops": [
               "dram_to_l1_f16",
               "dram_to_l1_1d_bcst_f16",
-              "dram_to_l1_1d_bcst_v_f16",
-              "dram_to_l1_1d_bcst_h_f16",
               "l1_to_dram_f16"
+            ]
+          }
+        },
+        "total_instances": 1
+      }
+    },
+    {
+      "id": "dm:dram_l1_bcst_v",
+      "kind": "processor",
+      "name": "dram_l1_bcst_v",
+      "label": "dram_l1_bcst_v",
+      "dimensions": [],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "unit",
+          "name": "dram_l1_bcst_v",
+          "functionality": {
+            "name": "dram_l1_bcst_v",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_bcst_v.mlir",
+            "source_mlir_module_name": "dram_l1_bcst_v",
+            "ops": [
+              "dram_to_l1_1d_bcst_v_f16"
+            ]
+          }
+        },
+        "total_instances": 1
+      }
+    },
+    {
+      "id": "dm:dram_l1_bcst_h",
+      "kind": "processor",
+      "name": "dram_l1_bcst_h",
+      "label": "dram_l1_bcst_h",
+      "dimensions": [],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "unit",
+          "name": "dram_l1_bcst_h",
+          "functionality": {
+            "name": "dram_l1_bcst_h",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_bcst_h.mlir",
+            "source_mlir_module_name": "dram_l1_bcst_h",
+            "ops": [
+              "dram_to_l1_1d_bcst_h_f16"
             ]
           }
         },
@@ -283,6 +327,54 @@
       "source_name": "dram_l1_mover",
       "target_name": "DRAM",
       "label": "dram_l1_mover ↔ DRAM (side 2)",
+      "direction": "bidirectional",
+      "side": 2
+    },
+    {
+      "id": "iedge:mesh_dram_router:3",
+      "kind": "intra_graph",
+      "name": "mesh_dram_router↔dram_l1_bcst_v",
+      "source": "router:mesh_dram_router",
+      "target": "dm:dram_l1_bcst_v",
+      "source_name": "mesh_dram_router",
+      "target_name": "dram_l1_bcst_v",
+      "label": "mesh_dram_router ↔ dram_l1_bcst_v (side 1)",
+      "direction": "bidirectional",
+      "side": 1
+    },
+    {
+      "id": "iedge:dram_l1_bcst_v:4",
+      "kind": "intra_graph",
+      "name": "dram_l1_bcst_v↔DRAM",
+      "source": "dm:dram_l1_bcst_v",
+      "target": "mem:dram",
+      "source_name": "dram_l1_bcst_v",
+      "target_name": "DRAM",
+      "label": "dram_l1_bcst_v ↔ DRAM (side 2)",
+      "direction": "bidirectional",
+      "side": 2
+    },
+    {
+      "id": "iedge:mesh_dram_router:5",
+      "kind": "intra_graph",
+      "name": "mesh_dram_router↔dram_l1_bcst_h",
+      "source": "router:mesh_dram_router",
+      "target": "dm:dram_l1_bcst_h",
+      "source_name": "mesh_dram_router",
+      "target_name": "dram_l1_bcst_h",
+      "label": "mesh_dram_router ↔ dram_l1_bcst_h (side 1)",
+      "direction": "bidirectional",
+      "side": 1
+    },
+    {
+      "id": "iedge:dram_l1_bcst_h:6",
+      "kind": "intra_graph",
+      "name": "dram_l1_bcst_h↔DRAM",
+      "source": "dm:dram_l1_bcst_h",
+      "target": "mem:dram",
+      "source_name": "dram_l1_bcst_h",
+      "target_name": "DRAM",
+      "label": "dram_l1_bcst_h ↔ DRAM (side 2)",
       "direction": "bidirectional",
       "side": 2
     }
