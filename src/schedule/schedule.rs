@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::{MlirFunc, MlirModule};
-use crate::arch::{FunctionProcessor, PerfScenario, Processor, Sym};
+use super::MlirFunc;
+use crate::arch::{FunctionProcessor, PerfScenario, Sym};
 use crate::math::Expr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -9,18 +9,10 @@ pub enum Schedule {
     Parallel {
         schedules: Vec<Schedule>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        mlir_ref: Option<MlirModule>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        processor: Option<Processor>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         scenarios: Option<Vec<PerfScenario>>,
     },
     Sequential {
         schedules: Vec<Schedule>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        mlir_ref: Option<MlirModule>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        processor: Option<Processor>,
         #[serde(skip_serializing_if = "Option::is_none")]
         scenarios: Option<Vec<PerfScenario>>,
     },
@@ -86,7 +78,6 @@ mod tests {
     use crate::Expr;
     use crate::FuncPerfModel;
     use crate::FunctionProcessor;
-    use crate::Processor;
     use crate::arch::perf::PerfScenario;
     use crate::schedule::{MlirFunc, MlirModule};
     use serde_json::json;
@@ -109,17 +100,8 @@ mod tests {
             .expect("vec_mul_* should exist");
         let add_name = add_func.name.clone();
         let mul_name = mul_func.name.clone();
-        let mul_module = MlirModule::with_functions(
-            module
-                .path
-                .as_deref()
-                .expect("from_mlir should set module path"),
-            &[mul_name.as_str()],
-        );
         let add_fp = FunctionProcessor::new(MlirFunc::named(&add_name), FuncPerfModel::trivial());
         let mul_fp = FunctionProcessor::new(MlirFunc::named(&mul_name), FuncPerfModel::trivial());
-        let mesh_proc = Processor::with_functions("mesh", vec![add_fp.clone(), mul_fp.clone()]);
-        let lane_proc = Processor::with_functions("lane", vec![mul_fp.clone()]);
 
         let schedule = Schedule::Sequential {
             schedules: vec![
@@ -134,16 +116,12 @@ mod tests {
                         processor: Some(mul_fp),
                         scenarios: None,
                     }],
-                    mlir_ref: Some(mul_module),
-                    processor: Some(lane_proc),
                     scenarios: Some(vec![PerfScenario {
                         constraints: crate::math::constraint::ConstraintExpr::True,
                         time_cost: crate::arch::perf::TimeCost::Concrete(Expr::Const(40)),
                     }]),
                 },
             ],
-            mlir_ref: Some(module),
-            processor: Some(mesh_proc),
             scenarios: Some(vec![PerfScenario {
                 constraints: crate::math::constraint::ConstraintExpr::True,
                 time_cost: crate::arch::perf::TimeCost::Concrete(Expr::Const(150)),
@@ -151,11 +129,8 @@ mod tests {
         };
 
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
-        assert_eq!(
-            value["Sequential"]["mlir_ref"]["path"],
-            json!("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-        );
-        assert_eq!(value["Sequential"]["processor"]["name"], json!("mesh"));
+        assert!(!value["Sequential"].as_object().unwrap().contains_key("mlir_ref"));
+        assert!(!value["Sequential"].as_object().unwrap().contains_key("processor"));
         assert!(value["Sequential"]["scenarios"].is_array());
         assert!(
             value["Sequential"]["schedules"][0]["Func"]
@@ -171,12 +146,8 @@ mod tests {
             json!(add_name)
         );
         assert_eq!(
-            value["Sequential"]["schedules"][1]["Parallel"]["mlir_ref"]["functions"][0]["name"],
+            value["Sequential"]["schedules"][1]["Parallel"]["schedules"][0]["Func"]["func"]["name"],
             json!(mul_name)
-        );
-        assert_eq!(
-            value["Sequential"]["schedules"][1]["Parallel"]["processor"]["name"],
-            json!("lane")
         );
         assert!(value["Sequential"]["schedules"][1]["Parallel"]["scenarios"].is_array());
         assert!(
@@ -207,12 +178,8 @@ mod tests {
                     processor: None,
                     scenarios: None,
                 }],
-                mlir_ref: None,
-                processor: None,
                 scenarios: None,
             }],
-            mlir_ref: None,
-            processor: None,
             scenarios: None,
         };
 

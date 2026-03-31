@@ -486,8 +486,6 @@ fn test_evaluate_vector_lane_sequential_schedule() {
                 scenarios: None,
             },
         ],
-        mlir_ref: None,
-        processor: None,
         scenarios: None,
     };
 
@@ -608,8 +606,6 @@ fn test_evaluate_with_sym_map() {
                 scenarios: None,
             },
         ],
-        mlir_ref: None,
-        processor: None,
         scenarios: None,
     };
 
@@ -740,8 +736,6 @@ fn test_generate_core_evaluator_binary() {
                 scenarios: None,
             },
         ],
-        mlir_ref: None,
-        processor: None,
         scenarios: None,
     };
     let input_json = serde_json::to_string(&schedule).expect("input should serialize");
@@ -847,8 +841,6 @@ fn test_evaluate_system_data_mover_schedule() {
                 scenarios: None,
             },
         ],
-        mlir_ref: None,
-        processor: None,
         scenarios: None,
     };
 
@@ -1079,8 +1071,6 @@ fn test_generate_system_evaluator_binary() {
                 scenarios: None,
             },
         ],
-        mlir_ref: None,
-        processor: None,
         scenarios: None,
     };
     let input_json = serde_json::to_string(&schedule).expect("input should serialize");

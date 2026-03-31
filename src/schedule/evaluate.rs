@@ -53,12 +53,7 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
             unimplemented!("Parallel schedule evaluation is not yet supported");
         }
 
-        Schedule::Sequential {
-            schedules,
-            mlir_ref,
-            processor,
-            ..
-        } => {
+        Schedule::Sequential { schedules, .. } => {
             let evaluated: Result<Vec<Schedule>, String> =
                 schedules.iter().map(|sub| evaluate(sub, arch)).collect();
             let evaluated = evaluated?;
@@ -69,8 +64,6 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
 
             Ok(Schedule::Sequential {
                 schedules: evaluated,
-                mlir_ref: mlir_ref.clone(),
-                processor: processor.clone(),
                 scenarios: Some(combined),
             })
         }
@@ -319,8 +312,6 @@ mod tests {
                     scenarios: None,
                 },
             ],
-            mlir_ref: None,
-            processor: None,
             scenarios: None,
         };
 
@@ -369,8 +360,6 @@ mod tests {
                     scenarios: None,
                 },
             ],
-            mlir_ref: None,
-            processor: None,
             scenarios: None,
         };
 
@@ -450,8 +439,6 @@ mod tests {
         let arch = make_arch(vec![]);
         let schedule = Schedule::Sequential {
             schedules: vec![],
-            mlir_ref: None,
-            processor: None,
             scenarios: None,
         };
 
@@ -533,8 +520,6 @@ mod tests {
                     scenarios: None,
                 },
             ],
-            mlir_ref: None,
-            processor: None,
             scenarios: None,
         };
 
