@@ -90,7 +90,9 @@
                     "batch_matmul_f16",
                     "vec_vsum_f16",
                     "vec_vmax_f16",
-                    "vec_max1_f16"
+                    "vec_max1_f16",
+                    "elementwise_add_f16",
+                    "elementwise_mul_f16"
                   ]
                 }
               },

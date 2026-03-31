@@ -153,6 +153,44 @@ module @system {
     return
   }
 
+  // out[i] = a[i] + b[i], for i in [0, L)
+  func.func @elementwise_add_f16(
+    %a: memref<?x?xf16>,
+    %b: memref<?x?xf16>,
+    %out: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %a, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %a, @L1 : memref<?x?xf16>
+    loom.bind_shape %b, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %b, @L1 : memref<?x?xf16>
+    loom.bind_shape %out, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %out, @L1 : memref<?x?xf16>
+    linalg.add 
+      ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) 
+      outs(%out : memref<?x?xf16>)
+    return
+  }
+
+  func.func @elementwise_mul_f16(
+    %a: memref<?x?xf16>,
+    %b: memref<?x?xf16>,
+    %out: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %a, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %a, @L1 : memref<?x?xf16>
+    loom.bind_shape %b, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %b, @L1 : memref<?x?xf16>
+    loom.bind_shape %out, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %out, @L1 : memref<?x?xf16>
+    linalg.mul 
+      ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) 
+      outs(%out : memref<?x?xf16>)
+    return
+  }
   }
 
   // Vector lane compute semantics — fp16 element-wise and reduction operations.

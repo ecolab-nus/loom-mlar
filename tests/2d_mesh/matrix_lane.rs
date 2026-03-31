@@ -128,6 +128,36 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
     }
 }
 
+fn elementwise_add_perf_model() -> FuncPerfModel {
+    FuncPerfModel {
+        symbols: Sym::from_names(["M", "N"]),
+        constraints: constraint("true"),
+        scenarios: vec![PerfScenario {
+            constraints: constraint("true"),
+            time_cost: TimeCost::Simple(SimpleTimeCost {
+                fixed_latency: expr("10"),
+                volume: expr("M * N"),
+                throughput: expr("43"),
+            }),
+        }],
+    }
+}
+
+fn elementwise_mul_perf_model() -> FuncPerfModel {
+    FuncPerfModel {
+        symbols: Sym::from_names(["M", "N"]),
+        constraints: constraint("true"),
+        scenarios: vec![PerfScenario {
+            constraints: constraint("true"),
+            time_cost: TimeCost::Simple(SimpleTimeCost {
+                fixed_latency: expr("10"),
+                volume: expr("M * N"),
+                throughput: expr("15"),
+            }),
+        }],
+    }
+}
+
 /// Matrix lane processor with matmul plus vector-reduction performance models.
 ///
 /// - `matmul_*`/`batch_matmul_*` use shape-aware throughput scenarios.
@@ -143,7 +173,13 @@ pub fn matrix_lane() -> Architecture {
     let perf_models: Vec<FuncPerfModel> = functionality
         .functions
         .iter()
-        .map(|op| matrix_func_perf_model(op.name.as_str()))
+        .map(|op| {
+            match op.name.as_str() {
+                "elementwise_add_f16" => elementwise_add_perf_model(),
+                "elementwise_mul_f16" => elementwise_mul_perf_model(),
+                _ => matrix_func_perf_model(op.name.as_str()),
+            }
+        })
         .collect();
 
     let mut proc = ComputeProcessor::builder()
