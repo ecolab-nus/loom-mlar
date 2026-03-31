@@ -65,18 +65,18 @@
                       "kind": "bank",
                       "name": null,
                       "capacity_bytes": {
-                        "expr": "(128 * 1024)",
-                        "const_value": 131072
+                        "expr": "(16 * 5856)",
+                        "const_value": 93696
                       },
                       "access_granularity": {
-                        "expr": "128",
-                        "const_value": 128
+                        "expr": "16",
+                        "const_value": 16
                       },
-                      "total_size_bytes": 131072
+                      "total_size_bytes": 93696
                     },
-                    "total_size_bytes": 2097152
+                    "total_size_bytes": 1499136
                   },
-                  "total_size_bytes": 2097152
+                  "total_size_bytes": 1499136
                 }
               },
               {
@@ -192,18 +192,18 @@
               "kind": "bank",
               "name": "DRAM_bank",
               "capacity_bytes": {
-                "expr": "(256 * 8192)",
-                "const_value": 2097152
+                "expr": "(8192 * 196608)",
+                "const_value": 1610612736
               },
               "access_granularity": {
-                "expr": "256",
-                "const_value": 256
+                "expr": "8192",
+                "const_value": 8192
               },
-              "total_size_bytes": 2097152
+              "total_size_bytes": 1610612736
             },
-            "total_size_bytes": 16777216
+            "total_size_bytes": 12884901888
           },
-          "total_size_bytes": 16777216
+          "total_size_bytes": 12884901888
         }
       },
       {

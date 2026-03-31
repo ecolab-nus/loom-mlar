@@ -1,10 +1,10 @@
 module @system {
-  %0 = adl.memory.bank "DRAM_bank", {bsize = 256, nblk = 8192}
+  %0 = adl.memory.bank "DRAM_bank", {bsize = 8192, nblk = 196608}
   %1 = adl.spatial_dim "dram_channel", 8
   %2 = adl.memory.array "DRAM", [%1] of %0
   %3 = adl.resource "mesh_h_links"
   %4 = adl.resource "mesh_v_links"
-  %5 = adl.memory.bank "bank", {bsize = 128, nblk = 1024}
+  %5 = adl.memory.bank "bank", {bsize = 16, nblk = 5856}
   %6 = adl.spatial_dim "nbank", 16
   %7 = adl.memory.array "L1", [%6] of %5
   %8 = adl.processor.compute @matrix_lane, [(%7, %7)]
