@@ -4,6 +4,7 @@ pub mod memory;
 pub mod network;
 pub mod perf;
 pub mod processor;
+pub mod resource;
 pub mod size_dim;
 
 pub mod mlir_export {
@@ -28,4 +29,5 @@ pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
     FunctionProcessor, HardwareProperty, Module as ProcessorModule, Processor,
 };
+pub use resource::{Resource, ResourceId, ResourceKind, ResourcePool, ResourceRequirement, ResourceRequirements};
 pub use size_dim::{Dimension, SizeExpr, Sym};
