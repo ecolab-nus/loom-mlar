@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::architecture::Architecture;
 use super::memory::MemoryRegion;
-use super::network::ScaleOutNetwork;
+use super::network::{ScaleOutNetwork, ScaleOutNetworkBindings};
 use super::processor::{DataMover, Processor};
 use super::resource::{Resource, ResourceId};
 
@@ -623,9 +623,10 @@ impl ArchGraphBuilder {
         self
     }
 
-    /// Add a processor architecture (borrows and clones).
-    pub fn processor(mut self, proc: &Architecture) -> Self {
-        self.graph.add_architecture(proc);
+    /// Add an architecture node (borrows and clones).
+    pub fn architecture(mut self, arch: &Architecture) -> Self {
+        self.graph.add_architecture(arch);
+        register_connectivity_components(&mut self.graph, arch);
         self
     }
 
@@ -661,5 +662,48 @@ impl ArchGraphBuilder {
     /// Build the `ArchGraph`.
     pub fn build(self) -> ArchGraph {
         self.graph
+    }
+}
+
+fn register_connectivity_components(graph: &mut ArchGraph, arch: &Architecture) {
+    let mut seen_named_movers = HashSet::new();
+    register_connectivity_components_impl(graph, arch, &mut seen_named_movers);
+}
+
+fn register_connectivity_components_impl(
+    graph: &mut ArchGraph,
+    arch: &Architecture,
+    seen_named_movers: &mut HashSet<String>,
+) {
+    match arch {
+        Architecture::Array {
+            connectivity, elem, ..
+        } => {
+            for network in connectivity {
+                for resource in network.resources() {
+                    graph.register_resource(resource);
+                }
+                for mover in network.data_movers() {
+                    if let Some(name) = mover.name.as_deref() {
+                        if !seen_named_movers.insert(name.to_string()) {
+                            continue;
+                        }
+                        if graph.data_mover_ref(name).is_some() {
+                            continue;
+                        }
+                    }
+                    graph.add_data_mover(&mover);
+                }
+            }
+            register_connectivity_components_impl(graph, elem, seen_named_movers);
+        }
+        Architecture::Graph(subgraph) => {
+            for node in &subgraph.nodes {
+                if let ArchNodeComponent::Architecture(sub_arch) = &node.component {
+                    register_connectivity_components_impl(graph, sub_arch, seen_named_movers);
+                }
+            }
+        }
+        Architecture::Unit(_) => {}
     }
 }

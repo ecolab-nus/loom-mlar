@@ -338,7 +338,7 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let arch: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
@@ -378,7 +378,7 @@ mod tests {
         let lane = Processor::new("p").into_elem();
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
         let scaled = core.scale(&[dim_x]).with_name("mesh");

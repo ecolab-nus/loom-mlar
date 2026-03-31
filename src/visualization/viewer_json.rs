@@ -105,8 +105,8 @@ mod tests {
 
         let mut core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&matrix_lane)
-            .processor(&vector_lane)
+            .architecture(&matrix_lane)
+            .architecture(&vector_lane)
             .router(&core_router)
             .build()
             .into();
@@ -143,7 +143,7 @@ mod tests {
 
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .router(&router)
             .build()
             .into();

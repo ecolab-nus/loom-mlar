@@ -14,8 +14,8 @@ pub fn single_core() -> Architecture {
 
     let mut core: Architecture = ArchGraph::builder("core")
         .mem(&l1)
-        .processor(&matrix_lane)
-        .processor(&vector_lane)
+        .architecture(&matrix_lane)
+        .architecture(&vector_lane)
         .build()
         .into();
 

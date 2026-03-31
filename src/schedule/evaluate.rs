@@ -420,7 +420,7 @@ mod tests {
     fn evaluate_finds_function_in_graph_architecture() {
         let fp = FunctionProcessor::new(MlirFunc::named("f"), simple_model(7, 42));
         let proc = Processor::with_functions("inner", vec![fp]).into_elem();
-        let arch: Architecture = ArchGraph::builder("top").processor(&proc).build().into();
+        let arch: Architecture = ArchGraph::builder("top").architecture(&proc).build().into();
 
         let schedule = Schedule::Func {
             func: MlirFunc::named("f"),

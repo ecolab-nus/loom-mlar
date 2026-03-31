@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde::de::Deserializer;
 
 use super::memory::MemoryRegion;
 use super::processor::DataMover;
+use super::resource::Resource;
 use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
 use std::collections::HashSet;
@@ -14,9 +16,14 @@ pub struct MeshNetworkInterface {
     pub map: AffineMap,
     /// Bandwidth per IO link for the selected subregions.
     pub link_bandwidth: Expr,
-    /// Optional data mover engine that handles transfers through this IO interface.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_mover: Option<DataMover>,
+    /// Data movers that handle transfers through this IO interface.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_data_movers",
+        alias = "data_mover"
+    )]
+    pub data_movers: Vec<DataMover>,
 }
 
 /// A mesh network: endpoints connected via an affine-map topology with uniform
@@ -46,6 +53,14 @@ pub enum ScaleOutNetwork {
     Mesh(MeshNetwork),
 }
 
+/// Unified interface for scale-out network auxiliary components.
+pub trait ScaleOutNetworkBindings {
+    /// Resource set associated with this network.
+    fn resources(&self) -> Vec<Resource>;
+    /// Data-mover set associated with this network.
+    fn data_movers(&self) -> Vec<DataMover>;
+}
+
 /// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
 pub struct MeshNetworkBuilder {
     name: String,
@@ -61,13 +76,22 @@ impl MeshNetworkInterface {
         Self {
             map,
             link_bandwidth,
-            data_mover: None,
+            data_movers: Vec::new(),
         }
     }
 
-    /// Attach a data mover to this IO interface (builder-style).
+    /// Attach one data mover to this IO interface (builder-style).
     pub fn with_data_mover(mut self, data_mover: DataMover) -> Self {
-        self.data_mover = Some(data_mover);
+        self.data_movers.push(data_mover);
+        self
+    }
+
+    /// Attach multiple data movers to this IO interface (builder-style).
+    pub fn with_data_movers<I>(mut self, data_movers: I) -> Self
+    where
+        I: IntoIterator<Item = DataMover>,
+    {
+        self.data_movers.extend(data_movers);
         self
     }
 
@@ -85,8 +109,53 @@ impl MeshNetworkInterface {
         Self {
             map: AffineMap::new(&src_dims, &dst_dims, exprs),
             link_bandwidth: self.link_bandwidth,
-            data_mover: self.data_mover,
+            data_movers: self.data_movers,
         }
+    }
+}
+
+impl ScaleOutNetworkBindings for MeshNetwork {
+    fn resources(&self) -> Vec<Resource> {
+        self.links
+            .iter()
+            .enumerate()
+            .map(|(idx, _)| Resource::exclusive(format!("{}::link::{idx}", self.name)))
+            .collect()
+    }
+
+    fn data_movers(&self) -> Vec<DataMover> {
+        self.io.data_movers.clone()
+    }
+}
+
+impl ScaleOutNetworkBindings for ScaleOutNetwork {
+    fn resources(&self) -> Vec<Resource> {
+        match self {
+            Self::Mesh(mesh) => mesh.resources(),
+        }
+    }
+
+    fn data_movers(&self) -> Vec<DataMover> {
+        match self {
+            Self::Mesh(mesh) => mesh.data_movers(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DataMoverField {
+    One(DataMover),
+    Many(Vec<DataMover>),
+}
+
+fn deserialize_data_movers<'de, D>(deserializer: D) -> Result<Vec<DataMover>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match DataMoverField::deserialize(deserializer)? {
+        DataMoverField::One(mover) => Ok(vec![mover]),
+        DataMoverField::Many(movers) => Ok(movers),
     }
 }
 
@@ -482,12 +551,25 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{MeshNetworkInterface, ScaleOutNetwork};
-    use crate::arch::{Dimension, MemoryBank, MemoryRegion, SizeExpr};
+    use super::{MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings};
+    use crate::arch::{Dimension, MemoryBank, MemoryRegion, Processor, SizeExpr};
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn make_io(dims: &[Dimension], bw: i64) -> MeshNetworkInterface {
         MeshNetworkInterface::new(AffineMap::identity(dims), Expr::Const(bw))
+    }
+
+    #[test]
+    fn io_interface_supports_multiple_data_movers() {
+        let x = Dimension::new_int("x", 4);
+        let io = make_io(x.as_slice(), 64).with_data_movers(vec![
+            Processor::new("io_dm_0").into(),
+            Processor::new("io_dm_1").into(),
+        ]);
+
+        assert_eq!(io.data_movers.len(), 2);
+        assert_eq!(io.data_movers[0].name.as_deref(), Some("io_dm_0"));
+        assert_eq!(io.data_movers[1].name.as_deref(), Some("io_dm_1"));
     }
 
     #[test]
@@ -621,6 +703,60 @@ mod tests {
         assert_eq!(link.source_domain_size(), Some(64));
         assert_eq!(link.target_domain_size(), Some(64));
         assert!(!link.is_ring_topology());
+    }
+
+    #[test]
+    fn mesh_bindings_include_link_resources_and_io_data_movers() {
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let torus_y_map = AffineMap::new(
+            &[x.clone(), y.clone()],
+            &[x.clone(), y.clone()],
+            vec![
+                AffineExpr::var(x.clone()),
+                AffineExpr::modulo(
+                    AffineExpr::add(AffineExpr::var(y.clone()), AffineExpr::constant(1)),
+                    AffineExpr::constant(8),
+                ),
+            ],
+        );
+        let torus_x_map = AffineMap::new(
+            &[x.clone(), y.clone()],
+            &[x.clone(), y.clone()],
+            vec![
+                AffineExpr::modulo(
+                    AffineExpr::add(AffineExpr::var(x.clone()), AffineExpr::constant(1)),
+                    AffineExpr::constant(8),
+                ),
+                AffineExpr::var(y.clone()),
+            ],
+        );
+
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(128),
+            SizeExpr::Const(1024),
+        ))
+        .scale(&[x.clone(), y.clone()])
+        .with_name("l1");
+
+        let io = make_io(&[x.clone(), y.clone()], 64).with_data_movers(vec![
+            Processor::new("m0").into(),
+            Processor::new("m1").into(),
+        ]);
+
+        let network = ScaleOutNetwork::mesh("torus")
+            .mem_region(&l1)
+            .links(&[torus_y_map, torus_x_map])
+            .io(&io)
+            .link_bandwidth(64)
+            .build();
+
+        assert_eq!(network.resources().len(), 2);
+        assert_eq!(network.resources()[0].id.as_str(), "torus::link::0");
+        assert_eq!(network.resources()[1].id.as_str(), "torus::link::1");
+        assert_eq!(network.data_movers().len(), 2);
+        assert_eq!(network.data_movers()[0].name.as_deref(), Some("m0"));
+        assert_eq!(network.data_movers()[1].name.as_deref(), Some("m1"));
     }
 
     #[test]

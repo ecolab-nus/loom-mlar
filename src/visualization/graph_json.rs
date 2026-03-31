@@ -838,7 +838,7 @@ mod tests {
         let arch: Architecture = ArchGraph::builder("unit")
             .mem(&l1)
             .mem(&l2)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
         let arch = arch
@@ -870,7 +870,7 @@ mod tests {
 
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
 
@@ -914,7 +914,7 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let arch: Architecture = ArchGraph::builder("unit")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
         let arch = arch.scale(dim_x.as_slice()).with_connectivity(vec![link]);
@@ -987,7 +987,7 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let arch: Architecture = ArchGraph::builder("unit")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .build()
             .into();
         let arch = arch.scale([&x, &y]).with_connectivity(vec![link]);

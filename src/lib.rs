@@ -14,7 +14,8 @@ pub use arch::{
     ComputeProcessorBuilder, DataMover, DataMoverBuilder, Dimension, FuncPerfModel,
     FunctionDataMover, FunctionProcessor, HardwareProperty, MemoryBank, MemoryRegion, MeshNetwork,
     MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource, ResourceId, Router,
-    RouterSide, ScaleOutNetwork, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
+    RouterSide, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
+    TimeCost, TimeExpr,
     architecture_to_mlir,
 };
 

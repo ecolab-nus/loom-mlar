@@ -232,7 +232,7 @@ mod tests {
             );
             let proc = Processor::with_functions("inner", vec![fp]).into_elem();
             let graph_arch: Architecture =
-                ArchGraph::builder("top").processor(&proc).build().into();
+                ArchGraph::builder("top").architecture(&proc).build().into();
             graph_arch
         };
 

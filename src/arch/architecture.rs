@@ -282,9 +282,11 @@ impl From<ArchGraph> for Architecture {
 mod tests {
     use super::Architecture;
     use crate::arch::{
-        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, MemoryBank,
-        MemoryRegion, Processor, Router, SizeExpr,
+        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Dimension,
+        MemoryBank, MemoryRegion, MeshNetworkInterface, Processor, Router, ScaleOutNetwork,
+        SizeExpr,
     };
+    use crate::math::{AffineMap, Expr};
 
     #[test]
     fn arch_graph_builder_materializes_memory_and_architecture_nodes() {
@@ -292,7 +294,7 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let graph: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .router(&Router::new("router", 0))
             .build()
             .into();
@@ -396,7 +398,7 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let graph: Architecture = ArchGraph::builder("core")
             .mem(&l1)
-            .processor(&lane)
+            .architecture(&lane)
             .router(&Router::new("xbar", 0))
             .build()
             .into();
@@ -452,5 +454,37 @@ mod tests {
         let dst = graph.get_node(&dst_id).expect("target must exist").clone();
         graph.connect(&src, &dst);
         graph.connect(&src, &dst);
+    }
+
+    #[test]
+    fn builder_processor_adds_connectivity_resources_and_data_movers() {
+        let x = Dimension::new_int("x", 8);
+        let lane = Processor::new("lane").into_elem();
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)))
+            .scale(x.as_slice())
+            .with_name("L1");
+        let io = MeshNetworkInterface::new(AffineMap::identity(x.as_slice()), Expr::Const(64))
+            .with_data_mover(Processor::new("arr_dm").into());
+        let map = AffineMap::identity(x.as_slice());
+        let net = ScaleOutNetwork::mesh("l1_ring")
+            .mem_region(&l1)
+            .map(&map)
+            .io(&io)
+            .link_bandwidth(64)
+            .build();
+        let arr = lane
+            .scale(x.as_slice())
+            .with_name("mesh")
+            .with_connectivity(vec![net]);
+
+        let graph = ArchGraph::builder("top").architecture(&arr).build();
+
+        assert!(graph.data_mover_ref("arr_dm").is_some());
+        assert!(
+            graph
+                .resources
+                .iter()
+                .any(|resource| resource.id.as_str() == "l1_ring::link::0")
+        );
     }
 }
