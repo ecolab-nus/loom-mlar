@@ -12,22 +12,26 @@ Rust implementation of MLAR (Multi-Level Architecture Representation) for:
 ```text
 src/
 ├── lib.rs                      # Public API and re-exports
-├── evaluator.rs                # Standalone evaluator generation and runtime
+├── abi/
+│   ├── mod.rs                  # ABI-domain re-exports
+│   ├── evaluator.rs            # Standalone evaluator generation and runtime
+│   └── arch_query.rs           # Architecture query binary generation/runtime
 ├── arch/
 │   ├── mod.rs                  # Architecture-domain re-exports
 │   ├── size_dim.rs             # Sym, SizeExpr, Dimension
 │   ├── perf.rs                 # FuncPerfModel, PerfScenario, TimeCost, TimeExpr
-│   ├── processor.rs            # HardwareProperty, FunctionProcessor, Processor
-│   ├── data_mover.rs           # DataMover, FunctionDataMover
+│   ├── processor.rs            # Processor/DataMover modules and builders
 │   ├── resource.rs             # Resource, ResourceId
 │   ├── memory.rs               # MemoryBank, MemoryRegion
 │   ├── network.rs              # ScaleOutNetwork, MeshNetwork, MeshNetworkInterface
-│   ├── router.rs               # Router, RouterSide
 │   ├── architecture.rs         # Architecture (Unit | Array | Graph)
-│   └── architecture_graph.rs   # ArchGraph, ArchNode, ArchEdge, ArchNodeComponent
+│   └── architecture_graph.rs   # ArchGraph, ArchNode, ArchEdge, Router
 ├── mlir/
 │   ├── mod.rs                  # MLIR re-exports
-│   ├── interface.rs            # MlirModule/MlirFunc parser and interface metadata
+│   ├── parser.rs               # MLIR parsing helpers
+│   ├── structural.rs           # MlirModule/MlirFunc + extracted metadata
+│   ├── loom_ops.rs             # loom.* op extraction
+│   ├── native_ops.rs           # native op extraction helpers
 │   └── export.rs               # architecture_to_mlir (adl.* dialect emitter)
 ├── math/
 │   ├── mod.rs                  # Math-domain re-exports
@@ -37,7 +41,6 @@ src/
 │   └── parse.rs                # Expression parser utilities
 ├── schedule/
 │   ├── mod.rs                  # Schedule-domain re-exports
-│   ├── module.rs               # Module, ModuleSource
 │   ├── schedule.rs             # Schedule, SymbolicMapping
 │   └── evaluate.rs             # evaluate()
 └── visualization/
@@ -46,6 +49,7 @@ src/
     ├── hierarchy_json.rs       # Hierarchy JSON export
     └── viewer_json.rs          # Combined viewer JSON export
 ```
+> Note: `DataMover`/`FunctionDataMover` are defined in `src/arch/processor.rs`, and `Router`/`RouterSide` live in `src/arch/architecture_graph.rs`.
 
 ## Core Concepts
 
@@ -63,12 +67,12 @@ src/
 Example:
 
 ```rust
-use mlar_rust::Module;
+use mlar_rust::MlirModule;
 
-let module = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
     .expect("MLIR should parse");
 
-assert_eq!(module.name.as_deref(), Some("vector_lane"));
+assert_eq!(module.module_name.as_deref(), Some("vector_lane"));
 assert!(module.op("vec_add_f16").is_some() || module.op("vec_add_f32").is_some());
 ```
 
@@ -77,13 +81,13 @@ assert!(module.op("vec_add_f16").is_some() || module.op("vec_add_f32").is_some()
 A `Processor` binds each parsed function (`MlirFunc`) to a `FuncPerfModel` via `FunctionProcessor`.
 
 ```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, Module, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, MlirModule, PerfScenario, Processor, SimpleTimeCost, Sym, TimeCost};
 
-let functionality = Module::from_mlir("tests/2d_mesh/compute/vector_lane.mlir")
+let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
     .expect("MLIR should parse");
 
 let perf_models: Vec<FuncPerfModel> = functionality
-    .ops
+    .functions
     .iter()
     .map(|_| FuncPerfModel {
         symbols: vec![Sym::new("L")],
@@ -163,7 +167,36 @@ let _link = ScaleOutNetwork::mesh("l1_mesh")
     .build();
 ```
 
-### 5. Resource contention
+### 5. Graph routers and typed edges
+
+`ArchGraph` now supports explicit router components and typed edge attributes:
+- node kinds: `Architecture`, `DataMover`, `MemoryRegion`, `Router`
+- edge attrs: `ArchEdgeAttr::Side(RouterSide)` and `ArchEdgeAttr::Direction(ArchEdgeDirection)`
+
+`connect_with_attrs(...)` attaches these attrs to each edge and rejects duplicate edges between the same node pair.
+
+```rust
+use mlar_rust::{ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Processor, Router};
+
+let lane = Processor::new("lane").into_elem();
+let mut graph = ArchGraph::builder("core").architecture(&lane).build();
+
+let lane_id = graph.processor_ref("lane").expect("lane node");
+let router_id = graph.add_router(&Router::new("core_router", 2));
+let lane_node = graph.get_node(&lane_id).unwrap().clone();
+let router_node = graph.get_node(&router_id).unwrap().clone();
+
+graph.connect_with_attrs(
+    &lane_node,
+    &router_node,
+    vec![
+        ArchEdgeAttr::Side(0),
+        ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+    ],
+);
+```
+
+### 6. Resource contention
 
 A `Resource` represents a shared hardware resource with a unique ID and a concurrency capacity.
 Processors that declare the same resource cannot execute in parallel (unless the resource has
@@ -195,6 +228,12 @@ let bcst_v = Processor::new("dram_l1_bcst_v")
 - `node_resources(id)` — resources used by a node
 - `resource_consumers(resource_id)` — all nodes using a given resource
 - `nodes_share_resource(a, b)` — whether two nodes contend
+- `resource_ids_in_use()` — deduplicated IDs referenced by graph nodes
+
+When an `Architecture::Array` has `connectivity` networks and is inserted via
+`ArchGraph::builder(...).architecture(&arr)`, the graph auto-registers:
+- network resources (`ScaleOutNetworkBindings::resources`)
+- IO data movers from `MeshNetworkInterface::with_data_mover(s)`
 
 The MLIR export emits resources as `adl.resource` declarations and references them
 on processor/dmover ops with `with [%r1, %r2]`:
@@ -207,12 +246,21 @@ on processor/dmover ops with `with [%r1, %r2]`:
 %4 = adl.processor.dmover @dram_l1_bcst_h, [...], with [%0]
 ```
 
-### 6. Schedule evaluation
+### 7. Schedule representation and evaluation
+
+`Schedule` is now:
+- `Schedule::Func { func: MlirFunc, processor: Option<FunctionProcessor>, scenarios: Option<Vec<PerfScenario>> }`
+- `Schedule::Sequential { schedules: Vec<Schedule>, scenarios: Option<Vec<PerfScenario>> }`
+- `Schedule::Parallel { schedules: Vec<Schedule>, scenarios: Option<Vec<PerfScenario>> }`
+
+`MlirFunc.sym_map: Option<SymbolicMapping>` carries call-site symbol substitution.
 
 `evaluate(&schedule, &arch)` fills `scenarios` on all evaluated nodes.
 
 Note:
 - evaluation preserves scenario constraints as provided by the model and does not enforce exclusivity or resolve overlaps.
+- function lookup is by `func.name`, recursively across `Architecture::Unit`, `Architecture::Array`, and graph architecture/data-mover nodes
+- `processor` fields on `Schedule::Func` are preserved but not used for lookup
 
 Supported today:
 - `Schedule::Func`
@@ -289,17 +337,16 @@ cargo test -- --nocapture
 | `Sym`, `SizeExpr`, `Dimension` | `src/arch/size_dim.rs` |
 | `Expr`, `ConstraintExpr` | `src/math/expr.rs`, `src/math/constraint.rs` |
 | `AffineExpr`, `AffineMap`, `AffineMapTemplate` | `src/math/affine.rs` |
-| `MlirModule`, `MlirFunc`, `MlirFuncDetails`, `MlirMemRegionBinding`, `MlirCopyOp` | `src/mlir/interface.rs` |
-| `Module`, `ModuleSource` | `src/schedule/module.rs` |
+| `MlirModule`, `MlirFunc`, `MlirFuncDetails`, `MlirMemRegionBinding`, `MlirCopyOp` | `src/mlir/structural.rs` |
 | `Schedule`, `SymbolicMapping` | `src/schedule/schedule.rs` |
 | `evaluate` | `src/schedule/evaluate.rs` |
 | `FuncPerfModel`, `PerfScenario`, `TimeCost`, `SimpleTimeCost` | `src/arch/perf.rs` |
 | `FunctionProcessor`, `Processor`, `HardwareProperty` | `src/arch/processor.rs` |
-| `FunctionDataMover`, `DataMover` | `src/arch/data_mover.rs` |
+| `FunctionDataMover`, `DataMover` | `src/arch/processor.rs` |
 | `Resource`, `ResourceId` | `src/arch/resource.rs` |
 | `MemoryBank`, `MemoryRegion` | `src/arch/memory.rs` |
 | `ScaleOutNetwork`, `MeshNetwork`, `MeshNetworkInterface` | `src/arch/network.rs` |
-| `Router`, `RouterSide` | `src/arch/router.rs` |
+| `Router`, `RouterSide` | `src/arch/architecture_graph.rs` |
 | `ArchGraph`, `ArchNode`, `ArchEdge`, `ArchNodeComponent` | `src/arch/architecture_graph.rs` |
 | `Architecture` | `src/arch/architecture.rs` |
 | `architecture_to_mlir` | `src/mlir/export.rs` |
