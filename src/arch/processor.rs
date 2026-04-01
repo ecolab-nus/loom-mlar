@@ -49,6 +49,9 @@ pub struct Processor {
     ///
     /// If empty, the processor is treated as the sole consumer of itself —
     /// no contention with other nodes.
+    ///
+    /// When `region_pairs` are provided during construction, memory resources
+    /// are auto-derived from those regions and merged here.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<Resource>,
 }
@@ -96,6 +99,50 @@ pub struct DataMoverBuilder {
 #[derive(Clone, Debug)]
 pub struct ComputeProcessorBuilder {
     inner: ProcessorModuleBuilder,
+}
+
+/// Merge resource vectors by `ResourceId`, validating capacity consistency.
+///
+/// Existing entries win ordering-wise; duplicates with the same capacity are
+/// ignored, while duplicates with mismatched capacities return an error.
+fn merge_resource_sets(
+    mut base: Vec<Resource>,
+    additional: Vec<Resource>,
+) -> Result<Vec<Resource>, String> {
+    for resource in additional {
+        if let Some(existing) = base.iter().find(|r| r.id == resource.id) {
+            if existing.capacity != resource.capacity {
+                return Err(format!(
+                    "resource '{}' has conflicting capacities ({} vs {})",
+                    resource.id, existing.capacity, resource.capacity
+                ));
+            }
+            continue;
+        }
+        base.push(resource);
+    }
+    Ok(base)
+}
+
+/// Derive memory resources from all source/destination region pairs.
+///
+/// Each region must support `MemoryRegion::generate_resource()` (currently
+/// `Bank` only). The returned list is de-duplicated by resource ID.
+fn memory_resources_from_region_pairs(
+    region_pairs: &[(MemoryRegion, MemoryRegion)],
+) -> Result<Vec<Resource>, String> {
+    let mut resources = Vec::with_capacity(region_pairs.len() * 2);
+    for (src, dst) in region_pairs {
+        resources.push(
+            src.generate_resource()
+                .map_err(|err| format!("failed to derive source memory resource: {err}"))?,
+        );
+        resources.push(
+            dst.generate_resource()
+                .map_err(|err| format!("failed to derive destination memory resource: {err}"))?,
+        );
+    }
+    merge_resource_sets(Vec::new(), resources)
 }
 
 impl FunctionProcessor {
@@ -265,6 +312,9 @@ impl Processor {
     }
 
     /// Build a processor with explicit source/destination memory-region pairs.
+    ///
+    /// Memory resources are auto-derived from those regions and merged into
+    /// `self.resources`.
     pub fn from_module_with_regions(
         name: impl Into<String>,
         functionality: MlirModule,
@@ -272,7 +322,9 @@ impl Processor {
         region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
     ) -> Result<Self, String> {
         let mut proc = Self::from_module(name, functionality, perf_models)?;
+        let memory_resources = memory_resources_from_region_pairs(&region_pairs)?;
         proc.region_pairs = region_pairs;
+        proc.resources = merge_resource_sets(proc.resources, memory_resources)?;
         Ok(proc)
     }
 
@@ -283,14 +335,29 @@ impl Processor {
     }
 
     /// Attach source/destination memory-region pairs (builder-style, consumes self).
+    ///
+    /// Memory resources are auto-derived from those regions and merged into
+    /// `self.resources`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
+        let memory_resources =
+            memory_resources_from_region_pairs(&region_pairs).unwrap_or_else(|err| {
+                panic!("failed to derive processor memory resources from regions: {err}")
+            });
         self.region_pairs = region_pairs;
+        self.resources =
+            merge_resource_sets(self.resources, memory_resources).unwrap_or_else(|err| {
+                panic!("failed to merge processor resources after region assignment: {err}")
+            });
         self
     }
 
-    /// Declare which shared resources this processor requires (builder-style).
+    /// Declare additional shared resources this processor requires (builder-style).
+    ///
+    /// Resources are merged (not replaced) so auto-derived memory resources are
+    /// preserved.
     pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
-        self.resources = resources;
+        self.resources = merge_resource_sets(self.resources, resources)
+            .unwrap_or_else(|err| panic!("failed to merge processor resources: {err}"));
         self
     }
 
@@ -359,12 +426,17 @@ impl ProcessorModuleBuilder {
         self
     }
 
+    /// Stage source/destination region pairs for later module construction.
+    ///
+    /// The actual memory-resource derivation happens in `finish`/`from_module`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
         self.region_pairs = region_pairs;
         self
     }
 
     /// Build an empty module without interface validation.
+    ///
+    /// Memory resources are auto-derived from staged region pairs.
     pub fn finish(self) -> Module {
         let ProcessorModuleBuilder {
             name,
@@ -372,17 +444,23 @@ impl ProcessorModuleBuilder {
             module_ctor,
             ..
         } = self;
+        let memory_resources =
+            memory_resources_from_region_pairs(&region_pairs).unwrap_or_else(|err| {
+                panic!("failed to derive processor memory resources from regions: {err}")
+            });
         let processor = Processor {
             name,
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
             region_pairs,
-            resources: Vec::new(),
+            resources: memory_resources,
         };
         module_ctor(processor)
     }
 
     /// Build and validate from MLIR functionality + perf models.
+    ///
+    /// Memory resources are auto-derived from staged region pairs.
     pub fn from_module(
         self,
         functionality: MlirModule,
@@ -418,13 +496,14 @@ impl ProcessorModuleBuilder {
             .zip(perf_models)
             .map(|(func, perf)| FunctionProcessor::new(func, perf))
             .collect();
+        let memory_resources = memory_resources_from_region_pairs(&region_pairs)?;
 
         let processor = Processor {
             name,
             functionality,
             functions,
             region_pairs,
-            resources: Vec::new(),
+            resources: memory_resources,
         };
 
         let module = module_ctor(processor);
@@ -1041,6 +1120,33 @@ mod tests {
         let proc = Processor::from_module_with_regions("proc", module, perf_models, region_pairs)
             .expect("processor with regions should build");
         assert_eq!(proc.region_pairs.len(), 1);
+        assert_eq!(proc.resources.len(), 2);
+        assert!(proc.resources.iter().any(|r| r.id.as_str() == "src"));
+        assert!(proc.resources.iter().any(|r| r.id.as_str() == "dst"));
+    }
+
+    #[test]
+    fn processor_with_array_regions_fails_resource_derivation() {
+        let module = MlirModule::from_functions("toy", vec![MlirFunc::named("f")]);
+        let perf_models = vec![FuncPerfModel {
+            symbols: vec![],
+            constraints: ConstraintExpr::True,
+            scenarios: vec![],
+        }];
+        let dim = Dimension::new_int("n", 4);
+        let src = MemoryRegion::leaf_concrete(128, 1)
+            .with_name("src_bank")
+            .scale(dim.as_slice())
+            .with_name("src");
+        let dst = MemoryRegion::leaf_concrete(128, 1)
+            .with_name("dst_bank")
+            .scale(dim.as_slice())
+            .with_name("dst");
+
+        let err =
+            Processor::from_module_with_regions("proc", module, perf_models, vec![(src, dst)])
+                .expect_err("array regions should fail memory-resource derivation");
+        assert!(err.contains("only MemoryRegion::Bank is supported"));
     }
 
     #[test]
@@ -1255,6 +1361,9 @@ func.func @mixed_copy_compute(
             .finish()
             .into_processor();
         assert_eq!(proc.region_pairs.len(), 1);
+        assert_eq!(proc.resources.len(), 2);
+        assert!(proc.resources.iter().any(|r| r.id.as_str() == "src"));
+        assert!(proc.resources.iter().any(|r| r.id.as_str() == "dst"));
     }
 
     #[test]

@@ -1,5 +1,5 @@
-pub mod arch;
 pub mod abi;
+pub mod arch;
 pub mod math;
 pub mod mlir;
 pub mod schedule;
@@ -14,10 +14,8 @@ pub use arch::{
     ComputeProcessorBuilder, DataMover, DataMoverBuilder, Dimension, FuncPerfModel,
     FunctionDataMover, FunctionProcessor, HardwareProperty, MemoryBank, MemoryRegion, MeshLink,
     MeshNetwork, MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource,
-    ResourceId, Router,
-    RouterSide, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
-    TimeCost, TimeExpr,
-    architecture_to_mlir,
+    ResourceId, Router, RouterSide, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost,
+    SizeExpr, Sym, TimeCost, TimeExpr, architecture_to_mlir,
 };
 
 // Re-export commonly used math types

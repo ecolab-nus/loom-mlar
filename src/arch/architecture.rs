@@ -487,4 +487,25 @@ mod tests {
                 .any(|resource| resource.id.as_str() == "l1_ring::link::0")
         );
     }
+
+    #[test]
+    fn builder_memory_bank_auto_registers_resource() {
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(2048)).with_name("L1"));
+        let graph = ArchGraph::builder("core").mem(&l1).build();
+
+        let mem_id = graph.memory_ref("L1").expect("L1 memory node should exist");
+        let memory_resource = graph
+            .resources
+            .iter()
+            .find(|resource| resource.id.as_str() == "L1")
+            .expect("L1 resource should be auto-registered");
+
+        assert_eq!(memory_resource.capacity, 2048);
+        assert!(
+            graph
+                .node_resources(&mem_id)
+                .iter()
+                .any(|id| id.as_str() == "L1")
+        );
+    }
 }

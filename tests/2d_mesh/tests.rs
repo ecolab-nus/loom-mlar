@@ -178,12 +178,7 @@ fn test_2d_mesh_torus_perf_models() {
         .map(|op| op.name.as_str())
         .collect();
     for prefix in [
-        "vec_max_",
-        "vec_exp_",
-        "vec_sum_",
-        "vec_add_",
-        "vec_mul_",
-        "vec_div_",
+        "vec_max_", "vec_exp_", "vec_sum_", "vec_add_", "vec_mul_", "vec_div_",
     ] {
         assert!(
             op_names.iter().any(|n| n.starts_with(prefix)),
@@ -201,21 +196,74 @@ fn test_2d_mesh_torus_perf_models() {
         mover.functionality.path.as_deref(),
         Some("tests/2d_mesh/processors_mlir/dram_l1_mover.mlir")
     );
-    assert_eq!(mover.resources.len(), 2, "dram_l1_mover uses both h and v links");
+    assert!(
+        mover.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        "dram_l1_mover should include DRAM memory resource"
+    );
+    assert!(
+        mover.resources.iter().any(|r| r.id.as_str() == "L1"),
+        "dram_l1_mover should include L1 memory resource"
+    );
+    assert!(
+        mover
+            .resources
+            .iter()
+            .any(|r| r.id.as_str() == "L1_torus::h"),
+        "dram_l1_mover should include horizontal-link resource"
+    );
+    assert!(
+        mover
+            .resources
+            .iter()
+            .any(|r| r.id.as_str() == "L1_torus::v"),
+        "dram_l1_mover should include vertical-link resource"
+    );
 
     let bcst_v = mesh
         .get_data_mover("dram_l1_bcst_v")
         .expect("dram_l1_bcst_v should exist");
-    assert!(bcst_v.validate().is_ok(), "bcst_v data mover should validate");
-    assert_eq!(bcst_v.resources.len(), 1, "bcst_v uses only v links");
-    assert_eq!(bcst_v.resources[0].id.as_str(), "L1_torus::v");
+    assert!(
+        bcst_v.validate().is_ok(),
+        "bcst_v data mover should validate"
+    );
+    assert!(
+        bcst_v.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        "bcst_v should include DRAM memory resource"
+    );
+    assert!(
+        bcst_v.resources.iter().any(|r| r.id.as_str() == "L1"),
+        "bcst_v should include L1 memory resource"
+    );
+    assert!(
+        bcst_v
+            .resources
+            .iter()
+            .any(|r| r.id.as_str() == "L1_torus::v"),
+        "bcst_v should include vertical-link resource"
+    );
 
     let bcst_h = mesh
         .get_data_mover("dram_l1_bcst_h")
         .expect("dram_l1_bcst_h should exist");
-    assert!(bcst_h.validate().is_ok(), "bcst_h data mover should validate");
-    assert_eq!(bcst_h.resources.len(), 1, "bcst_h uses only h links");
-    assert_eq!(bcst_h.resources[0].id.as_str(), "L1_torus::h");
+    assert!(
+        bcst_h.validate().is_ok(),
+        "bcst_h data mover should validate"
+    );
+    assert!(
+        bcst_h.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        "bcst_h should include DRAM memory resource"
+    );
+    assert!(
+        bcst_h.resources.iter().any(|r| r.id.as_str() == "L1"),
+        "bcst_h should include L1 memory resource"
+    );
+    assert!(
+        bcst_h
+            .resources
+            .iter()
+            .any(|r| r.id.as_str() == "L1_torus::h"),
+        "bcst_h should include horizontal-link resource"
+    );
 
     // Verify the fused mover's function details
     let move_func = mover
@@ -1024,7 +1072,6 @@ fn test_generate_system_evaluator_binary() {
     let free = expr.free_symbols();
     assert!(!free.contains(&Sym::new("M")) && !free.contains(&Sym::new("N")));
     assert!(free.contains(&Sym::new("BM")) && free.contains(&Sym::new("BN")));
-
 }
 /// Generate a standalone architecture-query binary for the full system and
 /// verify the `mlir` query returns the same MLIR as in-process export.

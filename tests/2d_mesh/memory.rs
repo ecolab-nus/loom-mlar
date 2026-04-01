@@ -12,11 +12,26 @@ pub fn l1() -> MemoryRegion {
     .with_name("L1")
 }
 
+/// Named L1 bank reference used in processor region bindings.
+pub fn l1_ref() -> MemoryRegion {
+    MemoryRegion::bank(
+        MemoryBank::from_blocks(SizeExpr::Const(16), SizeExpr::Const(5856)).with_name("L1"),
+    )
+}
+
 /// DRAM: 8 channels, each modeled as one memory bank.
 pub fn dram() -> MemoryRegion {
     MemoryRegion::bank(
-        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608)).with_name("DRAM_bank"),
+        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
+            .with_name("DRAM_bank"),
     )
     .scale(dim_dram_channel().as_slice())
     .with_name("DRAM")
+}
+
+/// Named DRAM bank reference used in processor region bindings.
+pub fn dram_ref() -> MemoryRegion {
+    MemoryRegion::bank(
+        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608)).with_name("DRAM"),
+    )
 }

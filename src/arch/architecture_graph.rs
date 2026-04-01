@@ -576,7 +576,10 @@ fn extract_resources(component: &ArchNodeComponent) -> Vec<Resource> {
     match component {
         ArchNodeComponent::Architecture(arch) => arch_resources(arch),
         ArchNodeComponent::DataMover(dm) => dm.0.resources.clone(),
-        ArchNodeComponent::MemoryRegion(_) | ArchNodeComponent::Router(_) => Vec::new(),
+        ArchNodeComponent::MemoryRegion(region) => {
+            region.generate_resources().unwrap_or_else(|_| Vec::new())
+        }
+        ArchNodeComponent::Router(_) => Vec::new(),
     }
 }
 

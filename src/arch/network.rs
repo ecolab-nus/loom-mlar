@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use serde::de::Deserializer;
+use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRegion;
 use super::processor::DataMover;
@@ -241,11 +241,12 @@ impl ScaleOutNetwork {
 
     pub fn map(&self) -> &AffineMap {
         match self {
-            Self::Mesh(m) => &m
-                .links
-                .first()
-                .expect("mesh network must contain at least one topology link map")
-                .map,
+            Self::Mesh(m) => {
+                &m.links
+                    .first()
+                    .expect("mesh network must contain at least one topology link map")
+                    .map
+            }
         }
     }
 

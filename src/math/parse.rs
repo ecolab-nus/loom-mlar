@@ -608,7 +608,10 @@ mod tests {
         assert_eq!(parse_constraint("3 < 2").unwrap().eval_const(), Some(false));
         assert_eq!(parse_constraint("7 == 7").unwrap().eval_const(), Some(true));
         assert_eq!(parse_constraint("7 != 8").unwrap().eval_const(), Some(true));
-        assert_eq!(parse_constraint("7 != 7").unwrap().eval_const(), Some(false));
+        assert_eq!(
+            parse_constraint("7 != 7").unwrap().eval_const(),
+            Some(false)
+        );
     }
     #[test]
     fn c_sym() {

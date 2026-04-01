@@ -181,7 +181,9 @@ pub(super) fn collect_loom_syms(func_mlir: &str) -> Vec<Sym> {
         .collect()
 }
 
-pub(super) fn collect_bind_shapes(func_mlir: &str) -> Result<Vec<(String, Vec<Sym>, String)>, String> {
+pub(super) fn collect_bind_shapes(
+    func_mlir: &str,
+) -> Result<Vec<(String, Vec<Sym>, String)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();
@@ -199,7 +201,9 @@ pub(super) fn collect_bind_shapes(func_mlir: &str) -> Result<Vec<(String, Vec<Sy
     Ok(bindings)
 }
 
-pub(super) fn collect_bind_mems(func_mlir: &str) -> Result<Vec<(MlirMemRegionBinding, String)>, String> {
+pub(super) fn collect_bind_mems(
+    func_mlir: &str,
+) -> Result<Vec<(MlirMemRegionBinding, String)>, String> {
     let mut bindings = Vec::new();
     for line in func_mlir.lines() {
         let trimmed = line.trim();

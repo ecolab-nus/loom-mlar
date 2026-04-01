@@ -1,6 +1,6 @@
 use mlar_rust::*;
 
-use crate::memory::l1;
+use crate::memory::l1_ref;
 
 fn expr(input: &str) -> Expr {
     Expr::parse(input).expect("2d_mesh expression literal should parse")
@@ -168,17 +168,15 @@ pub fn matrix_lane() -> Architecture {
         .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
 
     let lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
-    let l1_region = l1();
+    let l1_region = l1_ref();
 
     let perf_models: Vec<FuncPerfModel> = functionality
         .functions
         .iter()
-        .map(|op| {
-            match op.name.as_str() {
-                "elementwise_add_f16" => elementwise_add_perf_model(),
-                "elementwise_mul_f16" => elementwise_mul_perf_model(),
-                _ => matrix_func_perf_model(op.name.as_str()),
-            }
+        .map(|op| match op.name.as_str() {
+            "elementwise_add_f16" => elementwise_add_perf_model(),
+            "elementwise_mul_f16" => elementwise_mul_perf_model(),
+            _ => matrix_func_perf_model(op.name.as_str()),
         })
         .collect();
 

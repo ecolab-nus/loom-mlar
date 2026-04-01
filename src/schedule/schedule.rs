@@ -129,8 +129,18 @@ mod tests {
         };
 
         let value = serde_json::to_value(&schedule).expect("schedule should serialize");
-        assert!(!value["Sequential"].as_object().unwrap().contains_key("mlir_ref"));
-        assert!(!value["Sequential"].as_object().unwrap().contains_key("processor"));
+        assert!(
+            !value["Sequential"]
+                .as_object()
+                .unwrap()
+                .contains_key("mlir_ref")
+        );
+        assert!(
+            !value["Sequential"]
+                .as_object()
+                .unwrap()
+                .contains_key("processor")
+        );
         assert!(value["Sequential"]["scenarios"].is_array());
         assert!(
             value["Sequential"]["schedules"][0]["Func"]

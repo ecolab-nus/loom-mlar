@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use crate::arch::architecture::Architecture;
@@ -207,6 +207,26 @@ impl MlirEmitter {
             Architecture::Graph(graph) => {
                 let mut arch_components: Vec<String> = Vec::new();
                 let mut mem_components: Vec<String> = Vec::new();
+                let mut memory_resource_ids: HashSet<String> = HashSet::new();
+                for node in &graph.nodes {
+                    match &node.component {
+                        ArchNodeComponent::MemoryRegion(region) => {
+                            if let Ok(resource) = region.generate_resource() {
+                                memory_resource_ids.insert(resource.id.as_str().to_string());
+                            }
+                        }
+                        ArchNodeComponent::DataMover(mover) => {
+                            collect_region_pair_memory_resource_ids(
+                                &mover.region_pairs,
+                                &mut memory_resource_ids,
+                            );
+                        }
+                        ArchNodeComponent::Architecture(sub_arch) => {
+                            collect_arch_memory_resource_ids(sub_arch, &mut memory_resource_ids);
+                        }
+                        _ => {}
+                    }
+                }
 
                 // Emit memory first so processors can safely reference memory SSA values.
                 for node in &graph.nodes {
@@ -217,6 +237,9 @@ impl MlirEmitter {
 
                 // Emit resources so processors can reference them.
                 for resource in &graph.resources {
+                    if memory_resource_ids.contains(resource.id.as_str()) {
+                        continue;
+                    }
                     self.emit_resource(resource);
                 }
 
@@ -262,6 +285,54 @@ impl MlirEmitter {
                 )
                 .unwrap();
                 Some(ssa)
+            }
+        }
+    }
+}
+
+/// Collect bank-backed memory resource IDs used by region pairs.
+///
+/// Array regions are ignored because `generate_resource` is bank-only.
+fn collect_region_pair_memory_resource_ids(
+    region_pairs: &[(MemoryRegion, MemoryRegion)],
+    out: &mut HashSet<String>,
+) {
+    for (src, dst) in region_pairs {
+        if let Ok(resource) = src.generate_resource() {
+            out.insert(resource.id.as_str().to_string());
+        }
+        if let Ok(resource) = dst.generate_resource() {
+            out.insert(resource.id.as_str().to_string());
+        }
+    }
+}
+
+/// Recursively collect bank-backed memory resource IDs referenced by an
+/// architecture tree (processors, data movers, and memory nodes).
+fn collect_arch_memory_resource_ids(arch: &Architecture, out: &mut HashSet<String>) {
+    match arch {
+        Architecture::Unit(proc) => {
+            collect_region_pair_memory_resource_ids(&proc.region_pairs, out);
+        }
+        Architecture::Array { elem, .. } => {
+            collect_arch_memory_resource_ids(elem, out);
+        }
+        Architecture::Graph(graph) => {
+            for node in &graph.nodes {
+                match &node.component {
+                    ArchNodeComponent::Architecture(sub_arch) => {
+                        collect_arch_memory_resource_ids(sub_arch, out);
+                    }
+                    ArchNodeComponent::DataMover(mover) => {
+                        collect_region_pair_memory_resource_ids(&mover.region_pairs, out);
+                    }
+                    ArchNodeComponent::MemoryRegion(region) => {
+                        if let Ok(resource) = region.generate_resource() {
+                            out.insert(resource.id.as_str().to_string());
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -315,7 +386,7 @@ pub fn architecture_to_mlir(arch: &Architecture) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::{ArchGraph, MemoryBank, MemoryRegion, Processor, SizeExpr};
+    use crate::arch::{ArchGraph, MemoryBank, MemoryRegion, Processor, Resource, SizeExpr};
 
     #[test]
     fn single_processor_emits_df_processor() {
@@ -344,8 +415,25 @@ mod tests {
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
         assert!(mlir.contains("adl.processor.compute @lane, []"));
+        assert!(!mlir.contains("adl.resource \"L1\""));
         assert!(mlir.contains("adl.arch.compose \"core\", arch["));
         assert!(mlir.contains("], mem["));
+    }
+
+    #[test]
+    fn memory_resources_not_emitted_as_adl_resource() {
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+        let lane = Processor::new("lane")
+            .with_resources(vec![Resource::new_exclusive("alu")])
+            .into_elem();
+        let arch: Architecture = ArchGraph::builder("core")
+            .mem(&l1)
+            .architecture(&lane)
+            .build()
+            .into();
+        let mlir = architecture_to_mlir(&arch).expect("should emit");
+        assert!(mlir.contains("adl.resource \"alu\""));
+        assert!(!mlir.contains("adl.resource \"L1\""));
     }
 
     #[test]

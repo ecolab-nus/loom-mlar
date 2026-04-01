@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::perf::FuncPerfModel;
+use super::resource::Resource;
 use super::size_dim::{Dimension, SizeExpr};
 
 /// Atomic unit of memory — a single bank with capacity and optional perf model.
@@ -131,6 +132,45 @@ impl MemoryRegion {
         }
     }
 
+    /// Generate a single resource for this memory region.
+    ///
+    /// Only `MemoryRegion::Bank` is supported. Array regions return an error.
+    /// The resource ID is the bank name and the capacity is the bank capacity
+    /// in bytes.
+    pub fn generate_resource(&self) -> Result<Resource, String> {
+        match self {
+            MemoryRegion::Bank(bank) => {
+                let name = bank.name.as_deref().ok_or_else(|| {
+                    "cannot generate resource for unnamed memory bank".to_string()
+                })?;
+                let capacity_bytes = bank.capacity_bytes.as_const().ok_or_else(|| {
+                    format!(
+                        "cannot generate resource for memory bank '{}' with symbolic capacity '{}'",
+                        name, bank.capacity_bytes
+                    )
+                })?;
+                let capacity = i64::try_from(capacity_bytes).map_err(|_| {
+                    format!(
+                        "memory bank '{}' capacity {} does not fit in i64",
+                        name, capacity_bytes
+                    )
+                })?;
+                Ok(Resource::new(name.to_string(), capacity))
+            }
+            MemoryRegion::Array { name, .. } => Err(format!(
+                "cannot generate resource for memory array '{}'; only MemoryRegion::Bank is supported",
+                name.as_deref().unwrap_or("unnamed")
+            )),
+        }
+    }
+
+    /// Generate resources for this memory region.
+    ///
+    /// Returns one resource for `Bank`, and an error for `Array`.
+    pub fn generate_resources(&self) -> Result<Vec<Resource>, String> {
+        Ok(vec![self.generate_resource()?])
+    }
+
     /// Compute the total size in bytes of this region, recursing through all sub-regions.
     ///
     /// Returns `None` if any leaf capacity or array dimension is symbolic.
@@ -233,5 +273,27 @@ mod tests {
             }
             _ => panic!("expected Array"),
         }
+    }
+
+    #[test]
+    fn test_generate_resource_for_bank() {
+        let region = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(4096)).with_name("L1"));
+        let resource = region
+            .generate_resource()
+            .expect("bank should generate a resource");
+        assert_eq!(resource.id.as_str(), "L1");
+        assert_eq!(resource.capacity, 4096);
+    }
+
+    #[test]
+    fn test_generate_resource_for_array_errors() {
+        let dim = Dimension::new_int("n", 4);
+        let array = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)).with_name("bank"))
+            .scale(dim.as_slice())
+            .with_name("L1");
+        let err = array
+            .generate_resource()
+            .expect_err("array should not generate resources");
+        assert!(err.contains("only MemoryRegion::Bank is supported"));
     }
 }
