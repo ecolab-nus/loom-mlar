@@ -114,19 +114,33 @@ impl MlirEmitter {
         Some(ssa)
     }
 
-    /// Emit a `adl.resource` op if not already emitted, returning the SSA value.
+    /// Emit a typed `adl.resource.*` op if not already emitted, returning the SSA value.
     fn emit_resource(&mut self, resource: &Resource) -> String {
         if let Some(existing) = self.resource_map.get(resource.id().as_str()) {
             return existing.clone();
         }
         let ssa = self.next_ssa();
-        writeln!(
-            self.output,
-            "{} = adl.resource \"{}\"",
-            ssa,
-            resource.id().as_str()
-        )
-        .unwrap();
+        match resource {
+            Resource::Exclusive { id } => {
+                writeln!(
+                    self.output,
+                    "{} = adl.resource.exclusive \"{}\"",
+                    ssa,
+                    id.as_str()
+                )
+                .unwrap();
+            }
+            Resource::Quantitative { id, capacity } => {
+                writeln!(
+                    self.output,
+                    "{} = adl.resource.quantitative \"{}\", {{capacity = {}}}",
+                    ssa,
+                    id.as_str(),
+                    capacity
+                )
+                .unwrap();
+            }
+        }
         self.resource_map
             .insert(resource.id().as_str().to_string(), ssa.clone());
         ssa
@@ -386,7 +400,9 @@ pub fn architecture_to_mlir(arch: &Architecture) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::{ArchGraph, MemoryBank, MemoryRegion, Processor, Resource, SizeExpr};
+    use crate::arch::{
+        ArchGraph, ComputeProcessor, MemoryBank, MemoryRegion, Processor, Resource, SizeExpr,
+    };
 
     #[test]
     fn single_processor_emits_df_processor() {
@@ -432,8 +448,37 @@ mod tests {
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.resource \"alu\""));
-        assert!(!mlir.contains("adl.resource \"L1\""));
+        assert!(mlir.contains("adl.resource.exclusive \"alu\""));
+        assert!(!mlir.contains("adl.resource.exclusive \"L1\""));
+        assert!(!mlir.contains("adl.resource.quantitative \"L1\""));
+    }
+
+    #[test]
+    fn compute_builder_self_resource_is_emitted_and_referenced() {
+        let lane = ComputeProcessor::builder()
+            .named("lane")
+            .finish()
+            .into_elem();
+        let arch: Architecture = ArchGraph::builder("core")
+            .architecture(&lane)
+            .build()
+            .into();
+        let mlir = architecture_to_mlir(&arch).expect("should emit");
+        assert!(mlir.contains("adl.resource.exclusive \"lane\""));
+        assert!(mlir.contains("adl.processor.compute @lane, [], with ["));
+    }
+
+    #[test]
+    fn quantitative_resource_is_emitted_with_capacity() {
+        let lane = Processor::new("lane")
+            .with_resources(vec![Resource::quantitative("l1_port", 2)])
+            .into_elem();
+        let arch: Architecture = ArchGraph::builder("core")
+            .architecture(&lane)
+            .build()
+            .into();
+        let mlir = architecture_to_mlir(&arch).expect("should emit");
+        assert!(mlir.contains("adl.resource.quantitative \"l1_port\", {capacity = 2}"));
     }
 
     #[test]

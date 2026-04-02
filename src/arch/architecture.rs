@@ -282,9 +282,9 @@ impl From<ArchGraph> for Architecture {
 mod tests {
     use super::Architecture;
     use crate::arch::{
-        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Dimension,
-        MemoryBank, MemoryRegion, MeshNetworkInterface, Processor, Router, ScaleOutNetwork,
-        SizeExpr,
+        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, ComputeProcessor,
+        Dimension, MemoryBank, MemoryRegion, MeshNetworkInterface, Processor, Router,
+        ScaleOutNetwork, SizeExpr,
     };
     use crate::math::{AffineMap, Expr};
 
@@ -506,6 +506,32 @@ mod tests {
                 .node_resources(&mem_id)
                 .iter()
                 .any(|id| id.as_str() == "L1")
+        );
+    }
+
+    #[test]
+    fn builder_compute_processor_auto_registers_self_resource() {
+        let lane = ComputeProcessor::builder()
+            .named("lane")
+            .finish()
+            .into_elem();
+        let graph = ArchGraph::builder("core").architecture(&lane).build();
+
+        let lane_id = graph
+            .processor_ref("lane")
+            .expect("lane processor node should exist");
+        let lane_resource = graph
+            .resources
+            .iter()
+            .find(|resource| resource.id().as_str() == "lane")
+            .expect("lane self resource should be auto-registered");
+
+        assert!(lane_resource.is_exclusive());
+        assert!(
+            graph
+                .node_resources(&lane_id)
+                .iter()
+                .any(|id| id.as_str() == "lane")
         );
     }
 }

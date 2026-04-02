@@ -147,6 +147,19 @@ fn memory_resources_from_region_pairs(
     merge_resource_sets(Vec::new(), resources)
 }
 
+/// Append the compute processor's self resource (by processor name), when named.
+///
+/// This models the processor's own execution slot as an exclusive resource.
+fn append_compute_self_resource(
+    resources: Vec<Resource>,
+    processor_name: Option<&str>,
+) -> Result<Vec<Resource>, String> {
+    let Some(name) = processor_name else {
+        return Ok(resources);
+    };
+    merge_resource_sets(resources, vec![Resource::exclusive(name.to_string())])
+}
+
 impl FunctionProcessor {
     pub fn new(func: MlirFunc, perf: FuncPerfModel) -> Self {
         Self {
@@ -562,7 +575,13 @@ impl ComputeProcessorBuilder {
     }
 
     pub fn finish(self) -> ComputeProcessor {
-        ComputeProcessor(self.inner.finish().into_processor())
+        let mut processor = self.inner.finish().into_processor();
+        processor.resources =
+            append_compute_self_resource(processor.resources, processor.name.as_deref())
+                .unwrap_or_else(|err| {
+                    panic!("failed to append compute self resource: {err}");
+                });
+        ComputeProcessor(processor)
     }
 
     pub fn from_module(
@@ -570,9 +589,13 @@ impl ComputeProcessorBuilder {
         functionality: MlirModule,
         perf_models: Vec<FuncPerfModel>,
     ) -> Result<ComputeProcessor, String> {
-        self.inner
-            .from_module_processor(functionality, perf_models)
-            .map(ComputeProcessor)
+        let mut processor = self
+            .inner
+            .from_module_processor(functionality, perf_models)?;
+        processor.resources =
+            append_compute_self_resource(processor.resources, processor.name.as_deref())
+                .map_err(|err| format!("failed to append compute self resource: {err}"))?;
+        Ok(ComputeProcessor(processor))
     }
 }
 
@@ -1222,6 +1245,54 @@ mod tests {
         assert!(module.is_compute());
         assert_eq!(module.as_processor().name.as_deref(), Some("p"));
         assert_eq!(module.into_processor().name, proc.name);
+    }
+
+    #[test]
+    fn compute_builder_finish_adds_self_resource() {
+        let proc = ComputeProcessor::builder()
+            .named("compute_lane")
+            .finish()
+            .into_processor();
+        assert!(
+            proc.resources
+                .iter()
+                .any(|r| { r.id().as_str() == "compute_lane" && r.is_exclusive() }),
+            "compute builder should append exclusive self resource"
+        );
+    }
+
+    #[test]
+    fn compute_builder_from_module_with_regions_adds_self_resource() {
+        let functionality = MlirModule::from_functions("toy", vec![MlirFunc::named("f")]);
+        let perf_models = vec![FuncPerfModel {
+            symbols: vec![],
+            constraints: ConstraintExpr::True,
+            scenarios: vec![],
+        }];
+        let src = MemoryRegion::leaf_concrete(128, 1).with_name("src");
+        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("dst");
+
+        let proc = ComputeProcessor::builder()
+            .named("compute_lane")
+            .with_regions(vec![(src, dst)])
+            .from_module(functionality, perf_models)
+            .expect("compute builder from_module should succeed")
+            .into_processor();
+
+        assert!(
+            proc.resources.iter().any(|r| r.id().as_str() == "src"),
+            "memory source resource should be present"
+        );
+        assert!(
+            proc.resources.iter().any(|r| r.id().as_str() == "dst"),
+            "memory destination resource should be present"
+        );
+        assert!(
+            proc.resources
+                .iter()
+                .any(|r| { r.id().as_str() == "compute_lane" && r.is_exclusive() }),
+            "compute self resource should be appended"
+        );
     }
 
     #[test]
