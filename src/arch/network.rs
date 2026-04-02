@@ -166,7 +166,7 @@ impl ScaleOutNetworkBindings for MeshNetwork {
         self.links
             .iter()
             .enumerate()
-            .map(|(idx, link)| Resource::new_exclusive(link.resource_id(&self.name, idx)))
+            .map(|(idx, link)| Resource::exclusive(link.resource_id(&self.name, idx)))
             .collect()
     }
 
@@ -827,8 +827,8 @@ mod tests {
             .build();
 
         assert_eq!(network.resources().len(), 2);
-        assert_eq!(network.resources()[0].id.as_str(), "torus::link::0");
-        assert_eq!(network.resources()[1].id.as_str(), "torus::link::1");
+        assert_eq!(network.resources()[0].id().as_str(), "torus::link::0");
+        assert_eq!(network.resources()[1].id().as_str(), "torus::link::1");
         assert_eq!(network.data_movers().len(), 2);
         assert_eq!(network.data_movers()[0].name.as_deref(), Some("m0"));
         assert_eq!(network.data_movers()[1].name.as_deref(), Some("m1"));

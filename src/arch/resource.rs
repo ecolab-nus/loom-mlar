@@ -37,28 +37,74 @@ impl From<&str> for ResourceId {
     }
 }
 
-/// A hardware resource: a unique ID and a capacity.
+/// A hardware resource.
 ///
-/// The capacity expresses how many units of this resource are available for
-/// concurrent use.  A capacity of 1 means fully exclusive — only one
-/// consumer at a time.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Resource {
-    pub id: ResourceId,
-    pub capacity: i64,
+/// - `Quantitative`: has a numeric capacity for concurrent use.
+/// - `Exclusive`: has no numeric capacity and only models exclusive
+///   contention by identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Resource {
+    Quantitative { id: ResourceId, capacity: i64 },
+    Exclusive { id: ResourceId },
 }
 
 impl Resource {
-    pub fn new(id: impl Into<String>, capacity: i64) -> Self {
-        Self {
+    /// Create a quantitative resource with explicit capacity.
+    pub fn quantitative(id: impl Into<String>, capacity: i64) -> Self {
+        Self::Quantitative {
             id: ResourceId::new(id),
             capacity,
         }
     }
 
-    /// Convenience: create a resource with capacity 1 (exclusive).
-    pub fn new_exclusive(id: impl Into<String>) -> Self {
-        Self::new(id, 1)
+    /// Create an exclusive resource (no capacity).
+    pub fn exclusive(id: impl Into<String>) -> Self {
+        Self::Exclusive {
+            id: ResourceId::new(id),
+        }
+    }
+
+    pub fn id(&self) -> &ResourceId {
+        match self {
+            Self::Quantitative { id, .. } | Self::Exclusive { id } => id,
+        }
+    }
+
+    /// Return capacity for quantitative resources, otherwise `None`.
+    pub fn capacity(&self) -> Option<i64> {
+        match self {
+            Self::Quantitative { capacity, .. } => Some(*capacity),
+            Self::Exclusive { .. } => None,
+        }
+    }
+
+    pub fn is_quantitative(&self) -> bool {
+        matches!(self, Self::Quantitative { .. })
+    }
+
+    pub fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive { .. })
+    }
+
+    /// Resource definitions are compatible when they represent the same kind,
+    /// and for quantitative resources, the same capacity.
+    pub fn is_definition_compatible(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Quantitative { capacity: lhs, .. },
+                Self::Quantitative { capacity: rhs, .. },
+            ) => lhs == rhs,
+            (Self::Exclusive { .. }, Self::Exclusive { .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn definition_summary(&self) -> String {
+        match self {
+            Self::Quantitative { capacity, .. } => format!("quantitative(capacity={capacity})"),
+            Self::Exclusive { .. } => "exclusive".to_string(),
+        }
     }
 }
 
@@ -80,9 +126,30 @@ mod tests {
     }
 
     #[test]
-    fn resource_exclusive_has_capacity_one() {
-        let r = Resource::new_exclusive("alu");
-        assert_eq!(r.capacity, 1);
-        assert_eq!(r.id.as_str(), "alu");
+    fn resource_quantitative_capacity_one() {
+        let r = Resource::quantitative("alu", 1);
+        assert_eq!(r.capacity(), Some(1));
+        assert_eq!(r.id().as_str(), "alu");
+        assert!(r.is_quantitative());
+    }
+
+    #[test]
+    fn resource_exclusive_has_no_capacity() {
+        let r = Resource::exclusive("dma_lock");
+        assert_eq!(r.id().as_str(), "dma_lock");
+        assert_eq!(r.capacity(), None);
+        assert!(r.is_exclusive());
+    }
+
+    #[test]
+    fn resource_definition_compatibility() {
+        let q2_a = Resource::quantitative("port", 2);
+        let q2_b = Resource::quantitative("port", 2);
+        let q1 = Resource::quantitative("port", 1);
+        let exclusive = Resource::exclusive("port");
+
+        assert!(q2_a.is_definition_compatible(&q2_b));
+        assert!(!q2_a.is_definition_compatible(&q1));
+        assert!(!q2_a.is_definition_compatible(&exclusive));
     }
 }

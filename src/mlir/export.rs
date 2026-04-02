@@ -116,7 +116,7 @@ impl MlirEmitter {
 
     /// Emit a `adl.resource` op if not already emitted, returning the SSA value.
     fn emit_resource(&mut self, resource: &Resource) -> String {
-        if let Some(existing) = self.resource_map.get(resource.id.as_str()) {
+        if let Some(existing) = self.resource_map.get(resource.id().as_str()) {
             return existing.clone();
         }
         let ssa = self.next_ssa();
@@ -124,11 +124,11 @@ impl MlirEmitter {
             self.output,
             "{} = adl.resource \"{}\"",
             ssa,
-            resource.id.as_str()
+            resource.id().as_str()
         )
         .unwrap();
         self.resource_map
-            .insert(resource.id.as_str().to_string(), ssa.clone());
+            .insert(resource.id().as_str().to_string(), ssa.clone());
         ssa
     }
 
@@ -176,7 +176,7 @@ impl MlirEmitter {
         }
         let ssas: Vec<&str> = resources
             .iter()
-            .filter_map(|r| self.resource_map.get(r.id.as_str()))
+            .filter_map(|r| self.resource_map.get(r.id().as_str()))
             .map(|s| s.as_str())
             .collect();
         if ssas.is_empty() {
@@ -212,7 +212,7 @@ impl MlirEmitter {
                     match &node.component {
                         ArchNodeComponent::MemoryRegion(region) => {
                             if let Ok(resource) = region.generate_resource() {
-                                memory_resource_ids.insert(resource.id.as_str().to_string());
+                                memory_resource_ids.insert(resource.id().as_str().to_string());
                             }
                         }
                         ArchNodeComponent::DataMover(mover) => {
@@ -237,7 +237,7 @@ impl MlirEmitter {
 
                 // Emit resources so processors can reference them.
                 for resource in &graph.resources {
-                    if memory_resource_ids.contains(resource.id.as_str()) {
+                    if memory_resource_ids.contains(resource.id().as_str()) {
                         continue;
                     }
                     self.emit_resource(resource);
@@ -299,10 +299,10 @@ fn collect_region_pair_memory_resource_ids(
 ) {
     for (src, dst) in region_pairs {
         if let Ok(resource) = src.generate_resource() {
-            out.insert(resource.id.as_str().to_string());
+            out.insert(resource.id().as_str().to_string());
         }
         if let Ok(resource) = dst.generate_resource() {
-            out.insert(resource.id.as_str().to_string());
+            out.insert(resource.id().as_str().to_string());
         }
     }
 }
@@ -328,7 +328,7 @@ fn collect_arch_memory_resource_ids(arch: &Architecture, out: &mut HashSet<Strin
                     }
                     ArchNodeComponent::MemoryRegion(region) => {
                         if let Ok(resource) = region.generate_resource() {
-                            out.insert(resource.id.as_str().to_string());
+                            out.insert(resource.id().as_str().to_string());
                         }
                     }
                     _ => {}
@@ -424,7 +424,7 @@ mod tests {
     fn memory_resources_not_emitted_as_adl_resource() {
         let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
         let lane = Processor::new("lane")
-            .with_resources(vec![Resource::new_exclusive("alu")])
+            .with_resources(vec![Resource::exclusive("alu")])
             .into_elem();
         let arch: Architecture = ArchGraph::builder("core")
             .mem(&l1)

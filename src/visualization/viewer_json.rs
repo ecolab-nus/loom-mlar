@@ -84,11 +84,11 @@ fn sub_path(parent: &str, child: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arch::resource::Resource;
     use crate::arch::{
         ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, MeshNetworkInterface,
         Processor, Router, ScaleOutNetwork, SizeExpr,
     };
-    use crate::arch::resource::Resource;
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn build_core_with_edges() -> (Architecture, MemoryRegion) {
@@ -101,11 +101,11 @@ mod tests {
         .with_name("L1");
 
         let mut matrix_lane = Processor::new("matrix_lane");
-        matrix_lane.resources = vec![Resource::new("l1_read_port", 2)];
+        matrix_lane.resources = vec![Resource::quantitative("l1_read_port", 2)];
         let matrix_lane = matrix_lane.into_elem();
 
         let mut vector_lane = Processor::new("vector_lane");
-        vector_lane.resources = vec![Resource::new("l1_read_port", 2)];
+        vector_lane.resources = vec![Resource::quantitative("l1_read_port", 2)];
         let vector_lane = vector_lane.into_elem();
 
         let core_router = Router::new("core_router", 2);

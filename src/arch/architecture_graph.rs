@@ -370,7 +370,7 @@ impl ArchGraph {
         if !resources.is_empty() {
             let mut ids = Vec::with_capacity(resources.len());
             for r in resources {
-                ids.push(r.id.clone());
+                ids.push(r.id().clone());
                 self.register_resource(r);
             }
             self.resource_map.insert(id.clone(), ids);
@@ -473,14 +473,17 @@ impl ArchGraph {
     /// Register a resource, deduplicating by ID.
     ///
     /// If a resource with the same ID already exists, asserts that the
-    /// capacity matches (two processors sharing a resource must agree on
-    /// its capacity).
+    /// resource definitions are compatible (same kind, and for quantitative
+    /// resources the same capacity).
     fn register_resource(&mut self, resource: Resource) {
-        if let Some(existing) = self.resources.iter().find(|r| r.id == resource.id) {
-            assert_eq!(
-                existing.capacity, resource.capacity,
-                "resource '{}' registered with conflicting capacities ({} vs {}) in graph '{}'",
-                resource.id, existing.capacity, resource.capacity, self.name
+        if let Some(existing) = self.resources.iter().find(|r| r.id() == resource.id()) {
+            assert!(
+                existing.is_definition_compatible(&resource),
+                "resource '{}' registered with conflicting definitions ({} vs {}) in graph '{}'",
+                resource.id(),
+                existing.definition_summary(),
+                resource.definition_summary(),
+                self.name
             );
             return;
         }
@@ -489,7 +492,7 @@ impl ArchGraph {
 
     /// Look up a resource definition by ID.
     pub fn get_resource(&self, id: &ResourceId) -> Option<&Resource> {
-        self.resources.iter().find(|r| r.id == *id)
+        self.resources.iter().find(|r| r.id() == id)
     }
 
     /// Return the resource IDs associated with a given node.

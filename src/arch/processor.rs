@@ -101,20 +101,22 @@ pub struct ComputeProcessorBuilder {
     inner: ProcessorModuleBuilder,
 }
 
-/// Merge resource vectors by `ResourceId`, validating capacity consistency.
+/// Merge resource vectors by `ResourceId`, validating definition consistency.
 ///
-/// Existing entries win ordering-wise; duplicates with the same capacity are
-/// ignored, while duplicates with mismatched capacities return an error.
+/// Existing entries win ordering-wise; duplicates with compatible definitions
+/// are ignored, while mismatches return an error.
 fn merge_resource_sets(
     mut base: Vec<Resource>,
     additional: Vec<Resource>,
 ) -> Result<Vec<Resource>, String> {
     for resource in additional {
-        if let Some(existing) = base.iter().find(|r| r.id == resource.id) {
-            if existing.capacity != resource.capacity {
+        if let Some(existing) = base.iter().find(|r| r.id() == resource.id()) {
+            if !existing.is_definition_compatible(&resource) {
                 return Err(format!(
-                    "resource '{}' has conflicting capacities ({} vs {})",
-                    resource.id, existing.capacity, resource.capacity
+                    "resource '{}' has conflicting definitions ({} vs {})",
+                    resource.id(),
+                    existing.definition_summary(),
+                    resource.definition_summary()
                 ));
             }
             continue;
@@ -1121,8 +1123,8 @@ mod tests {
             .expect("processor with regions should build");
         assert_eq!(proc.region_pairs.len(), 1);
         assert_eq!(proc.resources.len(), 2);
-        assert!(proc.resources.iter().any(|r| r.id.as_str() == "src"));
-        assert!(proc.resources.iter().any(|r| r.id.as_str() == "dst"));
+        assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
+        assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));
     }
 
     #[test]
@@ -1362,8 +1364,8 @@ func.func @mixed_copy_compute(
             .into_processor();
         assert_eq!(proc.region_pairs.len(), 1);
         assert_eq!(proc.resources.len(), 2);
-        assert!(proc.resources.iter().any(|r| r.id.as_str() == "src"));
-        assert!(proc.resources.iter().any(|r| r.id.as_str() == "dst"));
+        assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
+        assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));
     }
 
     #[test]

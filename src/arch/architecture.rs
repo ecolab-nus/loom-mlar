@@ -484,7 +484,7 @@ mod tests {
             graph
                 .resources
                 .iter()
-                .any(|resource| resource.id.as_str() == "l1_ring::link::0")
+                .any(|resource| resource.id().as_str() == "l1_ring::link::0")
         );
     }
 
@@ -497,10 +497,10 @@ mod tests {
         let memory_resource = graph
             .resources
             .iter()
-            .find(|resource| resource.id.as_str() == "L1")
+            .find(|resource| resource.id().as_str() == "L1")
             .expect("L1 resource should be auto-registered");
 
-        assert_eq!(memory_resource.capacity, 2048);
+        assert_eq!(memory_resource.capacity(), Some(2048));
         assert!(
             graph
                 .node_resources(&mem_id)

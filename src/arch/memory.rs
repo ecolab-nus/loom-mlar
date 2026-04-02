@@ -155,7 +155,7 @@ impl MemoryRegion {
                         name, capacity_bytes
                     )
                 })?;
-                Ok(Resource::new(name.to_string(), capacity))
+                Ok(Resource::quantitative(name.to_string(), capacity))
             }
             MemoryRegion::Array { name, .. } => Err(format!(
                 "cannot generate resource for memory array '{}'; only MemoryRegion::Bank is supported",
@@ -281,8 +281,8 @@ mod tests {
         let resource = region
             .generate_resource()
             .expect("bank should generate a resource");
-        assert_eq!(resource.id.as_str(), "L1");
-        assert_eq!(resource.capacity, 4096);
+        assert_eq!(resource.id().as_str(), "L1");
+        assert_eq!(resource.capacity(), Some(4096));
     }
 
     #[test]

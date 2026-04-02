@@ -197,25 +197,25 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/processors_mlir/dram_l1_mover.mlir")
     );
     assert!(
-        mover.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        mover.resources.iter().any(|r| r.id().as_str() == "DRAM"),
         "dram_l1_mover should include DRAM memory resource"
     );
     assert!(
-        mover.resources.iter().any(|r| r.id.as_str() == "L1"),
+        mover.resources.iter().any(|r| r.id().as_str() == "L1"),
         "dram_l1_mover should include L1 memory resource"
     );
     assert!(
         mover
             .resources
             .iter()
-            .any(|r| r.id.as_str() == "L1_torus::h"),
+            .any(|r| r.id().as_str() == "L1_torus::h"),
         "dram_l1_mover should include horizontal-link resource"
     );
     assert!(
         mover
             .resources
             .iter()
-            .any(|r| r.id.as_str() == "L1_torus::v"),
+            .any(|r| r.id().as_str() == "L1_torus::v"),
         "dram_l1_mover should include vertical-link resource"
     );
 
@@ -227,18 +227,18 @@ fn test_2d_mesh_torus_perf_models() {
         "bcst_v data mover should validate"
     );
     assert!(
-        bcst_v.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        bcst_v.resources.iter().any(|r| r.id().as_str() == "DRAM"),
         "bcst_v should include DRAM memory resource"
     );
     assert!(
-        bcst_v.resources.iter().any(|r| r.id.as_str() == "L1"),
+        bcst_v.resources.iter().any(|r| r.id().as_str() == "L1"),
         "bcst_v should include L1 memory resource"
     );
     assert!(
         bcst_v
             .resources
             .iter()
-            .any(|r| r.id.as_str() == "L1_torus::v"),
+            .any(|r| r.id().as_str() == "L1_torus::v"),
         "bcst_v should include vertical-link resource"
     );
 
@@ -250,18 +250,18 @@ fn test_2d_mesh_torus_perf_models() {
         "bcst_h data mover should validate"
     );
     assert!(
-        bcst_h.resources.iter().any(|r| r.id.as_str() == "DRAM"),
+        bcst_h.resources.iter().any(|r| r.id().as_str() == "DRAM"),
         "bcst_h should include DRAM memory resource"
     );
     assert!(
-        bcst_h.resources.iter().any(|r| r.id.as_str() == "L1"),
+        bcst_h.resources.iter().any(|r| r.id().as_str() == "L1"),
         "bcst_h should include L1 memory resource"
     );
     assert!(
         bcst_h
             .resources
             .iter()
-            .any(|r| r.id.as_str() == "L1_torus::h"),
+            .any(|r| r.id().as_str() == "L1_torus::h"),
         "bcst_h should include horizontal-link resource"
     );
 

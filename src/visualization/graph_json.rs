@@ -148,9 +148,18 @@ pub enum GraphMemoryRegion {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphResourceKind {
+    Quantitative,
+    Exclusive,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GraphResourceInfo {
     pub id: String,
-    pub capacity: i64,
+    pub kind: GraphResourceKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -397,30 +406,40 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
     let memory_names: HashSet<String> = memory_node_ids.keys().cloned().collect();
     let mut resource_node_ids: HashMap<String, String> = HashMap::new();
     for resource in &graph.resources {
-        let res_id_str = resource.id.as_str().to_owned();
+        let res_id_str = resource.id().as_str().to_owned();
         if memory_names.contains(&res_id_str) {
             continue;
         }
+        let capacity = resource.capacity();
+        let kind = if resource.is_quantitative() {
+            GraphResourceKind::Quantitative
+        } else {
+            GraphResourceKind::Exclusive
+        };
+        let label = match capacity {
+            Some(capacity) => format!("{} (cap={})", res_id_str, capacity),
+            None => res_id_str.clone(),
+        };
         let node_id = unique_id(&format!("res:{}", slugify(&res_id_str)), &mut used_ids);
         resource_node_ids.insert(res_id_str.clone(), node_id.clone());
         nodes.push(GraphNode {
             id: node_id,
             kind: GraphNodeKind::Resource,
             name: res_id_str.clone(),
-            label: format!("{} (cap={})", res_id_str, resource.capacity),
+            label,
             dimensions: Vec::new(),
             details: GraphNodeDetails::Resource {
                 resource: GraphResourceInfo {
                     id: res_id_str,
-                    capacity: resource.capacity,
+                    kind,
+                    capacity,
                 },
             },
         });
     }
 
     for (arch_node_id, res_ids) in &graph.resource_map {
-        let Some((source_id, source_name)) =
-            arch_node_id_map.get(arch_node_id.as_str()).cloned()
+        let Some((source_id, source_name)) = arch_node_id_map.get(arch_node_id.as_str()).cloned()
         else {
             continue;
         };
@@ -429,7 +448,11 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 continue;
             };
             let edge_id = unique_id(
-                &format!("resdep:{}:{}", slugify(&source_name), slugify(res_id.as_str())),
+                &format!(
+                    "resdep:{}:{}",
+                    slugify(&source_name),
+                    slugify(res_id.as_str())
+                ),
                 &mut used_ids,
             );
             edges.push(GraphEdge {
@@ -1092,10 +1115,10 @@ mod tests {
         .with_name("l1");
 
         let mut matrix_lane = Processor::new("matrix_lane");
-        matrix_lane.resources = vec![Resource::new("l1_port", 2)];
+        matrix_lane.resources = vec![Resource::quantitative("l1_port", 2)];
 
         let mut vector_lane = Processor::new("vector_lane");
-        vector_lane.resources = vec![Resource::new("l1_port", 2)];
+        vector_lane.resources = vec![Resource::quantitative("l1_port", 2)];
 
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -1128,6 +1151,32 @@ mod tests {
             dep_edges.len(),
             2,
             "both processors should depend on l1_port"
+        );
+    }
+
+    #[test]
+    fn serializes_exclusive_resource_without_capacity() {
+        use crate::arch::resource::Resource;
+
+        let mut lane = Processor::new("lane");
+        lane.resources = vec![Resource::exclusive("dma_lock")];
+
+        let core: Architecture = ArchGraph::builder("core")
+            .architecture(&lane.into_elem())
+            .build()
+            .into();
+
+        let value = architecture_to_graph_json_value(&core);
+        let nodes = value["nodes"].as_array().unwrap();
+        let resource_nodes: Vec<_> = nodes.iter().filter(|n| n["kind"] == "resource").collect();
+        assert_eq!(resource_nodes.len(), 1);
+        assert_eq!(
+            resource_nodes[0]["details"]["resource"]["kind"],
+            "exclusive"
+        );
+        assert!(
+            resource_nodes[0]["details"]["resource"]["capacity"].is_null(),
+            "exclusive resources should omit numeric capacity"
         );
     }
 }

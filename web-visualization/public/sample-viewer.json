@@ -820,13 +820,13 @@
           "id": "res:l1_torus__h",
           "kind": "resource",
           "name": "L1_torus::h",
-          "label": "L1_torus::h (cap=1)",
+          "label": "L1_torus::h",
           "dimensions": [],
           "details": {
             "type": "resource",
             "resource": {
               "id": "L1_torus::h",
-              "capacity": 1
+              "kind": "exclusive"
             }
           }
         },
@@ -834,13 +834,13 @@
           "id": "res:l1_torus__v",
           "kind": "resource",
           "name": "L1_torus::v",
-          "label": "L1_torus::v (cap=1)",
+          "label": "L1_torus::v",
           "dimensions": [],
           "details": {
             "type": "resource",
             "resource": {
               "id": "L1_torus::v",
-              "capacity": 1
+              "kind": "exclusive"
             }
           }
         }
@@ -980,17 +980,6 @@
           "side": 2
         },
         {
-          "id": "resdep:dram_l1_bcst_h:l1_torus__h",
-          "kind": "resource_dependency",
-          "name": "dram_l1_bcst_h → L1_torus::h",
-          "source": "dm:dram_l1_bcst_h",
-          "target": "res:l1_torus__h",
-          "source_name": "dram_l1_bcst_h",
-          "target_name": "L1_torus::h",
-          "label": "dram_l1_bcst_h → L1_torus::h",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:dram_l1_bcst_v:l1_torus__v",
           "kind": "resource_dependency",
           "name": "dram_l1_bcst_v → L1_torus::v",
@@ -999,6 +988,17 @@
           "source_name": "dram_l1_bcst_v",
           "target_name": "L1_torus::v",
           "label": "dram_l1_bcst_v → L1_torus::v",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_bcst_h:l1_torus__h",
+          "kind": "resource_dependency",
+          "name": "dram_l1_bcst_h → L1_torus::h",
+          "source": "dm:dram_l1_bcst_h",
+          "target": "res:l1_torus__h",
+          "source_name": "dram_l1_bcst_h",
+          "target_name": "L1_torus::h",
+          "label": "dram_l1_bcst_h → L1_torus::h",
           "direction": "directional"
         },
         {
