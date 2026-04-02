@@ -30,7 +30,7 @@ pub struct MeshNetworkInterface {
 ///
 /// Each link describes a connectivity pattern via an [`AffineMap`].  An optional
 /// name is used for resource-id generation: named links produce
-/// `"{network}::{name}"`, unnamed links produce `"{network}::link::{idx}"`.
+/// `"{network}_{name}"`, unnamed links produce `"{network}_link_{idx}"`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MeshLink {
     /// The affine map describing this link's connectivity pattern.
@@ -57,8 +57,8 @@ impl MeshLink {
     /// Generate the resource id for this link within a network.
     pub fn resource_id(&self, network_name: &str, index: usize) -> String {
         match &self.name {
-            Some(n) => format!("{network_name}::{n}"),
-            None => format!("{network_name}::link::{index}"),
+            Some(n) => format!("{network_name}_{n}"),
+            None => format!("{network_name}_link_{index}"),
         }
     }
 
@@ -827,8 +827,8 @@ mod tests {
             .build();
 
         assert_eq!(network.resources().len(), 2);
-        assert_eq!(network.resources()[0].id().as_str(), "torus::link::0");
-        assert_eq!(network.resources()[1].id().as_str(), "torus::link::1");
+        assert_eq!(network.resources()[0].id().as_str(), "torus_link_0");
+        assert_eq!(network.resources()[1].id().as_str(), "torus_link_1");
         assert_eq!(network.data_movers().len(), 2);
         assert_eq!(network.data_movers()[0].name.as_deref(), Some("m0"));
         assert_eq!(network.data_movers()[1].name.as_deref(), Some("m1"));

@@ -208,14 +208,14 @@ fn test_2d_mesh_torus_perf_models() {
         mover
             .resources
             .iter()
-            .any(|r| r.id().as_str() == "L1_torus::h"),
+            .any(|r| r.id().as_str() == "L1_torus_h"),
         "dram_l1_mover should include horizontal-link resource"
     );
     assert!(
         mover
             .resources
             .iter()
-            .any(|r| r.id().as_str() == "L1_torus::v"),
+            .any(|r| r.id().as_str() == "L1_torus_v"),
         "dram_l1_mover should include vertical-link resource"
     );
 
@@ -238,7 +238,7 @@ fn test_2d_mesh_torus_perf_models() {
         bcst_v
             .resources
             .iter()
-            .any(|r| r.id().as_str() == "L1_torus::v"),
+            .any(|r| r.id().as_str() == "L1_torus_v"),
         "bcst_v should include vertical-link resource"
     );
 
@@ -261,7 +261,7 @@ fn test_2d_mesh_torus_perf_models() {
         bcst_h
             .resources
             .iter()
-            .any(|r| r.id().as_str() == "L1_torus::h"),
+            .any(|r| r.id().as_str() == "L1_torus_h"),
         "bcst_h should include horizontal-link resource"
     );
 
@@ -1119,5 +1119,5 @@ fn test_generate_system_arch_query_binary_mlir() {
     let expected =
         architecture_to_mlir(&system).expect("MLIR export should succeed for concrete dims");
     assert_eq!(mlir, expected);
-    assert!(mlir.starts_with("module @system {\n"));
+    assert!(mlir.starts_with("module @arch_system {\n"));
 }

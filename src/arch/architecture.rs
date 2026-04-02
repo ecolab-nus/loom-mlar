@@ -484,7 +484,7 @@ mod tests {
             graph
                 .resources
                 .iter()
-                .any(|resource| resource.id().as_str() == "l1_ring::link::0")
+                .any(|resource| resource.id().as_str() == "l1_ring_link_0")
         );
     }
 

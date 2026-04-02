@@ -223,8 +223,8 @@ mod tests {
             query_architecture(&test_arch(), &ArchitectureQuery::Mlir).expect("query should work");
         match result {
             ArchitectureQueryResult::Mlir(mlir) => {
-                assert!(mlir.starts_with("module @vec_lane {\n"));
-                assert!(mlir.contains("adl.processor.compute @vec_lane, []"));
+                assert!(mlir.starts_with("module @arch_vec_lane {\n"));
+                assert!(mlir.contains("adl.processor.compute @proc_vec_lane, []"));
             }
         }
     }

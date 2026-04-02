@@ -244,29 +244,29 @@
       }
     },
     {
-      "id": "res:l1_torus__h",
+      "id": "res:l1_torus_h",
       "kind": "resource",
-      "name": "L1_torus::h",
-      "label": "L1_torus::h",
+      "name": "L1_torus_h",
+      "label": "L1_torus_h",
       "dimensions": [],
       "details": {
         "type": "resource",
         "resource": {
-          "id": "L1_torus::h",
+          "id": "L1_torus_h",
           "kind": "exclusive"
         }
       }
     },
     {
-      "id": "res:l1_torus__v",
+      "id": "res:l1_torus_v",
       "kind": "resource",
-      "name": "L1_torus::v",
-      "label": "L1_torus::v",
+      "name": "L1_torus_v",
+      "label": "L1_torus_v",
       "dimensions": [],
       "details": {
         "type": "resource",
         "resource": {
-          "id": "L1_torus::v",
+          "id": "L1_torus_v",
           "kind": "exclusive"
         }
       }
@@ -407,47 +407,47 @@
       "side": 2
     },
     {
-      "id": "resdep:dram_l1_mover:l1_torus__h",
+      "id": "resdep:dram_l1_mover:l1_torus_h",
       "kind": "resource_dependency",
-      "name": "dram_l1_mover → L1_torus::h",
+      "name": "dram_l1_mover → L1_torus_h",
       "source": "dm:dram_l1_mover",
-      "target": "res:l1_torus__h",
+      "target": "res:l1_torus_h",
       "source_name": "dram_l1_mover",
-      "target_name": "L1_torus::h",
-      "label": "dram_l1_mover → L1_torus::h",
+      "target_name": "L1_torus_h",
+      "label": "dram_l1_mover → L1_torus_h",
       "direction": "directional"
     },
     {
-      "id": "resdep:dram_l1_mover:l1_torus__v",
+      "id": "resdep:dram_l1_mover:l1_torus_v",
       "kind": "resource_dependency",
-      "name": "dram_l1_mover → L1_torus::v",
+      "name": "dram_l1_mover → L1_torus_v",
       "source": "dm:dram_l1_mover",
-      "target": "res:l1_torus__v",
+      "target": "res:l1_torus_v",
       "source_name": "dram_l1_mover",
-      "target_name": "L1_torus::v",
-      "label": "dram_l1_mover → L1_torus::v",
+      "target_name": "L1_torus_v",
+      "label": "dram_l1_mover → L1_torus_v",
       "direction": "directional"
     },
     {
-      "id": "resdep:dram_l1_bcst_h:l1_torus__h",
+      "id": "resdep:dram_l1_bcst_v:l1_torus_v",
       "kind": "resource_dependency",
-      "name": "dram_l1_bcst_h → L1_torus::h",
-      "source": "dm:dram_l1_bcst_h",
-      "target": "res:l1_torus__h",
-      "source_name": "dram_l1_bcst_h",
-      "target_name": "L1_torus::h",
-      "label": "dram_l1_bcst_h → L1_torus::h",
-      "direction": "directional"
-    },
-    {
-      "id": "resdep:dram_l1_bcst_v:l1_torus__v",
-      "kind": "resource_dependency",
-      "name": "dram_l1_bcst_v → L1_torus::v",
+      "name": "dram_l1_bcst_v → L1_torus_v",
       "source": "dm:dram_l1_bcst_v",
-      "target": "res:l1_torus__v",
+      "target": "res:l1_torus_v",
       "source_name": "dram_l1_bcst_v",
-      "target_name": "L1_torus::v",
-      "label": "dram_l1_bcst_v → L1_torus::v",
+      "target_name": "L1_torus_v",
+      "label": "dram_l1_bcst_v → L1_torus_v",
+      "direction": "directional"
+    },
+    {
+      "id": "resdep:dram_l1_bcst_h:l1_torus_h",
+      "kind": "resource_dependency",
+      "name": "dram_l1_bcst_h → L1_torus_h",
+      "source": "dm:dram_l1_bcst_h",
+      "target": "res:l1_torus_h",
+      "source_name": "dram_l1_bcst_h",
+      "target_name": "L1_torus_h",
+      "label": "dram_l1_bcst_h → L1_torus_h",
       "direction": "directional"
     }
   ]

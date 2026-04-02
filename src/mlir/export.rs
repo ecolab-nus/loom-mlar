@@ -19,6 +19,10 @@ struct MlirEmitter {
     memory_map: HashMap<String, String>,
     /// Resource id → SSA value.
     resource_map: HashMap<String, String>,
+    /// Memory name → prefixed MLIR memory name used in exported ops.
+    memory_name_map: HashMap<String, String>,
+    /// Processor name → prefixed MLIR processor symbol.
+    processor_name_map: HashMap<String, String>,
     /// MLIR source paths collected from functionality modules
     /// (insertion-ordered, deduplicated).
     mlir_sources: Vec<String>,
@@ -32,6 +36,8 @@ impl MlirEmitter {
             dim_map: HashMap::new(),
             memory_map: HashMap::new(),
             resource_map: HashMap::new(),
+            memory_name_map: HashMap::new(),
+            processor_name_map: HashMap::new(),
             mlir_sources: Vec::new(),
         }
     }
@@ -53,7 +59,9 @@ impl MlirEmitter {
         writeln!(
             self.output,
             "{} = adl.spatial_dim \"{}\", {}",
-            ssa, dim.name.0, size
+            ssa,
+            prefixed_dim_name(&dim.name.0),
+            size
         )
         .unwrap();
         self.dim_map.insert(dim.name.0.clone(), ssa.clone());
@@ -75,7 +83,7 @@ impl MlirEmitter {
                     .map(|d| self.emit_dim(d))
                     .collect::<Option<Vec<_>>>()?;
                 let ssa = self.next_ssa();
-                let name_str = name.as_deref().unwrap_or("unnamed");
+                let name_str = prefixed_memory_name(name.as_deref().unwrap_or("unnamed"));
                 let scaleout = dim_ssas.join(", ");
                 writeln!(
                     self.output,
@@ -89,6 +97,8 @@ impl MlirEmitter {
 
         if let Some(name) = region.name() {
             self.memory_map.insert(name.to_string(), ssa.clone());
+            self.memory_name_map
+                .insert(name.to_string(), prefixed_memory_name(name));
         }
         Some(ssa)
     }
@@ -104,7 +114,7 @@ impl MlirEmitter {
         };
 
         let ssa = self.next_ssa();
-        let name = bank.name.as_deref().unwrap_or("bank");
+        let name = prefixed_memory_name(bank.name.as_deref().unwrap_or("bank"));
         writeln!(
             self.output,
             "{} = adl.memory.bank \"{}\", {{bsize = {}, nblk = {}}}",
@@ -122,21 +132,15 @@ impl MlirEmitter {
         let ssa = self.next_ssa();
         match resource {
             Resource::Exclusive { id } => {
-                writeln!(
-                    self.output,
-                    "{} = adl.resource.exclusive \"{}\"",
-                    ssa,
-                    id.as_str()
-                )
-                .unwrap();
+                let name = prefixed_resource_name(id.as_str());
+                writeln!(self.output, "{} = adl.resource.exclusive \"{}\"", ssa, name).unwrap();
             }
             Resource::Quantitative { id, capacity } => {
+                let name = prefixed_resource_name(id.as_str());
                 writeln!(
                     self.output,
                     "{} = adl.resource.quantitative \"{}\", {{capacity = {}}}",
-                    ssa,
-                    id.as_str(),
-                    capacity
+                    ssa, name, capacity
                 )
                 .unwrap();
             }
@@ -159,11 +163,14 @@ impl MlirEmitter {
     fn emit_processor_like(&mut self, kind: &str, proc: &Processor) -> Option<String> {
         let ssa = self.next_ssa();
         let name = proc.name.as_deref().unwrap_or("unnamed");
+        let prefixed_name = prefixed_processor_name(name);
+        self.processor_name_map
+            .insert(name.to_string(), prefixed_name.clone());
         let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
         let proc_ref = if matches!(kind, "compute" | "dmover") {
-            format!("@{}", name)
+            format!("@{}", prefixed_name)
         } else {
-            format!("\"{}\"", name)
+            format!("\"{}\"", prefixed_name)
         };
 
         let resource_clause = self.format_resource_clause(&proc.resources);
@@ -276,7 +283,10 @@ impl MlirEmitter {
                 writeln!(
                     self.output,
                     "{} = adl.arch.compose \"{}\", arch[{}], mem[{}]",
-                    ssa, graph.name, arch, mem
+                    ssa,
+                    prefixed_arch_name(&graph.name),
+                    arch,
+                    mem
                 )
                 .unwrap();
                 Some(ssa)
@@ -295,7 +305,10 @@ impl MlirEmitter {
                 writeln!(
                     self.output,
                     "{} = adl.arch.scale \"{}\", [{}] of {}",
-                    ssa, arch_name, dim_list, elem_ssa
+                    ssa,
+                    prefixed_arch_name(arch_name),
+                    dim_list,
+                    elem_ssa
                 )
                 .unwrap();
                 Some(ssa)
@@ -368,6 +381,122 @@ fn indent(text: &str, indent: usize) -> String {
     result
 }
 
+fn prefixed_resource_name(name: &str) -> String {
+    format!("res_{name}")
+}
+
+fn prefixed_processor_name(name: &str) -> String {
+    format!("proc_{name}")
+}
+
+fn prefixed_memory_name(name: &str) -> String {
+    format!("mem_{name}")
+}
+
+fn prefixed_arch_name(name: &str) -> String {
+    format!("arch_{name}")
+}
+
+fn prefixed_dim_name(name: &str) -> String {
+    format!("dim_{name}")
+}
+
+fn extract_module_symbol(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("module @")?;
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == '{')
+        .unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    Some(&rest[..end])
+}
+
+fn rewrite_module_symbol_line(
+    line: &str,
+    processor_name_map: &HashMap<String, String>,
+) -> Option<String> {
+    let module_symbol = extract_module_symbol(line)?;
+    let prefixed = processor_name_map.get(module_symbol)?;
+    Some(line.replacen(&format!("@{module_symbol}"), &format!("@{prefixed}"), 1))
+}
+
+fn rewrite_bind_mem_line(line: &str, memory_name_map: &HashMap<String, String>) -> String {
+    if !line.contains("loom.bind_mem") {
+        return line.to_string();
+    }
+    let Some((before, after)) = line.split_once(", @") else {
+        return line.to_string();
+    };
+    let symbol_end = after
+        .find(|c: char| c.is_whitespace() || c == ':' || c == ',')
+        .unwrap_or(after.len());
+    let symbol = &after[..symbol_end];
+    let Some(prefixed) = memory_name_map.get(symbol) else {
+        return line.to_string();
+    };
+
+    format!("{before}, @{prefixed}{}", &after[symbol_end..])
+}
+
+fn rewrite_mem_symbol_after_marker(
+    line: &str,
+    marker: &str,
+    memory_name_map: &HashMap<String, String>,
+) -> String {
+    let Some(idx) = line.find(marker) else {
+        return line.to_string();
+    };
+
+    let symbol_start = idx + marker.len();
+    let after = &line[symbol_start..];
+    let symbol_end = after
+        .find(|c: char| c.is_whitespace() || c == ',' || c == ':')
+        .unwrap_or(after.len());
+    let symbol = &after[..symbol_end];
+    let Some(prefixed) = memory_name_map.get(symbol) else {
+        return line.to_string();
+    };
+
+    format!(
+        "{}{}{}",
+        &line[..symbol_start],
+        prefixed,
+        &after[symbol_end..]
+    )
+}
+
+fn rewrite_mlir_source(
+    content: &str,
+    processor_name_map: &HashMap<String, String>,
+    memory_name_map: &HashMap<String, String>,
+) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut module_rewritten = false;
+
+    for line in content.lines() {
+        let mut rewritten = line.to_string();
+        if !module_rewritten {
+            if let Some(module_line) = rewrite_module_symbol_line(&rewritten, processor_name_map) {
+                rewritten = module_line;
+                module_rewritten = true;
+            }
+        }
+        rewritten = rewrite_bind_mem_line(&rewritten, memory_name_map);
+        rewritten = rewrite_mem_symbol_after_marker(&rewritten, "src_mem_space @", memory_name_map);
+        rewritten = rewrite_mem_symbol_after_marker(&rewritten, "dst_mem_space @", memory_name_map);
+        result.push_str(&rewritten);
+        result.push('\n');
+    }
+
+    if !content.ends_with('\n') {
+        result.pop();
+    }
+
+    result
+}
+
 /// Serialise an [`Architecture`] tree into the `adl.*` MLIR dialect,
 /// wrapped in a top-level `module @<name> { ... }`.
 ///
@@ -382,14 +511,19 @@ pub fn architecture_to_mlir(arch: &Architecture) -> Option<String> {
     emitter.emit_architecture(arch)?;
 
     let arch_name = arch.name().unwrap_or("unnamed");
-    let mut result = format!("module @{} {{\n", arch_name);
+    let mut result = format!("module @{} {{\n", prefixed_arch_name(arch_name));
 
     result.push_str(&indent(&emitter.output, 2));
 
     for path in &emitter.mlir_sources {
         if let Ok(content) = std::fs::read_to_string(path) {
+            let rewritten = rewrite_mlir_source(
+                &content,
+                &emitter.processor_name_map,
+                &emitter.memory_name_map,
+            );
             result.push('\n');
-            result.push_str(&indent(&content, 2));
+            result.push_str(&indent(&rewritten, 2));
         }
     }
 
@@ -408,14 +542,14 @@ mod tests {
     fn single_processor_emits_df_processor() {
         let arch = Processor::new("vec_lane").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.processor.compute @vec_lane, []"));
+        assert!(mlir.contains("adl.processor.compute @proc_vec_lane, []"));
     }
 
     #[test]
     fn output_wrapped_in_module() {
         let arch = Processor::new("p").into_elem();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.starts_with("module @p {\n"));
+        assert!(mlir.starts_with("module @arch_p {\n"));
         assert!(mlir.ends_with("}\n"));
     }
 
@@ -430,9 +564,9 @@ mod tests {
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
         assert!(mlir.contains("adl.memory.bank"));
-        assert!(mlir.contains("adl.processor.compute @lane, []"));
+        assert!(mlir.contains("adl.processor.compute @proc_lane, []"));
         assert!(!mlir.contains("adl.resource \"L1\""));
-        assert!(mlir.contains("adl.arch.compose \"core\", arch["));
+        assert!(mlir.contains("adl.arch.compose \"arch_core\", arch["));
         assert!(mlir.contains("], mem["));
     }
 
@@ -448,7 +582,7 @@ mod tests {
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.resource.exclusive \"alu\""));
+        assert!(mlir.contains("adl.resource.exclusive \"res_alu\""));
         assert!(!mlir.contains("adl.resource.exclusive \"L1\""));
         assert!(!mlir.contains("adl.resource.quantitative \"L1\""));
     }
@@ -464,8 +598,8 @@ mod tests {
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.resource.exclusive \"lane\""));
-        assert!(mlir.contains("adl.processor.compute @lane, [], with ["));
+        assert!(mlir.contains("adl.resource.exclusive \"res_lane\""));
+        assert!(mlir.contains("adl.processor.compute @proc_lane, [], with ["));
     }
 
     #[test]
@@ -478,7 +612,7 @@ mod tests {
             .build()
             .into();
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.resource.quantitative \"l1_port\", {capacity = 2}"));
+        assert!(mlir.contains("adl.resource.quantitative \"res_l1_port\", {capacity = 2}"));
     }
 
     #[test]
@@ -487,8 +621,8 @@ mod tests {
         let lane = Processor::new("lane").into_elem();
         let arch = lane.scale(&[dim]).with_name("mesh");
         let mlir = architecture_to_mlir(&arch).expect("should emit");
-        assert!(mlir.contains("adl.spatial_dim \"x\", 8"));
-        assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
+        assert!(mlir.contains("adl.spatial_dim \"dim_x\", 8"));
+        assert!(mlir.contains("adl.arch.scale \"arch_mesh\", ["));
     }
 
     #[test]
@@ -516,12 +650,35 @@ mod tests {
             .into();
         let scaled = core.scale(&[dim_x]).with_name("mesh");
         let mlir = architecture_to_mlir(&scaled).expect("should emit");
-        assert!(mlir.contains("adl.memory.array \"L1\", ["));
-        assert!(mlir.contains("adl.arch.scale \"mesh\", ["));
+        assert!(mlir.contains("adl.memory.array \"mem_L1\", ["));
+        assert!(mlir.contains("adl.arch.scale \"arch_mesh\", ["));
         assert_eq!(
-            mlir.matches("adl.spatial_dim \"x\"").count(),
+            mlir.matches("adl.spatial_dim \"dim_x\"").count(),
             1,
             "dimension x should be emitted exactly once"
         );
+    }
+
+    #[test]
+    fn mlir_sources_rewrite_processor_module_and_memory_bindings() {
+        let mut processor_name_map = HashMap::new();
+        processor_name_map.insert("lane".to_string(), "proc_lane".to_string());
+
+        let mut memory_name_map = HashMap::new();
+        memory_name_map.insert("L1".to_string(), "mem_L1".to_string());
+
+        let src = r#"module @lane {
+  func.func @f(%a: memref<?xf16>) {
+    loom.bind_mem %a, @L1 : memref<?xf16>
+    loom.copy %a, %a src_mem_space @L1 dst_mem_space @L1, broadcast : [1] : memref<?xf16> to memref<?xf16>
+    return
+  }
+}
+"#;
+        let rewritten = rewrite_mlir_source(src, &processor_name_map, &memory_name_map);
+
+        assert!(rewritten.contains("module @proc_lane {"));
+        assert!(rewritten.contains("loom.bind_mem %a, @mem_L1 : memref<?xf16>"));
+        assert!(rewritten.contains("src_mem_space @mem_L1 dst_mem_space @mem_L1"));
     }
 }

@@ -9,12 +9,12 @@ pub const V_LINK_NAME: &str = "v";
 
 /// Resource for the horizontal torus links (y-neighbor with wraparound).
 pub fn h_link_resource() -> Resource {
-    Resource::exclusive(format!("{TORUS_NAME}::{H_LINK_NAME}"))
+    Resource::exclusive(format!("{TORUS_NAME}_{H_LINK_NAME}"))
 }
 
 /// Resource for the vertical torus links (x-neighbor with wraparound).
 pub fn v_link_resource() -> Resource {
-    Resource::exclusive(format!("{TORUS_NAME}::{V_LINK_NAME}"))
+    Resource::exclusive(format!("{TORUS_NAME}_{V_LINK_NAME}"))
 }
 
 /// Build the scaled 8×8 mesh with torus connectivity.
