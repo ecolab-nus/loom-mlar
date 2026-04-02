@@ -16,9 +16,25 @@ export function ArchNode({ data }: NodeProps) {
   const kindClass = classForNode(nodeData);
   const showBankPreview = nodeData.kind === 'memory' && nodeData.bankSlots.length > 0;
 
+  if (nodeData.kind === 'resource') {
+    return (
+      <div className="arch-node-resource-wrapper">
+        <div className="node-resource-hexagon">
+          <div className="arch-node-kind">resource</div>
+          <div className="arch-node-title">{nodeData.name}</div>
+          <div className="arch-node-summary">{nodeData.summary}</div>
+        </div>
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
+
+  const kindLabel = nodeData.kind === 'data_mover' ? 'data mover' : nodeData.kind;
+
   return (
     <div className={`arch-node ${kindClass}`}>
-      <div className="arch-node-kind">{nodeData.kind}</div>
+      <div className="arch-node-kind">{kindLabel}</div>
       <div className="arch-node-title">{nodeData.name}</div>
       <div className="arch-node-summary">{nodeData.summary}</div>
       {nodeData.dimensions.length > 0 && (
@@ -45,13 +61,18 @@ export function ArchNode({ data }: NodeProps) {
   );
 }
 
+const VALID_KINDS = new Set([
+  'memory', 'processor', 'data_mover', 'array', 'graph', 'link', 'router', 'resource',
+]);
+
 function isArchFlowNodeData(value: unknown): value is ArchFlowNodeData {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const candidate = value as Partial<ArchFlowNodeData>;
   return (
-    (candidate.kind === 'memory' || candidate.kind === 'processor' || candidate.kind === 'link' || candidate.kind === 'router') &&
+    typeof candidate.kind === 'string' &&
+    VALID_KINDS.has(candidate.kind) &&
     typeof candidate.name === 'string' &&
     typeof candidate.summary === 'string' &&
     Array.isArray(candidate.dimensions) &&
@@ -60,16 +81,24 @@ function isArchFlowNodeData(value: unknown): value is ArchFlowNodeData {
 }
 
 function classForNode(nodeData: ArchFlowNodeData): string {
-  if (nodeData.kind === 'memory') {
-    return 'node-memory';
+  switch (nodeData.kind) {
+    case 'memory':
+      return 'node-memory';
+    case 'processor':
+      return 'node-processor';
+    case 'data_mover':
+      return 'node-data-mover';
+    case 'array':
+      return 'node-array';
+    case 'graph':
+      return 'node-graph';
+    case 'router':
+      return 'node-router';
+    case 'resource':
+      return 'node-resource';
+    default:
+      return 'node-link';
   }
-  if (nodeData.kind === 'processor') {
-    return 'node-processor';
-  }
-  if (nodeData.kind === 'router') {
-    return 'node-router';
-  }
-  return 'node-link';
 }
 
 function BankSlotChip({ slot }: { slot: BankSlot }) {

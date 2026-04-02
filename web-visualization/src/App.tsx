@@ -22,6 +22,7 @@ import {
   type AnyFlowNode,
   type ArchFlowNodeData,
   type FlowConversionResult,
+  type ViewMode,
 } from './flow';
 import { loadGraphFromFile, loadGraphFromUrl, parseAnyText } from './runtime-loader';
 import type {
@@ -119,6 +120,7 @@ function AppInner() {
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedGraphPath, setSelectedGraphPath] = useState<string>('');
   const [selectedLegendLinkName, setSelectedLegendLinkName] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('hardware');
   const [selectedMemory, setSelectedMemory] = useState<{
     name: string;
     region: GraphMemoryRegion;
@@ -215,8 +217,8 @@ function AppInner() {
         coreLinkLegend: [],
       } satisfies FlowConversionResult;
     }
-    return architectureToFlow(activeGraph, onCoreClick, onMemoryClick);
-  }, [activeGraph, onCoreClick, onMemoryClick]);
+    return architectureToFlow(activeGraph, viewMode, onCoreClick, onMemoryClick);
+  }, [activeGraph, viewMode, onCoreClick, onMemoryClick]);
 
   useEffect(() => {
     if (flow.coreLinkLegend.length === 0) {
@@ -305,27 +307,45 @@ function AppInner() {
         )}
 
         <section className="graph-panel">
-          {activeGraph && breadcrumbs.length > 0 && (
-            <div className="graph-breadcrumb">
-              <span className="graph-breadcrumb-label">Viewing</span>
-              {breadcrumbs.map((seg, idx) => (
-                <span key={seg.path} className="graph-breadcrumb-segment">
-                  {idx > 0 && <span className="graph-breadcrumb-sep">/</span>}
-                  {idx < breadcrumbs.length - 1 ? (
-                    <button
-                      type="button"
-                      className="graph-breadcrumb-link"
-                      onClick={() => navigateToPath(seg.path)}
-                    >
-                      {seg.label}
-                    </button>
-                  ) : (
-                    <span className="graph-breadcrumb-current">{seg.label}</span>
-                  )}
-                </span>
-              ))}
+          <div className="graph-toolbar">
+            {activeGraph && breadcrumbs.length > 0 && (
+              <div className="graph-breadcrumb">
+                <span className="graph-breadcrumb-label">Viewing</span>
+                {breadcrumbs.map((seg, idx) => (
+                  <span key={seg.path} className="graph-breadcrumb-segment">
+                    {idx > 0 && <span className="graph-breadcrumb-sep">/</span>}
+                    {idx < breadcrumbs.length - 1 ? (
+                      <button
+                        type="button"
+                        className="graph-breadcrumb-link"
+                        onClick={() => navigateToPath(seg.path)}
+                      >
+                        {seg.label}
+                      </button>
+                    ) : (
+                      <span className="graph-breadcrumb-current">{seg.label}</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="view-mode-toggle">
+              <button
+                type="button"
+                className={`view-mode-btn${viewMode === 'hardware' ? ' view-mode-btn--active' : ''}`}
+                onClick={() => setViewMode('hardware')}
+              >
+                Hardware
+              </button>
+              <button
+                type="button"
+                className={`view-mode-btn${viewMode === 'processor' ? ' view-mode-btn--active' : ''}`}
+                onClick={() => setViewMode('processor')}
+              >
+                Processor
+              </button>
             </div>
-          )}
+          </div>
 
           {activeGraph ? (
             <ReactFlow<AnyFlowNode, Edge>

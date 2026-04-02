@@ -6,6 +6,7 @@
   --memory: #cee6f8;
   --processor: #d7f3dd;
   --link-block: #ffe7b8;
+  --resource: #e0d0f5;
   --panel: rgba(255, 255, 255, 0.86);
   --line: #afc3ce;
 }
@@ -144,15 +145,59 @@ body {
   min-height: 0;
 }
 
+/* ── Graph Toolbar ────────────────────────────────────────── */
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid #d6e2e8;
+  background: linear-gradient(90deg, #edf4f8, #f8fbfd);
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 2px;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid #c2d5e0;
+}
+
+.view-mode-btn {
+  border: none;
+  background: #f0f5f8;
+  color: #5a7888;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.view-mode-btn:hover {
+  background: #e2eef4;
+}
+
+.view-mode-btn--active {
+  background: #2d6aa2;
+  color: #fff;
+}
+
+.view-mode-btn--active:hover {
+  background: #245a8c;
+}
+
 /* ── Graph Breadcrumb ──────────────────────────────────────── */
 
 .graph-breadcrumb {
   display: flex;
   align-items: center;
   gap: 0.2rem;
-  padding: 0.45rem 0.75rem;
-  border-bottom: 1px solid #d6e2e8;
-  background: linear-gradient(90deg, #edf4f8, #f8fbfd);
   flex-shrink: 0;
 }
 
@@ -292,11 +337,66 @@ body {
   box-shadow: 0 10px 22px rgba(92, 63, 10, 0.1);
 }
 
+.node-data-mover {
+  background: linear-gradient(180deg, #fce4d6, #fff5ef 50%);
+  border-color: #c48a5a;
+  box-shadow: 0 10px 22px rgba(120, 60, 10, 0.1);
+}
+
+.node-array {
+  background: linear-gradient(180deg, #d0e8f0, #eef7fb 50%);
+  border-color: #6ba3c0;
+  box-shadow: 0 10px 22px rgba(20, 70, 110, 0.1);
+}
+
+.node-graph {
+  background: linear-gradient(180deg, #e2daf0, #f5f0ff 50%);
+  border-color: #9080b8;
+  box-shadow: 0 10px 22px rgba(60, 40, 100, 0.1);
+}
+
 .node-link {
   background: linear-gradient(180deg, var(--link-block), #fff7df 58%);
   border-color: #d1a65a;
   border-style: solid;
   box-shadow: 0 10px 22px rgba(92, 63, 10, 0.14);
+}
+
+/* ── Resource Node (hexagonal shape) ───────────────────────── */
+
+.arch-node-resource-wrapper {
+  position: relative;
+  min-width: 160px;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-resource-hexagon {
+  width: 100%;
+  min-width: 160px;
+  padding: 1.1rem 2.2rem;
+  text-align: center;
+  background: linear-gradient(180deg, #e0d0f5 0%, #f3edff 50%, #faf7ff 100%);
+  clip-path: polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%);
+  filter: drop-shadow(0 6px 16px rgba(107, 78, 138, 0.18));
+}
+
+.node-resource-hexagon .arch-node-kind {
+  color: #6b4e8a;
+}
+
+.node-resource-hexagon .arch-node-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #3d1a5e;
+}
+
+.node-resource-hexagon .arch-node-summary {
+  margin-top: 0.12rem;
+  color: #5a3d78;
+  font-size: 0.72rem;
 }
 
 .arch-node-kind {
@@ -1309,6 +1409,12 @@ body {
   background: #ffe7b8;
   color: #5a3a0e;
   border: 1px solid #d4b06a;
+}
+
+.htree-kind--resource {
+  background: #e0d0f5;
+  color: #3d1a5e;
+  border: 1px solid #b38ed4;
 }
 
 .htree-name {

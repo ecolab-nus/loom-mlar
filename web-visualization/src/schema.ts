@@ -1,4 +1,4 @@
-export type NodeKind = 'memory' | 'processor' | 'router';
+export type NodeKind = 'memory' | 'processor' | 'data_mover' | 'array' | 'graph' | 'router' | 'resource';
 
 export interface GraphDimension {
   name: string;
@@ -56,6 +56,11 @@ export type GraphMemoryRegion =
       total_size_bytes?: number | null;
     };
 
+export interface GraphResourceInfo {
+  id: string;
+  capacity: number;
+}
+
 export type GraphNodeDetails =
   | {
       type: 'memory';
@@ -69,6 +74,10 @@ export type GraphNodeDetails =
   | {
       type: 'router';
       router: { name: string; side_count: number; endpoints: number };
+    }
+  | {
+      type: 'resource';
+      resource: GraphResourceInfo;
     };
 
 export interface ArchitectureGraphNode {
@@ -238,7 +247,8 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
       throw new Error('Node must include string id and name.');
     }
 
-    if (node.kind !== 'memory' && node.kind !== 'processor' && node.kind !== 'router') {
+    const validKinds = ['memory', 'processor', 'data_mover', 'array', 'graph', 'router', 'resource'];
+    if (!validKinds.includes(node.kind as string)) {
       throw new Error(`Invalid node kind for ${node.id}.`);
     }
 
@@ -269,8 +279,10 @@ export function parseArchitectureGraph(raw: unknown): ArchitectureGraph {
       throw new Error(`Edge ${edge.id} has invalid direction.`);
     }
 
-    if (!isRecord(edge.map) || !isStringArray(edge.map.expressions)) {
-      throw new Error(`Edge ${edge.id} has invalid map.`);
+    if (edge.kind === 'scale_out_network') {
+      if (!isRecord(edge.map) || !isStringArray(edge.map.expressions)) {
+        throw new Error(`Edge ${edge.id} has invalid map.`);
+      }
     }
   }
 

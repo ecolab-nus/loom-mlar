@@ -28,7 +28,7 @@ export function IntraCorePanel({
   onClose,
   onMemoryClick,
 }: IntraCorePanelProps) {
-  const { nodes: rawNodes, edges } = architectureToFlow(intraCoreGraph);
+  const { nodes: rawNodes, edges } = architectureToFlow(intraCoreGraph, 'hardware');
   const nodes = rawNodes.filter((node): node is ArchFlowNode => node.type === 'archNode');
 
   return (

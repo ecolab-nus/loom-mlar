@@ -11,6 +11,8 @@ import type {
   NodeKind,
 } from './schema';
 
+export type ViewMode = 'processor' | 'hardware';
+
 export type VisualNodeKind = NodeKind | 'link';
 
 export interface BankSlot {
@@ -97,7 +99,7 @@ interface VisualEdgeSpec {
   source: string;
   target: string;
   label?: string;
-  kind: 'link_in' | 'link_out' | 'direct';
+  kind: 'link_in' | 'link_out' | 'direct' | 'resource_dep';
   direction: GraphEdgeDirection;
 }
 
@@ -155,12 +157,13 @@ export function detectGridLayout(
  */
 export function architectureToFlow(
   graph: ArchitectureGraph,
+  viewMode: ViewMode,
   onCoreClick?: (x: number, y: number) => void,
   onMemoryClick?: (name: string, region: GraphMemoryRegion) => void,
 ): FlowConversionResult {
   const grid = detectGridLayout(graph);
 
-  if (grid && graph.intra_core) {
+  if (grid && graph.intra_core && viewMode === 'hardware') {
     const coreLevel = buildCoreLevelFlow(graph, grid, onMemoryClick);
     if (coreLevel) {
       return coreLevel;
@@ -182,7 +185,7 @@ export function architectureToFlow(
     return { nodes: [gridNode], edges: [], coreLinkLegend: [] };
   }
 
-  const visual = buildVisualGraph(graph);
+  const visual = buildVisualGraph(graph, viewMode);
   const { levels, lanes } = buildLayout(visual.nodes, visual.edges);
 
   const nodes: ArchFlowNode[] = visual.nodes.map((node) => {
@@ -605,15 +608,28 @@ function colorForInterCoreEdge(name: string): string {
   return '#3e6d89';
 }
 
-function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
+function isNodeVisibleInView(kind: string, viewMode: ViewMode, isSystemLevel: boolean): boolean {
+  if (isSystemLevel && kind === 'memory') return false;
+
+  if (viewMode === 'processor') {
+    return kind !== 'router';
+  }
+  return kind !== 'data_mover' && kind !== 'resource';
+}
+
+function buildVisualGraph(graph: ArchitectureGraph, viewMode: ViewMode): VisualGraph {
+  const isSystemLevel = graph.architecture.labels.length > 0;
   const nodes: VisualNodeSpec[] = [];
   const edges: VisualEdgeSpec[] = [];
   const edgeKeys = new Set<string>();
   const endpointStatsByNode = new Map<string, EndpointStat>();
+  const visibleNodeIds = new Set<string>();
 
   for (const node of graph.nodes) {
+    if (!isNodeVisibleInView(node.kind, viewMode, isSystemLevel)) continue;
     const described = describeNode(node);
     nodes.push(described.visualNode);
+    visibleNodeIds.add(node.id);
     endpointStatsByNode.set(node.id, {
       nodeId: node.id,
       multiplicity: described.multiplicity,
@@ -623,83 +639,145 @@ function buildVisualGraph(graph: ArchitectureGraph): VisualGraph {
 
   const scaleOutEdges = graph.edges.filter((e) => e.kind === 'scale_out_network');
   const intraEdges = graph.edges.filter((e) => e.kind === 'intra_graph');
+  const resourceDepEdges = graph.edges.filter((e) => e.kind === 'resource_dependency');
 
-  const links = new Map<string, LinkAccumulator>();
-  for (const edge of scaleOutEdges) {
-    if (!links.has(edge.name)) {
-      links.set(edge.name, {
-        edge,
-        sources: new Map<string, EndpointStat>(),
-        targets: new Map<string, EndpointStat>(),
+  if (viewMode === 'hardware') {
+    const links = new Map<string, LinkAccumulator>();
+    for (const edge of scaleOutEdges) {
+      if (!visibleNodeIds.has(edge.source) && !visibleNodeIds.has(edge.target)) continue;
+      if (!links.has(edge.name)) {
+        links.set(edge.name, {
+          edge,
+          sources: new Map<string, EndpointStat>(),
+          targets: new Map<string, EndpointStat>(),
+        });
+      }
+      const acc = links.get(edge.name)!;
+
+      const source = endpointStatsByNode.get(edge.source) ?? defaultEndpointStat(edge.source);
+      acc.sources.set(source.nodeId, source);
+
+      const target = endpointStatsByNode.get(edge.target) ?? defaultEndpointStat(edge.target);
+      acc.targets.set(target.nodeId, target);
+    }
+
+    for (const [name, acc] of links.entries()) {
+      const linkNodeId = `link:${slugify(name)}`;
+      const bwExpr = acc.edge.bandwidth?.expr ?? '?';
+      const latency = acc.edge.latency ? `, lat=${acc.edge.latency.expr}` : '';
+      nodes.push({
+        id: linkNodeId,
+        kind: 'link',
+        name,
+        label: name,
+        dimensions: [],
+        summary: `bw=${bwExpr}${latency}`,
+        bankSlots: [],
+      });
+
+      const sources = Array.from(acc.sources.values()).sort(endpointSort);
+      const targets = Array.from(acc.targets.values()).sort(endpointSort);
+
+      for (const source of sources) {
+        const multiplicityLabel = formatMultiplicityLabel(source.multiplicity);
+        pushEdge(
+          edges,
+          edgeKeys,
+          {
+            id: `edge:${source.nodeId}:to:${linkNodeId}`,
+            source: source.nodeId,
+            target: linkNodeId,
+            label: multiplicityLabel,
+            kind: 'link_in',
+            direction: 'directional',
+          },
+        );
+      }
+
+      for (const target of targets) {
+        pushEdge(
+          edges,
+          edgeKeys,
+          {
+            id: `edge:${linkNodeId}:to:${target.nodeId}`,
+            source: linkNodeId,
+            target: target.nodeId,
+            kind: 'link_out',
+            direction: 'directional',
+          },
+        );
+      }
+    }
+  }
+
+  {
+    const intraAdj = new Map<string, Set<string>>();
+    for (const edge of intraEdges) {
+      if (!intraAdj.has(edge.source)) intraAdj.set(edge.source, new Set());
+      intraAdj.get(edge.source)!.add(edge.target);
+      if (edgeDirection(edge) === 'bidirectional') {
+        if (!intraAdj.has(edge.target)) intraAdj.set(edge.target, new Set());
+        intraAdj.get(edge.target)!.add(edge.source);
+      }
+    }
+
+    for (const edge of intraEdges) {
+      if (visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) {
+        const sideLabel = edge.side != null ? `side ${edge.side}` : undefined;
+        pushEdge(edges, edgeKeys, {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          label: sideLabel,
+          kind: 'direct',
+          direction: edgeDirection(edge),
+        });
+      }
+    }
+
+    for (const srcId of visibleNodeIds) {
+      const visited = new Set<string>();
+      const queue: string[] = [];
+      visited.add(srcId);
+      for (const neighbor of intraAdj.get(srcId) ?? []) {
+        if (!visibleNodeIds.has(neighbor) && !visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const neighbor of intraAdj.get(current) ?? []) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          if (visibleNodeIds.has(neighbor)) {
+            pushEdge(edges, edgeKeys, {
+              id: `bridge:${srcId}:${neighbor}`,
+              source: srcId,
+              target: neighbor,
+              kind: 'direct',
+              direction: 'directional',
+            });
+          } else {
+            queue.push(neighbor);
+          }
+        }
+      }
+    }
+  }
+
+  if (viewMode === 'processor') {
+    for (const edge of resourceDepEdges) {
+      if (!visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target)) continue;
+      pushEdge(edges, edgeKeys, {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label: undefined,
+        kind: 'resource_dep',
+        direction: 'directional',
       });
     }
-    const acc = links.get(edge.name)!;
-
-    const source = endpointStatsByNode.get(edge.source) ?? defaultEndpointStat(edge.source);
-    acc.sources.set(source.nodeId, source);
-
-    const target = endpointStatsByNode.get(edge.target) ?? defaultEndpointStat(edge.target);
-    acc.targets.set(target.nodeId, target);
-  }
-
-  for (const [name, acc] of links.entries()) {
-    const linkNodeId = `link:${slugify(name)}`;
-    const bwExpr = acc.edge.bandwidth?.expr ?? '?';
-    const latency = acc.edge.latency ? `, lat=${acc.edge.latency.expr}` : '';
-    nodes.push({
-      id: linkNodeId,
-      kind: 'link',
-      name,
-      label: name,
-      dimensions: [],
-      summary: `bw=${bwExpr}${latency}`,
-      bankSlots: [],
-    });
-
-    const sources = Array.from(acc.sources.values()).sort(endpointSort);
-    const targets = Array.from(acc.targets.values()).sort(endpointSort);
-
-    for (const source of sources) {
-      const multiplicityLabel = formatMultiplicityLabel(source.multiplicity);
-      pushEdge(
-        edges,
-        edgeKeys,
-        {
-          id: `edge:${source.nodeId}:to:${linkNodeId}`,
-          source: source.nodeId,
-          target: linkNodeId,
-          label: multiplicityLabel,
-          kind: 'link_in',
-          direction: 'directional',
-        },
-      );
-    }
-
-    for (const target of targets) {
-      pushEdge(
-        edges,
-        edgeKeys,
-        {
-          id: `edge:${linkNodeId}:to:${target.nodeId}`,
-          source: linkNodeId,
-          target: target.nodeId,
-          kind: 'link_out',
-          direction: 'directional',
-        },
-      );
-    }
-  }
-
-  for (const edge of intraEdges) {
-    const sideLabel = edge.side != null ? `side ${edge.side}` : undefined;
-    pushEdge(edges, edgeKeys, {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: sideLabel,
-      kind: 'direct',
-      direction: edgeDirection(edge),
-    });
   }
 
   return { nodes, edges };
@@ -1023,23 +1101,36 @@ function buildLayout(nodes: VisualNodeSpec[], edges: VisualEdgeSpec[]): LayoutRe
 }
 
 function kindRank(node: VisualNodeSpec): number {
-  if (node.kind === 'memory') {
-    return 0;
+  switch (node.kind) {
+    case 'memory':
+      return 0;
+    case 'link':
+      return 1;
+    case 'resource':
+      return 4;
+    case 'router':
+      return 3;
+    default:
+      return 2;
   }
-  if (node.kind === 'link') {
-    return 1;
-  }
-  return 2;
 }
 
 function summarizeArchitectureNode(node: ArchitectureGraphNode): string {
-  if (node.kind === 'processor' && node.details.type === 'processor') {
+  if (node.details.type === 'processor') {
+    if (node.kind === 'array' || node.kind === 'graph') {
+      const instances = node.details.total_instances;
+      const kindLabel = node.kind === 'array' ? 'array' : 'graph';
+      return instances !== null ? `${kindLabel}, instances=${instances}` : kindLabel;
+    }
     return node.details.total_instances !== null
       ? `instances=${node.details.total_instances}`
       : 'instances=symbolic';
   }
-  if (node.kind === 'router' && node.details.type === 'router') {
+  if (node.details.type === 'router') {
     return `${node.details.router.side_count} sides`;
+  }
+  if (node.details.type === 'resource') {
+    return `capacity=${node.details.resource.capacity}`;
   }
   return '';
 }
@@ -1055,6 +1146,23 @@ function summarizeMemoryNode(node: ArchitectureGraphNode, totalBanks: number | n
 }
 
 function edgeToFlow(edge: VisualEdgeSpec): Edge {
+  if (edge.kind === 'resource_dep') {
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+      },
+      style: {
+        stroke: '#9b7cc8',
+        strokeWidth: 1.6,
+        strokeDasharray: '6 3',
+      },
+      labelStyle: { fontSize: 10, fontWeight: 600, fill: '#6b4e8a' },
+    };
+  }
   if (edge.kind === 'direct') {
     const isBidirectional = edge.direction === 'bidirectional';
     return {

@@ -245,7 +245,7 @@
       "nodes": [
         {
           "id": "proc:mesh",
-          "kind": "processor",
+          "kind": "array",
           "name": "mesh",
           "label": "mesh [x=8, y=8]",
           "dimensions": [
@@ -580,7 +580,7 @@
       "nodes": [
         {
           "id": "proc:mesh",
-          "kind": "processor",
+          "kind": "array",
           "name": "mesh",
           "label": "mesh [x=8, y=8]",
           "dimensions": [
@@ -624,7 +624,7 @@
         },
         {
           "id": "dm:dram_l1_mover",
-          "kind": "processor",
+          "kind": "data_mover",
           "name": "dram_l1_mover",
           "label": "dram_l1_mover",
           "dimensions": [],
@@ -649,7 +649,7 @@
         },
         {
           "id": "dm:dram_l1_bcst_v",
-          "kind": "processor",
+          "kind": "data_mover",
           "name": "dram_l1_bcst_v",
           "label": "dram_l1_bcst_v",
           "dimensions": [],
@@ -672,7 +672,7 @@
         },
         {
           "id": "dm:dram_l1_bcst_h",
-          "kind": "processor",
+          "kind": "data_mover",
           "name": "dram_l1_bcst_h",
           "label": "dram_l1_bcst_h",
           "dimensions": [],
@@ -815,6 +815,34 @@
               "total_size_bytes": 95944704
             }
           }
+        },
+        {
+          "id": "res:l1_torus__h",
+          "kind": "resource",
+          "name": "L1_torus::h",
+          "label": "L1_torus::h (cap=1)",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "L1_torus::h",
+              "capacity": 1
+            }
+          }
+        },
+        {
+          "id": "res:l1_torus__v",
+          "kind": "resource",
+          "name": "L1_torus::v",
+          "label": "L1_torus::v (cap=1)",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "L1_torus::v",
+              "capacity": 1
+            }
+          }
         }
       ],
       "edges": [
@@ -950,6 +978,50 @@
           "label": "dram_l1_bcst_h ↔ DRAM (side 2)",
           "direction": "bidirectional",
           "side": 2
+        },
+        {
+          "id": "resdep:dram_l1_bcst_h:l1_torus__h",
+          "kind": "resource_dependency",
+          "name": "dram_l1_bcst_h → L1_torus::h",
+          "source": "dm:dram_l1_bcst_h",
+          "target": "res:l1_torus__h",
+          "source_name": "dram_l1_bcst_h",
+          "target_name": "L1_torus::h",
+          "label": "dram_l1_bcst_h → L1_torus::h",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_bcst_v:l1_torus__v",
+          "kind": "resource_dependency",
+          "name": "dram_l1_bcst_v → L1_torus::v",
+          "source": "dm:dram_l1_bcst_v",
+          "target": "res:l1_torus__v",
+          "source_name": "dram_l1_bcst_v",
+          "target_name": "L1_torus::v",
+          "label": "dram_l1_bcst_v → L1_torus::v",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_mover:l1_torus__h",
+          "kind": "resource_dependency",
+          "name": "dram_l1_mover → L1_torus::h",
+          "source": "dm:dram_l1_mover",
+          "target": "res:l1_torus__h",
+          "source_name": "dram_l1_mover",
+          "target_name": "L1_torus::h",
+          "label": "dram_l1_mover → L1_torus::h",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_mover:l1_torus__v",
+          "kind": "resource_dependency",
+          "name": "dram_l1_mover → L1_torus::v",
+          "source": "dm:dram_l1_mover",
+          "target": "res:l1_torus__v",
+          "source_name": "dram_l1_mover",
+          "target_name": "L1_torus::v",
+          "label": "dram_l1_mover → L1_torus::v",
+          "direction": "directional"
         }
       ]
     },

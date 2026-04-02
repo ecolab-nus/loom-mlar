@@ -88,6 +88,7 @@ mod tests {
         ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, MeshNetworkInterface,
         Processor, Router, ScaleOutNetwork, SizeExpr,
     };
+    use crate::arch::resource::Resource;
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn build_core_with_edges() -> (Architecture, MemoryRegion) {
@@ -99,8 +100,14 @@ mod tests {
         .scale(dim_bank.as_slice())
         .with_name("L1");
 
-        let matrix_lane = Processor::new("matrix_lane").into_elem();
-        let vector_lane = Processor::new("vector_lane").into_elem();
+        let mut matrix_lane = Processor::new("matrix_lane");
+        matrix_lane.resources = vec![Resource::new("l1_read_port", 2)];
+        let matrix_lane = matrix_lane.into_elem();
+
+        let mut vector_lane = Processor::new("vector_lane");
+        vector_lane.resources = vec![Resource::new("l1_read_port", 2)];
+        let vector_lane = vector_lane.into_elem();
+
         let core_router = Router::new("core_router", 2);
 
         let mut core: Architecture = ArchGraph::builder("core")

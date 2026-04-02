@@ -15,7 +15,11 @@ const GRAPH_SCHEMA_VERSION: &str = "mlar.arch-graph.v1";
 pub enum GraphNodeKind {
     Memory,
     Processor,
+    DataMover,
+    Array,
+    Graph,
     Router,
+    Resource,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -23,6 +27,7 @@ pub enum GraphNodeKind {
 pub enum GraphEdgeKind {
     ScaleOutNetwork,
     IntraGraph,
+    ResourceDependency,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -143,6 +148,12 @@ pub enum GraphMemoryRegion {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GraphResourceInfo {
+    pub id: String,
+    pub capacity: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GraphNodeDetails {
     Memory {
@@ -154,6 +165,9 @@ pub enum GraphNodeDetails {
     },
     Router {
         router: GraphRouter,
+    },
+    Resource {
+        resource: GraphResourceInfo,
     },
 }
 
@@ -378,6 +392,68 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
         });
     }
 
+    // ── Resource nodes and dependency edges ────────────────────────
+    // Skip resources derived from memory regions (they are already displayed as memory nodes).
+    let memory_names: HashSet<String> = memory_node_ids.keys().cloned().collect();
+    let mut resource_node_ids: HashMap<String, String> = HashMap::new();
+    for resource in &graph.resources {
+        let res_id_str = resource.id.as_str().to_owned();
+        if memory_names.contains(&res_id_str) {
+            continue;
+        }
+        let node_id = unique_id(&format!("res:{}", slugify(&res_id_str)), &mut used_ids);
+        resource_node_ids.insert(res_id_str.clone(), node_id.clone());
+        nodes.push(GraphNode {
+            id: node_id,
+            kind: GraphNodeKind::Resource,
+            name: res_id_str.clone(),
+            label: format!("{} (cap={})", res_id_str, resource.capacity),
+            dimensions: Vec::new(),
+            details: GraphNodeDetails::Resource {
+                resource: GraphResourceInfo {
+                    id: res_id_str,
+                    capacity: resource.capacity,
+                },
+            },
+        });
+    }
+
+    for (arch_node_id, res_ids) in &graph.resource_map {
+        let Some((source_id, source_name)) =
+            arch_node_id_map.get(arch_node_id.as_str()).cloned()
+        else {
+            continue;
+        };
+        for res_id in res_ids {
+            let Some(target_id) = resource_node_ids.get(res_id.as_str()).cloned() else {
+                continue;
+            };
+            let edge_id = unique_id(
+                &format!("resdep:{}:{}", slugify(&source_name), slugify(res_id.as_str())),
+                &mut used_ids,
+            );
+            edges.push(GraphEdge {
+                id: edge_id,
+                kind: GraphEdgeKind::ResourceDependency,
+                name: format!("{source_name} → {}", res_id),
+                source: source_id.clone(),
+                target: target_id,
+                source_name: source_name.clone(),
+                target_name: res_id.to_string(),
+                label: format!("{source_name} → {}", res_id),
+                direction: GraphEdgeDirection::Directional,
+                bandwidth: None,
+                latency: None,
+                constraints: None,
+                sharing: None,
+                map_relation: None,
+                topology: None,
+                map: None,
+                side: None,
+            });
+        }
+    }
+
     let (labels, intra_core) = build_labels_and_intra_core(arch);
 
     ArchitectureGraphJson {
@@ -496,6 +572,14 @@ fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> Gra
     }
 }
 
+fn architecture_node_kind(elem: &Architecture) -> GraphNodeKind {
+    match elem {
+        Architecture::Unit(_) => GraphNodeKind::Processor,
+        Architecture::Array { .. } => GraphNodeKind::Array,
+        Architecture::Graph(_) => GraphNodeKind::Graph,
+    }
+}
+
 fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> GraphNode {
     let dimensions = dedup_dimensions(collect_processor_dims(elem))
         .iter()
@@ -503,7 +587,7 @@ fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> Grap
         .collect::<Vec<_>>();
     GraphNode {
         id,
-        kind: GraphNodeKind::Processor,
+        kind: architecture_node_kind(elem),
         name: name.to_string(),
         label: node_label(name, &dimensions),
         dimensions,
@@ -517,7 +601,7 @@ fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> Grap
 fn data_mover_node_from_elem(id: String, name: &str, mover: &DataMover) -> GraphNode {
     GraphNode {
         id,
-        kind: GraphNodeKind::Processor,
+        kind: GraphNodeKind::DataMover,
         name: name.to_string(),
         label: name.to_string(),
         dimensions: Vec::new(),
@@ -995,5 +1079,55 @@ mod tests {
         let value = architecture_to_graph_json_value(&arch);
         assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
         assert_eq!(value["edges"][0]["topology"], "ring");
+    }
+
+    #[test]
+    fn serializes_resource_nodes_and_dependency_edges() {
+        use crate::arch::resource::Resource;
+
+        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+            SizeExpr::Const(64),
+            SizeExpr::Const(512),
+        ))
+        .with_name("l1");
+
+        let mut matrix_lane = Processor::new("matrix_lane");
+        matrix_lane.resources = vec![Resource::new("l1_port", 2)];
+
+        let mut vector_lane = Processor::new("vector_lane");
+        vector_lane.resources = vec![Resource::new("l1_port", 2)];
+
+        let core: Architecture = ArchGraph::builder("core")
+            .mem(&l1)
+            .architecture(&matrix_lane.into_elem())
+            .architecture(&vector_lane.into_elem())
+            .build()
+            .into();
+
+        let value = architecture_to_graph_json_value(&core);
+
+        let nodes = value["nodes"].as_array().unwrap();
+        let resource_nodes: Vec<_> = nodes.iter().filter(|n| n["kind"] == "resource").collect();
+        assert_eq!(
+            resource_nodes.len(),
+            1,
+            "only l1_port resource should appear (memory-derived 'l1' resource is filtered)"
+        );
+
+        let l1_port_node = &resource_nodes[0];
+        assert_eq!(l1_port_node["name"], "l1_port");
+        assert_eq!(l1_port_node["details"]["type"], "resource");
+        assert_eq!(l1_port_node["details"]["resource"]["capacity"], 2);
+
+        let edges = value["edges"].as_array().unwrap();
+        let dep_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| e["kind"] == "resource_dependency")
+            .collect();
+        assert_eq!(
+            dep_edges.len(),
+            2,
+            "both processors should depend on l1_port"
+        );
     }
 }
