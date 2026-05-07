@@ -50,77 +50,6 @@
       }
     },
     {
-      "id": "dm:dram_l1_mover",
-      "kind": "data_mover",
-      "name": "dram_l1_mover",
-      "label": "dram_l1_mover",
-      "dimensions": [],
-      "details": {
-        "type": "processor",
-        "element": {
-          "kind": "unit",
-          "name": "dram_l1_mover",
-          "functionality": {
-            "name": "dram_l1_mover",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_mover.mlir",
-            "source_mlir_module_name": "dram_l1_mover",
-            "ops": [
-              "dram_to_l1_f16",
-              "dram_to_l1_1d_bcst_f16",
-              "l1_to_dram_f16"
-            ]
-          }
-        },
-        "total_instances": 1
-      }
-    },
-    {
-      "id": "dm:dram_l1_bcst_v",
-      "kind": "data_mover",
-      "name": "dram_l1_bcst_v",
-      "label": "dram_l1_bcst_v",
-      "dimensions": [],
-      "details": {
-        "type": "processor",
-        "element": {
-          "kind": "unit",
-          "name": "dram_l1_bcst_v",
-          "functionality": {
-            "name": "dram_l1_bcst_v",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_bcst_v.mlir",
-            "source_mlir_module_name": "dram_l1_bcst_v",
-            "ops": [
-              "dram_to_l1_1d_bcst_v_f16"
-            ]
-          }
-        },
-        "total_instances": 1
-      }
-    },
-    {
-      "id": "dm:dram_l1_bcst_h",
-      "kind": "data_mover",
-      "name": "dram_l1_bcst_h",
-      "label": "dram_l1_bcst_h",
-      "dimensions": [],
-      "details": {
-        "type": "processor",
-        "element": {
-          "kind": "unit",
-          "name": "dram_l1_bcst_h",
-          "functionality": {
-            "name": "dram_l1_bcst_h",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_bcst_h.mlir",
-            "source_mlir_module_name": "dram_l1_bcst_h",
-            "ops": [
-              "dram_to_l1_1d_bcst_h_f16"
-            ]
-          }
-        },
-        "total_instances": 1
-      }
-    },
-    {
       "id": "mem:dram",
       "kind": "memory",
       "name": "DRAM",
@@ -162,6 +91,58 @@
       }
     },
     {
+      "id": "dm:dram_l1_noc0",
+      "kind": "data_mover",
+      "name": "dram_l1_noc0",
+      "label": "dram_l1_noc0",
+      "dimensions": [],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "unit",
+          "name": "dram_l1_noc0",
+          "functionality": {
+            "name": "dram_l1_noc0",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir",
+            "source_mlir_module_name": "dram_l1_noc0",
+            "ops": [
+              "dram_to_l1_f16",
+              "dram_to_l1_1d_bcst_f16",
+              "dram_to_l1_2d_bcst_f16",
+              "l1_to_dram_f16"
+            ]
+          }
+        },
+        "total_instances": 1
+      }
+    },
+    {
+      "id": "dm:dram_l1_noc1",
+      "kind": "data_mover",
+      "name": "dram_l1_noc1",
+      "label": "dram_l1_noc1",
+      "dimensions": [],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "unit",
+          "name": "dram_l1_noc1",
+          "functionality": {
+            "name": "dram_l1_noc1",
+            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir",
+            "source_mlir_module_name": "dram_l1_noc1",
+            "ops": [
+              "dram_to_l1_f16",
+              "dram_to_l1_1d_bcst_f16",
+              "dram_to_l1_2d_bcst_f16",
+              "l1_to_dram_f16"
+            ]
+          }
+        },
+        "total_instances": 1
+      }
+    },
+    {
       "id": "router:mesh_dram_router",
       "kind": "router",
       "name": "mesh_dram_router",
@@ -176,152 +157,22 @@
       }
     },
     {
-      "id": "mem:array_l1",
-      "kind": "memory",
+      "id": "res:array_l1",
+      "kind": "resource",
       "name": "array_L1",
-      "label": "array_L1 [x=8, y=8, nbank=16]",
-      "dimensions": [
-        {
-          "name": "x",
-          "size_expr": "8",
-          "size_const": 8
-        },
-        {
-          "name": "y",
-          "size_expr": "8",
-          "size_const": 8
-        },
-        {
-          "name": "nbank",
-          "size_expr": "16",
-          "size_const": 16
-        }
-      ],
-      "details": {
-        "type": "memory",
-        "region": {
-          "kind": "array",
-          "name": "array_L1",
-          "dimensions": [
-            {
-              "name": "x",
-              "size_expr": "8",
-              "size_const": 8
-            },
-            {
-              "name": "y",
-              "size_expr": "8",
-              "size_const": 8
-            }
-          ],
-          "sub_region": {
-            "kind": "array",
-            "name": "L1",
-            "dimensions": [
-              {
-                "name": "nbank",
-                "size_expr": "16",
-                "size_const": 16
-              }
-            ],
-            "sub_region": {
-              "kind": "bank",
-              "name": null,
-              "capacity_bytes": {
-                "expr": "(16 * 5856)",
-                "const_value": 93696
-              },
-              "access_granularity": {
-                "expr": "16",
-                "const_value": 16
-              },
-              "total_size_bytes": 93696
-            },
-            "total_size_bytes": 1499136
-          },
-          "total_size_bytes": 95944704
-        }
-      }
-    },
-    {
-      "id": "res:l1_torus_h",
-      "kind": "resource",
-      "name": "L1_torus_h",
-      "label": "L1_torus_h",
+      "label": "array_L1 (cap=95944704)",
       "dimensions": [],
       "details": {
         "type": "resource",
         "resource": {
-          "id": "L1_torus_h",
-          "kind": "exclusive"
-        }
-      }
-    },
-    {
-      "id": "res:l1_torus_v",
-      "kind": "resource",
-      "name": "L1_torus_v",
-      "label": "L1_torus_v",
-      "dimensions": [],
-      "details": {
-        "type": "resource",
-        "resource": {
-          "id": "L1_torus_v",
-          "kind": "exclusive"
+          "id": "array_L1",
+          "kind": "quantitative",
+          "capacity": 95944704
         }
       }
     }
   ],
   "edges": [
-    {
-      "id": "edge:l1_torus:0",
-      "kind": "scale_out_network",
-      "name": "L1_torus",
-      "source": "mem:array_l1",
-      "target": "mem:array_l1",
-      "source_name": "array_L1",
-      "target_name": "array_L1",
-      "label": "L1_torus (64 B/cycle)",
-      "direction": "directional",
-      "bandwidth": {
-        "expr": "64",
-        "const_value": 64
-      },
-      "constraints": "",
-      "sharing": "mesh",
-      "map_relation": "one_to_one",
-      "topology": "general",
-      "map": {
-        "source_dimensions": [
-          {
-            "name": "x",
-            "size_expr": "8",
-            "size_const": 8
-          },
-          {
-            "name": "y",
-            "size_expr": "8",
-            "size_const": 8
-          }
-        ],
-        "target_dimensions": [
-          {
-            "name": "x",
-            "size_expr": "8",
-            "size_const": 8
-          },
-          {
-            "name": "y",
-            "size_expr": "8",
-            "size_const": 8
-          }
-        ],
-        "expressions": [
-          "x",
-          "((y + 1) mod 8)"
-        ]
-      }
-    },
     {
       "id": "iedge:mesh:0",
       "kind": "intra_graph",
@@ -337,117 +188,71 @@
     {
       "id": "iedge:mesh_dram_router:1",
       "kind": "intra_graph",
-      "name": "mesh_dram_router↔dram_l1_mover",
+      "name": "mesh_dram_router↔dram_l1_noc0",
       "source": "router:mesh_dram_router",
-      "target": "dm:dram_l1_mover",
+      "target": "dm:dram_l1_noc0",
       "source_name": "mesh_dram_router",
-      "target_name": "dram_l1_mover",
-      "label": "mesh_dram_router ↔ dram_l1_mover (side 1)",
+      "target_name": "dram_l1_noc0",
+      "label": "mesh_dram_router ↔ dram_l1_noc0 (side 1)",
       "direction": "bidirectional",
       "side": 1
     },
     {
-      "id": "iedge:dram_l1_mover:2",
+      "id": "iedge:dram_l1_noc0:2",
       "kind": "intra_graph",
-      "name": "dram_l1_mover↔DRAM",
-      "source": "dm:dram_l1_mover",
+      "name": "dram_l1_noc0↔DRAM",
+      "source": "dm:dram_l1_noc0",
       "target": "mem:dram",
-      "source_name": "dram_l1_mover",
+      "source_name": "dram_l1_noc0",
       "target_name": "DRAM",
-      "label": "dram_l1_mover ↔ DRAM (side 2)",
+      "label": "dram_l1_noc0 ↔ DRAM (side 2)",
       "direction": "bidirectional",
       "side": 2
     },
     {
       "id": "iedge:mesh_dram_router:3",
       "kind": "intra_graph",
-      "name": "mesh_dram_router↔dram_l1_bcst_v",
+      "name": "mesh_dram_router↔dram_l1_noc1",
       "source": "router:mesh_dram_router",
-      "target": "dm:dram_l1_bcst_v",
+      "target": "dm:dram_l1_noc1",
       "source_name": "mesh_dram_router",
-      "target_name": "dram_l1_bcst_v",
-      "label": "mesh_dram_router ↔ dram_l1_bcst_v (side 1)",
+      "target_name": "dram_l1_noc1",
+      "label": "mesh_dram_router ↔ dram_l1_noc1 (side 1)",
       "direction": "bidirectional",
       "side": 1
     },
     {
-      "id": "iedge:dram_l1_bcst_v:4",
+      "id": "iedge:dram_l1_noc1:4",
       "kind": "intra_graph",
-      "name": "dram_l1_bcst_v↔DRAM",
-      "source": "dm:dram_l1_bcst_v",
+      "name": "dram_l1_noc1↔DRAM",
+      "source": "dm:dram_l1_noc1",
       "target": "mem:dram",
-      "source_name": "dram_l1_bcst_v",
+      "source_name": "dram_l1_noc1",
       "target_name": "DRAM",
-      "label": "dram_l1_bcst_v ↔ DRAM (side 2)",
+      "label": "dram_l1_noc1 ↔ DRAM (side 2)",
       "direction": "bidirectional",
       "side": 2
     },
     {
-      "id": "iedge:mesh_dram_router:5",
-      "kind": "intra_graph",
-      "name": "mesh_dram_router↔dram_l1_bcst_h",
-      "source": "router:mesh_dram_router",
-      "target": "dm:dram_l1_bcst_h",
-      "source_name": "mesh_dram_router",
-      "target_name": "dram_l1_bcst_h",
-      "label": "mesh_dram_router ↔ dram_l1_bcst_h (side 1)",
-      "direction": "bidirectional",
-      "side": 1
-    },
-    {
-      "id": "iedge:dram_l1_bcst_h:6",
-      "kind": "intra_graph",
-      "name": "dram_l1_bcst_h↔DRAM",
-      "source": "dm:dram_l1_bcst_h",
-      "target": "mem:dram",
-      "source_name": "dram_l1_bcst_h",
-      "target_name": "DRAM",
-      "label": "dram_l1_bcst_h ↔ DRAM (side 2)",
-      "direction": "bidirectional",
-      "side": 2
-    },
-    {
-      "id": "resdep:dram_l1_bcst_v:l1_torus_v",
+      "id": "resdep:dram_l1_noc0:array_l1",
       "kind": "resource_dependency",
-      "name": "dram_l1_bcst_v → L1_torus_v",
-      "source": "dm:dram_l1_bcst_v",
-      "target": "res:l1_torus_v",
-      "source_name": "dram_l1_bcst_v",
-      "target_name": "L1_torus_v",
-      "label": "dram_l1_bcst_v → L1_torus_v",
+      "name": "dram_l1_noc0 → array_L1",
+      "source": "dm:dram_l1_noc0",
+      "target": "res:array_l1",
+      "source_name": "dram_l1_noc0",
+      "target_name": "array_L1",
+      "label": "dram_l1_noc0 → array_L1",
       "direction": "directional"
     },
     {
-      "id": "resdep:dram_l1_mover:l1_torus_h",
+      "id": "resdep:dram_l1_noc1:array_l1",
       "kind": "resource_dependency",
-      "name": "dram_l1_mover → L1_torus_h",
-      "source": "dm:dram_l1_mover",
-      "target": "res:l1_torus_h",
-      "source_name": "dram_l1_mover",
-      "target_name": "L1_torus_h",
-      "label": "dram_l1_mover → L1_torus_h",
-      "direction": "directional"
-    },
-    {
-      "id": "resdep:dram_l1_mover:l1_torus_v",
-      "kind": "resource_dependency",
-      "name": "dram_l1_mover → L1_torus_v",
-      "source": "dm:dram_l1_mover",
-      "target": "res:l1_torus_v",
-      "source_name": "dram_l1_mover",
-      "target_name": "L1_torus_v",
-      "label": "dram_l1_mover → L1_torus_v",
-      "direction": "directional"
-    },
-    {
-      "id": "resdep:dram_l1_bcst_h:l1_torus_h",
-      "kind": "resource_dependency",
-      "name": "dram_l1_bcst_h → L1_torus_h",
-      "source": "dm:dram_l1_bcst_h",
-      "target": "res:l1_torus_h",
-      "source_name": "dram_l1_bcst_h",
-      "target_name": "L1_torus_h",
-      "label": "dram_l1_bcst_h → L1_torus_h",
+      "name": "dram_l1_noc1 → array_L1",
+      "source": "dm:dram_l1_noc1",
+      "target": "res:array_l1",
+      "source_name": "dram_l1_noc1",
+      "target_name": "array_L1",
+      "label": "dram_l1_noc1 → array_L1",
       "direction": "directional"
     }
   ]

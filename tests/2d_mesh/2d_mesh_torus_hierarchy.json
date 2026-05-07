@@ -21,18 +21,6 @@
           }
         ],
         "total_instances": 128,
-        "connectivity": [
-          {
-            "name": "L1_torus",
-            "kind": "mesh",
-            "bandwidth": {
-              "expr": "64",
-              "const_value": 64
-            },
-            "latency": null,
-            "topology": "general"
-          }
-        ],
         "children": [
           {
             "kind": "graph",
@@ -132,41 +120,6 @@
         ]
       },
       {
-        "kind": "unit",
-        "name": "dram_l1_mover",
-        "total_instances": 1,
-        "details": {
-          "type": "processor",
-          "functions": [
-            "dram_to_l1_f16",
-            "dram_to_l1_1d_bcst_f16",
-            "l1_to_dram_f16"
-          ]
-        }
-      },
-      {
-        "kind": "unit",
-        "name": "dram_l1_bcst_v",
-        "total_instances": 1,
-        "details": {
-          "type": "processor",
-          "functions": [
-            "dram_to_l1_1d_bcst_v_f16"
-          ]
-        }
-      },
-      {
-        "kind": "unit",
-        "name": "dram_l1_bcst_h",
-        "total_instances": 1,
-        "details": {
-          "type": "processor",
-          "functions": [
-            "dram_to_l1_1d_bcst_h_f16"
-          ]
-        }
-      },
-      {
         "kind": "memory",
         "name": "DRAM",
         "dimensions": [
@@ -204,6 +157,34 @@
             "total_size_bytes": 12884901888
           },
           "total_size_bytes": 12884901888
+        }
+      },
+      {
+        "kind": "unit",
+        "name": "dram_l1_noc0",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "dram_to_l1_f16",
+            "dram_to_l1_1d_bcst_f16",
+            "dram_to_l1_2d_bcst_f16",
+            "l1_to_dram_f16"
+          ]
+        }
+      },
+      {
+        "kind": "unit",
+        "name": "dram_l1_noc1",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "dram_to_l1_f16",
+            "dram_to_l1_1d_bcst_f16",
+            "dram_to_l1_2d_bcst_f16",
+            "l1_to_dram_f16"
+          ]
         }
       },
       {

@@ -187,94 +187,58 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    // === Verify DRAM<->L1 data movers and their resource bindings ===
+    // === Verify DRAM<->L1 NoC data movers and their resource bindings ===
+    for (mover_name, free_bcst) in [("dram_l1_noc0", "BCST_Y"), ("dram_l1_noc1", "BCST_X")] {
+        let mover = mesh
+            .get_data_mover(mover_name)
+            .unwrap_or_else(|| panic!("{mover_name} should exist"));
+        assert!(
+            mover.validate().is_ok(),
+            "{mover_name} should validate"
+        );
+        assert_eq!(
+            mover.functionality.path.as_deref(),
+            Some(format!("tests/2d_mesh/processors_mlir/{mover_name}.mlir").as_str())
+        );
+        assert!(
+            mover.resources.iter().any(|r| r.id().as_str() == "DRAM"),
+            "{mover_name} should include DRAM memory resource"
+        );
+        assert!(
+            mover
+                .resources
+                .iter()
+                .any(|r| r.id().as_str() == "array_L1"),
+            "{mover_name} should include L1 memory resource"
+        );
+        assert!(
+            !mover
+                .resources
+                .iter()
+                .any(|r| r.id().as_str() == "L1_torus_h"
+                    || r.id().as_str() == "L1_torus_v"),
+            "{mover_name} should not include torus link resources"
+        );
+
+        let bcst_2d = mover
+            .get_function("dram_to_l1_2d_bcst_f16")
+            .expect("dram_to_l1_2d_bcst_f16 binding");
+        let bcst_2d_syms = &bcst_2d.func.symbols;
+        assert!(
+            bcst_2d_syms.iter().any(|s| s.0.as_str() == free_bcst),
+            "{mover_name} dram_to_l1_2d_bcst_f16 should expose {free_bcst} symbol, got {bcst_2d_syms:?}"
+        );
+        let pinned_bcst = if free_bcst == "BCST_Y" { "BCST_X" } else { "BCST_Y" };
+        assert!(
+            !bcst_2d_syms.iter().any(|s| s.0.as_str() == pinned_bcst),
+            "{mover_name} dram_to_l1_2d_bcst_f16 should pin {pinned_bcst} to a constant, got {bcst_2d_syms:?}"
+        );
+    }
+
+    // Verify NoC0's function-level details
     let mover = mesh
-        .get_data_mover("dram_l1_mover")
-        .expect("dram_l1_mover should exist");
-    assert!(mover.validate().is_ok(), "dram_l1_mover should validate");
-    assert_eq!(
-        mover.functionality.path.as_deref(),
-        Some("tests/2d_mesh/processors_mlir/dram_l1_mover.mlir")
-    );
-    assert!(
-        mover.resources.iter().any(|r| r.id().as_str() == "DRAM"),
-        "dram_l1_mover should include DRAM memory resource"
-    );
-    assert!(
-        mover
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "array_L1"),
-        "dram_l1_mover should include L1 memory resource"
-    );
-    assert!(
-        mover
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "L1_torus_h"),
-        "dram_l1_mover should include horizontal-link resource"
-    );
-    assert!(
-        mover
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "L1_torus_v"),
-        "dram_l1_mover should include vertical-link resource"
-    );
-
-    let bcst_v = mesh
-        .get_data_mover("dram_l1_bcst_v")
-        .expect("dram_l1_bcst_v should exist");
-    assert!(
-        bcst_v.validate().is_ok(),
-        "bcst_v data mover should validate"
-    );
-    assert!(
-        bcst_v.resources.iter().any(|r| r.id().as_str() == "DRAM"),
-        "bcst_v should include DRAM memory resource"
-    );
-    assert!(
-        bcst_v
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "array_L1"),
-        "bcst_v should include L1 memory resource"
-    );
-    assert!(
-        bcst_v
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "L1_torus_v"),
-        "bcst_v should include vertical-link resource"
-    );
-
-    let bcst_h = mesh
-        .get_data_mover("dram_l1_bcst_h")
-        .expect("dram_l1_bcst_h should exist");
-    assert!(
-        bcst_h.validate().is_ok(),
-        "bcst_h data mover should validate"
-    );
-    assert!(
-        bcst_h.resources.iter().any(|r| r.id().as_str() == "DRAM"),
-        "bcst_h should include DRAM memory resource"
-    );
-    assert!(
-        bcst_h
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "array_L1"),
-        "bcst_h should include L1 memory resource"
-    );
-    assert!(
-        bcst_h
-            .resources
-            .iter()
-            .any(|r| r.id().as_str() == "L1_torus_h"),
-        "bcst_h should include horizontal-link resource"
-    );
-
-    // Verify the fused mover's function details
+        .get_data_mover("dram_l1_noc0")
+        .expect("dram_l1_noc0 should exist");
     let move_func = mover
         .get_function("dram_to_l1_f16")
         .expect("dram_to_l1_f16 binding");
@@ -341,7 +305,7 @@ fn test_2d_mesh_torus() {
             .any(|n| n.name() == Some("mesh_dram_router")),
         "top-level graph should include mesh_dram_router"
     );
-    for mover_name in ["dram_l1_mover", "dram_l1_bcst_v", "dram_l1_bcst_h"] {
+    for mover_name in ["dram_l1_noc0", "dram_l1_noc1"] {
         assert!(
             system_graph
                 .nodes
@@ -350,8 +314,8 @@ fn test_2d_mesh_torus() {
             "top-level graph should include {mover_name}"
         );
     }
-    // 1 (mesh<->router) + 3 (router<->mover) + 3 (mover<->DRAM) = 7 edges
-    assert_eq!(system_graph.edges.len(), 7);
+    // 1 (mesh<->router) + 2 (router<->mover) + 2 (mover<->DRAM) = 5 edges
+    assert_eq!(system_graph.edges.len(), 5);
 
     let (dims, connectivity, elem) = match mesh_node(&mesh) {
         Architecture::Array {
@@ -362,7 +326,12 @@ fn test_2d_mesh_torus() {
         } => (dims, connectivity, elem),
         _ => panic!("mesh node should be Array"),
     };
-    assert_eq!(connectivity.len(), 1); // one mesh network with two torus links
+    // No explicit inter-core scale-out connectivity: cross-core data movement
+    // is handled by the system-level NoC data movers.
+    assert!(
+        connectivity.is_empty(),
+        "scaled mesh should have no explicit scale-out connectivity"
+    );
     match elem.as_ref() {
         Architecture::Graph(graph) => {
             assert!(
@@ -395,30 +364,25 @@ fn test_2d_mesh_torus() {
         vec!["x", "y"]
     );
 
-    // === Verify torus links ===
-    let torus_link = &connectivity[0];
-    assert_eq!(torus_link.name(), "L1_torus");
-    assert_eq!(torus_link.region().name(), Some("array_L1"));
-    assert_eq!(torus_link.io().link_bandwidth.eval_const(), Some(64));
-    assert_eq!(torus_link.link_bandwidth().eval_const(), Some(64));
-    assert_eq!(torus_link.io().map.apply(&[0, 3]), vec![0, 3]); // left edge
-    assert_eq!(torus_link.io().map.apply(&[1, 3]), vec![7, 3]); // right edge
-    assert_eq!(torus_link.links().len(), 2);
-
-    let torus_y_map = &torus_link.links()[0];
-    assert_eq!(torus_y_map.apply(&[0, 0]), vec![0, 1]);
-    assert_eq!(torus_y_map.apply(&[3, 5]), vec![3, 6]);
-    assert_eq!(torus_y_map.apply(&[3, 7]), vec![3, 0]); // wraps
-
-    let torus_x_map = &torus_link.links()[1];
-    assert_eq!(torus_x_map.apply(&[0, 0]), vec![1, 0]);
-    assert_eq!(torus_x_map.apply(&[5, 3]), vec![6, 3]);
-    assert_eq!(torus_x_map.apply(&[7, 3]), vec![0, 3]); // wraps
+    // === Verify L1_torus_h / L1_torus_v resources are gone from the system ===
+    for stale in ["L1_torus_h", "L1_torus_v"] {
+        assert!(
+            !system_graph
+                .nodes
+                .iter()
+                .any(|n| n.name() == Some(stale)),
+            "system graph should not include the {stale} resource"
+        );
+    }
 
     // === JSON export sanity for web visualization ===
     let json =
         architecture_to_graph_json_string(&mesh).expect("graph JSON serialization should succeed");
     assert!(json.contains("\"schema_version\":\"mlar.arch-graph.v1\""));
+    assert!(
+        !json.contains("L1_torus_h") && !json.contains("L1_torus_v"),
+        "torus-link resources should be absent from exported graph JSON"
+    );
 }
 
 #[test]
