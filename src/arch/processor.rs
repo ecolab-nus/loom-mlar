@@ -1026,7 +1026,7 @@ mod tests {
     use crate::arch::size_dim::Dimension;
     use crate::math::ConstraintExpr;
     use crate::schedule::{MlirFunc, MlirFuncDetails, MlirModule, MlirTensorSymbolBinding};
-    use crate::{Expr, FuncPerfModel, SimpleTimeCost, TimeCost};
+    use crate::{Expr, FuncPerfModel, PerfScenario, SimpleTimeCost, Sym, TimeCost};
 
     #[test]
     fn function_processor_validates_symbols_against_op_shapes() {
@@ -1318,6 +1318,68 @@ mod tests {
         assert!(mover.get_function("dram_to_l1_1d_bcst_f16").is_some());
         assert!(mover.get_function("dram_to_l1_1d_bcst_h_f16").is_some());
         assert!(mover.get_function("dram_to_l1_1d_bcst_v_f16").is_some());
+    }
+
+    #[test]
+    fn data_mover_perf_model_sees_symbolic_broadcast_shape() {
+        let func = MlirFunc::from_mlir(
+            r#"
+func.func @dram_to_l1_symbolic_bcst(
+    %dram_src: memref<?x?xf16>,
+    %l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
+  loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#,
+        )
+        .expect("symbolic broadcast data mover should parse");
+        let functionality = MlirModule::from_functions("symbolic_bcst", vec![func]);
+        let region_pairs = stub_region_pairs();
+
+        let err = DataMover::builder()
+            .named("symbolic_bcst")
+            .with_regions(region_pairs.clone())
+            .from_module(
+                functionality.clone(),
+                vec![FuncPerfModel {
+                    symbols: Sym::from_names(["M", "N"]),
+                    constraints: ConstraintExpr::True,
+                    scenarios: vec![],
+                }],
+            )
+            .expect_err("B should be required by symbolic broadcast shape");
+        assert!(err.contains("B"));
+
+        let mover = DataMover::builder()
+            .named("symbolic_bcst")
+            .with_regions(region_pairs)
+            .from_module(
+                functionality,
+                vec![FuncPerfModel {
+                    symbols: Sym::from_names(["M", "N", "B"]),
+                    constraints: ConstraintExpr::True,
+                    scenarios: vec![PerfScenario {
+                        constraints: ConstraintExpr::True,
+                        time_cost: TimeCost::Simple(SimpleTimeCost {
+                            fixed_latency: Expr::Const(0),
+                            volume: Expr::mul(
+                                Expr::mul(Expr::sym("M"), Expr::sym("N")),
+                                Expr::sym("B"),
+                            ),
+                            throughput: Expr::Const(1),
+                        }),
+                    }],
+                }],
+            )
+            .expect("B should be usable in the data mover performance model");
+        assert!(mover.get_function("dram_to_l1_symbolic_bcst").is_some());
     }
 
     #[test]

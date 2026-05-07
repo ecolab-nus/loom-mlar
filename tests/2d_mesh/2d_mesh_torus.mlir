@@ -539,7 +539,7 @@ module @arch_system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

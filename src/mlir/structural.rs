@@ -173,7 +173,7 @@ impl MlirFunc {
         }
     }
 
-    /// Collect all symbols referenced by tensor/memref bindings.
+    /// Collect all symbols referenced by tensor/memref bindings and broadcast shapes.
     pub fn shape_symbols(&self) -> HashSet<Sym> {
         let mut out = HashSet::new();
         if let Some(details) = self.mlir_details.as_ref() {
@@ -182,6 +182,9 @@ impl MlirFunc {
             }
             for binding in &details.memref_symbol_bindings {
                 out.extend(binding.symbols.iter().cloned());
+            }
+            for cop in &details.copy_ops {
+                out.extend(cop.broadcast_symbols().cloned());
             }
         }
         out
@@ -250,6 +253,13 @@ impl MlirFunc {
         let (mut source_memrefs, mut target_memrefs) =
             collect_memref_copy_pairs(func_mlir, &memref_args)?;
         let copy_ops = collect_loom_copies(func_mlir)?;
+        for cop in &copy_ops {
+            for sym in cop.broadcast_symbols() {
+                if symbols.iter().all(|existing| existing != sym) {
+                    symbols.push(sym.clone());
+                }
+            }
+        }
         let linalg_ops = collect_linalg_ops(func_mlir);
         let mem_region_bindings_with_types = collect_bind_mems(func_mlir)?;
         for (binding, bind_ty) in &mem_region_bindings_with_types {

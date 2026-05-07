@@ -12,7 +12,8 @@ mod native_ops;
 mod structural;
 
 pub use loom_ops::{
-    MlirCopyOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirTensorSymbolBinding,
+    MlirBroadcastDim, MlirCopyOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
+    MlirTensorSymbolBinding,
 };
 pub use structural::{MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule};
 

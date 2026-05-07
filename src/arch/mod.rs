@@ -14,7 +14,7 @@ pub mod mlir_export {
 // Re-export commonly used types
 pub use crate::mlir::architecture_to_mlir;
 pub use crate::schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirCopyOp, MlirFunc, MlirFuncDetails,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
 };
 pub use architecture::Architecture;

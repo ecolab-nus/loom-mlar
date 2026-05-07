@@ -1,4 +1,4 @@
-use super::{MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirModule};
+use super::{MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirFunc, MlirModule};
 
 #[test]
 fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
@@ -236,13 +236,51 @@ func.func @dram_to_l1_2d_bcst(
     assert_eq!(cop.src_region, "DRAM");
     assert_eq!(cop.dst, "l1_dst");
     assert_eq!(cop.dst_region, "L1");
-    assert_eq!(cop.broadcast, vec![8, 8]);
+    assert_eq!(
+        cop.broadcast,
+        vec![MlirBroadcastDim::Const(8), MlirBroadcastDim::Const(8)]
+    );
 
     assert_eq!(details.mem_region_bindings.len(), 2);
     assert_eq!(details.mem_region_bindings[0].memref, "dram_src");
     assert_eq!(details.mem_region_bindings[0].region, "DRAM");
     assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
     assert_eq!(details.mem_region_bindings[1].region, "L1");
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_symbolic_loom_copy_broadcast() {
+    let snippet = r#"
+func.func @dram_to_l1_symbolic_bcst(
+%dram_src: memref<?x?xf16>,
+%l1_dst: memref<?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+  loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
+  loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+
+    assert_eq!(func.symbols, vec!["M".into(), "N".into(), "B".into()]);
+    assert_eq!(
+        details.copy_ops[0].broadcast,
+        vec![
+            MlirBroadcastDim::Sym("B".into()),
+            MlirBroadcastDim::Const(8)
+        ]
+    );
+    assert!(func.shape_symbols().contains(&"B".into()));
 }
 
 #[test]

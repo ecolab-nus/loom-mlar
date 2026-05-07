@@ -1,6 +1,7 @@
+use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, multispace0, multispace1, u64 as nom_u64};
-use nom::combinator::opt;
+use nom::combinator::{map, opt};
 use nom::multi::separated_list0;
 use nom::sequence::delimited;
 use nom::{IResult, Parser};
@@ -41,7 +42,7 @@ pub struct MlirMemRegionBinding {
 /// A `loom.copy` operation parsed from an MLIR function body.
 ///
 /// Syntax:
-/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, d1, ...] : type to type`
+/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirCopyOp {
     /// Source memref SSA name, without `%`.
@@ -53,8 +54,32 @@ pub struct MlirCopyOp {
     /// Destination memory region name, without `@`.
     pub dst_region: String,
     /// Broadcast dimensions — `[1, 1]` means no broadcast,
-    /// `[8, 8]` means broadcast over an 8x8 mesh, etc.
-    pub broadcast: Vec<u64>,
+    /// `[8, 8]` means broadcast over an 8x8 mesh, and `[@B, 8]`
+    /// means a symbolic subregion by 8-wide broadcast.
+    pub broadcast: Vec<MlirBroadcastDim>,
+}
+
+/// One dimension of a `loom.copy` broadcast shape.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MlirBroadcastDim {
+    Const(u64),
+    Sym(Sym),
+}
+
+impl MlirBroadcastDim {
+    pub fn symbol(&self) -> Option<&Sym> {
+        match self {
+            Self::Const(_) => None,
+            Self::Sym(sym) => Some(sym),
+        }
+    }
+}
+
+impl MlirCopyOp {
+    pub fn broadcast_symbols(&self) -> impl Iterator<Item = &Sym> {
+        self.broadcast.iter().filter_map(MlirBroadcastDim::symbol)
+    }
 }
 
 /// Parse `%ssa = loom.sym @name ...` declaration -> symbol name.
@@ -157,7 +182,7 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = multispace0(input)?;
     let (input, broadcast) = delimited(
         (char('['), multispace0),
-        separated_list0(comma_sep, nom_u64),
+        separated_list0(comma_sep, broadcast_dim),
         (multispace0, char(']')),
     )
     .parse(input)?;
@@ -171,6 +196,14 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
             broadcast,
         },
     ))
+}
+
+fn broadcast_dim(input: &str) -> IResult<&str, MlirBroadcastDim> {
+    alt((
+        map(symbol_ref, |sym| MlirBroadcastDim::Sym(Sym::new(sym))),
+        map(nom_u64, MlirBroadcastDim::Const),
+    ))
+    .parse(input)
 }
 
 pub(super) fn collect_loom_syms(func_mlir: &str) -> Vec<Sym> {

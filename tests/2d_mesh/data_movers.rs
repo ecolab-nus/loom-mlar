@@ -33,7 +33,7 @@ pub fn dram_l1_mover() -> DataMover {
     };
 
     let bcst_perf_model = FuncPerfModel {
-        symbols: Sym::from_names(["M", "N"]),
+        symbols: Sym::from_names(["M", "N", "BCST_X", "BCST_Y"]),
         constraints: constraint("true"),
         scenarios: vec![PerfScenario {
             constraints: constraint("true"),
