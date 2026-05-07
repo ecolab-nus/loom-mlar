@@ -176,10 +176,10 @@
       }
     },
     {
-      "id": "mem:l1",
+      "id": "mem:array_l1",
       "kind": "memory",
-      "name": "L1",
-      "label": "L1 [x=8, y=8, nbank=16]",
+      "name": "array_L1",
+      "label": "array_L1 [x=8, y=8, nbank=16]",
       "dimensions": [
         {
           "name": "x",
@@ -201,7 +201,7 @@
         "type": "memory",
         "region": {
           "kind": "array",
-          "name": "L1",
+          "name": "array_L1",
           "dimensions": [
             {
               "name": "x",
@@ -277,10 +277,10 @@
       "id": "edge:l1_torus:0",
       "kind": "scale_out_network",
       "name": "L1_torus",
-      "source": "mem:l1",
-      "target": "mem:l1",
-      "source_name": "L1",
-      "target_name": "L1",
+      "source": "mem:array_l1",
+      "target": "mem:array_l1",
+      "source_name": "array_L1",
+      "target_name": "array_L1",
       "label": "L1_torus (64 B/cycle)",
       "direction": "directional",
       "bandwidth": {
@@ -407,6 +407,17 @@
       "side": 2
     },
     {
+      "id": "resdep:dram_l1_bcst_h:l1_torus_h",
+      "kind": "resource_dependency",
+      "name": "dram_l1_bcst_h → L1_torus_h",
+      "source": "dm:dram_l1_bcst_h",
+      "target": "res:l1_torus_h",
+      "source_name": "dram_l1_bcst_h",
+      "target_name": "L1_torus_h",
+      "label": "dram_l1_bcst_h → L1_torus_h",
+      "direction": "directional"
+    },
+    {
       "id": "resdep:dram_l1_mover:l1_torus_h",
       "kind": "resource_dependency",
       "name": "dram_l1_mover → L1_torus_h",
@@ -437,17 +448,6 @@
       "source_name": "dram_l1_bcst_v",
       "target_name": "L1_torus_v",
       "label": "dram_l1_bcst_v → L1_torus_v",
-      "direction": "directional"
-    },
-    {
-      "id": "resdep:dram_l1_bcst_h:l1_torus_h",
-      "kind": "resource_dependency",
-      "name": "dram_l1_bcst_h → L1_torus_h",
-      "source": "dm:dram_l1_bcst_h",
-      "target": "res:l1_torus_h",
-      "source_name": "dram_l1_bcst_h",
-      "target_name": "L1_torus_h",
-      "label": "dram_l1_bcst_h → L1_torus_h",
       "direction": "directional"
     }
   ]

@@ -8,11 +8,13 @@ use crate::mesh::scaled_mesh;
 pub fn scaled_mesh_torus() -> Architecture {
     let dram = dram();
 
-    let dram_l1 = dram_l1_mover();
-    let bcst_v = dram_l1_bcst_v_mover();
-    let bcst_h = dram_l1_bcst_h_mover();
-
-    let mesh = scaled_mesh(vec![dram_l1, bcst_v, bcst_h]);
+    let mesh = scaled_mesh(|l1| {
+        vec![
+            dram_l1_mover(&dram, l1),
+            dram_l1_bcst_v_mover(&dram, l1),
+            dram_l1_bcst_h_mover(&dram, l1),
+        ]
+    });
 
     let mut system: Architecture = ArchGraph::builder("system")
         .architecture(&mesh)

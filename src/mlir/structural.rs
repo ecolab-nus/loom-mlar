@@ -27,6 +27,9 @@ pub struct MlirFuncDetails {
     /// Memref argument names from the function signature, without `%`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_args: Vec<String>,
+    /// Memref argument types from the function signature, normalized and keyed by argument name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memref_arg_types: Vec<(String, String)>,
     /// Tensor operands used as outputs (from `outs(...)`), without `%`.
     pub output_tensors: Vec<String>,
     /// Memref operands inferred as copy sources (e.g. `memref.copy %src, %dst`), without `%`.
@@ -292,6 +295,11 @@ impl MlirFunc {
         }
 
         let output_tensors = collect_output_tensors(func_mlir, &tensor_args)?;
+        let memref_arg_types = arg_types
+            .iter()
+            .filter(|(arg, _)| memref_args.iter().any(|memref| memref == *arg))
+            .map(|(arg, ty)| (arg.clone(), ty.clone()))
+            .collect();
 
         Ok(Self {
             name,
@@ -299,6 +307,7 @@ impl MlirFunc {
             mlir_details: Some(MlirFuncDetails {
                 tensor_args,
                 memref_args,
+                memref_arg_types,
                 output_tensors,
                 source_memrefs,
                 target_memrefs,
@@ -310,6 +319,15 @@ impl MlirFunc {
             }),
             sym_map: None,
         })
+    }
+}
+
+impl MlirFuncDetails {
+    pub fn memref_type(&self, memref: &str) -> Option<&str> {
+        self.memref_arg_types
+            .iter()
+            .find(|(name, _)| name == memref)
+            .map(|(_, ty)| ty.as_str())
     }
 }
 

@@ -1,6 +1,5 @@
 use mlar_rust::*;
 
-use crate::memory::{dram_ref, l1_ref};
 use crate::mesh::{h_link_resource, v_link_resource};
 
 fn expr(input: &str) -> Expr {
@@ -15,7 +14,7 @@ fn constraint(input: &str) -> ConstraintExpr {
 ///
 /// Uses both horizontal and vertical links — contends with every other mover.
 /// Functions: dram_to_l1_f16, dram_to_l1_1d_bcst_f16, l1_to_dram_f16.
-pub fn dram_l1_mover() -> DataMover {
+pub fn dram_l1_mover(dram: &MemoryRegion, l1: &MemoryRegion) -> DataMover {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_mover.mlir")
         .expect("dram_l1_mover.mlir should parse");
 
@@ -57,11 +56,9 @@ pub fn dram_l1_mover() -> DataMover {
     })
     .collect();
 
-    let dram = dram_ref();
-    let l1 = l1_ref();
     let mover = DataMover::builder()
         .named("dram_l1_mover")
-        .with_regions(vec![(dram.clone(), l1.clone()), (l1, dram)])
+        .with_regions(vec![(dram.clone(), l1.clone()), (l1.clone(), dram.clone())])
         .from_module(functionality, perf_models)
         .expect("dram_l1_mover data mover should link functionality and perf");
 
@@ -74,7 +71,7 @@ pub fn dram_l1_mover() -> DataMover {
 /// Vertical broadcast from DRAM to L1 — uses only vertical links.
 ///
 /// Can execute in parallel with horizontal broadcasts.
-pub fn dram_l1_bcst_v_mover() -> DataMover {
+pub fn dram_l1_bcst_v_mover(dram: &MemoryRegion, l1: &MemoryRegion) -> DataMover {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_bcst_v.mlir")
         .expect("dram_l1_bcst_v.mlir should parse");
 
@@ -92,11 +89,9 @@ pub fn dram_l1_bcst_v_mover() -> DataMover {
     };
     perf_model.validate().expect("perf model should validate");
 
-    let dram = dram_ref();
-    let l1 = l1_ref();
     let mover = DataMover::builder()
         .named("dram_l1_bcst_v")
-        .with_regions(vec![(dram.clone(), l1.clone()), (l1, dram)])
+        .with_regions(vec![(dram.clone(), l1.clone()), (l1.clone(), dram.clone())])
         .from_module(functionality, vec![perf_model])
         .expect("dram_l1_bcst_v data mover should link functionality and perf");
 
@@ -109,7 +104,7 @@ pub fn dram_l1_bcst_v_mover() -> DataMover {
 /// Horizontal broadcast from DRAM to L1 — uses only horizontal links.
 ///
 /// Can execute in parallel with vertical broadcasts.
-pub fn dram_l1_bcst_h_mover() -> DataMover {
+pub fn dram_l1_bcst_h_mover(dram: &MemoryRegion, l1: &MemoryRegion) -> DataMover {
     let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_bcst_h.mlir")
         .expect("dram_l1_bcst_h.mlir should parse");
 
@@ -127,11 +122,9 @@ pub fn dram_l1_bcst_h_mover() -> DataMover {
     };
     perf_model.validate().expect("perf model should validate");
 
-    let dram = dram_ref();
-    let l1 = l1_ref();
     let mover = DataMover::builder()
         .named("dram_l1_bcst_h")
-        .with_regions(vec![(dram.clone(), l1.clone()), (l1, dram)])
+        .with_regions(vec![(dram.clone(), l1.clone()), (l1.clone(), dram.clone())])
         .from_module(functionality, vec![perf_model])
         .expect("dram_l1_bcst_h data mover should link functionality and perf");
 

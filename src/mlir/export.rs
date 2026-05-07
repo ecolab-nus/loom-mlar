@@ -17,6 +17,8 @@ struct MlirEmitter {
     dim_map: HashMap<String, String>,
     /// Memory-region name → SSA value.
     memory_map: HashMap<String, String>,
+    /// Structural memory-region key → SSA value.
+    memory_region_map: HashMap<String, String>,
     /// Resource id → SSA value.
     resource_map: HashMap<String, String>,
     /// Memory name → prefixed MLIR memory name used in exported ops.
@@ -35,6 +37,7 @@ impl MlirEmitter {
             output: String::new(),
             dim_map: HashMap::new(),
             memory_map: HashMap::new(),
+            memory_region_map: HashMap::new(),
             resource_map: HashMap::new(),
             memory_name_map: HashMap::new(),
             processor_name_map: HashMap::new(),
@@ -70,6 +73,15 @@ impl MlirEmitter {
 
     /// Emit the `adl.memory.*` ops for a [`MemoryRegion`] tree.
     fn emit_memory(&mut self, region: &MemoryRegion) -> Option<String> {
+        let key = memory_region_key(region);
+        let dedupe_named_region = region.name().is_some();
+        if dedupe_named_region {
+            if let Some(existing) = self.memory_region_map.get(&key).cloned() {
+                self.record_memory_name(region, &existing);
+                return Some(existing);
+            }
+        }
+
         let ssa = match region {
             MemoryRegion::Bank(bank) => self.emit_bank(bank),
             MemoryRegion::Array {
@@ -95,12 +107,19 @@ impl MlirEmitter {
             }
         }?;
 
+        if dedupe_named_region {
+            self.memory_region_map.insert(key, ssa.clone());
+        }
+        self.record_memory_name(region, &ssa);
+        Some(ssa)
+    }
+
+    fn record_memory_name(&mut self, region: &MemoryRegion, ssa: &str) {
         if let Some(name) = region.name() {
-            self.memory_map.insert(name.to_string(), ssa.clone());
+            self.memory_map.insert(name.to_string(), ssa.to_string());
             self.memory_name_map
                 .insert(name.to_string(), prefixed_memory_name(name));
         }
-        Some(ssa)
     }
 
     /// Emit a `adl.memory.bank` op.
@@ -270,6 +289,7 @@ impl MlirEmitter {
                             arch_components.push(self.emit_architecture(sub_arch)?);
                         }
                         ArchNodeComponent::DataMover(mover) => {
+                            self.emit_region_pair_array_memories(&mover.region_pairs)?;
                             arch_components.push(self.emit_data_mover(mover)?);
                         }
                         ArchNodeComponent::MemoryRegion(_) => {}
@@ -315,26 +335,78 @@ impl MlirEmitter {
             }
         }
     }
+
+    fn emit_region_pair_array_memories(
+        &mut self,
+        region_pairs: &[(MemoryRegion, MemoryRegion)],
+    ) -> Option<()> {
+        for (src, dst) in region_pairs {
+            if matches!(src, MemoryRegion::Array { .. }) {
+                self.emit_memory(src)?;
+            }
+            if matches!(dst, MemoryRegion::Array { .. }) {
+                self.emit_memory(dst)?;
+            }
+        }
+        Some(())
+    }
 }
 
-/// Collect bank-backed memory resource IDs used by region pairs.
-///
-/// Array regions are ignored because `generate_resource` is bank-only.
+fn memory_region_key(region: &MemoryRegion) -> String {
+    match region {
+        MemoryRegion::Bank(bank) => format!(
+            "bank:{:?}:{}:{:?}",
+            bank.name, bank.capacity_bytes, bank.block_size
+        ),
+        MemoryRegion::Array {
+            name,
+            dims,
+            sub_regions,
+        } => {
+            let dims = dims
+                .iter()
+                .map(|d| format!("{}={}", d.name.0, d.size))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "array:{:?}:[{}]:{}",
+                name,
+                dims,
+                memory_region_key(sub_regions)
+            )
+        }
+    }
+}
+
+/// Collect memory resource IDs used by region pairs.
 fn collect_region_pair_memory_resource_ids(
     region_pairs: &[(MemoryRegion, MemoryRegion)],
     out: &mut HashSet<String>,
 ) {
     for (src, dst) in region_pairs {
-        if let Ok(resource) = src.generate_resource() {
-            out.insert(resource.id().as_str().to_string());
+        if let Some(id) = memory_region_resource_id(src) {
+            out.insert(id);
         }
-        if let Ok(resource) = dst.generate_resource() {
-            out.insert(resource.id().as_str().to_string());
+        if let Some(id) = memory_region_resource_id(dst) {
+            out.insert(id);
         }
     }
 }
 
-/// Recursively collect bank-backed memory resource IDs referenced by an
+fn memory_region_resource_id(region: &MemoryRegion) -> Option<String> {
+    match region {
+        MemoryRegion::Bank(_) => region
+            .generate_resource()
+            .ok()
+            .map(|resource| resource.id().as_str().to_string()),
+        MemoryRegion::Array { name, .. } => name
+            .as_deref()
+            .or_else(|| region.name())
+            .map(ToString::to_string),
+    }
+}
+
+/// Recursively collect memory resource IDs referenced by an
 /// architecture tree (processors, data movers, and memory nodes).
 fn collect_arch_memory_resource_ids(arch: &Architecture, out: &mut HashSet<String>) {
     match arch {

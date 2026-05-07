@@ -15,10 +15,11 @@ module @arch_system {
   %13 = adl.spatial_dim "dim_x", 8
   %14 = adl.spatial_dim "dim_y", 8
   %15 = adl.arch.scale "arch_mesh", [%13, %14] of %12
-  %16 = adl.processor.dmover @proc_dram_l1_mover, [(%2, %7), (%7, %2)], with [%3, %4]
-  %17 = adl.processor.dmover @proc_dram_l1_bcst_v, [(%2, %7), (%7, %2)], with [%4]
-  %18 = adl.processor.dmover @proc_dram_l1_bcst_h, [(%2, %7), (%7, %2)], with [%3]
-  %19 = adl.arch.compose "arch_system", arch[%15, %16, %17, %18], mem[%2]
+  %16 = adl.memory.array "mem_array_L1", [%13, %14] of %7
+  %17 = adl.processor.dmover @proc_dram_l1_mover, [(%2, %16), (%16, %2)], with [%3, %4]
+  %18 = adl.processor.dmover @proc_dram_l1_bcst_v, [(%2, %16), (%16, %2)], with [%4]
+  %19 = adl.processor.dmover @proc_dram_l1_bcst_h, [(%2, %16), (%16, %2)], with [%3]
+  %20 = adl.arch.compose "arch_system", arch[%15, %17, %18, %19], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
   //
@@ -524,8 +525,8 @@ module @arch_system {
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -538,8 +539,8 @@ module @arch_system {
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -551,9 +552,9 @@ module @arch_system {
     %N = loom.sym @N : index
     loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %l1_src, @mem_L1 : memref<?x?xf16>
+    loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
     loom.bind_mem %dram_dst, @mem_DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @mem_L1 dst_mem_space @mem_DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -574,8 +575,8 @@ module @arch_system {
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [1, 8] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [1, 8] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -596,8 +597,8 @@ module @arch_system {
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_L1, broadcast : [8, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [8, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

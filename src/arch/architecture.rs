@@ -68,6 +68,39 @@ impl Architecture {
         }
     }
 
+    /// Look up a memory region and materialize it through array scale levels.
+    ///
+    /// For an `Array`, this returns a new [`MemoryRegion::Array`] with the same
+    /// outer dimensions as the architecture array and the matching element
+    /// memory region as its sub-region. This is useful for components outside
+    /// the array that need to refer to the whole distributed memory region
+    /// rather than one element-local memory.
+    pub fn get_scaled_memory_region(&self, name: &str) -> Option<MemoryRegion> {
+        match self {
+            Architecture::Graph(graph) => {
+                for node in &graph.nodes {
+                    match &node.component {
+                        ArchNodeComponent::MemoryRegion(region) if region.name() == Some(name) => {
+                            return Some(region.clone());
+                        }
+                        ArchNodeComponent::Architecture(arch) => {
+                            if let Some(region) = arch.get_scaled_memory_region(name) {
+                                return Some(region);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                None
+            }
+            Architecture::Array { dims, elem, .. } => {
+                let region = elem.get_scaled_memory_region(name)?;
+                Some(region.scale(dims).with_name(format!("array_{name}")))
+            }
+            Architecture::Unit(_) => None,
+        }
+    }
+
     /// Look up a named processor architecture.
     ///
     /// For graph architectures this searches architecture nodes.
@@ -486,6 +519,37 @@ mod tests {
                 .iter()
                 .any(|resource| resource.id().as_str() == "l1_ring_link_0")
         );
+    }
+
+    #[test]
+    fn array_materializes_scaled_memory_region_for_elements() {
+        let nbank = Dimension::new_int("nbank", 16);
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 4);
+        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)))
+            .scale(nbank.as_slice())
+            .with_name("L1");
+        let core: Architecture = ArchGraph::builder("core").mem(&l1).build().into();
+        let mesh = core.scale([&x, &y]).with_name("mesh");
+
+        let scaled_l1 = mesh
+            .get_scaled_memory_region("L1")
+            .expect("scaled architecture should expose mesh-wide L1");
+
+        assert_eq!(scaled_l1.name(), Some("array_L1"));
+        match scaled_l1 {
+            MemoryRegion::Array {
+                dims, sub_regions, ..
+            } => {
+                assert_eq!(
+                    dims.iter().map(|d| d.name.0.as_str()).collect::<Vec<_>>(),
+                    vec!["x", "y"]
+                );
+                assert_eq!(sub_regions.name(), Some("L1"));
+                assert_eq!(sub_regions.dims()[0].name.0, "nbank");
+            }
+            MemoryRegion::Bank(_) => panic!("scaled L1 should be an array"),
+        }
     }
 
     #[test]

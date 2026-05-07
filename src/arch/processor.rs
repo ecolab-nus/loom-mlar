@@ -136,15 +136,40 @@ fn memory_resources_from_region_pairs(
     let mut resources = Vec::with_capacity(region_pairs.len() * 2);
     for (src, dst) in region_pairs {
         resources.push(
-            src.generate_resource()
+            memory_resource_from_region(src)
                 .map_err(|err| format!("failed to derive source memory resource: {err}"))?,
         );
         resources.push(
-            dst.generate_resource()
+            memory_resource_from_region(dst)
                 .map_err(|err| format!("failed to derive destination memory resource: {err}"))?,
         );
     }
     merge_resource_sets(Vec::new(), resources)
+}
+
+fn memory_resource_from_region(region: &MemoryRegion) -> Result<Resource, String> {
+    match region {
+        MemoryRegion::Bank(_) => region.generate_resource(),
+        MemoryRegion::Array { name, .. } => {
+            let name = name
+                .as_deref()
+                .or_else(|| region.name())
+                .ok_or_else(|| "cannot generate resource for unnamed memory array".to_string())?;
+            let capacity_bytes = region.total_size_bytes().ok_or_else(|| {
+                format!(
+                    "cannot generate resource for memory array '{}' with symbolic total size",
+                    name
+                )
+            })?;
+            let capacity = i64::try_from(capacity_bytes).map_err(|_| {
+                format!(
+                    "memory array '{}' capacity {} does not fit in i64",
+                    name, capacity_bytes
+                )
+            })?;
+            Ok(Resource::quantitative(name.to_string(), capacity))
+        }
+    }
 }
 
 /// Append the compute processor's self resource (by processor name), when named.
@@ -340,6 +365,7 @@ impl Processor {
         let memory_resources = memory_resources_from_region_pairs(&region_pairs)?;
         proc.region_pairs = region_pairs;
         proc.resources = merge_resource_sets(proc.resources, memory_resources)?;
+        proc.validate()?;
         Ok(proc)
     }
 
@@ -405,6 +431,14 @@ impl Processor {
             validate_pure_compute_interface(&fp.func).map_err(|e| {
                 format!(
                     "Processor '{}' function '{}' interface error: {}",
+                    self.name.as_deref().unwrap_or("<unnamed>"),
+                    fp.func.name,
+                    e
+                )
+            })?;
+            validate_processor_memref_regions(self, &fp.func).map_err(|e| {
+                format!(
+                    "Processor '{}' function '{}' memory interface error: {}",
                     self.name.as_deref().unwrap_or("<unnamed>"),
                     fp.func.name,
                     e
@@ -910,6 +944,14 @@ fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
                 e
             )
         })?;
+        validate_processor_memref_regions(processor, &fp.func).map_err(|e| {
+            format!(
+                "DataMover '{}' function '{}' memory interface error: {}",
+                processor.name.as_deref().unwrap_or("<unnamed>"),
+                fp.func.name,
+                e
+            )
+        })?;
         fp.validate().map_err(|err| {
             format!(
                 "DataMover '{}' function '{}' has undeclared symbols: {}",
@@ -920,6 +962,42 @@ fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
         })?;
     }
     Ok(())
+}
+
+fn validate_processor_memref_regions(processor: &Processor, func: &MlirFunc) -> Result<(), String> {
+    let Some(details) = func.mlir_details.as_ref() else {
+        return Ok(());
+    };
+
+    if details.mem_region_bindings.is_empty() || processor.region_pairs.is_empty() {
+        return Ok(());
+    }
+
+    for binding in &details.mem_region_bindings {
+        find_region_pair_memory_region(&processor.region_pairs, &binding.region)
+            .ok_or_else(|| {
+                format!(
+                    "loom.bind_mem region '{}' for memref '{}' is not present in processor region pairs",
+                    binding.region, binding.memref
+                )
+            })?;
+    }
+    Ok(())
+}
+
+fn find_region_pair_memory_region<'a>(
+    region_pairs: &'a [(MemoryRegion, MemoryRegion)],
+    name: &str,
+) -> Option<&'a MemoryRegion> {
+    region_pairs.iter().find_map(|(src, dst)| {
+        if src.name() == Some(name) {
+            Some(src)
+        } else if dst.name() == Some(name) {
+            Some(dst)
+        } else {
+            None
+        }
+    })
 }
 
 fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
@@ -1023,7 +1101,7 @@ mod tests {
         Architecture, ComputeProcessor, DataMover, FunctionProcessor, HardwareProperty, Processor,
     };
     use crate::arch::MemoryRegion;
-    use crate::arch::size_dim::Dimension;
+    use crate::arch::size_dim::{Dimension, SizeExpr};
     use crate::math::ConstraintExpr;
     use crate::schedule::{MlirFunc, MlirFuncDetails, MlirModule, MlirTensorSymbolBinding};
     use crate::{Expr, FuncPerfModel, PerfScenario, SimpleTimeCost, Sym, TimeCost};
@@ -1037,6 +1115,7 @@ mod tests {
                 mlir_details: Some(MlirFuncDetails {
                     tensor_args: vec!["a".into(), "out".into()],
                     memref_args: vec![],
+                    memref_arg_types: vec![],
                     output_tensors: vec!["out".into()],
                     source_memrefs: vec![],
                     target_memrefs: vec![],
@@ -1151,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    fn processor_with_array_regions_fails_resource_derivation() {
+    fn processor_with_array_regions_derives_array_resources() {
         let module = MlirModule::from_functions("toy", vec![MlirFunc::named("f")]);
         let perf_models = vec![FuncPerfModel {
             symbols: vec![],
@@ -1168,10 +1247,19 @@ mod tests {
             .scale(dim.as_slice())
             .with_name("dst");
 
-        let err =
+        let proc =
             Processor::from_module_with_regions("proc", module, perf_models, vec![(src, dst)])
-                .expect_err("array regions should fail memory-resource derivation");
-        assert!(err.contains("only MemoryRegion::Bank is supported"));
+                .expect("array regions should derive aggregate memory resources");
+        assert!(
+            proc.resources
+                .iter()
+                .any(|r| { r.id().as_str() == "src" && r.capacity() == Some(4 * 128) })
+        );
+        assert!(
+            proc.resources
+                .iter()
+                .any(|r| { r.id().as_str() == "dst" && r.capacity() == Some(4 * 128) })
+        );
     }
 
     #[test]
@@ -1233,9 +1321,36 @@ mod tests {
     }
 
     fn stub_region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
-        let src = MemoryRegion::leaf_concrete(128, 1).with_name("stub_src");
-        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("stub_dst");
-        vec![(src, dst)]
+        let dram_channel = Dimension::new_int("dram_channel", 8);
+        let x = Dimension::new_int("x", 8);
+        let y = Dimension::new_int("y", 8);
+        let nbank = Dimension::new_int("nbank", 16);
+        let dram = MemoryRegion::bank(
+            crate::MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
+                .with_name("DRAM_bank"),
+        )
+        .scale(dram_channel.as_slice())
+        .with_name("DRAM");
+        let l1 = MemoryRegion::bank(
+            crate::MemoryBank::from_blocks(SizeExpr::Const(16), SizeExpr::Const(5856))
+                .with_name("L1_bank"),
+        )
+        .scale(nbank.as_slice())
+        .with_name("L1")
+        .scale(&[x, y])
+        .with_name("array_L1");
+        vec![(dram, l1)]
+    }
+
+    fn local_l1_region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
+        let nbank = Dimension::new_int("nbank", 16);
+        let l1 = MemoryRegion::bank(
+            crate::MemoryBank::from_blocks(SizeExpr::Const(16), SizeExpr::Const(5856))
+                .with_name("L1_bank"),
+        )
+        .scale(nbank.as_slice())
+        .with_name("L1");
+        vec![(l1.clone(), l1)]
     }
 
     #[test]
@@ -1333,8 +1448,8 @@ func.func @dram_to_l1_symbolic_bcst(
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
-  loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, broadcast: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
+  loom.bind_mem %l1_dst, @array_L1 : memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, broadcast: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
 "#,
@@ -1453,6 +1568,56 @@ func.func @tensor_compute(
     }
 
     #[test]
+    fn compute_validation_rejects_unknown_bind_mem_region() {
+        let bad_compute = r#"
+func.func @bad_vec_add(
+  %a: memref<?xf16>,
+  %b: memref<?xf16>,
+  %out: memref<?xf16>
+) {
+  %L = loom.sym @L : index
+  loom.bind_shape %a, [%L] : memref<?xf16>
+  loom.bind_mem %a, @SRAM : memref<?xf16>
+  loom.bind_shape %b, [%L] : memref<?xf16>
+  loom.bind_mem %b, @L1 : memref<?xf16>
+  loom.bind_shape %out, [%L] : memref<?xf16>
+  loom.bind_mem %out, @L1 : memref<?xf16>
+  linalg.generic {
+      indexing_maps = [
+        affine_map<(d0) -> (d0)>,
+        affine_map<(d0) -> (d0)>,
+        affine_map<(d0) -> (d0)>
+      ],
+      iterator_types = ["parallel"]
+    }
+    ins(%a, %b : memref<?xf16>, memref<?xf16>)
+    outs(%out : memref<?xf16>) {
+    ^bb0(%x: f16, %y: f16, %z: f16):
+      %r = arith.addf %x, %y : f16
+      linalg.yield %r : f16
+  }
+  return
+}
+"#;
+        let func = MlirFunc::from_mlir(bad_compute).expect("snippet should parse");
+        let functionality = MlirModule::from_functions("bad_compute", vec![func]);
+        let perf_models = vec![FuncPerfModel {
+            symbols: vec![crate::Sym::new("L")],
+            constraints: ConstraintExpr::True,
+            scenarios: vec![],
+        }];
+
+        let err = ComputeProcessor::builder()
+            .named("bad_compute")
+            .with_regions(local_l1_region_pairs())
+            .from_module(functionality, perf_models)
+            .expect_err("bound memory region should exist in processor region pairs");
+        assert!(err.contains("memory interface error"));
+        assert!(err.contains("SRAM"));
+        assert!(err.contains("not present in processor region pairs"));
+    }
+
+    #[test]
     fn data_mover_validation_rejects_linalg_ops() {
         let mixed = r#"
 func.func @mixed_copy_compute(
@@ -1463,8 +1628,8 @@ func.func @mixed_copy_compute(
   loom.bind_shape %src, [%L] : memref<?xf16>
   loom.bind_shape %dst, [%L] : memref<?xf16>
   loom.bind_mem %src, @DRAM : memref<?xf16>
-  loom.bind_mem %dst, @L1 : memref<?xf16>
-  loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @L1, broadcast : [1] : memref<?xf16> to memref<?xf16>
+  loom.bind_mem %dst, @array_L1 : memref<?xf16>
+  loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @array_L1, broadcast : [1] : memref<?xf16> to memref<?xf16>
   %tmp = linalg.matmul ins(%src, %src : memref<?xf16>, memref<?xf16>) outs(%dst : memref<?xf16>)
   return
 }

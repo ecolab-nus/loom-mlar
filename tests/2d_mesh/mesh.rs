@@ -25,18 +25,18 @@ pub fn v_link_resource() -> Resource {
 ///
 /// `data_movers` are attached to the mesh IO interface and will be
 /// auto-registered in any parent `ArchGraph`.
-pub fn scaled_mesh(data_movers: Vec<DataMover>) -> Architecture {
+pub fn scaled_mesh<F>(data_movers: F) -> Architecture
+where
+    F: FnOnce(&MemoryRegion) -> Vec<DataMover>,
+{
     let core = single_core();
     let dim_x = dim_x();
     let dim_y = dim_y();
     let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
 
     let scaled_l1 = mesh
-        .get_memory_region("L1")
-        .expect("scaled mesh should contain L1")
-        .clone()
-        .scale(&[dim_x.clone(), dim_y.clone()])
-        .with_name("L1");
+        .get_scaled_memory_region("L1")
+        .expect("scaled mesh should expose mesh-wide L1");
 
     // External IO is only at mesh boundaries: left edge (x = 0) and right edge (x = 7).
     let io_side = Dimension::new_int("io_side", 2);
@@ -44,7 +44,8 @@ pub fn scaled_mesh(data_movers: Vec<DataMover>) -> Architecture {
         .expect("invalid affine map")
         .bind([&io_side, &dim_x, &dim_y])
         .expect("failed to bind");
-    let io = MeshNetworkInterface::new(io_map, Expr::Const(64)).with_data_movers(data_movers);
+    let io = MeshNetworkInterface::new(io_map, Expr::Const(64))
+        .with_data_movers(data_movers(&scaled_l1));
 
     // Horizontal torus: y-neighbor with wraparound
     let h_map = AffineMapTemplate::parse("[x, y] -> [x, y]: (x, (y + 1) mod 8)")
