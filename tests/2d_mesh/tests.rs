@@ -201,7 +201,10 @@ fn test_2d_mesh_torus_perf_models() {
         "dram_l1_mover should include DRAM memory resource"
     );
     assert!(
-        mover.resources.iter().any(|r| r.id().as_str() == "array_L1"),
+        mover
+            .resources
+            .iter()
+            .any(|r| r.id().as_str() == "array_L1"),
         "dram_l1_mover should include L1 memory resource"
     );
     assert!(
@@ -231,7 +234,10 @@ fn test_2d_mesh_torus_perf_models() {
         "bcst_v should include DRAM memory resource"
     );
     assert!(
-        bcst_v.resources.iter().any(|r| r.id().as_str() == "array_L1"),
+        bcst_v
+            .resources
+            .iter()
+            .any(|r| r.id().as_str() == "array_L1"),
         "bcst_v should include L1 memory resource"
     );
     assert!(
@@ -254,7 +260,10 @@ fn test_2d_mesh_torus_perf_models() {
         "bcst_h should include DRAM memory resource"
     );
     assert!(
-        bcst_h.resources.iter().any(|r| r.id().as_str() == "array_L1"),
+        bcst_h
+            .resources
+            .iter()
+            .any(|r| r.id().as_str() == "array_L1"),
         "bcst_h should include L1 memory resource"
     );
     assert!(

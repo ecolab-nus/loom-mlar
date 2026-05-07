@@ -6,4 +6,5 @@ mod memory;
 mod mesh;
 mod scale;
 mod tests;
+mod unit_tests;
 mod vector_lane;

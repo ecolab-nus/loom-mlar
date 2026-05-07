@@ -236,5 +236,4 @@ mod tests {
             "core graph should have intra-graph edges"
         );
     }
-
 }

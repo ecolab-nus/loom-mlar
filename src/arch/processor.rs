@@ -1176,40 +1176,6 @@ mod tests {
     }
 
     #[test]
-    fn processor_from_module_rejects_loom_copy_functions() {
-        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
-            .expect("data mover MLIR should parse");
-        let perf_models: Vec<FuncPerfModel> = module
-            .functions
-            .iter()
-            .map(|_| FuncPerfModel {
-                symbols: vec![],
-                constraints: ConstraintExpr::True,
-                scenarios: vec![],
-            })
-            .collect();
-
-        let err = Processor::from_module("dram_l1_mover", module, perf_models)
-            .expect_err("processor should reject loom.copy ops");
-        assert!(err.contains("must not contain loom.copy"));
-    }
-
-    #[test]
-    fn processor_from_module_rejects_name_mismatch_with_mlir_module() {
-        let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-            .expect("vector_lane should parse");
-        let perf_models = vec![FuncPerfModel::trivial(); module.functions.len()];
-
-        let err = Processor::from_module("wrong_name", module, perf_models)
-            .expect_err("name mismatch should fail before interface validation");
-        assert!(
-            err.contains(
-                "Processor name 'wrong_name' does not match MLIR module name 'vector_lane'"
-            )
-        );
-    }
-
-    #[test]
     fn processor_can_store_memref_regions() {
         let module = MlirModule::from_functions("toy", vec![MlirFunc::named("f")]);
         let perf_models = vec![FuncPerfModel {
@@ -1411,31 +1377,6 @@ mod tests {
     }
 
     #[test]
-    fn data_mover_from_module_requires_memref_bound_symbol_interface() {
-        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
-            .expect("dram_to_l1 data mover MLIR should parse");
-        let perf_models = vec![
-            FuncPerfModel {
-                symbols: vec![crate::Sym::new("M"), crate::Sym::new("N")],
-                constraints: ConstraintExpr::True,
-                scenarios: vec![],
-            };
-            functionality.functions.len()
-        ];
-
-        let region_pairs = stub_region_pairs();
-        let mover = DataMover::builder()
-            .named("dram_l1_mover")
-            .with_regions(region_pairs)
-            .from_module(functionality, perf_models)
-            .expect("data mover should validate");
-        assert!(mover.get_function("dram_to_l1_f16").is_some());
-        assert!(mover.get_function("dram_to_l1_1d_bcst_f16").is_some());
-        assert!(mover.get_function("dram_to_l1_1d_bcst_h_f16").is_some());
-        assert!(mover.get_function("dram_to_l1_1d_bcst_v_f16").is_some());
-    }
-
-    #[test]
     fn data_mover_perf_model_sees_symbolic_broadcast_shape() {
         let func = MlirFunc::from_mlir(
             r#"
@@ -1495,36 +1436,6 @@ func.func @dram_to_l1_symbolic_bcst(
             )
             .expect("B should be usable in the data mover performance model");
         assert!(mover.get_function("dram_to_l1_symbolic_bcst").is_some());
-    }
-
-    #[test]
-    fn data_mover_validation_rejects_missing_memref_interface() {
-        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-            .expect("vector_lane should parse");
-        let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
-
-        let region_pairs = stub_region_pairs();
-        let err = DataMover::builder()
-            .named("vector_lane")
-            .with_regions(region_pairs)
-            .from_module(functionality, perf_models)
-            .expect_err("vector lane functions should not satisfy data-mover interface");
-        assert!(err.contains("expected at least one source memref"));
-    }
-
-    #[test]
-    fn data_mover_builder_rejects_name_mismatch_with_mlir_module() {
-        let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_to_l1.mlir")
-            .expect("dram_to_l1 should parse");
-        let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
-
-        let err = DataMover::builder()
-            .named("wrong_name")
-            .from_module(functionality, perf_models)
-            .expect_err("name mismatch should fail before data-mover validation");
-        assert!(err.contains(
-            "DataMover name 'wrong_name' does not match MLIR module name 'dram_l1_mover'"
-        ));
     }
 
     #[test]

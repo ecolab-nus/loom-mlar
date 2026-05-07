@@ -1,32 +1,4 @@
-use super::{MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirFunc, MlirModule};
-
-#[test]
-fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-        .expect("vector_lane.mlir should parse");
-    assert_eq!(
-        module.path.as_deref(),
-        Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-    );
-    assert_eq!(module.module_name.as_deref(), Some("vector_lane"));
-    assert!(
-        module
-            .functions
-            .iter()
-            .any(|f| f.name.starts_with("vec_max_"))
-    );
-    assert!(
-        module
-            .functions
-            .iter()
-            .any(|f| f.name.starts_with("vec_div_"))
-    );
-
-    // Uppercase alias naming is also supported.
-    let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-        .expect("alias constructor should parse");
-    assert_eq!(alias_module.module_name.as_deref(), Some("vector_lane"));
-}
+use super::{MLIRFuncRef, MlirBroadcastDim, MlirFunc, MlirModule};
 
 #[test]
 fn mlir_module_ref_from_mlir_allows_unnamed_module() {
@@ -54,48 +26,6 @@ fn mlir_module_ref_from_mlir_rejects_multiple_modules() {
     assert!(err.contains("found 2"));
 
     let _ = std::fs::remove_file(tmp);
-}
-
-#[test]
-fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
-        .expect("matrix_lane.mlir should parse");
-    let func = module
-        .functions
-        .iter()
-        .find(|f| f.name.starts_with("matmul_"))
-        .expect("matmul_* function should exist");
-    let details = func
-        .mlir_details
-        .as_ref()
-        .expect("from_mlir should populate mlir_details");
-
-    assert_eq!(func.symbols, vec!["M".into(), "N".into(), "K".into()]);
-    assert!(details.tensor_args.is_empty());
-    assert_eq!(details.memref_args, vec!["A", "B", "C"]);
-    assert!(details.output_tensors.is_empty());
-    assert!(details.source_memrefs.is_empty());
-    assert!(details.target_memrefs.is_empty());
-    assert_eq!(details.mem_region_bindings.len(), 3);
-    assert!(!details.linalg_ops.is_empty());
-    assert!(details.tensor_symbol_bindings.is_empty());
-    assert_eq!(details.memref_symbol_bindings.len(), 3);
-
-    assert_eq!(details.memref_symbol_bindings[0].memref, "A");
-    assert_eq!(
-        details.memref_symbol_bindings[0].symbols,
-        vec!["M".into(), "K".into()]
-    );
-    assert_eq!(details.memref_symbol_bindings[1].memref, "B");
-    assert_eq!(
-        details.memref_symbol_bindings[1].symbols,
-        vec!["K".into(), "N".into()]
-    );
-    assert_eq!(details.memref_symbol_bindings[2].memref, "C");
-    assert_eq!(
-        details.memref_symbol_bindings[2].symbols,
-        vec!["M".into(), "N".into()]
-    );
 }
 
 #[test]
