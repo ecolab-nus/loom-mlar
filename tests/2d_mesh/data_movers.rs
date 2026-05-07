@@ -37,9 +37,9 @@ pub fn dram_l1_mover(dram: &MemoryRegion, l1: &MemoryRegion) -> DataMover {
         scenarios: vec![PerfScenario {
             constraints: constraint("true"),
             time_cost: TimeCost::Simple(SimpleTimeCost {
-                fixed_latency: expr("344"),
+                fixed_latency: expr("344 + BCST_X + BCST_Y"),
                 volume: expr("M * N * 2"),
-                throughput: expr("28"),
+                throughput: expr("28/(BCST_X * BCST_Y)"),
             }),
         }],
     };
