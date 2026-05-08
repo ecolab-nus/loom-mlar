@@ -188,14 +188,11 @@ fn test_2d_mesh_torus_perf_models() {
     }
 
     // === Verify DRAM<->L1 NoC data movers and their resource bindings ===
-    for (mover_name, free_bcst) in [("dram_l1_noc0", "BCST_Y"), ("dram_l1_noc1", "BCST_X")] {
+    for mover_name in ["dram_l1_noc0", "dram_l1_noc1"] {
         let mover = mesh
             .get_data_mover(mover_name)
             .unwrap_or_else(|| panic!("{mover_name} should exist"));
-        assert!(
-            mover.validate().is_ok(),
-            "{mover_name} should validate"
-        );
+        assert!(mover.validate().is_ok(), "{mover_name} should validate");
         assert_eq!(
             mover.functionality.path.as_deref(),
             Some(format!("tests/2d_mesh/processors_mlir/{mover_name}.mlir").as_str())
@@ -219,36 +216,70 @@ fn test_2d_mesh_torus_perf_models() {
                     || r.id().as_str() == "L1_torus_v"),
             "{mover_name} should not include torus link resources"
         );
+    }
 
-        let bcst_2d = mover
-            .get_function("dram_to_l1_2d_bcst_f16")
-            .expect("dram_to_l1_2d_bcst_f16 binding");
-        let bcst_2d_syms = &bcst_2d.func.symbols;
+    // === NoC0: read-only path with unicast + parameterized broadcast ===
+    let noc0 = mesh
+        .get_data_mover("dram_l1_noc0")
+        .expect("dram_l1_noc0 should exist");
+    assert!(
+        noc0.get_function("dram_to_l1_f16").is_some(),
+        "noc0 should expose dram_to_l1_f16"
+    );
+    assert!(
+        noc0.get_function("l1_to_dram_f16").is_none(),
+        "noc0 should not expose l1_to_dram_f16 (read-only)"
+    );
+    for stale in ["dram_to_l1_1d_bcst_f16", "dram_to_l1_2d_bcst_f16"] {
         assert!(
-            bcst_2d_syms.iter().any(|s| s.0.as_str() == free_bcst),
-            "{mover_name} dram_to_l1_2d_bcst_f16 should expose {free_bcst} symbol, got {bcst_2d_syms:?}"
+            noc0.get_function(stale).is_none(),
+            "noc0 should not expose {stale}"
         );
-        let pinned_bcst = if free_bcst == "BCST_Y" { "BCST_X" } else { "BCST_Y" };
+    }
+    let noc0_bcst = noc0
+        .get_function("dram_to_l1_bcst")
+        .expect("noc0 should expose dram_to_l1_bcst");
+    let noc0_bcst_syms = &noc0_bcst.func.symbols;
+    for sym in ["M", "N", "BCST_X", "BCST_Y"] {
         assert!(
-            !bcst_2d_syms.iter().any(|s| s.0.as_str() == pinned_bcst),
-            "{mover_name} dram_to_l1_2d_bcst_f16 should pin {pinned_bcst} to a constant, got {bcst_2d_syms:?}"
+            noc0_bcst_syms.iter().any(|s| s.0.as_str() == sym),
+            "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
         );
     }
 
-    // Verify NoC0's function-level details
-    let mover = mesh
-        .get_data_mover("dram_l1_noc0")
-        .expect("dram_l1_noc0 should exist");
-    let move_func = mover
-        .get_function("dram_to_l1_f16")
-        .expect("dram_to_l1_f16 binding");
-    let writeback_func = mover
+    // === NoC1: writeback only (no load, no broadcast) ===
+    let noc1 = mesh
+        .get_data_mover("dram_l1_noc1")
+        .expect("dram_l1_noc1 should exist");
+    assert!(
+        noc1.get_function("l1_to_dram_f16").is_some(),
+        "noc1 should expose l1_to_dram_f16"
+    );
+    for stale in [
+        "dram_to_l1_f16",
+        "dram_to_l1_bcst",
+        "dram_to_l1_1d_bcst_f16",
+        "dram_to_l1_2d_bcst_f16",
+    ] {
+        assert!(
+            noc1.get_function(stale).is_none(),
+            "noc1 should not expose {stale}"
+        );
+    }
+
+    // Verify NoC1's writeback function shape
+    let writeback_func = noc1
         .get_function("l1_to_dram_f16")
         .expect("l1_to_dram_f16 binding");
     assert!(
         writeback_func.func.mlir_details.is_some(),
         "l1_to_dram_f16 should include MLIR details"
     );
+
+    // Verify NoC0's unicast load function shape
+    let move_func = noc0
+        .get_function("dram_to_l1_f16")
+        .expect("dram_to_l1_f16 binding");
     let move_details = move_func
         .func
         .mlir_details

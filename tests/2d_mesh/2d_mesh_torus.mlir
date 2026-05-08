@@ -14,8 +14,8 @@ module @arch_system {
   %12 = adl.spatial_dim "dim_y", 8
   %13 = adl.arch.scale "arch_mesh", [%11, %12] of %10
   %14 = adl.memory.array "mem_array_L1", [%11, %12] of %5
-  %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %14), (%14, %2)]
-  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%2, %14), (%14, %2)]
+  %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %14)]
+  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%14, %2)]
   %17 = adl.arch.compose "arch_system", arch[%13, %15, %16], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
@@ -508,10 +508,8 @@ module @arch_system {
   }
   }
 
-  // DRAM <-> L1 transfers carried over NoC0:
-  // unicast (dram_to_l1, l1_to_dram), full symbolic 2D broadcast,
-  // and an X-fixed 2D broadcast that fans out across the whole row of
-  // the 8x8 mesh while leaving the column dimension symbolic.
+  // DRAM -> L1 transfers carried over NoC0:
+  // unicast plus a parameterized 2D broadcast.
 
   module @proc_dram_l1_noc0 {
 
@@ -529,7 +527,7 @@ module @arch_system {
     return
   }
 
-  func.func @dram_to_l1_1d_bcst_f16(
+  func.func @dram_to_l1_bcst(
       %dram_src: memref<?x?xf16>,
       %l1_dst: memref<?x?xf16>
   ) {
@@ -543,84 +541,11 @@ module @arch_system {
     return
   }
 
-  func.func @dram_to_l1_2d_bcst_f16(
-      %dram_src: memref<?x?xf16>,
-      %l1_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [8, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
-    return
   }
 
-  func.func @l1_to_dram_f16(
-      %l1_src: memref<?x?xf16>,
-      %dram_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
-    loom.bind_mem %dram_dst, @mem_DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
-    return
-  }
-
-  }
-
-  // DRAM <-> L1 transfers carried over NoC1:
-  // unicast (dram_to_l1, l1_to_dram), full symbolic 2D broadcast,
-  // and a Y-fixed 2D broadcast that fans out across the whole column of
-  // the 8x8 mesh while leaving the row dimension symbolic.
+  // L1 -> DRAM writeback transfers carried over NoC1.
 
   module @proc_dram_l1_noc1 {
-
-  func.func @dram_to_l1_f16(
-      %dram_src: memref<?x?xf16>,
-      %l1_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
-    return
-  }
-
-  func.func @dram_to_l1_1d_bcst_f16(
-      %dram_src: memref<?x?xf16>,
-      %l1_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
-    return
-  }
-
-  func.func @dram_to_l1_2d_bcst_f16(
-      %dram_src: memref<?x?xf16>,
-      %l1_dst: memref<?x?xf16>
-  ) {
-    %M = loom.sym @M : index
-    %N = loom.sym @N : index
-    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
-    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
-    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [@BCST_X, 8] : memref<?x?xf16> to memref<?x?xf16>
-    return
-  }
 
   func.func @l1_to_dram_f16(
       %l1_src: memref<?x?xf16>,
