@@ -178,7 +178,8 @@
         "details": {
           "type": "processor",
           "functions": [
-            "l1_to_dram_f16"
+            "l1_to_dram_f16",
+            "l1_gather"
           ]
         }
       },

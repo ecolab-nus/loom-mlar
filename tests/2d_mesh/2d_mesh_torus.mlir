@@ -15,7 +15,7 @@ module @arch_system {
   %13 = adl.arch.scale "arch_mesh", [%11, %12] of %10
   %14 = adl.memory.array "mem_array_L1", [%11, %12] of %5
   %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %14)]
-  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%14, %2)]
+  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%14, %2), (%14, %14)]
   %17 = adl.arch.compose "arch_system", arch[%13, %15, %16], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
@@ -523,7 +523,7 @@ module @arch_system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
@@ -537,13 +537,13 @@ module @arch_system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
   }
 
-  // L1 -> DRAM writeback transfers carried over NoC1.
+  // L1 -> DRAM writeback and L1 -> L1 gather transfers carried over NoC1.
 
   module @proc_dram_l1_noc1 {
 
@@ -557,9 +557,22 @@ module @arch_system {
     loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
     loom.bind_mem %dram_dst, @mem_DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 
+  func.func @l1_gather(
+      %l1_src: memref<?x?xf16>,
+      %l1_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %l1_src, %l1_dst src_mem_space @mem_array_L1 dst_mem_space @mem_array_L1, area: [@GATHER_X, @GATHER_Y] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
   }
 }

@@ -42,7 +42,7 @@ pub struct MlirMemRegionBinding {
 /// A `loom.copy` operation parsed from an MLIR function body.
 ///
 /// Syntax:
-/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, @sym, ...] : type to type`
+/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirCopyOp {
     /// Source memref SSA name, without `%`.
@@ -53,13 +53,13 @@ pub struct MlirCopyOp {
     pub dst: String,
     /// Destination memory region name, without `@`.
     pub dst_region: String,
-    /// Broadcast dimensions — `[1, 1]` means no broadcast,
+    /// Area (broadcast) dimensions — `[1, 1]` means no broadcast,
     /// `[8, 8]` means broadcast over an 8x8 mesh, and `[@B, 8]`
     /// means a symbolic subregion by 8-wide broadcast.
     pub broadcast: Vec<MlirBroadcastDim>,
 }
 
-/// One dimension of a `loom.copy` broadcast shape.
+/// One dimension of a `loom.copy` area shape.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MlirBroadcastDim {
@@ -160,7 +160,7 @@ fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str, &str)> {
 }
 
 /// Parse
-/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, broadcast : [d0, ...] ...`.
+/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, area: [d0, ...] ...`.
 fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = tag("loom.copy").parse(input)?;
     let (input, _) = multispace1(input)?;
@@ -176,7 +176,7 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = multispace1(input)?;
     let (input, dst_region) = symbol_ref(input)?;
     let (input, _) = comma_sep(input)?;
-    let (input, _) = tag("broadcast").parse(input)?;
+    let (input, _) = tag("area").parse(input)?;
     let (input, _) = multispace0(input)?;
     let (input, _) = char(':').parse(input)?;
     let (input, _) = multispace0(input)?;

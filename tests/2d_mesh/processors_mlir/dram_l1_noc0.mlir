@@ -13,7 +13,7 @@ func.func @dram_to_l1_f16(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @array_L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, broadcast : [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
 
@@ -27,7 +27,7 @@ func.func @dram_to_l1_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @array_L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, broadcast : [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, area: [@BCST_X, @BCST_Y] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
 

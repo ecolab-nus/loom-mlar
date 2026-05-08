@@ -130,7 +130,8 @@
             "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir",
             "source_mlir_module_name": "dram_l1_noc1",
             "ops": [
-              "l1_to_dram_f16"
+              "l1_to_dram_f16",
+              "l1_gather"
             ]
           }
         },

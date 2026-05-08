@@ -247,13 +247,17 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    // === NoC1: writeback only (no load, no broadcast) ===
+    // === NoC1: writeback + L1 gather (no DRAM load, no broadcast) ===
     let noc1 = mesh
         .get_data_mover("dram_l1_noc1")
         .expect("dram_l1_noc1 should exist");
     assert!(
         noc1.get_function("l1_to_dram_f16").is_some(),
         "noc1 should expose l1_to_dram_f16"
+    );
+    assert!(
+        noc1.get_function("l1_gather").is_some(),
+        "noc1 should expose l1_gather"
     );
     for stale in [
         "dram_to_l1_f16",
@@ -275,6 +279,18 @@ fn test_2d_mesh_torus_perf_models() {
         writeback_func.func.mlir_details.is_some(),
         "l1_to_dram_f16 should include MLIR details"
     );
+
+    // Verify NoC1's gather function exposes GATHER_X and GATHER_Y
+    let gather_func = noc1
+        .get_function("l1_gather")
+        .expect("l1_gather binding");
+    let gather_syms = &gather_func.func.symbols;
+    for sym in ["M", "N", "GATHER_X", "GATHER_Y"] {
+        assert!(
+            gather_syms.iter().any(|s| s.0.as_str() == sym),
+            "noc1 l1_gather should expose {sym} symbol, got {gather_syms:?}"
+        );
+    }
 
     // Verify NoC0's unicast load function shape
     let move_func = noc0
