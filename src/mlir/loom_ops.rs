@@ -220,6 +220,7 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
 
 fn broadcast_dim(input: &str) -> IResult<&str, MlirBroadcastDim> {
     alt((
+        map(ssa_ref, |sym| MlirBroadcastDim::Sym(Sym::new(sym))),
         map(symbol_ref, |sym| MlirBroadcastDim::Sym(Sym::new(sym))),
         map(nom_u64, MlirBroadcastDim::Const),
     ))

@@ -272,7 +272,9 @@ func.func @l1_gather(
   loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
   loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
   loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
-  loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [@GATHER_X, @GATHER_Y] : memref<?x?xf16> to memref<?x?x?xf16>
+  %gather_x = loom.sym @gather_x : index
+  %gather_y = loom.sym @gather_y : index
+  loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
   return
 }
 "#;
@@ -282,8 +284,8 @@ func.func @l1_gather(
     assert!(func.symbols.contains(&"M".into()));
     assert!(func.symbols.contains(&"N".into()));
     assert!(func.symbols.contains(&"B".into()));
-    assert!(func.symbols.contains(&"GATHER_X".into()));
-    assert!(func.symbols.contains(&"GATHER_Y".into()));
+    assert!(func.symbols.contains(&"gather_x".into()));
+    assert!(func.symbols.contains(&"gather_y".into()));
 
     let details = func
         .mlir_details
@@ -300,11 +302,11 @@ func.func @l1_gather(
     assert_eq!(
         gop.area,
         vec![
-            MlirBroadcastDim::Sym("GATHER_X".into()),
-            MlirBroadcastDim::Sym("GATHER_Y".into()),
+            MlirBroadcastDim::Sym("gather_x".into()),
+            MlirBroadcastDim::Sym("gather_y".into()),
         ]
     );
 
-    assert!(func.shape_symbols().contains(&"GATHER_X".into()));
-    assert!(func.shape_symbols().contains(&"GATHER_Y".into()));
+    assert!(func.shape_symbols().contains(&"gather_x".into()));
+    assert!(func.shape_symbols().contains(&"gather_y".into()));
 }

@@ -240,7 +240,7 @@ fn test_2d_mesh_torus_perf_models() {
         .get_function("dram_to_l1_bcst")
         .expect("noc0 should expose dram_to_l1_bcst");
     let noc0_bcst_syms = &noc0_bcst.func.symbols;
-    for sym in ["M", "N", "BCST_X", "BCST_Y"] {
+    for sym in ["M", "N", "bcst_x", "bcst_y"] {
         assert!(
             noc0_bcst_syms.iter().any(|s| s.0.as_str() == sym),
             "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
@@ -280,12 +280,12 @@ fn test_2d_mesh_torus_perf_models() {
         "l1_to_dram_f16 should include MLIR details"
     );
 
-    // Verify NoC1's gather function exposes GATHER_X and GATHER_Y
+    // Verify NoC1's gather function exposes gather_x and gather_y
     let gather_func = noc1
         .get_function("l1_gather")
         .expect("l1_gather binding");
     let gather_syms = &gather_func.func.symbols;
-    for sym in ["M", "N", "GATHER_X", "GATHER_Y"] {
+    for sym in ["M", "N", "gather_x", "gather_y"] {
         assert!(
             gather_syms.iter().any(|s| s.0.as_str() == sym),
             "noc1 l1_gather should expose {sym} symbol, got {gather_syms:?}"

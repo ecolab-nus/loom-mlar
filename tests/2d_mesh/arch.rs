@@ -322,7 +322,7 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     // ── NoC data movers ───────────────────────────────────────────────────────
     // NoC0: DRAM→L1 unicast (fixed_latency=454, volume=M*N*2, throughput=15)
-    //       DRAM→L1 2D broadcast [@BCST_X, @BCST_Y]
+    //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y]
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
         let pm = FuncPerfModel {
@@ -342,14 +342,14 @@ pub fn scaled_mesh_torus() -> Architecture {
     };
     let bcst_perf = {
         let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N", "BCST_X", "BCST_Y"]),
+            symbols: Sym::from_names(["M", "N", "bcst_x", "bcst_y"]),
             constraints: constraint("true"),
             scenarios: vec![PerfScenario {
                 constraints: constraint("true"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("344 + BCST_X + BCST_Y"),
+                    fixed_latency: expr("344 + bcst_x + bcst_y"),
                     volume: expr("M * N * 2"),
-                    throughput: expr("28/(BCST_X * BCST_Y)"),
+                    throughput: expr("28/(bcst_x * bcst_y)"),
                 }),
             }],
         };
@@ -365,18 +365,18 @@ pub fn scaled_mesh_torus() -> Architecture {
         .from_module(noc0_func, vec![unicast_perf, bcst_perf])
         .expect("dram_l1_noc0 data mover should link functionality and perf");
 
-    // NoC1: L1→DRAM writeback and L1→L1 gather [@GATHER_X, @GATHER_Y].
+    // NoC1: L1→DRAM writeback and L1→L1 gather [%gather_x, %gather_y].
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
         let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N", "B", "GATHER_X", "GATHER_Y"]),
+            symbols: Sym::from_names(["M", "N", "B", "gather_x", "gather_y"]),
             constraints: constraint("true"),
             scenarios: vec![PerfScenario {
                 constraints: constraint("true"),
                 time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("344 + GATHER_X + GATHER_Y"),
+                    fixed_latency: expr("344 + gather_x + gather_y"),
                     volume: expr("B * M * N * 2"),
-                    throughput: expr("28/(GATHER_X * GATHER_Y)"),
+                    throughput: expr("28/(gather_x * gather_y)"),
                 }),
             }],
         };
