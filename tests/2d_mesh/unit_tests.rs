@@ -3,10 +3,24 @@ use mlar_rust::*;
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 fn region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
-    let array_l1 = crate::memory::l1()
-        .scale(&[crate::dimensions::dim_x(), crate::dimensions::dim_y()])
-        .with_name("array_L1");
-    vec![(crate::memory::dram(), array_l1)]
+    let dim_bank = Dimension::new_int("nbank", 16);
+    let dim_x = Dimension::new_int("x", 8);
+    let dim_y = Dimension::new_int("y", 8);
+    let dim_dram_channel = Dimension::new_int("dram_channel", 8);
+    let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
+        SizeExpr::Const(16),
+        SizeExpr::Const(5856),
+    ))
+    .scale(dim_bank.as_slice())
+    .with_name("L1");
+    let array_l1 = l1.scale(&[dim_x, dim_y]).with_name("array_L1");
+    let dram = MemoryRegion::bank(
+        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
+            .with_name("DRAM_bank"),
+    )
+    .scale(dim_dram_channel.as_slice())
+    .with_name("DRAM");
+    vec![(dram, array_l1)]
 }
 
 // ── from src/arch/processor.rs ───────────────────────────────────────────────

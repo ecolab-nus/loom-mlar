@@ -5,7 +5,7 @@ use std::process::Command;
 use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
 use mlar_rust::*;
 
-use crate::scale::scaled_mesh_torus;
+use crate::arch::scaled_mesh_torus;
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors_mlir/vector_lane.mlir";
 
@@ -506,7 +506,7 @@ fn test_export_2d_mesh_torus_viewer_json() {
 /// After L → BM*BN the expressions use `BM` and `BN` instead.
 #[test]
 fn test_evaluate_vector_lane_sequential_schedule() {
-    let core = crate::core_arch::single_core();
+    let core = crate::arch::single_core();
 
     let l_sym = vec![Sym::new("L")];
     let sym_map = {
@@ -644,7 +644,7 @@ fn test_evaluate_vector_lane_sequential_schedule() {
 ///   per-func cost = 1 + (BM*BN)/1024
 #[test]
 fn test_evaluate_with_sym_map() {
-    let core = crate::core_arch::single_core();
+    let core = crate::arch::single_core();
 
     let l_sym = vec![Sym::new("L")];
     let sym_map = {
@@ -765,7 +765,7 @@ fn test_evaluate_with_sym_map() {
 /// then verify it produces the correct evaluated Schedule when invoked externally.
 #[test]
 fn test_generate_core_evaluator_binary() {
-    let core = crate::core_arch::single_core();
+    let core = crate::arch::single_core();
 
     let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");
     let binary = generate_evaluator_binary(&core, "eval_core", &output_dir)

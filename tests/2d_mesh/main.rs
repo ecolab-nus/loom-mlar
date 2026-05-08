@@ -1,10 +1,3 @@
-mod core_arch;
-mod data_movers;
-mod dimensions;
-mod matrix_lane;
-mod memory;
-mod mesh;
-mod scale;
+mod arch;
 mod tests;
 mod unit_tests;
-mod vector_lane;
