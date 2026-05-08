@@ -925,17 +925,6 @@
           "side": 2
         },
         {
-          "id": "resdep:dram_l1_noc0:array_l1",
-          "kind": "resource_dependency",
-          "name": "dram_l1_noc0 → array_L1",
-          "source": "dm:dram_l1_noc0",
-          "target": "res:array_l1",
-          "source_name": "dram_l1_noc0",
-          "target_name": "array_L1",
-          "label": "dram_l1_noc0 → array_L1",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:dram_l1_noc1:array_l1",
           "kind": "resource_dependency",
           "name": "dram_l1_noc1 → array_L1",
@@ -944,6 +933,17 @@
           "source_name": "dram_l1_noc1",
           "target_name": "array_L1",
           "label": "dram_l1_noc1 → array_L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_noc0:array_l1",
+          "kind": "resource_dependency",
+          "name": "dram_l1_noc0 → array_L1",
+          "source": "dm:dram_l1_noc0",
+          "target": "res:array_l1",
+          "source_name": "dram_l1_noc0",
+          "target_name": "array_L1",
+          "label": "dram_l1_noc0 → array_L1",
           "direction": "directional"
         }
       ]

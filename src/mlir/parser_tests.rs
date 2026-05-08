@@ -144,7 +144,7 @@ func.func @dram_to_l1_2d_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, area: [8, 8] : memref<?x?xf16> to memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, area: [8, 8]
   return
 }
 "#;
@@ -191,7 +191,7 @@ func.func @dram_to_l1_symbolic_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, area: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @L1, area: [@B, 8]
   return
 }
 "#;
@@ -274,7 +274,7 @@ func.func @l1_gather(
   loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
   %gather_x = loom.sym @gather_x : index
   %gather_y = loom.sym @gather_y : index
-  loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
+  loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y]
   return
 }
 "#;

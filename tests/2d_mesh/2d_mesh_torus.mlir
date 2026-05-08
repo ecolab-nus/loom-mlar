@@ -523,7 +523,7 @@ module @arch_system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1]
     return
   }
 
@@ -539,7 +539,7 @@ module @arch_system {
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
     %bcst_x = loom.sym @bcst_x : index
     %bcst_y = loom.sym @bcst_y : index
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [%bcst_x, %bcst_y]
     return
   }
 
@@ -559,7 +559,7 @@ module @arch_system {
     loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
     loom.bind_mem %dram_dst, @mem_DRAM : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, area: [1, 1]
     return
   }
 
@@ -576,7 +576,7 @@ module @arch_system {
       loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
       %gather_x = loom.sym @gather_x : index
       %gather_y = loom.sym @gather_y : index
-      loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
+      loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y]
       return
     }
   }
