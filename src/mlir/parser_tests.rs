@@ -257,3 +257,54 @@ func.func @f(%a: memref<?xf16>) {
     let err = MlirFunc::from_mlir(mismatch).expect_err("bind type mismatch should fail");
     assert!(err.contains("type mismatch"));
 }
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_loom_gather() {
+    let snippet = r#"
+func.func @l1_gather(
+    %l1_src: memref<?x?xf16>,
+    %l1_dst: memref<?x?x?xf16>
+) {
+  %M = loom.sym @M : index
+  %N = loom.sym @N : index
+  %B = loom.sym @B : index
+  loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
+  loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
+  loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
+  loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
+  loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [@GATHER_X, @GATHER_Y] : memref<?x?xf16> to memref<?x?x?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
+    assert_eq!(func.name, "l1_gather");
+    assert!(func.symbols.contains(&"M".into()));
+    assert!(func.symbols.contains(&"N".into()));
+    assert!(func.symbols.contains(&"B".into()));
+    assert!(func.symbols.contains(&"GATHER_X".into()));
+    assert!(func.symbols.contains(&"GATHER_Y".into()));
+
+    let details = func
+        .mlir_details
+        .as_ref()
+        .expect("from_mlir should populate mlir_details");
+    assert_eq!(details.memref_args, vec!["l1_src", "l1_dst"]);
+    assert_eq!(details.source_memrefs, vec!["l1_src"]);
+    assert_eq!(details.target_memrefs, vec!["l1_dst"]);
+
+    assert_eq!(details.gather_ops.len(), 1);
+    let gop = &details.gather_ops[0];
+    assert_eq!(gop.src, "l1_src");
+    assert_eq!(gop.dst, "l1_dst");
+    assert_eq!(
+        gop.area,
+        vec![
+            MlirBroadcastDim::Sym("GATHER_X".into()),
+            MlirBroadcastDim::Sym("GATHER_Y".into()),
+        ]
+    );
+
+    assert!(func.shape_symbols().contains(&"GATHER_X".into()));
+    assert!(func.shape_symbols().contains(&"GATHER_Y".into()));
+}

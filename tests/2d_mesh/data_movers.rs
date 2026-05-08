@@ -64,13 +64,13 @@ pub fn dram_l1_noc0(dram: &MemoryRegion, l1: &MemoryRegion) -> DataMover {
 /// parameterized broadcast model but named for the gather symbols.
 fn gather_perf() -> FuncPerfModel {
     let pm = FuncPerfModel {
-        symbols: Sym::from_names(["M", "N", "GATHER_X", "GATHER_Y"]),
+        symbols: Sym::from_names(["M", "N", "B", "GATHER_X", "GATHER_Y"]),
         constraints: constraint("true"),
         scenarios: vec![PerfScenario {
             constraints: constraint("true"),
             time_cost: TimeCost::Simple(SimpleTimeCost {
                 fixed_latency: expr("344 + GATHER_X + GATHER_Y"),
-                volume: expr("M * N * 2"),
+                volume: expr("B * M * N * 2"),
                 throughput: expr("28/(GATHER_X * GATHER_Y)"),
             }),
         }],

@@ -6,8 +6,9 @@ use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
 
 use super::loom_ops::{
-    MlirCopyOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirTensorSymbolBinding,
-    collect_bind_mems, collect_bind_shapes, collect_loom_copies, collect_loom_syms,
+    MlirCopyOp, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
+    MlirTensorSymbolBinding, collect_bind_mems, collect_bind_shapes, collect_loom_copies,
+    collect_loom_gathers, collect_loom_syms,
 };
 use super::native_ops::{collect_linalg_ops, collect_memref_copy_pairs, collect_output_tensors};
 use super::{
@@ -49,6 +50,9 @@ pub struct MlirFuncDetails {
     /// Parsed `loom.copy` operations.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copy_ops: Vec<MlirCopyOp>,
+    /// Parsed `loom.gather` operations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gather_ops: Vec<MlirGatherOp>,
     /// Parsed `linalg.*` operations (e.g. `linalg.matmul`, `linalg.generic`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub linalg_ops: Vec<String>,
@@ -189,6 +193,9 @@ impl MlirFunc {
             for cop in &details.copy_ops {
                 out.extend(cop.broadcast_symbols().cloned());
             }
+            for gop in &details.gather_ops {
+                out.extend(gop.area_symbols().cloned());
+            }
         }
         out
     }
@@ -263,6 +270,14 @@ impl MlirFunc {
                 }
             }
         }
+        let gather_ops = collect_loom_gathers(func_mlir)?;
+        for gop in &gather_ops {
+            for sym in gop.area_symbols() {
+                if symbols.iter().all(|existing| existing != sym) {
+                    symbols.push(sym.clone());
+                }
+            }
+        }
         let linalg_ops = collect_linalg_ops(func_mlir);
         let mem_region_bindings_with_types = collect_bind_mems(func_mlir)?;
         for (binding, bind_ty) in &mem_region_bindings_with_types {
@@ -293,6 +308,18 @@ impl MlirFunc {
                 target_memrefs.push(cop.dst.clone());
             }
         }
+        for gop in &gather_ops {
+            if memref_args.iter().any(|a| a == &gop.src)
+                && source_memrefs.iter().all(|s| s != &gop.src)
+            {
+                source_memrefs.push(gop.src.clone());
+            }
+            if memref_args.iter().any(|a| a == &gop.dst)
+                && target_memrefs.iter().all(|t| t != &gop.dst)
+            {
+                target_memrefs.push(gop.dst.clone());
+            }
+        }
 
         let output_tensors = collect_output_tensors(func_mlir, &tensor_args)?;
         let memref_arg_types = arg_types
@@ -315,6 +342,7 @@ impl MlirFunc {
                 tensor_symbol_bindings,
                 mem_region_bindings,
                 copy_ops,
+                gather_ops,
                 linalg_ops,
             }),
             sym_map: None,

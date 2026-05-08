@@ -867,6 +867,13 @@ fn validate_pure_compute_interface(func: &MlirFunc) -> Result<(), String> {
         ));
     }
 
+    if !details.gather_ops.is_empty() {
+        return Err(format!(
+            "pure compute function must not contain loom.gather, found {}",
+            details.gather_ops.len()
+        ));
+    }
+
     if details.linalg_ops.is_empty() {
         return Err("pure compute function must contain at least one linalg op".to_string());
     }
@@ -1040,10 +1047,11 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
     if details.mem_region_bindings.is_empty() {
         return Err("expected memref region bindings from loom.bind_mem".to_string());
     }
-    if details.copy_ops.len() != 1 {
+    let n_transfer_ops = details.copy_ops.len() + details.gather_ops.len();
+    if n_transfer_ops != 1 {
         return Err(format!(
-            "pure data-mover function must contain exactly one loom.copy, found {}",
-            details.copy_ops.len()
+            "pure data-mover function must contain exactly one loom.copy or loom.gather, found {}",
+            n_transfer_ops
         ));
     }
     if !details.linalg_ops.is_empty() {
@@ -1132,6 +1140,7 @@ mod tests {
                     ],
                     mem_region_bindings: vec![],
                     copy_ops: vec![],
+                    gather_ops: vec![],
                     linalg_ops: vec![],
                 }),
                 sym_map: None,

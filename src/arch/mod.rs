@@ -15,7 +15,8 @@ pub mod mlir_export {
 pub use crate::mlir::architecture_to_mlir;
 pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
-    MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding,
+    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
+    MlirTensorSymbolBinding,
 };
 pub use architecture::Architecture;
 pub use architecture_graph::{

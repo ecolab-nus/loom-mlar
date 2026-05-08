@@ -25,7 +25,8 @@ pub use math::{
 };
 pub use schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
-    MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule, MlirTensorSymbolBinding, Schedule,
+    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
+    MlirTensorSymbolBinding, Schedule,
     SymbolicMapping, evaluate,
 };
 

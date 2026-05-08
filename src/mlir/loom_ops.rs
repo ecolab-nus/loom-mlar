@@ -82,6 +82,26 @@ impl MlirCopyOp {
     }
 }
 
+/// A `loom.gather` operation parsed from an MLIR function body.
+///
+/// Syntax:
+/// `loom.gather ins(%src: type) outs(%dst: type) area: [d0, @sym, ...] : type to type`
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MlirGatherOp {
+    /// Source memref SSA name, without `%`.
+    pub src: String,
+    /// Destination memref SSA name, without `%`.
+    pub dst: String,
+    /// Gather area dimensions — e.g. `[@GATHER_X, @GATHER_Y]`.
+    pub area: Vec<MlirBroadcastDim>,
+}
+
+impl MlirGatherOp {
+    pub fn area_symbols(&self) -> impl Iterator<Item = &Sym> {
+        self.area.iter().filter_map(MlirBroadcastDim::symbol)
+    }
+}
+
 /// Parse `%ssa = loom.sym @name ...` declaration -> symbol name.
 fn loom_sym_decl(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('%').parse(input)?;
@@ -266,6 +286,69 @@ pub(super) fn collect_loom_copies(func_mlir: &str) -> Result<Vec<MlirCopyOp>, St
         let (_, cop) = loom_copy_decl(trimmed)
             .map_err(|_| format!("invalid loom.copy syntax: {}", trimmed))?;
         ops.push(cop);
+    }
+    Ok(ops)
+}
+
+/// Parse `loom.gather ins(%src: type) outs(%dst: type) area: [d0, ...] : type to type`.
+fn loom_gather_decl(input: &str) -> IResult<&str, MlirGatherOp> {
+    let (input, _) = tag("loom.gather").parse(input)?;
+    let (input, _) = multispace1(input)?;
+
+    // ins(%src: type)
+    let (input, _) = tag("ins").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, ins_content) = super::parse_balanced(input, '(', ')')?;
+    let src = parse_operand_name(ins_content)?;
+
+    let (input, _) = multispace1(input)?;
+
+    // outs(%dst: type)
+    let (input, _) = tag("outs").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, outs_content) = super::parse_balanced(input, '(', ')')?;
+    let dst = parse_operand_name(outs_content)?;
+
+    let (input, _) = multispace1(input)?;
+
+    // area: [d0, d1, ...]
+    let (input, _) = tag("area").parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(':').parse(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, area) = delimited(
+        (char('['), multispace0),
+        separated_list0(comma_sep, broadcast_dim),
+        (multispace0, char(']')),
+    )
+    .parse(input)?;
+
+    Ok((
+        input,
+        MlirGatherOp {
+            src: src.to_string(),
+            dst: dst.to_string(),
+            area,
+        },
+    ))
+}
+
+/// Extract the SSA name from an operand like `%name: type`.
+fn parse_operand_name(content: &str) -> Result<&str, nom::Err<nom::error::Error<&str>>> {
+    let (_, name) = ssa_ref(content.trim())?;
+    Ok(name)
+}
+
+pub(super) fn collect_loom_gathers(func_mlir: &str) -> Result<Vec<MlirGatherOp>, String> {
+    let mut ops = Vec::new();
+    for line in func_mlir.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("loom.gather ") {
+            continue;
+        }
+        let (_, gop) = loom_gather_decl(trimmed)
+            .map_err(|_| format!("invalid loom.gather syntax: {}", trimmed))?;
+        ops.push(gop);
     }
     Ok(ops)
 }
