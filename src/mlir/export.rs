@@ -742,7 +742,7 @@ mod tests {
         let src = r#"module @lane {
   func.func @f(%a: memref<?xf16>) {
     loom.bind_mem %a, @L1 : memref<?xf16>
-    loom.copy %a, %a src_mem_space @L1 dst_mem_space @L1, area: [1]
+    loom.copy %a, %a src_mem_space @L1 dst_mem_space @L1, area: [1] : memref<?xf16> to memref<?xf16>
     return
   }
 }

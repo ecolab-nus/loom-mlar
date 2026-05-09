@@ -1399,7 +1399,7 @@ func.func @dram_to_l1_symbolic_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @array_L1 : memref<?x?xf16>
-  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, area: [@B, 8]
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, area: [@B, 8] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
 "#,
@@ -1549,7 +1549,7 @@ func.func @mixed_copy_compute(
   loom.bind_shape %dst, [%L] : memref<?xf16>
   loom.bind_mem %src, @DRAM : memref<?xf16>
   loom.bind_mem %dst, @array_L1 : memref<?xf16>
-  loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @array_L1, area: [1]
+  loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @array_L1, area: [1] : memref<?xf16> to memref<?xf16>
   %tmp = linalg.matmul ins(%src, %src : memref<?xf16>, memref<?xf16>) outs(%dst : memref<?xf16>)
   return
 }
