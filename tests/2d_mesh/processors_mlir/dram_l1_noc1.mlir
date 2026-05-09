@@ -29,7 +29,7 @@ func.func @l1_gather(
     loom.bind_mem %l1_dst, @array_L1 : memref<?x?x?xf16>
     %gather_x = loom.sym @gather_x : index
     %gather_y = loom.sym @gather_y : index
-    loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
+    loom.gather %l1_src, %l1_dst area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
     return
   }
 }

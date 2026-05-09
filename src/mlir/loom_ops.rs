@@ -85,7 +85,7 @@ impl MlirCopyOp {
 /// A `loom.gather` operation parsed from an MLIR function body.
 ///
 /// Syntax:
-/// `loom.gather ins(%src: type) outs(%dst: type) area: [d0, @sym, ...] : type to type`
+/// `loom.gather %src, %dst area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirGatherOp {
     /// Source memref SSA name, without `%`.
@@ -291,26 +291,33 @@ pub(super) fn collect_loom_copies(func_mlir: &str) -> Result<Vec<MlirCopyOp>, St
     Ok(ops)
 }
 
-/// Parse `loom.gather ins(%src: type) outs(%dst: type) area: [d0, ...] : type to type`.
+/// Parse `loom.gather %src, %dst area: [d0, ...] : type to type`.
+/// Also accepts the legacy `ins(...) outs(...)` form.
 fn loom_gather_decl(input: &str) -> IResult<&str, MlirGatherOp> {
     let (input, _) = tag("loom.gather").parse(input)?;
     let (input, _) = multispace1(input)?;
+    let (input, src, dst) = if input.starts_with("ins") {
+        // Legacy form: ins(%src: type) outs(%dst: type)
+        let (input, _) = tag("ins").parse(input)?;
+        let (input, _) = multispace0(input)?;
+        let (input, ins_content) = super::parse_balanced(input, '(', ')')?;
+        let src = parse_operand_name(ins_content)?;
 
-    // ins(%src: type)
-    let (input, _) = tag("ins").parse(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, ins_content) = super::parse_balanced(input, '(', ')')?;
-    let src = parse_operand_name(ins_content)?;
-
-    let (input, _) = multispace1(input)?;
-
-    // outs(%dst: type)
-    let (input, _) = tag("outs").parse(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, outs_content) = super::parse_balanced(input, '(', ')')?;
-    let dst = parse_operand_name(outs_content)?;
-
-    let (input, _) = multispace1(input)?;
+        let (input, _) = multispace1(input)?;
+        let (input, _) = tag("outs").parse(input)?;
+        let (input, _) = multispace0(input)?;
+        let (input, outs_content) = super::parse_balanced(input, '(', ')')?;
+        let dst = parse_operand_name(outs_content)?;
+        let (input, _) = multispace1(input)?;
+        (input, src, dst)
+    } else {
+        // New form: %src, %dst
+        let (input, src) = ssa_ref(input)?;
+        let (input, _) = comma_sep(input)?;
+        let (input, dst) = ssa_ref(input)?;
+        let (input, _) = multispace1(input)?;
+        (input, src, dst)
+    };
 
     // area: [d0, d1, ...]
     let (input, _) = tag("area").parse(input)?;
