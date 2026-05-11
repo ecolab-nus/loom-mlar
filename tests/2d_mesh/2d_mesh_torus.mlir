@@ -576,7 +576,7 @@ module @arch_system {
       loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
       %gather_x = loom.sym @GATHER_X : index
       %gather_y = loom.sym @GATHER_Y : index
-      loom.gather ins(%l1_src: memref<?x?xf16>) outs(%l1_dst: memref<?x?x?xf16>) area: [%gather_x, %gather_y]
+      loom.gather %l1_src, %l1_dst src_mem_space @mem_array_L1 dst_mem_space @mem_array_L1 area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
       return
     }
   }

@@ -135,6 +135,74 @@
       }
     },
     {
+      "id": "mem:array_l1",
+      "kind": "memory",
+      "name": "array_L1",
+      "label": "array_L1 [x=8, y=8, nbank=16]",
+      "dimensions": [
+        {
+          "name": "x",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "y",
+          "size_expr": "8",
+          "size_const": 8
+        },
+        {
+          "name": "nbank",
+          "size_expr": "16",
+          "size_const": 16
+        }
+      ],
+      "details": {
+        "type": "memory",
+        "region": {
+          "kind": "array",
+          "name": "array_L1",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            }
+          ],
+          "sub_region": {
+            "kind": "array",
+            "name": "L1",
+            "dimensions": [
+              {
+                "name": "nbank",
+                "size_expr": "16",
+                "size_const": 16
+              }
+            ],
+            "sub_region": {
+              "kind": "bank",
+              "name": null,
+              "capacity_bytes": {
+                "expr": "(16 * 5856)",
+                "const_value": 93696
+              },
+              "access_granularity": {
+                "expr": "16",
+                "const_value": 16
+              },
+              "total_size_bytes": 93696
+            },
+            "total_size_bytes": 1499136
+          },
+          "total_size_bytes": 95944704
+        }
+      }
+    },
+    {
       "id": "dm:dram_l1_noc1",
       "kind": "data_mover",
       "name": "dram_l1_noc1",
@@ -189,21 +257,6 @@
         "router": {
           "name": "mesh_dram_router",
           "side_count": 3
-        }
-      }
-    },
-    {
-      "id": "res:array_l1",
-      "kind": "resource",
-      "name": "array_L1",
-      "label": "array_L1 (cap=95944704)",
-      "dimensions": [],
-      "details": {
-        "type": "resource",
-        "resource": {
-          "id": "array_L1",
-          "kind": "quantitative",
-          "capacity": 95944704
         }
       }
     }
@@ -274,7 +327,7 @@
       "kind": "resource_dependency",
       "name": "dram_l1_noc0 → array_L1",
       "source": "dm:dram_l1_noc0",
-      "target": "res:array_l1",
+      "target": "mem:array_l1",
       "source_name": "dram_l1_noc0",
       "target_name": "array_L1",
       "label": "dram_l1_noc0 → array_L1",
@@ -285,7 +338,7 @@
       "kind": "resource_dependency",
       "name": "dram_l1_noc1 → array_L1",
       "source": "dm:dram_l1_noc1",
-      "target": "res:array_l1",
+      "target": "mem:array_l1",
       "source_name": "dram_l1_noc1",
       "target_name": "array_L1",
       "label": "dram_l1_noc1 → array_L1",

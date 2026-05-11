@@ -85,7 +85,7 @@ impl MlirCopyOp {
 /// A `loom.gather` operation parsed from an MLIR function body.
 ///
 /// Syntax:
-/// `loom.gather %src, %dst area: [d0, @sym, ...] : type to type`
+/// `loom.gather %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirGatherOp {
     /// Source memref SSA name, without `%`.
@@ -318,6 +318,19 @@ fn loom_gather_decl(input: &str) -> IResult<&str, MlirGatherOp> {
         let (input, _) = multispace1(input)?;
         (input, src, dst)
     };
+
+    let (input, _) = opt((
+        tag("src_mem_space"),
+        multispace1,
+        symbol_ref,
+        multispace1,
+        tag("dst_mem_space"),
+        multispace1,
+        symbol_ref,
+        opt(comma_sep),
+        multispace0,
+    ))
+    .parse(input)?;
 
     // area: [d0, d1, ...]
     let (input, _) = tag("area").parse(input)?;
