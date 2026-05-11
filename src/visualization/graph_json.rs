@@ -30,7 +30,7 @@ pub enum GraphEdgeKind {
     ResourceDependency,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphEdgeDirection {
     Directional,
@@ -103,6 +103,14 @@ pub struct GraphFunctionalityModule {
     pub source_path: Option<String>,
     pub source_mlir_module_name: Option<String>,
     pub ops: Vec<String>,
+    pub op_details: Vec<GraphFunctionalityOp>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphFunctionalityOp {
+    pub name: String,
+    pub source_memories: Vec<String>,
+    pub destination_memories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -301,6 +309,12 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
                 processor_node_ids.insert(name.clone(), id.clone());
                 arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
                 nodes.push(data_mover_node_from_elem(id, &name, mover));
+                ensure_region_pair_memory_nodes(
+                    &mover.region_pairs,
+                    &mut nodes,
+                    &mut memory_node_ids,
+                    &mut used_ids,
+                );
             }
             ArchNodeComponent::Router(router) => {
                 let name = node
@@ -444,9 +458,19 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             continue;
         };
         for res_id in res_ids {
-            let Some(target_id) = resource_node_ids.get(res_id.as_str()).cloned() else {
+            let target_id = resource_node_ids
+                .get(res_id.as_str())
+                .or_else(|| memory_node_ids.get(res_id.as_str()))
+                .cloned();
+            let Some(target_id) = target_id else {
                 continue;
             };
+            if source_id == target_id {
+                continue;
+            }
+            if has_existing_edge_between(&edges, &source_id, &target_id) {
+                continue;
+            }
             let edge_id = unique_id(
                 &format!(
                     "resdep:{}:{}",
@@ -576,6 +600,27 @@ fn ensure_endpoint_node(
     nodes.push(memory_node_from_region(id.clone(), &name, endpoint));
     memory_node_ids.insert(name.clone(), id.clone());
     (id, name)
+}
+
+fn ensure_region_pair_memory_nodes(
+    region_pairs: &[(MemoryRegion, MemoryRegion)],
+    nodes: &mut Vec<GraphNode>,
+    memory_node_ids: &mut HashMap<String, String>,
+    used_ids: &mut HashSet<String>,
+) {
+    for (source, target) in region_pairs {
+        ensure_endpoint_node(source, nodes, memory_node_ids, used_ids);
+        ensure_endpoint_node(target, nodes, memory_node_ids, used_ids);
+    }
+}
+
+fn has_existing_edge_between(edges: &[GraphEdge], source_id: &str, target_id: &str) -> bool {
+    edges.iter().any(|edge| {
+        (edge.source == source_id && edge.target == target_id)
+            || (edge.direction == GraphEdgeDirection::Bidirectional
+                && edge.source == target_id
+                && edge.target == source_id)
+    })
 }
 
 fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> GraphNode {
@@ -774,7 +819,57 @@ fn functionality_to_json(module: &MlirModule) -> GraphFunctionalityModule {
         source_path: module.path.clone(),
         source_mlir_module_name: module.module_name.clone(),
         ops: module.functions.iter().map(|op| op.name.clone()).collect(),
+        op_details: module
+            .functions
+            .iter()
+            .map(functionality_op_to_json)
+            .collect(),
     }
+}
+
+fn functionality_op_to_json(func: &crate::schedule::MlirFunc) -> GraphFunctionalityOp {
+    let (source_memories, destination_memories) = func
+        .mlir_details
+        .as_ref()
+        .map(function_memory_roles)
+        .unwrap_or_default();
+
+    GraphFunctionalityOp {
+        name: func.name.clone(),
+        source_memories,
+        destination_memories,
+    }
+}
+
+fn function_memory_roles(details: &crate::schedule::MlirFuncDetails) -> (Vec<String>, Vec<String>) {
+    let binding_by_memref: HashMap<&str, &str> = details
+        .mem_region_bindings
+        .iter()
+        .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
+        .collect();
+
+    let source_memories = memory_regions_for_memrefs(&details.source_memrefs, &binding_by_memref);
+    let destination_memories =
+        memory_regions_for_memrefs(&details.target_memrefs, &binding_by_memref);
+
+    (source_memories, destination_memories)
+}
+
+fn memory_regions_for_memrefs(
+    memrefs: &[String],
+    binding_by_memref: &HashMap<&str, &str>,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut regions = Vec::new();
+    for memref in memrefs {
+        let Some(region) = binding_by_memref.get(memref.as_str()) else {
+            continue;
+        };
+        if seen.insert((*region).to_string()) {
+            regions.push((*region).to_string());
+        }
+    }
+    regions
 }
 
 fn dimension_to_json(dim: &Dimension) -> GraphDimension {

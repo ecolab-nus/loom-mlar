@@ -10,7 +10,10 @@ use super::loom_ops::{
     MlirTensorSymbolBinding, collect_bind_mems, collect_bind_shapes, collect_loom_copies,
     collect_loom_gathers, collect_loom_syms,
 };
-use super::native_ops::{collect_linalg_ops, collect_memref_copy_pairs, collect_output_tensors};
+use super::native_ops::{
+    collect_linalg_memref_operands, collect_linalg_ops, collect_memref_copy_pairs,
+    collect_output_tensors,
+};
 use super::{
     extract_function_blocks, func_arg, func_header, parse_single_module_name,
     split_top_level_commas,
@@ -262,6 +265,18 @@ impl MlirFunc {
 
         let (mut source_memrefs, mut target_memrefs) =
             collect_memref_copy_pairs(func_mlir, &memref_args)?;
+        let (linalg_source_memrefs, linalg_target_memrefs) =
+            collect_linalg_memref_operands(func_mlir, &memref_args)?;
+        for source in linalg_source_memrefs {
+            if source_memrefs.iter().all(|existing| existing != &source) {
+                source_memrefs.push(source);
+            }
+        }
+        for target in linalg_target_memrefs {
+            if target_memrefs.iter().all(|existing| existing != &target) {
+                target_memrefs.push(target);
+            }
+        }
         let copy_ops = collect_loom_copies(func_mlir)?;
         for cop in &copy_ops {
             for sym in cop.broadcast_symbols() {

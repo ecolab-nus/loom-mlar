@@ -7,7 +7,9 @@ import type {
   ArchitectureGraphNode,
   GraphDimension,
   GraphEdgeDirection,
+  GraphFunctionalityOp,
   GraphMemoryRegion,
+  GraphProcessorElem,
   NodeKind,
 } from './schema';
 
@@ -30,9 +32,15 @@ export interface ArchFlowNodeData extends Record<string, unknown> {
   summary: string;
   bankSlots: BankSlot[];
   region?: GraphMemoryRegion;
+  memoryAccess?: ProcessorMemoryAccess;
 }
 
 export type ArchFlowNode = Node<ArchFlowNodeData, 'archNode'>;
+
+export interface ProcessorMemoryAccess {
+  sourceMemories: string[];
+  destinationMemories: string[];
+}
 
 export interface CoreMemorySummary {
   name: string;
@@ -86,6 +94,7 @@ interface VisualNodeSpec {
   summary: string;
   bankSlots: BankSlot[];
   region?: GraphMemoryRegion;
+  memoryAccess?: ProcessorMemoryAccess;
 }
 
 interface EndpointStat {
@@ -208,6 +217,7 @@ export function architectureToFlow(
         summary: node.summary,
         bankSlots: node.bankSlots,
         region: node.region,
+        memoryAccess: node.memoryAccess,
       },
       draggable: true,
     };
@@ -816,9 +826,51 @@ function describeNode(node: ArchitectureGraphNode): {
       dimensions: node.dimensions,
       summary: summarizeArchitectureNode(node),
       bankSlots: [],
+      memoryAccess: processorMemoryAccess(node),
     },
     multiplicity: 1,
   };
+}
+
+function processorMemoryAccess(node: ArchitectureGraphNode): ProcessorMemoryAccess | undefined {
+  if (node.details.type !== 'processor') {
+    return undefined;
+  }
+
+  const opDetails = collectProcessorOpDetails(node.details.element);
+  if (opDetails.length === 0) {
+    return undefined;
+  }
+
+  const sourceMemories = uniqueSorted(opDetails.flatMap((op) => op.source_memories ?? []));
+  const destinationMemories = uniqueSorted(
+    opDetails.flatMap((op) => op.destination_memories ?? []),
+  );
+
+  if (sourceMemories.length === 0 && destinationMemories.length === 0) {
+    return undefined;
+  }
+
+  return { sourceMemories, destinationMemories };
+}
+
+function collectProcessorOpDetails(element: GraphProcessorElem): GraphFunctionalityOp[] {
+  switch (element.kind) {
+    case 'unit':
+      return element.functionality?.op_details ?? [];
+    case 'array':
+      return collectProcessorOpDetails(element.elem);
+    case 'graph':
+      return [];
+    case 'set':
+      return element.parts.flatMap(collectProcessorOpDetails);
+  }
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.length > 0))).sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 function buildBankSlots(totalBanks: number | null): BankSlot[] {

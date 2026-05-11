@@ -98,14 +98,25 @@ fn collect_return_operands(func_mlir: &str) -> Vec<String> {
 }
 
 fn collect_outs_operands(func_mlir: &str) -> Result<Vec<String>, String> {
+    collect_call_operands(func_mlir, "outs(")
+}
+
+fn collect_ins_operands(func_mlir: &str) -> Result<Vec<String>, String> {
+    collect_call_operands(func_mlir, "ins(")
+}
+
+fn collect_call_operands(func_mlir: &str, marker: &str) -> Result<Vec<String>, String> {
     let mut operands = Vec::new();
-    let marker = "outs(";
     let mut cursor = 0usize;
 
     while let Some(found) = func_mlir[cursor..].find(marker) {
         let open = cursor + found + marker.len() - 1;
-        let close = find_matching_delimiter(func_mlir, open, '(', ')')
-            .ok_or_else(|| "unbalanced parentheses in 'outs' operands".to_string())?;
+        let close = find_matching_delimiter(func_mlir, open, '(', ')').ok_or_else(|| {
+            format!(
+                "unbalanced parentheses in '{}' operands",
+                &marker[..marker.len() - 1]
+            )
+        })?;
         let content = &func_mlir[open + 1..close];
         for raw in split_top_level_commas(content) {
             if let Ok((_, name)) = ssa_ref(raw.trim()) {
@@ -118,6 +129,19 @@ fn collect_outs_operands(func_mlir: &str) -> Result<Vec<String>, String> {
     }
 
     Ok(operands)
+}
+
+pub(super) fn collect_linalg_memref_operands(
+    func_mlir: &str,
+    memref_args: &[String],
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut sources = collect_ins_operands(func_mlir)?;
+    sources.retain(|operand| memref_args.iter().any(|arg| arg == operand));
+
+    let mut targets = collect_outs_operands(func_mlir)?;
+    targets.retain(|operand| memref_args.iter().any(|arg| arg == operand));
+
+    Ok((sources, targets))
 }
 
 pub(super) fn collect_output_tensors(

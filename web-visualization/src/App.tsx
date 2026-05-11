@@ -27,9 +27,11 @@ import {
 import { loadGraphFromFile, loadGraphFromUrl, parseAnyText } from './runtime-loader';
 import type {
   ArchitectureGraph,
+  ArchitectureGraphNode,
   HierarchyNode,
   AnyArchPayload,
   GraphMemoryRegion,
+  GraphProcessorElem,
 } from './schema';
 
 const nodeTypes: NodeTypes = {
@@ -112,6 +114,185 @@ function childGraphPath(currentPath: string, childName: string): string {
   return currentPath === '' ? childName : `${currentPath}/${childName}`;
 }
 
+function hierarchyChildPath(parentPath: string, child: HierarchyNode): string {
+  const isArchitecture = child.kind === 'graph' || child.kind === 'array' || child.kind === 'unit';
+  if (!isArchitecture) {
+    return `${parentPath}##${child.name}`;
+  }
+  if (parentPath === '') {
+    return child.name;
+  }
+  return `${parentPath}/${child.name}`;
+}
+
+function collectSelectableHierarchyPaths(
+  hierarchy: HierarchyNode | null,
+  graphs: Record<string, ArchitectureGraph>,
+): Set<string> {
+  const paths = new Set(Object.keys(graphs));
+  if (!hierarchy) {
+    return paths;
+  }
+
+  function visit(node: HierarchyNode, path: string) {
+    if (node.details?.type === 'processor') {
+      paths.add(path);
+    }
+    for (const child of node.children ?? []) {
+      visit(child, hierarchyChildPath(path, child));
+    }
+  }
+
+  visit(hierarchy, '');
+  return paths;
+}
+
+function focusedGraphForPath(
+  path: string,
+  graphs: Record<string, ArchitectureGraph>,
+): ArchitectureGraph | null {
+  if (graphs[path]) {
+    return null;
+  }
+
+  const parentPath = nearestGraphPath(path, graphs);
+  const graph = graphs[parentPath];
+  if (!graph) {
+    return null;
+  }
+
+  const nodeName = selectedNodeName(path, parentPath);
+  if (!nodeName) {
+    return null;
+  }
+
+  const selectedNode = graph.nodes.find((node) => node.name === nodeName);
+  if (!selectedNode || selectedNode.details.type !== 'processor') {
+    return null;
+  }
+
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const includedIds = new Set<string>([selectedNode.id]);
+
+  for (const edge of graph.edges) {
+    if (edge.source === selectedNode.id) {
+      includedIds.add(edge.target);
+    }
+    if (edge.target === selectedNode.id) {
+      includedIds.add(edge.source);
+    }
+  }
+
+  for (const memoryName of processorMemoryNames(selectedNode)) {
+    for (const node of graph.nodes) {
+      if (node.name === memoryName) {
+        includedIds.add(node.id);
+      }
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const edge of graph.edges) {
+      const source = nodeById.get(edge.source);
+      const target = nodeById.get(edge.target);
+      if (!source || !target) {
+        continue;
+      }
+      const sourceIncluded = includedIds.has(edge.source);
+      const targetIncluded = includedIds.has(edge.target);
+      if (sourceIncluded && targetIncluded) {
+        continue;
+      }
+      if (sourceIncluded && target.kind === 'memory') {
+        includedIds.add(edge.target);
+        changed = true;
+      }
+      if (targetIncluded && source.kind === 'memory') {
+        includedIds.add(edge.source);
+        changed = true;
+      }
+    }
+  }
+
+  const nodes = graph.nodes.filter((node) => includedIds.has(node.id));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = graph.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
+
+  return {
+    schema_version: 'mlar.arch-graph.v1',
+    architecture: {
+      name: selectedNode.name,
+      labels: [],
+    },
+    nodes,
+    edges,
+  };
+}
+
+function nearestGraphPath(path: string, graphs: Record<string, ArchitectureGraph>): string {
+  const parts = path.split('/').filter((part) => part.length > 0);
+  for (let len = parts.length - 1; len >= 0; len -= 1) {
+    const candidate = parts.slice(0, len).join('/');
+    if (graphs[candidate]) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+function selectedNodeName(path: string, parentPath: string): string | null {
+  if (path.includes('##')) {
+    const [, name] = path.split('##');
+    return name || null;
+  }
+  if (parentPath === '') {
+    return path.split('/')[0] || null;
+  }
+  const prefix = `${parentPath}/`;
+  if (!path.startsWith(prefix)) {
+    return null;
+  }
+  const remainder = path.slice(prefix.length);
+  return remainder.split('/')[0] || null;
+}
+
+function processorMemoryNames(node: ArchitectureGraphNode): Set<string> {
+  if (node.details.type !== 'processor') {
+    return new Set();
+  }
+  return processorElementMemoryNames(node.details.element);
+}
+
+function processorElementMemoryNames(element: GraphProcessorElem): Set<string> {
+  const names = new Set<string>();
+  switch (element.kind) {
+    case 'unit':
+      for (const op of element.functionality?.op_details ?? []) {
+        for (const memory of op.source_memories ?? []) {
+          names.add(memory);
+        }
+        for (const memory of op.destination_memories ?? []) {
+          names.add(memory);
+        }
+      }
+      break;
+    case 'array':
+      return processorElementMemoryNames(element.elem);
+    case 'set':
+      for (const part of element.parts) {
+        for (const memory of processorElementMemoryNames(part)) {
+          names.add(memory);
+        }
+      }
+      break;
+    case 'graph':
+      break;
+  }
+  return names;
+}
+
 function AppInner() {
   const [jsonText, setJsonText] = useState('');
   const [sourceUrl, setSourceUrl] = useState(DEFAULT_URL);
@@ -159,13 +340,22 @@ function AppInner() {
   }, [jsonText, sourceName, loadError]);
 
   const availableGraphPaths = useMemo(
-    () => new Set(Object.keys(parsed.graphs)),
-    [parsed.graphs],
+    () => collectSelectableHierarchyPaths(parsed.hierarchy, parsed.graphs),
+    [parsed.hierarchy, parsed.graphs],
+  );
+
+  const focusedGraph = useMemo(
+    () => focusedGraphForPath(selectedGraphPath, parsed.graphs),
+    [selectedGraphPath, parsed.graphs],
   );
 
   const activeGraph = useMemo((): ArchitectureGraph | null => {
-    return parsed.graphs[selectedGraphPath] ?? null;
-  }, [parsed.graphs, selectedGraphPath]);
+    return parsed.graphs[selectedGraphPath] ?? focusedGraph;
+  }, [parsed.graphs, selectedGraphPath, focusedGraph]);
+
+  const isFocusedGraph = useMemo(() => {
+    return !parsed.graphs[selectedGraphPath] && focusedGraph !== null;
+  }, [parsed.graphs, selectedGraphPath, focusedGraph]);
 
   const navigateToPath = useCallback((path: string) => {
     setSelectedGraphPath(path);
@@ -217,8 +407,13 @@ function AppInner() {
         coreLinkLegend: [],
       } satisfies FlowConversionResult;
     }
-    return architectureToFlow(activeGraph, viewMode, onCoreClick, onMemoryClick);
-  }, [activeGraph, viewMode, onCoreClick, onMemoryClick]);
+    return architectureToFlow(
+      activeGraph,
+      isFocusedGraph ? 'processor' : viewMode,
+      onCoreClick,
+      onMemoryClick,
+    );
+  }, [activeGraph, isFocusedGraph, viewMode, onCoreClick, onMemoryClick]);
 
   useEffect(() => {
     if (flow.coreLinkLegend.length === 0) {

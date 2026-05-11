@@ -44,7 +44,9 @@ fn data_mover_validation_rejects_missing_memref_interface() {
         .with_regions(region_pairs())
         .from_module(functionality, perf_models)
         .expect_err("vector lane functions should not satisfy data-mover interface");
-    assert!(err.contains("expected at least one source memref"));
+    assert!(
+        err.contains("pure data-mover function must contain exactly one loom.copy or loom.gather")
+    );
 }
 
 // ── from src/mlir/parser_tests.rs ────────────────────────────────────────────
@@ -95,8 +97,8 @@ fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
     assert!(details.tensor_args.is_empty());
     assert_eq!(details.memref_args, vec!["A", "B", "C"]);
     assert!(details.output_tensors.is_empty());
-    assert!(details.source_memrefs.is_empty());
-    assert!(details.target_memrefs.is_empty());
+    assert_eq!(details.source_memrefs, vec!["A", "B"]);
+    assert_eq!(details.target_memrefs, vec!["C"]);
     assert_eq!(details.mem_region_bindings.len(), 3);
     assert!(!details.linalg_ops.is_empty());
     assert!(details.tensor_symbol_bindings.is_empty());

@@ -16,17 +16,38 @@ export interface GraphMlirModuleRef {
   functions: string[];
 }
 
+export interface GraphFunctionalityOp {
+  name: string;
+  source_memories?: string[];
+  destination_memories?: string[];
+}
+
+export interface GraphFunctionalityModule {
+  name: string | null;
+  source_path: string | null;
+  source_mlir_module_name: string | null;
+  ops: string[];
+  op_details?: GraphFunctionalityOp[];
+}
+
 export type GraphProcessorElem =
   | {
       kind: 'unit';
       name: string | null;
-      compute: GraphMlirModuleRef | null;
+      compute?: GraphMlirModuleRef | null;
+      functionality?: GraphFunctionalityModule;
     }
   | {
       kind: 'array';
       name: string | null;
       dimensions: GraphDimension[];
       elem: GraphProcessorElem;
+    }
+  | {
+      kind: 'graph';
+      name: string;
+      processor_count: number;
+      link_count: number;
     }
   | {
       kind: 'set';

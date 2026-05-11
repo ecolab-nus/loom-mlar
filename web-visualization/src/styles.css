@@ -419,6 +419,39 @@ body {
   font-size: 0.75rem;
 }
 
+.processor-memory-access {
+  margin-top: 0.45rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.processor-memory-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.34rem;
+  min-height: 22px;
+}
+
+.processor-memory-label {
+  border-radius: 5px;
+  background: rgba(37, 86, 68, 0.12);
+  color: #24513f;
+  font-size: 0.62rem;
+  font-weight: 750;
+  line-height: 1;
+  padding: 0.24rem 0.32rem;
+  text-transform: uppercase;
+}
+
+.processor-memory-list {
+  min-width: 0;
+  color: #244152;
+  font-size: 0.7rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .arch-node-dims {
   margin-top: 0.45rem;
   display: flex;

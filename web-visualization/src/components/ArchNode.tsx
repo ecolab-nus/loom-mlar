@@ -37,6 +37,7 @@ export function ArchNode({ data }: NodeProps) {
       <div className="arch-node-kind">{kindLabel}</div>
       <div className="arch-node-title">{nodeData.name}</div>
       <div className="arch-node-summary">{nodeData.summary}</div>
+      {nodeData.memoryAccess && <ProcessorMemoryAccess access={nodeData.memoryAccess} />}
       {nodeData.dimensions.length > 0 && (
         <div className="arch-node-dims">
           {nodeData.dimensions.map((dim) => (
@@ -57,6 +58,39 @@ export function ArchNode({ data }: NodeProps) {
 
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}
+
+function ProcessorMemoryAccess({
+  access,
+}: {
+  access: NonNullable<ArchFlowNodeData['memoryAccess']>;
+}) {
+  const hasSources = access.sourceMemories.length > 0;
+  const hasDestinations = access.destinationMemories.length > 0;
+
+  if (!hasSources && !hasDestinations) {
+    return null;
+  }
+
+  return (
+    <div className="processor-memory-access">
+      {hasSources && (
+        <MemoryAccessRow label="src" memories={access.sourceMemories} />
+      )}
+      {hasDestinations && (
+        <MemoryAccessRow label="dst" memories={access.destinationMemories} />
+      )}
+    </div>
+  );
+}
+
+function MemoryAccessRow({ label, memories }: { label: string; memories: string[] }) {
+  return (
+    <div className="processor-memory-row">
+      <span className="processor-memory-label">{label}</span>
+      <span className="processor-memory-list">{memories.join(', ')}</span>
     </div>
   );
 }

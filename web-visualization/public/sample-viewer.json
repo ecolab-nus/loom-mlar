@@ -337,6 +337,71 @@
                     "vec_max1_f16",
                     "elementwise_add_f16",
                     "elementwise_mul_f16"
+                  ],
+                  "op_details": [
+                    {
+                      "name": "matmul_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "batch_matmul_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_vsum_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_vmax_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_max1_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "elementwise_add_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "elementwise_mul_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    }
                   ]
                 }
               },
@@ -369,6 +434,98 @@
                     "vec_powf_f16",
                     "vec_cmpf_ogt_f16",
                     "vec_select_f16"
+                  ],
+                  "op_details": [
+                    {
+                      "name": "vec_max_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_exp_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_sum_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_add_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_mul_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_div_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_sub_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_powf_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_cmpf_ogt_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    },
+                    {
+                      "name": "vec_select_f16",
+                      "source_memories": [
+                        "L1"
+                      ],
+                      "destination_memories": [
+                        "L1"
+                      ]
+                    }
                   ]
                 }
               },
@@ -456,14 +613,14 @@
             "side": 1
           },
           {
-            "id": "resdep:vector_lane:vector_lane",
+            "id": "resdep:matrix_lane:l1",
             "kind": "resource_dependency",
-            "name": "vector_lane → vector_lane",
-            "source": "proc:vector_lane",
-            "target": "res:vector_lane",
-            "source_name": "vector_lane",
-            "target_name": "vector_lane",
-            "label": "vector_lane → vector_lane",
+            "name": "matrix_lane → L1",
+            "source": "proc:matrix_lane",
+            "target": "mem:l1",
+            "source_name": "matrix_lane",
+            "target_name": "L1",
+            "label": "matrix_lane → L1",
             "direction": "directional"
           },
           {
@@ -475,6 +632,28 @@
             "source_name": "matrix_lane",
             "target_name": "matrix_lane",
             "label": "matrix_lane → matrix_lane",
+            "direction": "directional"
+          },
+          {
+            "id": "resdep:vector_lane:l1",
+            "kind": "resource_dependency",
+            "name": "vector_lane → L1",
+            "source": "proc:vector_lane",
+            "target": "mem:l1",
+            "source_name": "vector_lane",
+            "target_name": "L1",
+            "label": "vector_lane → L1",
+            "direction": "directional"
+          },
+          {
+            "id": "resdep:vector_lane:vector_lane",
+            "kind": "resource_dependency",
+            "name": "vector_lane → vector_lane",
+            "source": "proc:vector_lane",
+            "target": "res:vector_lane",
+            "source_name": "vector_lane",
+            "target_name": "vector_lane",
+            "label": "vector_lane → vector_lane",
             "direction": "directional"
           }
         ]
@@ -590,10 +769,98 @@
                 "ops": [
                   "dram_to_l1_f16",
                   "dram_to_l1_bcst"
+                ],
+                "op_details": [
+                  {
+                    "name": "dram_to_l1_f16",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "dram_to_l1_bcst",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  }
                 ]
               }
             },
             "total_instances": 1
+          }
+        },
+        {
+          "id": "mem:array_l1",
+          "kind": "memory",
+          "name": "array_L1",
+          "label": "array_L1 [x=8, y=8, nbank=16]",
+          "dimensions": [
+            {
+              "name": "x",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "y",
+              "size_expr": "8",
+              "size_const": 8
+            },
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "array_L1",
+              "dimensions": [
+                {
+                  "name": "x",
+                  "size_expr": "8",
+                  "size_const": 8
+                },
+                {
+                  "name": "y",
+                  "size_expr": "8",
+                  "size_const": 8
+                }
+              ],
+              "sub_region": {
+                "kind": "array",
+                "name": "L1",
+                "dimensions": [
+                  {
+                    "name": "nbank",
+                    "size_expr": "16",
+                    "size_const": 16
+                  }
+                ],
+                "sub_region": {
+                  "kind": "bank",
+                  "name": null,
+                  "capacity_bytes": {
+                    "expr": "(16 * 5856)",
+                    "const_value": 93696
+                  },
+                  "access_granularity": {
+                    "expr": "16",
+                    "const_value": 16
+                  },
+                  "total_size_bytes": 93696
+                },
+                "total_size_bytes": 1499136
+              },
+              "total_size_bytes": 95944704
+            }
           }
         },
         {
@@ -614,6 +881,26 @@
                 "ops": [
                   "l1_to_dram_f16",
                   "l1_gather"
+                ],
+                "op_details": [
+                  {
+                    "name": "l1_to_dram_f16",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "DRAM"
+                    ]
+                  },
+                  {
+                    "name": "l1_gather",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  }
                 ]
               }
             },
@@ -631,21 +918,6 @@
             "router": {
               "name": "mesh_dram_router",
               "side_count": 3
-            }
-          }
-        },
-        {
-          "id": "res:array_l1",
-          "kind": "resource",
-          "name": "array_L1",
-          "label": "array_L1 (cap=95944704)",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "array_L1",
-              "kind": "quantitative",
-              "capacity": 95944704
             }
           }
         }
@@ -716,7 +988,7 @@
           "kind": "resource_dependency",
           "name": "dram_l1_noc0 → array_L1",
           "source": "dm:dram_l1_noc0",
-          "target": "res:array_l1",
+          "target": "mem:array_l1",
           "source_name": "dram_l1_noc0",
           "target_name": "array_L1",
           "label": "dram_l1_noc0 → array_L1",
@@ -727,7 +999,7 @@
           "kind": "resource_dependency",
           "name": "dram_l1_noc1 → array_L1",
           "source": "dm:dram_l1_noc1",
-          "target": "res:array_l1",
+          "target": "mem:array_l1",
           "source_name": "dram_l1_noc1",
           "target_name": "array_L1",
           "label": "dram_l1_noc1 → array_L1",
@@ -806,6 +1078,71 @@
                   "vec_max1_f16",
                   "elementwise_add_f16",
                   "elementwise_mul_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vsum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vmax_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_max1_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
                 ]
               }
             },
@@ -838,6 +1175,98 @@
                   "vec_powf_f16",
                   "vec_cmpf_ogt_f16",
                   "vec_select_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "vec_max_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_exp_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_div_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sub_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_powf_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_cmpf_ogt_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_select_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
                 ]
               }
             },
@@ -925,14 +1354,14 @@
           "side": 1
         },
         {
-          "id": "resdep:vector_lane:vector_lane",
+          "id": "resdep:matrix_lane:l1",
           "kind": "resource_dependency",
-          "name": "vector_lane → vector_lane",
-          "source": "proc:vector_lane",
-          "target": "res:vector_lane",
-          "source_name": "vector_lane",
-          "target_name": "vector_lane",
-          "label": "vector_lane → vector_lane",
+          "name": "matrix_lane → L1",
+          "source": "proc:matrix_lane",
+          "target": "mem:l1",
+          "source_name": "matrix_lane",
+          "target_name": "L1",
+          "label": "matrix_lane → L1",
           "direction": "directional"
         },
         {
@@ -944,6 +1373,28 @@
           "source_name": "matrix_lane",
           "target_name": "matrix_lane",
           "label": "matrix_lane → matrix_lane",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:vector_lane:l1",
+          "kind": "resource_dependency",
+          "name": "vector_lane → L1",
+          "source": "proc:vector_lane",
+          "target": "mem:l1",
+          "source_name": "vector_lane",
+          "target_name": "L1",
+          "label": "vector_lane → L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:vector_lane:vector_lane",
+          "kind": "resource_dependency",
+          "name": "vector_lane → vector_lane",
+          "source": "proc:vector_lane",
+          "target": "res:vector_lane",
+          "source_name": "vector_lane",
+          "target_name": "vector_lane",
+          "label": "vector_lane → vector_lane",
           "direction": "directional"
         }
       ]
