@@ -11,8 +11,6 @@ fn constraint(input: &str) -> ConstraintExpr {
 }
 
 // ── Perf model helpers ────────────────────────────────────────────────────────
-// These are kept as functions because they contain match dispatch or named
-// scenario logic that would be hard to read inlined.
 
 fn vector_func_perf_model(func: &str) -> FuncPerfModel {
     let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
@@ -157,20 +155,16 @@ pub fn single_core() -> Architecture {
 
     // ── Memory ────────────────────────────────────────────────────────────────
     // L1 cache: 16 banks, each 128KB (1024 blocks × 128 bytes).
-    let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-        SizeExpr::Const(16),
-        SizeExpr::Const(5856),
-    ))
-    .scale(dim_bank.as_slice())
-    .with_name("L1");
+    let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
+        .scale(dim_bank.as_slice())
+        .with_name("L1");
 
     // ── Vector lane ───────────────────────────────────────────────────────────
     // Per-function perf models: all ops use symbol L (vector length).
     // vec_max/sum/add/mul → throughput 1024; exp/powf → 7; div → 6;
     // sub → 4; cmpf_ogt/select → 8. All with fixed latency 1.
-    let vector_lane_func =
-        MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
-            .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
+    let vector_lane_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+        .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
     let vector_lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
     let vector_lane_perf: Vec<FuncPerfModel> = vector_lane_func
         .functions
@@ -192,9 +186,8 @@ pub fn single_core() -> Architecture {
     // matmul_*/batch_matmul_* use shape-aware throughput scenarios.
     // vec_vsum_*/vec_vmax_*: symbols P, R; vec_max1_*: symbol L.
     // elementwise_add_f16: M×N, throughput 43; elementwise_mul_f16: throughput 15.
-    let matrix_lane_func =
-        MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
-            .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
+    let matrix_lane_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
+        .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
     let matrix_lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
     let matrix_lane_perf: Vec<FuncPerfModel> = matrix_lane_func
         .functions
@@ -256,8 +249,12 @@ pub fn single_core() -> Architecture {
     let router_id = graph.add_router(&core_router);
 
     let mem_id = graph.memory_ref("L1").expect("L1 memory node");
-    let mat_id = graph.processor_ref("matrix_lane").expect("matrix_lane node");
-    let vec_id = graph.processor_ref("vector_lane").expect("vector_lane node");
+    let mat_id = graph
+        .processor_ref("matrix_lane")
+        .expect("matrix_lane node");
+    let vec_id = graph
+        .processor_ref("vector_lane")
+        .expect("vector_lane node");
 
     let router_node = graph.get_node(&router_id).unwrap().clone();
     let mem_node = graph.get_node(&mem_id).unwrap().clone();
@@ -304,12 +301,10 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     // ── Memory ────────────────────────────────────────────────────────────────
     // DRAM: 8 channels, each modeled as one memory bank.
-    let dram = MemoryRegion::bank(
-        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
-            .with_name("DRAM_bank"),
-    )
-    .scale(dim_dram_channel.as_slice())
-    .with_name("DRAM");
+    let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
+        .with_name("DRAM_bank")
+        .scale(dim_dram_channel.as_slice())
+        .with_name("DRAM");
 
     // ── Mesh ──────────────────────────────────────────────────────────────────
     // Scale a single core across the 8×8 grid. No explicit inter-core
@@ -356,9 +351,8 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm.validate().expect("bcst perf model should validate");
         pm
     };
-    let noc0_func =
-        MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")
-            .expect("dram_l1_noc0.mlir should parse");
+    let noc0_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")
+        .expect("dram_l1_noc0.mlir should parse");
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
         .with_regions(vec![(dram.clone(), array_l1.clone())])
@@ -399,9 +393,8 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm.validate().expect("unicast perf model should validate");
         pm
     };
-    let noc1_func =
-        MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir")
-            .expect("dram_l1_noc1.mlir should parse");
+    let noc1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir")
+        .expect("dram_l1_noc1.mlir should parse");
     let noc1 = DataMover::builder()
         .named("dram_l1_noc1")
         .with_regions(vec![
@@ -429,8 +422,12 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     let router_id = graph.add_router(&Router::new("mesh_dram_router", 3));
     let mesh_id = graph.processor_ref("mesh").expect("mesh node");
-    let noc0_id = graph.data_mover_ref("dram_l1_noc0").expect("dram_l1_noc0 node");
-    let noc1_id = graph.data_mover_ref("dram_l1_noc1").expect("dram_l1_noc1 node");
+    let noc0_id = graph
+        .data_mover_ref("dram_l1_noc0")
+        .expect("dram_l1_noc0 node");
+    let noc1_id = graph
+        .data_mover_ref("dram_l1_noc1")
+        .expect("dram_l1_noc1 node");
     let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
 
     let router_node = graph.get_node(&router_id).expect("router node").clone();

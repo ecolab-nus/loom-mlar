@@ -910,26 +910,20 @@ fn processors_to_json(elem: &Architecture) -> GraphProcessors {
 mod tests {
     use super::{architecture_to_graph_json, architecture_to_graph_json_value};
     use crate::arch::{
-        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Architecture, Dimension, MemoryBank,
-        MemoryRegion, MeshNetworkInterface, Processor, Router, ScaleOutNetwork, SizeExpr,
+        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Architecture, Dimension, MemoryRegion,
+        MeshNetworkInterface, Processor, Router, ScaleOutNetwork, SizeExpr,
     };
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     #[test]
     fn serializes_architecture_graph_schema() {
         let core_dim = Dimension::new_int("core", 4);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(512),
-        ))
-        .scale(core_dim.as_slice())
-        .with_name("l1");
-        let l2 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(1024),
-        ))
-        .scale(core_dim.as_slice())
-        .with_name("l2");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
+            .scale(core_dim.as_slice())
+            .with_name("l1");
+        let l2 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(1024))
+            .scale(core_dim.as_slice())
+            .with_name("l2");
         let lane = Processor::new("lane").replicate(core_dim.as_slice());
         let map = AffineMap::identity(core_dim.as_slice());
 
@@ -967,12 +961,9 @@ mod tests {
     #[test]
     fn scaled_architecture_has_no_intra_core_graph() {
         let bank_dim = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(512),
-        ))
-        .scale(bank_dim.as_slice())
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
+            .scale(bank_dim.as_slice())
+            .with_name("l1");
         let lane = Processor::new("lane").into_elem();
 
         let core: Architecture = ArchGraph::builder("core")
@@ -1001,12 +992,9 @@ mod tests {
     fn serializes_many_to_one_map_relation() {
         let dim_x = Dimension::new_int("x", 4);
         let map_dim = Dimension::new_int("bank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(512),
-        ))
-        .scale(map_dim.as_slice())
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
+            .scale(map_dim.as_slice())
+            .with_name("l1");
         let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
 
         let io =
@@ -1062,12 +1050,9 @@ mod tests {
     fn serializes_ring_topology() {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(512),
-        ))
-        .scale(&[x.clone(), y.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
+            .scale(&[x.clone(), y.clone()])
+            .with_name("l1");
         let map = AffineMap::new(
             &[x.clone(), y.clone()],
             &[x.clone(), y.clone()],
@@ -1108,11 +1093,7 @@ mod tests {
     fn serializes_resource_nodes_and_dependency_edges() {
         use crate::arch::resource::Resource;
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(512),
-        ))
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512)).with_name("l1");
 
         let mut matrix_lane = Processor::new("matrix_lane");
         matrix_lane.resources = vec![Resource::quantitative("l1_port", 2)];

@@ -288,9 +288,7 @@ fn memory_region_detail(region: &MemoryRegion) -> GraphMemoryRegion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::{
-        ArchGraph, Dimension, MemoryBank, MemoryRegion, Processor, Router, SizeExpr,
-    };
+    use crate::arch::{ArchGraph, Dimension, MemoryRegion, Processor, Router, SizeExpr};
 
     #[test]
     fn hierarchy_captures_unit_processor() {
@@ -304,11 +302,7 @@ mod tests {
 
     #[test]
     fn hierarchy_captures_graph_with_router() {
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024)).with_name("L1");
         let lane = Processor::new("lane").into_elem();
         let router = Router::new("xbar", 1);
 
@@ -337,11 +331,7 @@ mod tests {
 
     #[test]
     fn hierarchy_captures_scaled_architecture() {
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024)).with_name("L1");
         let lane = Processor::new("lane").into_elem();
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -381,12 +371,9 @@ mod tests {
         use crate::math::{AffineExpr, AffineMap, Expr};
 
         let dim_bank = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(dim_bank.as_slice())
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(dim_bank.as_slice())
+            .with_name("L1");
 
         let matrix_lane = Processor::new("matrix_lane").into_elem();
         let vector_lane = Processor::new("vector_lane").into_elem();

@@ -71,4 +71,3 @@ impl Default for SymbolicMapping {
         Self::new()
     }
 }
-

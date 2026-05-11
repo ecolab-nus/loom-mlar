@@ -7,19 +7,14 @@ fn region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
     let dim_x = Dimension::new_int("x", 8);
     let dim_y = Dimension::new_int("y", 8);
     let dim_dram_channel = Dimension::new_int("dram_channel", 8);
-    let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-        SizeExpr::Const(16),
-        SizeExpr::Const(5856),
-    ))
-    .scale(dim_bank.as_slice())
-    .with_name("L1");
+    let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
+        .scale(dim_bank.as_slice())
+        .with_name("L1");
     let array_l1 = l1.scale(&[dim_x, dim_y]).with_name("array_L1");
-    let dram = MemoryRegion::bank(
-        MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
-            .with_name("DRAM_bank"),
-    )
-    .scale(dim_dram_channel.as_slice())
-    .with_name("DRAM");
+    let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
+        .with_name("DRAM_bank")
+        .scale(dim_dram_channel.as_slice())
+        .with_name("DRAM");
     vec![(dram, array_l1)]
 }
 
@@ -34,9 +29,7 @@ fn processor_from_module_rejects_name_mismatch_with_mlir_module() {
     let err = Processor::from_module("wrong_name", module, perf_models)
         .expect_err("name mismatch should fail before interface validation");
     assert!(
-        err.contains(
-            "Processor name 'wrong_name' does not match MLIR module name 'vector_lane'"
-        )
+        err.contains("Processor name 'wrong_name' does not match MLIR module name 'vector_lane'")
     );
 }
 

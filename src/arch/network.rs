@@ -627,7 +627,7 @@ fn is_non_zero_const(expr: &AffineExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings};
-    use crate::arch::{Dimension, MemoryBank, MemoryRegion, Processor, SizeExpr};
+    use crate::arch::{Dimension, MemoryRegion, Processor, SizeExpr};
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn make_io(dims: &[Dimension], bw: i64) -> MeshNetworkInterface {
@@ -653,12 +653,9 @@ mod tests {
         let dy = Dimension::new_int("y", 8);
         let map = AffineMap::identity(&[dx.clone(), dy.clone()]);
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(&[dx.clone(), dy.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(&[dx.clone(), dy.clone()])
+            .with_name("l1");
 
         let io = make_io(&[dx.clone(), dy.clone()], 64);
         let link = ScaleOutNetwork::mesh("torus")
@@ -677,12 +674,9 @@ mod tests {
         let bank = Dimension::new_int("bank", 16);
         let map = AffineMap::new(bank.as_slice(), &[], vec![]);
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(bank.as_slice())
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(bank.as_slice())
+            .with_name("l1");
 
         let io = make_io(bank.as_slice(), 64);
         let link = ScaleOutNetwork::mesh("reduce")
@@ -712,12 +706,9 @@ mod tests {
             ],
         );
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(&[x.clone(), y.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(&[x.clone(), y.clone()])
+            .with_name("l1");
 
         let io = make_io(&[x.clone(), y.clone()], 64);
         let link = ScaleOutNetwork::mesh("ring")
@@ -757,12 +748,9 @@ mod tests {
             ],
         );
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(&[x.clone(), y.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(&[x.clone(), y.clone()])
+            .with_name("l1");
 
         let io = make_io(&[x.clone(), y.clone()], 64);
         let link = ScaleOutNetwork::mesh("torus")
@@ -807,12 +795,9 @@ mod tests {
             ],
         );
 
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(&[x.clone(), y.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(&[x.clone(), y.clone()])
+            .with_name("l1");
 
         let io = make_io(&[x.clone(), y.clone()], 64).with_data_movers(vec![
             Processor::new("m0").into(),
@@ -839,12 +824,9 @@ mod tests {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
         let map = AffineMap::identity(&[x.clone(), y.clone()]);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(&[x.clone(), y.clone()])
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(&[x.clone(), y.clone()])
+            .with_name("l1");
 
         let io = make_io(&[x.clone(), y.clone()], 64);
         let link = ScaleOutNetwork::mesh("torus")
@@ -862,12 +844,9 @@ mod tests {
     fn rejects_mem_region_if_it_conflicts_with_explicit_dimensions() {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
-        let bad_region = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(x.as_slice())
-        .with_name("l1");
+        let bad_region = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(x.as_slice())
+            .with_name("l1");
 
         let _ = ScaleOutNetwork::mesh("bad_mesh")
             .dimensions(&[x, y])
@@ -879,12 +858,9 @@ mod tests {
     fn rejects_map_if_it_conflicts_with_region_dimensions() {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(x.as_slice())
-        .with_name("l1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(x.as_slice())
+            .with_name("l1");
         let bad_map = AffineMap::identity(y.as_slice());
 
         let _ = ScaleOutNetwork::mesh("bad_mesh")

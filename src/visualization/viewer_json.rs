@@ -86,19 +86,16 @@ mod tests {
     use super::*;
     use crate::arch::resource::Resource;
     use crate::arch::{
-        ArchEdgeAttr, ArchGraph, Dimension, MemoryBank, MemoryRegion, MeshNetworkInterface,
-        Processor, Router, ScaleOutNetwork, SizeExpr,
+        ArchEdgeAttr, ArchGraph, Dimension, MemoryRegion, MeshNetworkInterface, Processor, Router,
+        ScaleOutNetwork, SizeExpr,
     };
     use crate::math::{AffineExpr, AffineMap, Expr};
 
     fn build_core_with_edges() -> (Architecture, MemoryRegion) {
         let dim_bank = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(dim_bank.as_slice())
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(dim_bank.as_slice())
+            .with_name("L1");
 
         let mut matrix_lane = Processor::new("matrix_lane");
         matrix_lane.resources = vec![Resource::quantitative("l1_read_port", 2)];
@@ -140,11 +137,7 @@ mod tests {
 
     #[test]
     fn viewer_json_has_both_hierarchy_and_graphs() {
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024)).with_name("L1");
         let lane = Processor::new("lane").into_elem();
         let router = Router::new("xbar", 1);
 

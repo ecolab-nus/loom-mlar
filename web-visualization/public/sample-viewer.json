@@ -713,17 +713,6 @@
             "side": 1
           },
           {
-            "id": "resdep:vector_lane:vector_lane",
-            "kind": "resource_dependency",
-            "name": "vector_lane → vector_lane",
-            "source": "proc:vector_lane",
-            "target": "res:vector_lane",
-            "source_name": "vector_lane",
-            "target_name": "vector_lane",
-            "label": "vector_lane → vector_lane",
-            "direction": "directional"
-          },
-          {
             "id": "resdep:matrix_lane:matrix_lane",
             "kind": "resource_dependency",
             "name": "matrix_lane → matrix_lane",
@@ -732,6 +721,17 @@
             "source_name": "matrix_lane",
             "target_name": "matrix_lane",
             "label": "matrix_lane → matrix_lane",
+            "direction": "directional"
+          },
+          {
+            "id": "resdep:vector_lane:vector_lane",
+            "kind": "resource_dependency",
+            "name": "vector_lane → vector_lane",
+            "source": "proc:vector_lane",
+            "target": "res:vector_lane",
+            "source_name": "vector_lane",
+            "target_name": "vector_lane",
+            "label": "vector_lane → vector_lane",
             "direction": "directional"
           }
         ]
@@ -928,17 +928,6 @@
           "side": 1
         },
         {
-          "id": "resdep:vector_lane:vector_lane",
-          "kind": "resource_dependency",
-          "name": "vector_lane → vector_lane",
-          "source": "proc:vector_lane",
-          "target": "res:vector_lane",
-          "source_name": "vector_lane",
-          "target_name": "vector_lane",
-          "label": "vector_lane → vector_lane",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:matrix_lane:matrix_lane",
           "kind": "resource_dependency",
           "name": "matrix_lane → matrix_lane",
@@ -947,6 +936,17 @@
           "source_name": "matrix_lane",
           "target_name": "matrix_lane",
           "label": "matrix_lane → matrix_lane",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:vector_lane:vector_lane",
+          "kind": "resource_dependency",
+          "name": "vector_lane → vector_lane",
+          "source": "proc:vector_lane",
+          "target": "res:vector_lane",
+          "source_name": "vector_lane",
+          "target_name": "vector_lane",
+          "label": "vector_lane → vector_lane",
           "direction": "directional"
         }
       ]

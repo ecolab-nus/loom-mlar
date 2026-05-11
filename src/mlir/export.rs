@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn graph_emits_compose() {
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
         let lane = Processor::new("lane").into_elem();
         let arch: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn memory_resources_not_emitted_as_adl_resource() {
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
         let lane = Processor::new("lane")
             .with_resources(vec![Resource::exclusive("alu")])
             .into_elem();
@@ -708,12 +708,9 @@ mod tests {
     #[test]
     fn shared_dims_emitted_once() {
         let dim_x = Dimension::new_int("x", 4);
-        let l1 = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(64),
-            SizeExpr::Const(128),
-        ))
-        .scale(dim_x.as_slice())
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(128))
+            .scale(dim_x.as_slice())
+            .with_name("L1");
         let lane = Processor::new("p").into_elem();
         let core: Architecture = ArchGraph::builder("core")
             .mem(&l1)

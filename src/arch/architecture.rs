@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn arch_graph_builder_materializes_memory_and_architecture_nodes() {
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("l1");
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("l1");
         let lane = Processor::new("lane").into_elem();
         let graph: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn auto_generated_ids_use_component_names() {
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
         let lane = Processor::new("lane").into_elem();
         let graph: Architecture = ArchGraph::builder("core")
             .mem(&l1)
@@ -493,7 +493,7 @@ mod tests {
     fn builder_processor_adds_connectivity_resources_and_data_movers() {
         let x = Dimension::new_int("x", 8);
         let lane = Processor::new("lane").into_elem();
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)))
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024)))
             .scale(x.as_slice())
             .with_name("L1");
         let io = MeshNetworkInterface::new(AffineMap::identity(x.as_slice()), Expr::Const(64))
@@ -526,7 +526,7 @@ mod tests {
         let nbank = Dimension::new_int("nbank", 16);
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 4);
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)))
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024)))
             .scale(nbank.as_slice())
             .with_name("L1");
         let core: Architecture = ArchGraph::builder("core").mem(&l1).build().into();
@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn builder_memory_bank_auto_registers_resource() {
-        let l1 = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(2048)).with_name("L1"));
+        let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(2048)).with_name("L1"));
         let graph = ArchGraph::builder("core").mem(&l1).build();
 
         let mem_id = graph.memory_ref("L1").expect("L1 memory node should exist");

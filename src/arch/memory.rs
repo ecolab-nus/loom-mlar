@@ -69,17 +69,19 @@ impl MemoryBank {
 }
 
 impl MemoryRegion {
-    /// Create a bank memory region.
-    pub fn bank(bank: MemoryBank) -> Self {
+    /// Create a bank memory region from block_size and num_blocks.
+    pub fn bank(block_size: SizeExpr, num_blocks: SizeExpr) -> Self {
+        MemoryRegion::Bank(MemoryBank::from_blocks(block_size, num_blocks))
+    }
+
+    /// Wrap an existing memory bank as a memory region.
+    pub fn from_bank(bank: MemoryBank) -> Self {
         MemoryRegion::Bank(bank)
     }
 
     /// Create a convenience leaf with concrete block sizes.
     pub fn leaf_concrete(block_size: u64, num_blocks: u64) -> Self {
-        MemoryRegion::Bank(MemoryBank::from_blocks(
-            SizeExpr::from(block_size),
-            SizeExpr::from(num_blocks),
-        ))
+        MemoryRegion::bank(SizeExpr::from(block_size), SizeExpr::from(num_blocks))
     }
 
     /// Wrap this region in an Array with the given dimensions.
@@ -234,22 +236,19 @@ mod tests {
     #[test]
     fn test_total_size_bytes() {
         let dim = Dimension::new_int("nbank", 16);
-        let region = MemoryRegion::bank(MemoryBank::from_blocks(
-            SizeExpr::Const(128),
-            SizeExpr::Const(1024),
-        ))
-        .scale(dim.as_slice())
-        .with_name("L1");
+        let region = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+            .scale(dim.as_slice())
+            .with_name("L1");
 
         // 16 banks × 128 bytes/block × 1024 blocks = 2 MB
         assert_eq!(region.total_size_bytes(), Some(16 * 128 * 1024));
 
         // Single bank
-        let bank = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(4096)));
+        let bank = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(4096)));
         assert_eq!(bank.total_size_bytes(), Some(4096));
 
         // Symbolic → None
-        let sym_bank = MemoryRegion::bank(MemoryBank::new(SizeExpr::sym("SIZE")));
+        let sym_bank = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::sym("SIZE")));
         assert_eq!(sym_bank.total_size_bytes(), None);
     }
 
@@ -277,7 +276,8 @@ mod tests {
 
     #[test]
     fn test_generate_resource_for_bank() {
-        let region = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(4096)).with_name("L1"));
+        let region =
+            MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(4096)).with_name("L1"));
         let resource = region
             .generate_resource()
             .expect("bank should generate a resource");
@@ -288,9 +288,10 @@ mod tests {
     #[test]
     fn test_generate_resource_for_array_errors() {
         let dim = Dimension::new_int("n", 4);
-        let array = MemoryRegion::bank(MemoryBank::new(SizeExpr::Const(1024)).with_name("bank"))
-            .scale(dim.as_slice())
-            .with_name("L1");
+        let array =
+            MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024)).with_name("bank"))
+                .scale(dim.as_slice())
+                .with_name("L1");
         let err = array
             .generate_resource()
             .expect_err("array should not generate resources");

@@ -1300,31 +1300,25 @@ mod tests {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
         let nbank = Dimension::new_int("nbank", 16);
-        let dram = MemoryRegion::bank(
-            crate::MemoryBank::from_blocks(SizeExpr::Const(8192), SizeExpr::Const(196608))
-                .with_name("DRAM_bank"),
-        )
-        .scale(dram_channel.as_slice())
-        .with_name("DRAM");
-        let l1 = MemoryRegion::bank(
-            crate::MemoryBank::from_blocks(SizeExpr::Const(16), SizeExpr::Const(5856))
-                .with_name("L1_bank"),
-        )
-        .scale(nbank.as_slice())
-        .with_name("L1")
-        .scale(&[x, y])
-        .with_name("array_L1");
+        let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
+            .with_name("DRAM_bank")
+            .scale(dram_channel.as_slice())
+            .with_name("DRAM");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
+            .with_name("L1_bank")
+            .scale(nbank.as_slice())
+            .with_name("L1")
+            .scale(&[x, y])
+            .with_name("array_L1");
         vec![(dram, l1)]
     }
 
     fn local_l1_region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
         let nbank = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(
-            crate::MemoryBank::from_blocks(SizeExpr::Const(16), SizeExpr::Const(5856))
-                .with_name("L1_bank"),
-        )
-        .scale(nbank.as_slice())
-        .with_name("L1");
+        let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
+            .with_name("L1_bank")
+            .scale(nbank.as_slice())
+            .with_name("L1");
         vec![(l1.clone(), l1)]
     }
 

@@ -212,8 +212,7 @@ fn test_2d_mesh_torus_perf_models() {
             !mover
                 .resources
                 .iter()
-                .any(|r| r.id().as_str() == "L1_torus_h"
-                    || r.id().as_str() == "L1_torus_v"),
+                .any(|r| r.id().as_str() == "L1_torus_h" || r.id().as_str() == "L1_torus_v"),
             "{mover_name} should not include torus link resources"
         );
     }
@@ -281,9 +280,7 @@ fn test_2d_mesh_torus_perf_models() {
     );
 
     // Verify NoC1's gather function exposes gather_x and gather_y
-    let gather_func = noc1
-        .get_function("l1_gather")
-        .expect("l1_gather binding");
+    let gather_func = noc1.get_function("l1_gather").expect("l1_gather binding");
     let gather_syms = &gather_func.func.symbols;
     for sym in ["M", "N", "gather_x", "gather_y"] {
         assert!(
@@ -414,10 +411,7 @@ fn test_2d_mesh_torus() {
     // === Verify L1_torus_h / L1_torus_v resources are gone from the system ===
     for stale in ["L1_torus_h", "L1_torus_v"] {
         assert!(
-            !system_graph
-                .nodes
-                .iter()
-                .any(|n| n.name() == Some(stale)),
+            !system_graph.nodes.iter().any(|n| n.name() == Some(stale)),
             "system graph should not include the {stale} resource"
         );
     }
