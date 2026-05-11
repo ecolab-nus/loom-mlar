@@ -523,7 +523,7 @@ module @arch_system {
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
-    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1]
     return
   }
 

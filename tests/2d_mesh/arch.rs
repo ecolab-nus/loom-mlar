@@ -165,21 +165,17 @@ pub fn single_core() -> Architecture {
     // sub → 4; cmpf_ogt/select → 8. All with fixed latency 1.
     let vector_lane_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
-    let vector_lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32])];
     let vector_lane_perf: Vec<FuncPerfModel> = vector_lane_func
         .functions
         .iter()
         .map(|op| vector_func_perf_model(op.name.as_str()))
         .collect();
-    let mut vector_lane_proc = ComputeProcessor::builder()
+    let vector_lane_proc = ComputeProcessor::builder()
         .named("vector_lane")
         .with_regions(vec![(l1.clone(), l1.clone())])
         .from_module(vector_lane_func, vector_lane_perf)
         .expect("vector_lane processor should link functionality and perf")
         .into_processor();
-    for fp in &mut vector_lane_proc.functions {
-        fp.hardware_properties = vector_lane_shape.clone();
-    }
     let vector_lane = vector_lane_proc.into_elem();
 
     // ── Matrix lane ───────────────────────────────────────────────────────────
@@ -188,7 +184,6 @@ pub fn single_core() -> Architecture {
     // elementwise_add_f16: M×N, throughput 43; elementwise_mul_f16: throughput 15.
     let matrix_lane_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/matrix_lane.mlir should parse");
-    let matrix_lane_shape = vec![HardwareProperty::LaneComputeShape(vec![32, 32, 32])];
     let matrix_lane_perf: Vec<FuncPerfModel> = matrix_lane_func
         .functions
         .iter()
@@ -220,15 +215,12 @@ pub fn single_core() -> Architecture {
             other => matrix_func_perf_model(other),
         })
         .collect();
-    let mut matrix_lane_proc = ComputeProcessor::builder()
+    let matrix_lane_proc = ComputeProcessor::builder()
         .named("matrix_lane")
         .with_regions(vec![(l1.clone(), l1.clone())])
         .from_module(matrix_lane_func, matrix_lane_perf)
         .expect("matrix_lane processor should link functionality and perf")
         .into_processor();
-    for fp in &mut matrix_lane_proc.functions {
-        fp.hardware_properties = matrix_lane_shape.clone();
-    }
     let matrix_lane = matrix_lane_proc.into_elem();
 
     // ── Core graph ────────────────────────────────────────────────────────────

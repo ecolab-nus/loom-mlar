@@ -30,7 +30,7 @@ pub use network::{
 pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
-    FunctionProcessor, HardwareProperty, Module as ProcessorModule, Processor,
+    FunctionProcessor, Module as ProcessorModule, Processor,
 };
 pub use resource::{Resource, ResourceId};
 pub use size_dim::{Dimension, SizeExpr, Sym};
