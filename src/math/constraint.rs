@@ -89,6 +89,20 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn constraint_symbols_are_sorted() {
+        let constraint =
+            ConstraintExpr::parse("Z > A && divisible(Z, B)").expect("constraint should parse");
+        assert_eq!(
+            constraint.symbols(),
+            vec![
+                super::Sym::new("A"),
+                super::Sym::new("B"),
+                super::Sym::new("Z")
+            ]
+        );
+    }
 }
 
 impl ConstraintExpr {
@@ -162,10 +176,33 @@ impl ConstraintExpr {
         }
     }
 
-    /// Collect all symbols referenced in this constraint's expressions.
+    /// Return the set of symbols referenced in this constraint.
+    ///
+    /// This walks all arithmetic expressions contained in the constraint,
+    /// including comparison operands and predicate arguments. The result is a
+    /// [`HashSet`], so duplicates are removed and iteration order is
+    /// unspecified. Use this when the caller needs membership tests, set
+    /// operations, or does not care about presentation order.
+    ///
+    /// For a deterministic, sorted vector form, use [`ConstraintExpr::symbols`].
     pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
+        syms
+    }
+
+    /// Return the symbols referenced in this constraint in deterministic order.
+    ///
+    /// This walks all arithmetic expressions contained in the constraint,
+    /// removes duplicates, and returns the symbols sorted by name. Use this
+    /// when a stable order is needed for serialization, generated model fields,
+    /// assertions, or user-facing output.
+    ///
+    /// If the caller needs set operations or membership checks, use
+    /// [`ConstraintExpr::free_symbols`] instead.
+    pub fn symbols(&self) -> Vec<Sym> {
+        let mut syms: Vec<Sym> = self.free_symbols().into_iter().collect();
+        syms.sort();
         syms
     }
 
@@ -211,7 +248,7 @@ impl ConstraintExpr {
         }
     }
 
-    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
+    pub fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             ConstraintExpr::True | ConstraintExpr::False => {}
             ConstraintExpr::And(cs) | ConstraintExpr::Or(cs) => {

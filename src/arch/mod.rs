@@ -27,7 +27,9 @@ pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{
     MeshLink, MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings,
 };
-pub use perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr};
+pub use perf::{
+    FuncPerfModel, FuncPerfModelBuilder, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr,
+};
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
     FunctionProcessor, Module as ProcessorModule, Processor,

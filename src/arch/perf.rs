@@ -82,7 +82,28 @@ pub struct FuncPerfModel {
     pub scenarios: Vec<PerfScenario>,
 }
 
+/// Builder for [`FuncPerfModel`].
+///
+/// If `constraints` is not provided, it defaults to [`ConstraintExpr::True`].
+/// If `symbols` is not provided, symbols are inferred from the global
+/// constraints, scenario constraints, and scenario time costs.
+#[derive(Clone, Debug, Default)]
+pub struct FuncPerfModelBuilder {
+    symbols: Option<Vec<Sym>>,
+    constraints: Option<ConstraintExpr>,
+    scenarios: Vec<PerfScenario>,
+}
+
 impl SimpleTimeCost {
+    /// Construct a simple time cost: `fixed_latency + volume / throughput`.
+    pub fn new(fixed_latency: Expr, volume: Expr, throughput: Expr) -> Self {
+        SimpleTimeCost {
+            fixed_latency,
+            volume,
+            throughput,
+        }
+    }
+
     /// Concretize into a single expression: `fixed_latency + volume / throughput`.
     pub fn concretize(&self) -> Expr {
         Expr::add(
@@ -105,6 +126,18 @@ impl SimpleTimeCost {
             volume: self.volume.substitute(mappings),
             throughput: self.throughput.substitute(mappings),
         }
+    }
+}
+
+impl From<SimpleTimeCost> for TimeCost {
+    fn from(value: SimpleTimeCost) -> Self {
+        TimeCost::Simple(value)
+    }
+}
+
+impl From<Expr> for TimeCost {
+    fn from(value: Expr) -> Self {
+        TimeCost::Concrete(value)
     }
 }
 
@@ -150,10 +183,39 @@ impl TimeCost {
     }
 }
 
+impl PerfScenario {
+    /// Construct a scenario with no additional constraints.
+    pub fn new(time_cost: impl Into<TimeCost>) -> Self {
+        PerfScenario {
+            constraints: ConstraintExpr::True,
+            time_cost: time_cost.into(),
+        }
+    }
+
+    /// Construct a scenario with explicit applicability constraints.
+    pub fn with_constraints(constraints: ConstraintExpr, time_cost: impl Into<TimeCost>) -> Self {
+        PerfScenario {
+            constraints,
+            time_cost: time_cost.into(),
+        }
+    }
+
+    /// Collect all symbols referenced by this scenario.
+    pub fn collect_symbols(&self, out: &mut HashSet<Sym>) {
+        self.constraints.collect_symbols(out);
+        self.time_cost.collect_symbols(out);
+    }
+}
+
 /// Symbolic schedule time expression.
 pub type TimeExpr = Expr;
 
 impl FuncPerfModel {
+    /// Create a performance model builder.
+    pub fn builder() -> FuncPerfModelBuilder {
+        FuncPerfModelBuilder::default()
+    }
+
     /// Create a trivial perf model: no symbols, no scenarios.
     pub fn trivial() -> Self {
         FuncPerfModel {
@@ -197,6 +259,18 @@ impl FuncPerfModel {
         self.scenarios.len()
     }
 
+    /// Infer all symbols used by a model's constraints and scenarios.
+    pub fn infer_symbols(constraints: &ConstraintExpr, scenarios: &[PerfScenario]) -> Vec<Sym> {
+        let mut used = HashSet::new();
+        constraints.collect_symbols(&mut used);
+        for scenario in scenarios {
+            scenario.collect_symbols(&mut used);
+        }
+        let mut symbols: Vec<Sym> = used.into_iter().collect();
+        symbols.sort();
+        symbols
+    }
+
     fn validate_with_extra_symbols(&self, mut used: HashSet<Sym>) -> Result<(), Vec<Sym>> {
         let declared: HashSet<Sym> = self.symbols.iter().cloned().collect();
 
@@ -206,11 +280,82 @@ impl FuncPerfModel {
             used.extend(scenario.constraints.free_symbols());
         }
 
-        let undeclared: Vec<Sym> = used.difference(&declared).cloned().collect();
+        let mut undeclared: Vec<Sym> = used.difference(&declared).cloned().collect();
+        undeclared.sort();
         if undeclared.is_empty() {
             Ok(())
         } else {
             Err(undeclared)
+        }
+    }
+}
+
+impl FuncPerfModelBuilder {
+    /// Declare symbols explicitly instead of inferring them from expressions.
+    pub fn symbols<I, S>(mut self, symbols: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<Sym>,
+    {
+        self.symbols = Some(symbols.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Set global constraints. Defaults to [`ConstraintExpr::True`].
+    pub fn constraints(mut self, constraints: ConstraintExpr) -> Self {
+        self.constraints = Some(constraints);
+        self
+    }
+
+    /// Add one scenario.
+    pub fn scenario(mut self, scenario: PerfScenario) -> Self {
+        self.scenarios.push(scenario);
+        self
+    }
+
+    /// Add multiple scenarios.
+    pub fn scenarios<I>(mut self, scenarios: I) -> Self
+    where
+        I: IntoIterator<Item = PerfScenario>,
+    {
+        self.scenarios.extend(scenarios);
+        self
+    }
+
+    /// Add an unconstrained simple-cost scenario.
+    pub fn simple_scenario(mut self, time_cost: SimpleTimeCost) -> Self {
+        self.scenarios.push(PerfScenario::new(time_cost));
+        self
+    }
+
+    /// Add an unconstrained simple-cost scenario from its component expressions.
+    pub fn simple_time_cost(self, fixed_latency: Expr, volume: Expr, throughput: Expr) -> Self {
+        self.simple_scenario(SimpleTimeCost::new(fixed_latency, volume, throughput))
+    }
+
+    /// Add a constrained scenario from a time cost.
+    pub fn scenario_with_constraints(
+        mut self,
+        constraints: ConstraintExpr,
+        time_cost: impl Into<TimeCost>,
+    ) -> Self {
+        self.scenarios
+            .push(PerfScenario::with_constraints(constraints, time_cost));
+        self
+    }
+
+    /// Build the performance model, inferring symbols when they were not
+    /// declared explicitly.
+    pub fn build(self) -> FuncPerfModel {
+        let constraints = self.constraints.unwrap_or(ConstraintExpr::True);
+        let symbols = self
+            .symbols
+            .unwrap_or_else(|| FuncPerfModel::infer_symbols(&constraints, &self.scenarios));
+
+        FuncPerfModel {
+            symbols,
+            constraints,
+            scenarios: self.scenarios,
         }
     }
 }
@@ -268,6 +413,39 @@ mod tests {
         let err = model.validate().unwrap_err();
         assert_eq!(err.len(), 1);
         assert_eq!(err[0], Sym::new("K"));
+    }
+
+    #[test]
+    fn test_builder_infers_symbols_and_defaults_true_constraints() {
+        let model = FuncPerfModel::builder()
+            .simple_scenario(SimpleTimeCost::new(
+                Expr::Const(1),
+                Expr::mul(Expr::sym("M"), Expr::sym("N")),
+                Expr::sym("T"),
+            ))
+            .build();
+
+        assert_eq!(model.symbols, Sym::from_names(["M", "N", "T"]));
+        assert_eq!(model.constraints, ConstraintExpr::True);
+        assert_eq!(model.scenarios[0].constraints, ConstraintExpr::True);
+        assert!(model.validate().is_ok());
+    }
+
+    #[test]
+    fn test_builder_infers_symbols_from_constraints_and_time_cost() {
+        let model = FuncPerfModel::builder()
+            .constraints(ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)))
+            .scenario_with_constraints(
+                ConstraintExpr::Divisible {
+                    x: Expr::sym("N"),
+                    by: Expr::Const(16),
+                },
+                SimpleTimeCost::new(Expr::Const(10), Expr::sym("K"), Expr::sym("TP")),
+            )
+            .build();
+
+        assert_eq!(model.symbols, Sym::from_names(["K", "M", "N", "TP"]));
+        assert!(model.validate().is_ok());
     }
 
     #[test]

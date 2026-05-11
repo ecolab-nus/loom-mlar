@@ -12,6 +12,28 @@ fn constraint(input: &str) -> ConstraintExpr {
 
 // ── Perf model helpers ────────────────────────────────────────────────────────
 
+fn simple_cost(fixed_latency: &str, volume: &str, throughput: &str) -> SimpleTimeCost {
+    SimpleTimeCost::new(expr(fixed_latency), expr(volume), expr(throughput))
+}
+
+fn scenario(
+    constraints: &str,
+    fixed_latency: &str,
+    volume: &str,
+    throughput: &str,
+) -> PerfScenario {
+    PerfScenario::with_constraints(
+        constraint(constraints),
+        simple_cost(fixed_latency, volume, throughput),
+    )
+}
+
+fn simple_perf_model(fixed_latency: &str, volume: &str, throughput: &str) -> FuncPerfModel {
+    FuncPerfModel::builder()
+        .simple_time_cost(expr(fixed_latency), expr(volume), expr(throughput))
+        .build()
+}
+
 fn vector_func_perf_model(func: &str) -> FuncPerfModel {
     let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
     let (fixed_latency, throughput) = match op_prefix {
@@ -24,123 +46,62 @@ fn vector_func_perf_model(func: &str) -> FuncPerfModel {
         "vec_select" => ("1", "8"),
         _ => panic!("unexpected vector op '{}'", func),
     };
-    FuncPerfModel {
-        symbols: vec![Sym::new("L")],
-        constraints: constraint("true"),
-        scenarios: vec![PerfScenario {
-            constraints: constraint("true"),
-            time_cost: TimeCost::Simple(SimpleTimeCost {
-                fixed_latency: expr(fixed_latency),
-                volume: expr("L"),
-                throughput: expr(throughput),
-            }),
-        }],
-    }
+    simple_perf_model(fixed_latency, "L", throughput)
 }
 
 fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
     let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
     match op_prefix {
-        "matmul" => FuncPerfModel {
-            symbols: Sym::from_names(["M", "N", "K"]),
-            constraints: constraint("M >= 32 && N >= 32 && K >= 32"),
-            scenarios: vec![
-                PerfScenario {
-                    constraints: constraint("M * N >= 8192 && M == N"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("M * N * K"),
-                        throughput: expr("1024"),
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("(M * N >= 8192) && (M != N)"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("M * N * K"),
-                        throughput: expr("716"), // 1024 * 0.7
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("M * N < 8192 && M == N"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("M * N * K"),
-                        throughput: expr("(M * N / 8192) * 1024"),
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("M * N < 8192 && M != N"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("M * N * K"),
-                        throughput: expr("(M * N / 8192) * 716"),
-                    }),
-                },
-            ],
-        },
-        "batch_matmul" => FuncPerfModel {
-            symbols: Sym::from_names(["B", "M", "N", "K"]),
-            constraints: constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"),
-            scenarios: vec![
-                PerfScenario {
-                    constraints: constraint("(B * B * M * N >= 8192) && (M == N)"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("B * M * N * K"),
-                        throughput: expr("1024"),
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("(B * B * M * N >= 8192) && (M != N)"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("B * M * N * K"),
-                        throughput: expr("716"), // 1024 * 0.7
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("(B * B * M * N < 8192) && (M == N)"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("B * M * N * K"),
-                        throughput: expr("(B * B * M * N / 8192) * 1024"),
-                    }),
-                },
-                PerfScenario {
-                    constraints: constraint("(B * B * M * N < 8192) && (M != N)"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("100"),
-                        volume: expr("B * M * N * K"),
-                        throughput: expr("(B * B * M * N / 8192) * 716"),
-                    }),
-                },
-            ],
-        },
-        "vec_vsum" | "vec_vmax" => FuncPerfModel {
-            symbols: Sym::from_names(["P", "R"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
-                    volume: expr("P * R"),
-                    throughput: expr("128"),
-                }),
-            }],
-        },
-        "vec_max1" => FuncPerfModel {
-            symbols: Sym::from_names(["L"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("1"),
-                    volume: expr("L"),
-                    throughput: expr("128"),
-                }),
-            }],
-        },
+        "matmul" => FuncPerfModel::builder()
+            .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
+            .scenarios([
+                scenario("M * N >= 8192 && M == N", "100", "M * N * K", "1024"),
+                scenario("(M * N >= 8192) && (M != N)", "100", "M * N * K", "716"),
+                scenario(
+                    "M * N < 8192 && M == N",
+                    "100",
+                    "M * N * K",
+                    "(M * N / 8192) * 1024",
+                ),
+                scenario(
+                    "M * N < 8192 && M != N",
+                    "100",
+                    "M * N * K",
+                    "(M * N / 8192) * 716",
+                ),
+            ])
+            .build(),
+        "batch_matmul" => FuncPerfModel::builder()
+            .constraints(constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"))
+            .scenarios([
+                scenario(
+                    "(B * B * M * N >= 8192) && (M == N)",
+                    "100",
+                    "B * M * N * K",
+                    "1024",
+                ),
+                scenario(
+                    "(B * B * M * N >= 8192) && (M != N)",
+                    "100",
+                    "B * M * N * K",
+                    "716",
+                ),
+                scenario(
+                    "(B * B * M * N < 8192) && (M == N)",
+                    "100",
+                    "B * M * N * K",
+                    "(B * B * M * N / 8192) * 1024",
+                ),
+                scenario(
+                    "(B * B * M * N < 8192) && (M != N)",
+                    "100",
+                    "B * M * N * K",
+                    "(B * B * M * N / 8192) * 716",
+                ),
+            ])
+            .build(),
+        "vec_vsum" | "vec_vmax" => simple_perf_model("1", "P * R", "128"),
+        "vec_max1" => simple_perf_model("1", "L", "128"),
         _ => panic!("unexpected matrix op '{}'", func),
     }
 }
@@ -188,30 +149,8 @@ pub fn single_core() -> Architecture {
         .functions
         .iter()
         .map(|op| match op.name.as_str() {
-            "elementwise_add_f16" => FuncPerfModel {
-                symbols: Sym::from_names(["M", "N"]),
-                constraints: constraint("true"),
-                scenarios: vec![PerfScenario {
-                    constraints: constraint("true"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("10"),
-                        volume: expr("M * N"),
-                        throughput: expr("43"),
-                    }),
-                }],
-            },
-            "elementwise_mul_f16" => FuncPerfModel {
-                symbols: Sym::from_names(["M", "N"]),
-                constraints: constraint("true"),
-                scenarios: vec![PerfScenario {
-                    constraints: constraint("true"),
-                    time_cost: TimeCost::Simple(SimpleTimeCost {
-                        fixed_latency: expr("10"),
-                        volume: expr("M * N"),
-                        throughput: expr("15"),
-                    }),
-                }],
-            },
+            "elementwise_add_f16" => simple_perf_model("10", "M * N", "43"),
+            "elementwise_mul_f16" => simple_perf_model("10", "M * N", "15"),
             other => matrix_func_perf_model(other),
         })
         .collect();
@@ -312,34 +251,12 @@ pub fn scaled_mesh_torus() -> Architecture {
     //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y]
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
-        let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("454"),
-                    volume: expr("M * N * 2"),
-                    throughput: expr("15"),
-                }),
-            }],
-        };
+        let pm = simple_perf_model("454", "M * N * 2", "15");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
     let bcst_perf = {
-        let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N", "bcst_x", "bcst_y"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("344 + bcst_x + bcst_y"),
-                    volume: expr("M * N * 2"),
-                    throughput: expr("28/(bcst_x * bcst_y)"),
-                }),
-            }],
-        };
+        let pm = simple_perf_model("344 + bcst_x + bcst_y", "M * N * 2", "28/(bcst_x * bcst_y)");
         pm.validate().expect("bcst perf model should validate");
         pm
     };
@@ -354,34 +271,16 @@ pub fn scaled_mesh_torus() -> Architecture {
     // NoC1: L1→DRAM writeback and L1→L1 gather [%gather_x, %gather_y].
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
-        let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N", "B", "gather_x", "gather_y"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("344 + gather_x + gather_y"),
-                    volume: expr("B * M * N * 2"),
-                    throughput: expr("28/(gather_x * gather_y)"),
-                }),
-            }],
-        };
+        let pm = simple_perf_model(
+            "344 + gather_x + gather_y",
+            "B * M * N * 2",
+            "28/(gather_x * gather_y)",
+        );
         pm.validate().expect("gather perf model should validate");
         pm
     };
     let noc1_unicast_perf = {
-        let pm = FuncPerfModel {
-            symbols: Sym::from_names(["M", "N"]),
-            constraints: constraint("true"),
-            scenarios: vec![PerfScenario {
-                constraints: constraint("true"),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: expr("454"),
-                    volume: expr("M * N * 2"),
-                    throughput: expr("15"),
-                }),
-            }],
-        };
+        let pm = simple_perf_model("454", "M * N * 2", "15");
         pm.validate().expect("unicast perf model should validate");
         pm
     };

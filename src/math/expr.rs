@@ -9,7 +9,7 @@ use super::parse::ParseError;
 pub type Const = i64;
 
 /// Newtype for symbolic names used in expressions.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Sym(pub String);
 
 /// General symbolic expression for cost modeling (latency, throughput, bandwidth, etc.).
@@ -105,6 +105,12 @@ mod tests {
             .into_iter()
             .collect();
         assert_eq!(syms, expected);
+    }
+
+    #[test]
+    fn expr_symbols_are_sorted() {
+        let expr = Expr::parse("Z + A * Z").expect("expression should parse");
+        assert_eq!(expr.symbols(), vec![Sym::new("A"), Sym::new("Z")]);
     }
 
     #[test]
@@ -254,10 +260,31 @@ impl Expr {
         }
     }
 
-    /// Collect all symbols referenced in this expression.
+    /// Return the set of symbols referenced in this expression.
+    ///
+    /// This is the set-oriented API: duplicates are removed and iteration order
+    /// is unspecified because the result is a [`HashSet`]. Use this when the
+    /// caller needs membership tests, set operations, or does not care about
+    /// presentation order.
+    ///
+    /// For a deterministic, sorted vector form, use [`Expr::symbols`].
     pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
+        syms
+    }
+
+    /// Return the symbols referenced in this expression in deterministic order.
+    ///
+    /// This is the ordered API: duplicates are removed and the returned vector
+    /// is sorted by symbol name. Use this when a stable order is needed for
+    /// serialization, generated model fields, assertions, or user-facing output.
+    ///
+    /// If the caller needs set operations or membership checks, use
+    /// [`Expr::free_symbols`] instead.
+    pub fn symbols(&self) -> Vec<Sym> {
+        let mut syms: Vec<Sym> = self.free_symbols().into_iter().collect();
+        syms.sort();
         syms
     }
 
@@ -289,7 +316,7 @@ impl Expr {
         }
     }
 
-    pub(crate) fn collect_symbols(&self, out: &mut HashSet<Sym>) {
+    pub fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
             Expr::Const(_) => {}
             Expr::Sym(s) => {
