@@ -7,6 +7,11 @@
 //   - element-wise addition
 //   - element-wise multiplication
 //   - element-wise division
+//   - element-wise subtraction
+//   - element-wise power
+//   - element-wise comparison
+//   - element-wise select
+//   - element-wise logarithm
 //
 // Symbol convention:
 //   - @L: logical vector length
@@ -304,6 +309,31 @@ func.func @vec_select_f16(
     ^bb0(%c: i1, %x: f16, %y: f16, %z: f16):
       %m = arith.select %c, %x, %y : f16
       linalg.yield %m : f16
+  }
+  return
+}
+
+func.func @vec_logf_f16(
+  %a: memref<?xf16>,
+  %out: memref<?xf16>
+) {
+  %L = loom.sym @L : index
+  loom.bind_shape %a, [%L] : memref<?xf16>
+  loom.bind_mem %a, @L1 : memref<?xf16>
+  loom.bind_shape %out, [%L] : memref<?xf16>
+  loom.bind_mem %out, @L1 : memref<?xf16>
+  linalg.generic {
+    indexing_maps = [
+      affine_map<(d0) -> (d0)>,
+      affine_map<(d0) -> (d0)>
+    ],
+    iterator_types = ["parallel"]
+  }
+  ins(%a : memref<?xf16>)
+  outs(%out : memref<?xf16>) {
+    ^bb0(%x: f16, %y: f16):
+      %l = math.logf %x : f16
+      linalg.yield %l : f16
   }
   return
 }
