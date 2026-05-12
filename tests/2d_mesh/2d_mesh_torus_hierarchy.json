@@ -101,7 +101,7 @@
                     "vec_powf_f16",
                     "vec_cmpf_ogt_f16",
                     "vec_select_f16",
-                    "vec_logf_f16"
+                    "vec_log_f16"
                   ]
                 }
               },

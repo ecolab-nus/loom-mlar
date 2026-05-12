@@ -512,7 +512,7 @@ module @arch_system {
     return
   }
 
-  func.func @vec_logf_f16(
+  func.func @vec_log_f16(
     %a: memref<?xf16>,
     %out: memref<?xf16>
   ) {
@@ -531,7 +531,7 @@ module @arch_system {
     ins(%a : memref<?xf16>)
     outs(%out : memref<?xf16>) {
       ^bb0(%x: f16, %y: f16):
-        %l = math.logf %x : f16
+        %l = math.log %x : f16
         linalg.yield %l : f16
     }
     return

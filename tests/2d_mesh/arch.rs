@@ -38,7 +38,7 @@ fn vector_func_perf_model(func: &str) -> FuncPerfModel {
     let op_prefix = func.rsplit_once('_').map(|(pre, _)| pre).unwrap_or(func);
     let (fixed_latency, throughput) = match op_prefix {
         "vec_max" | "vec_sum" | "vec_add" | "vec_mul" => ("1", "1024"),
-        "vec_exp" | "vec_logf" => ("1", "7"),
+        "vec_exp" | "vec_log" => ("1", "7"),
         "vec_div" => ("1", "6"),
         "vec_sub" => ("1", "4"),
         "vec_powf" => ("1", "7"),
@@ -122,7 +122,7 @@ pub fn single_core() -> Architecture {
 
     // ── Vector lane ───────────────────────────────────────────────────────────
     // Per-function perf models: all ops use symbol L (vector length).
-    // vec_max/sum/add/mul → throughput 1024; exp/logf/powf → 7; div → 6;
+    // vec_max/sum/add/mul → throughput 1024; exp/log/powf → 7; div → 6;
     // sub → 4; cmpf_ogt/select → 8. All with fixed latency 1.
     let vector_lane_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("tests/2d_mesh/processors_mlir/vector_lane.mlir should parse");
