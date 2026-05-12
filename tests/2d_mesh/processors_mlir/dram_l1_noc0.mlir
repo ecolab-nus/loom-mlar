@@ -27,8 +27,8 @@ func.func @dram_to_l1_bcst(
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
   loom.bind_mem %l1_dst, @array_L1 : memref<?x?xf16>
-  %bcst_x = loom.sym @BCST_X : index
-  %bcst_y = loom.sym @BCST_Y : index
+  %bcst_x = loom.sym @bcst_x : index
+  %bcst_y = loom.sym @bcst_y : index
   loom.copy %dram_src, %l1_dst src_mem_space @DRAM dst_mem_space @array_L1, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
   return
 }
