@@ -49,7 +49,7 @@ fn data_mover_validation_rejects_missing_memref_interface() {
     );
 }
 
-// ── from src/mlir/parser_tests.rs ────────────────────────────────────────────
+// From src/mlir/tests/parser.rs.
 
 #[test]
 fn mlir_module_ref_from_mlir_records_single_module_and_functions() {

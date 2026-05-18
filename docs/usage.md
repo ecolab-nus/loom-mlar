@@ -24,7 +24,7 @@ let _arch = Architecture::Unit(lane);
 
 ## Related Components
 
-- `src/mlir/export.rs`: architecture to MLIR (`adl.*`).
+- `src/mlir/export/`: architecture to MLIR (`adl.*`).
 - `src/visualization/*`: architecture to visualization JSON.
 - `src/abi/evaluator.rs`: evaluate schedules via runtime/binary interfaces.
 - `src/abi/arch_query.rs`: architecture query runtime/binary interfaces.

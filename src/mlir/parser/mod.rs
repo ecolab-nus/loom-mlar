@@ -4,11 +4,8 @@ use nom::combinator::opt;
 use nom::sequence::delimited;
 use nom::{IResult, Parser};
 
-#[path = "loom_ops.rs"]
 mod loom_ops;
-#[path = "native_ops.rs"]
 mod native_ops;
-#[path = "structural.rs"]
 mod structural;
 
 pub use loom_ops::{
@@ -184,5 +181,5 @@ pub(super) fn split_top_level_commas(input: &str) -> Vec<&str> {
 }
 
 #[cfg(test)]
-#[path = "parser_tests.rs"]
+#[path = "../tests/parser.rs"]
 mod tests;
