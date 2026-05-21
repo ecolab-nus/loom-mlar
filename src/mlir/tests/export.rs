@@ -117,7 +117,20 @@ fn shared_dims_emitted_once() {
     let scaled = core.scale(&[dim_x]).with_name("mesh");
     let mlir = architecture_to_mlir(&scaled).expect("should emit");
     assert!(mlir.contains("adl.memory.array \"mem_L1\", ["));
+    assert!(mlir.contains("adl.memory.array \"mem_array_L1\", ["));
     assert!(mlir.contains("adl.arch.scale \"arch_mesh\", ["));
+    assert!(mlir.contains(" of %"));
+    assert!(mlir.contains(", mem_region %"));
+    let scaled_mem_pos = mlir
+        .find("adl.memory.array \"mem_array_L1\"")
+        .expect("scaled memory region should be emitted");
+    let scale_pos = mlir
+        .find("adl.arch.scale \"arch_mesh\"")
+        .expect("scale op should be emitted");
+    assert!(
+        scaled_mem_pos < scale_pos,
+        "scaled memory region should be named before the scale op references it"
+    );
     assert_eq!(
         mlir.matches("adl.spatial_dim \"dim_x\"").count(),
         1,

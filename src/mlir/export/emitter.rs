@@ -323,21 +323,36 @@ impl MlirEmitter {
                     .iter()
                     .map(|d| self.emit_dim(d))
                     .collect::<Option<Vec<_>>>()?;
+                let mem_region_ssas = self.emit_scaled_array_mem_regions(dims, elem)?;
                 let ssa = self.next_ssa();
                 let arch_name = name.as_deref().or_else(|| elem.name()).unwrap_or("unnamed");
                 let dim_list = dim_ssas.join(", ");
+                let mem_region_clause = format_scale_mem_region_clause(&mem_region_ssas);
                 writeln!(
                     self.output,
-                    "{} = adl.arch.scale \"{}\", [{}] of {}",
+                    "{} = adl.arch.scale \"{}\", [{}] of {}{}",
                     ssa,
                     prefixed_arch_name(arch_name),
                     dim_list,
-                    elem_ssa
+                    elem_ssa,
+                    mem_region_clause
                 )
                 .unwrap();
                 Some(ssa)
             }
         }
+    }
+
+    fn emit_scaled_array_mem_regions(
+        &mut self,
+        dims: &[Dimension],
+        elem: &Architecture,
+    ) -> Option<Vec<String>> {
+        let regions = collect_array_scaled_memory_regions(dims, elem);
+        regions
+            .iter()
+            .map(|region| self.emit_memory(region))
+            .collect()
     }
 
     fn emit_region_pair_array_memories(
@@ -353,6 +368,56 @@ impl MlirEmitter {
             }
         }
         Some(())
+    }
+}
+
+fn format_scale_mem_region_clause(mem_region_ssas: &[String]) -> String {
+    match mem_region_ssas {
+        [] => String::new(),
+        [single] => format!(", mem_region {single}"),
+        many => format!(", mem_region [{}]", many.join(", ")),
+    }
+}
+
+fn collect_array_scaled_memory_regions(
+    dims: &[Dimension],
+    elem: &Architecture,
+) -> Vec<MemoryRegion> {
+    collect_arch_memory_regions_with_base_names(elem)
+        .into_iter()
+        .map(|(base_name, region)| region.scale(dims).with_name(format!("array_{base_name}")))
+        .collect()
+}
+
+fn collect_arch_memory_regions_with_base_names(arch: &Architecture) -> Vec<(String, MemoryRegion)> {
+    match arch {
+        Architecture::Unit(_) => Vec::new(),
+        Architecture::Array { dims, elem, .. } => collect_arch_memory_regions_with_base_names(elem)
+            .into_iter()
+            .map(|(base_name, region)| {
+                (
+                    base_name.clone(),
+                    region.scale(dims).with_name(format!("array_{base_name}")),
+                )
+            })
+            .collect(),
+        Architecture::Graph(graph) => {
+            let mut regions = Vec::new();
+            for node in &graph.nodes {
+                match &node.component {
+                    ArchNodeComponent::MemoryRegion(region) => {
+                        if let Some(name) = region.name() {
+                            regions.push((name.to_string(), region.clone()));
+                        }
+                    }
+                    ArchNodeComponent::Architecture(sub_arch) => {
+                        regions.extend(collect_arch_memory_regions_with_base_names(sub_arch));
+                    }
+                    _ => {}
+                }
+            }
+            regions
+        }
     }
 }
 

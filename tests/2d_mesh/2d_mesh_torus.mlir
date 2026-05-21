@@ -12,11 +12,11 @@ module @arch_system {
   %10 = adl.arch.compose "arch_core", arch[%8, %9], mem[%5]
   %11 = adl.spatial_dim "dim_x", 8
   %12 = adl.spatial_dim "dim_y", 8
-  %13 = adl.arch.scale "arch_mesh", [%11, %12] of %10
-  %14 = adl.memory.array "mem_array_L1", [%11, %12] of %5
-  %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %14)]
-  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%14, %2), (%14, %14)]
-  %17 = adl.arch.compose "arch_system", arch[%13, %15, %16], mem[%2]
+  %13 = adl.memory.array "mem_array_L1", [%11, %12] of %5
+  %14 = adl.arch.scale "arch_mesh", [%11, %12] of %10, mem_region %13
+  %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %13)]
+  %16 = adl.processor.dmover @proc_dram_l1_noc1, [(%13, %2), (%13, %13)]
+  %17 = adl.arch.compose "arch_system", arch[%14, %15, %16], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
   //
