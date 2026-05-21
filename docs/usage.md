@@ -2,29 +2,349 @@
 
 ## Typical Workflow
 
-1. Parse hardware functionality from MLIR modules.
-2. Bind each function to symbolic performance models.
-3. Compose architecture hierarchy/graph (units, arrays, networks, memory, resources).
-4. Export architecture to custom MLIR (`adl.*`) for compiler input.
-5. Optionally export graph/hierarchy/viewer JSON for visualization.
-6. Evaluate schedules and query architecture information through ABI helpers.
+1. Define memory regions and dimensions.
+2. Parse processor/data-mover functionality from MLIR modules.
+3. Build one `FuncPerfModel` per parsed `func.func`.
+4. Construct `ComputeProcessor` and `DataMover` modules with memory-region
+   pairs.
+5. Compose units, arrays, routers, memory, and data movers into `ArchGraph`s.
+6. Export architecture MLIR or visualization JSON.
+7. Evaluate schedules in-process or through generated evaluator binaries.
+8. Query architecture MLIR in-process or through generated query binaries.
 
-## Minimal Rust Sketch
+The full example in [tests/2d_mesh/arch.rs](../tests/2d_mesh/arch.rs) follows
+this workflow end to end.
+
+## Build A Small Graph
 
 ```rust
-use mlar_rust::{Architecture, MlirModule, Processor};
+use mlar_rust::*;
 
+let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+    .with_name("L1");
+
+let lane = ComputeProcessor::builder()
+    .named("lane")
+    .with_regions(vec![(l1.clone(), l1.clone())])
+    .finish()
+    .into_elem();
+
+let mut core: Architecture = ArchGraph::builder("core")
+    .mem(&l1)
+    .architecture(&lane)
+    .router(&Router::new("core_router", 2))
+    .build()
+    .into();
+
+let graph = core.as_graph_mut().unwrap();
+let lane_id = graph.processor_ref("lane").unwrap();
+let l1_id = graph.memory_ref("L1").unwrap();
+let router_id = graph.router_ref("core_router").unwrap();
+
+let lane_node = graph.get_node(&lane_id).unwrap().clone();
+let l1_node = graph.get_node(&l1_id).unwrap().clone();
+let router_node = graph.get_node(&router_id).unwrap().clone();
+
+graph.connect_with_attrs(
+    &lane_node,
+    &router_node,
+    vec![
+        ArchEdgeAttr::Side(0),
+        ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+    ],
+);
+graph.connect_with_attrs(
+    &router_node,
+    &l1_node,
+    vec![
+        ArchEdgeAttr::Side(1),
+        ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
+    ],
+);
+```
+
+`finish()` creates a structural-only processor. Use `from_module(...)` when the
+processor should validate against real MLIR functionality.
+
+## Parse MLIR And Attach Performance
+
+```rust
+use mlar_rust::*;
+
+fn vector_perf() -> FuncPerfModel {
+    FuncPerfModel::builder()
+        .simple_time_cost(
+            Expr::parse("1").unwrap(),
+            Expr::parse("L").unwrap(),
+            Expr::parse("1024").unwrap(),
+        )
+        .build()
+}
+
+let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+    .with_name("L1");
 let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")?;
-let lane = Processor::new("lane");
-let _arch = Architecture::Unit(lane);
+let perf_models = module.functions.iter().map(|_| vector_perf()).collect();
 
-// Then bind performance, compose higher-level architecture,
-// and export/query/evaluate depending on your pipeline.
+let vector_lane = ComputeProcessor::builder()
+    .named("vector_lane")
+    .with_regions(vec![(l1.clone(), l1.clone())])
+    .from_module(module, perf_models)?;
+
+vector_lane.validate()?;
+```
+
+When the MLIR file has `module @vector_lane`, the builder name must also be
+`vector_lane`. Each parsed function must have exactly one matching performance
+model.
+
+## Build A Data Mover
+
+```rust
+use mlar_rust::*;
+
+let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
+    .with_name("DRAM");
+let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+    .with_name("array_L1");
+
+let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")?;
+let perf_models = module
+    .functions
+    .iter()
+    .map(|func| {
+        if func.name == "dram_to_l1_bcst" {
+            FuncPerfModel::builder()
+                .simple_time_cost(
+                    Expr::parse("344 + bcst_x + bcst_y").unwrap(),
+                    Expr::parse("M * N * 2").unwrap(),
+                    Expr::parse("28/(bcst_x * bcst_y)").unwrap(),
+                )
+                .build()
+        } else {
+            FuncPerfModel::builder()
+                .simple_time_cost(
+                    Expr::parse("454").unwrap(),
+                    Expr::parse("M * N * 2").unwrap(),
+                    Expr::parse("15").unwrap(),
+                )
+                .build()
+        }
+    })
+    .collect();
+
+let noc = DataMover::builder()
+    .named("dram_l1_noc0")
+    .with_regions(vec![(dram.clone(), l1.clone())])
+    .from_module(module, perf_models)?;
+
+noc.validate()?;
+```
+
+Data-mover MLIR functions must contain exactly one `loom.copy` or `loom.gather`,
+must not contain `linalg.*`, and must bind source/target memrefs to regions
+present in `.with_regions(...)`.
+
+## Scale An Architecture
+
+```rust
+use mlar_rust::*;
+
+let x = Dimension::new_int("x", 8);
+let y = Dimension::new_int("y", 8);
+let lane = Processor::new("lane").into_elem();
+
+let mesh = lane
+    .scale([&x, &y])
+    .with_name("mesh");
+
+assert_eq!(mesh.total_processing_elements(), Some(64));
+```
+
+Array dimensions can be symbolic, but counts and MLIR export only become
+available when the dimensions simplify to constants.
+
+## Add Mesh Connectivity
+
+```rust
+use mlar_rust::*;
+
+let x = Dimension::new_int("x", 8);
+let y = Dimension::new_int("y", 8);
+let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+    .scale(&[x.clone(), y.clone()])
+    .with_name("array_L1");
+
+let io = MeshNetworkInterface::new(
+    AffineMap::identity(&[x.clone(), y.clone()]),
+    Expr::Const(64),
+);
+
+let x_ring = AffineMap::new(
+    &[x.clone(), y.clone()],
+    &[x.clone(), y.clone()],
+    vec![
+        AffineExpr::modulo(
+            AffineExpr::add(AffineExpr::var(x.clone()), AffineExpr::constant(1)),
+            AffineExpr::constant(8),
+        ),
+        AffineExpr::var(y.clone()),
+    ],
+);
+
+let network = ScaleOutNetwork::mesh("l1_x_ring")
+    .mem_region(&l1)
+    .map(&x_ring)
+    .io(&io)
+    .link_bandwidth(64)
+    .build();
+
+let mesh = Processor::new("lane")
+    .into_elem()
+    .scale([&x, &y])
+    .with_connectivity(vec![network]);
+```
+
+Mesh connectivity belongs to `Architecture::Array`. If that array is added to a
+graph through `ArchGraphBuilder::architecture`, network resources and IO data
+movers are registered with the graph.
+
+## Export MLIR
+
+```rust
+use mlar_rust::*;
+
+let arch = Processor::new("lane").into_elem();
+let mlir = architecture_to_mlir(&arch)
+    .expect("export requires concrete dimensions and memory sizes");
+
+assert!(mlir.starts_with("module @arch_lane"));
+```
+
+The exporter emits `adl.*` operations and appends any referenced functionality
+MLIR modules after rewriting processor and memory names to exported names.
+
+## Export Visualization JSON
+
+```rust
+use mlar_rust::*;
+
+let arch = Processor::new("lane").into_elem();
+
+let graph_json = architecture_to_graph_json_string_pretty(&arch)?;
+let hierarchy_json = architecture_to_hierarchy_json_string_pretty(&arch)?;
+let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
+```
+
+Payload schema versions:
+
+- `mlar.arch-graph.v1`
+- `mlar.arch-hierarchy.v1`
+- `mlar.arch-viewer.v1`
+
+Use `architecture_to_viewer_json_string_pretty` for the web viewer in
+`web-visualization/`.
+
+## Evaluate A Schedule In Process
+
+```rust
+use mlar_rust::*;
+
+let fp = FunctionProcessor::new(
+    MlirFunc::with_symbols("vec_add_f16", vec![Sym::new("L")]),
+    FuncPerfModel::builder()
+        .simple_time_cost(
+            Expr::parse("1").unwrap(),
+            Expr::parse("L").unwrap(),
+            Expr::parse("1024").unwrap(),
+        )
+        .build(),
+);
+
+let arch = Processor::with_functions("vector_lane", vec![fp]).into_elem();
+
+let mut func = MlirFunc::with_symbols("vec_add_f16", vec![Sym::new("L")]);
+func.sym_map = Some(SymbolicMapping::with_entries(vec![(
+    Sym::new("L"),
+    Expr::parse("BM * BN").unwrap(),
+)]));
+
+let schedule = Schedule::Func {
+    func,
+    processor: None,
+    scenarios: None,
+};
+
+let evaluated = evaluate(&schedule, &arch)?;
+```
+
+Evaluation fills `scenarios` on the returned schedule. For sequential schedules,
+it builds the cartesian product of child scenarios, sums costs, and ANDs
+constraints.
+
+`Schedule::Parallel` currently serializes and deserializes, but evaluating it is
+not implemented.
+
+## Generate Standalone Evaluator Binaries
+
+```rust
+use std::path::Path;
+use mlar_rust::*;
+
+let arch = Processor::new("lane").into_elem();
+let binary = generate_evaluator_binary(&arch, "eval_lane", Path::new("target/mlar-tools"))?;
+```
+
+The generated binary:
+
+- embeds the architecture JSON at compile time,
+- reads a `Schedule` JSON from stdin,
+- writes the evaluated `Schedule` JSON to stdout.
+
+You can also define a binary manually:
+
+```rust
+use mlar_rust::mlar_evaluator;
+
+fn build_arch() -> mlar_rust::Architecture {
+    mlar_rust::Processor::new("lane").into_elem()
+}
+
+mlar_evaluator!(build_arch());
+```
+
+## Query Architecture MLIR From A Binary
+
+```rust
+use std::path::Path;
+use mlar_rust::*;
+
+let arch = Processor::new("lane").into_elem();
+let binary = generate_arch_query_binary(&arch, "query_lane", Path::new("target/mlar-tools"))?;
+```
+
+At runtime, send:
+
+```json
+{"query":"mlir"}
+```
+
+The query binary writes raw MLIR to stdout.
+
+The in-process equivalent is:
+
+```rust
+use mlar_rust::*;
+
+let arch = Processor::new("lane").into_elem();
+let result = query_architecture(&arch, &ArchitectureQuery::Mlir)?;
 ```
 
 ## Related Components
 
-- `src/mlir/export/`: architecture to MLIR (`adl.*`).
-- `src/visualization/*`: architecture to visualization JSON.
-- `src/abi/evaluator.rs`: evaluate schedules via runtime/binary interfaces.
-- `src/abi/arch_query.rs`: architecture query runtime/binary interfaces.
+- `src/arch/`: architecture objects, graph composition, processors, data movers,
+  memory, networks, routers, resources, and performance models.
+- `src/mlir/`: MLIR parsing and architecture export to `adl.*`.
+- `src/visualization/`: graph, hierarchy, and viewer JSON export.
+- `src/schedule/`: schedule representation and in-process evaluation.
+- `src/abi/`: evaluator/query binary generation and runtime interfaces.

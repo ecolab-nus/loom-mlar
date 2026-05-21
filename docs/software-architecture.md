@@ -1,31 +1,151 @@
-# Software Architecture and File Contents
+# Software Architecture And File Contents
 
 ## Top-Level Layout
 
 ```text
 src/
-├── lib.rs                # Public API and re-exports
-├── arch/                 # Hardware model primitives and composition
-├── mlir/                 # MLIR parsing/extraction/export
-├── math/                 # Symbolic expressions, constraints, affine utilities
-├── schedule/             # Schedule IR and evaluator glue
-├── visualization/        # JSON exports for visualization
-└── abi/                  # Runtime/binary interfaces (evaluator/query)
++-- lib.rs                # Public API and re-exports
++-- arch/                 # Hardware model primitives and architecture graphs
++-- mlir/                 # MLIR parser and adl.* exporter
++-- math/                 # Symbolic expressions, constraints, affine maps
++-- schedule/             # Schedule IR and evaluation
++-- visualization/        # JSON export for the web viewer
+`-- abi/                  # Standalone evaluator/query binary helpers
 
-tests/                    # End-to-end and module tests
-web-visualization/        # Browser viewer for exported visualization JSON
+tests/
++-- 2d_mesh/              # Full architecture example and export/evaluation tests
+`-- math_expr_constraint_test.rs
+
+web-visualization/        # React/Vite viewer for exported JSON payloads
 docs/                     # Documentation pages
 ```
 
-## `src/` Modules
+`src/lib.rs` re-exports the commonly used public API so downstream users can
+usually import `mlar_rust::*`.
 
-- `src/arch/`: architecture objects (`Architecture`, `ArchGraph`, processors, memory, network, resources, performance models).
-- `src/mlir/`: MLIR import/export pipeline and custom `adl.*` emission.
-- `src/math/`: symbolic expression system (`Expr`, constraints, affine maps).
-- `src/schedule/`: schedule representation and schedule evaluation integration.
-- `src/visualization/`: graph/hierarchy/viewer JSON export helpers.
-- `src/abi/`: evaluator/query protocols and binary generation helpers.
+## `src/arch`
 
-## Public API Entry
+Hardware modeling types.
 
-- `src/lib.rs` re-exports the primary types and helper functions so downstream code can use `mlar_rust::*`.
+- `size_dim.rs`: symbolic names and dimensions: `Sym`, `SizeExpr`,
+  `Dimension`.
+- `memory.rs`: `MemoryBank` and recursive `MemoryRegion`.
+- `perf.rs`: `SimpleTimeCost`, `TimeCost`, `PerfScenario`, `FuncPerfModel`,
+  and `FuncPerfModelBuilder`.
+- `processor.rs`: `Processor`, `ComputeProcessor`, `DataMover`,
+  `FunctionProcessor`, builders, and validation of compute/data-mover MLIR
+  interfaces.
+- `architecture.rs`: recursive `Architecture` enum, lookup helpers, scaling,
+  naming, and instance-count utilities.
+- `architecture_graph.rs`: `ArchGraph`, `ArchGraphBuilder`, graph nodes,
+  routers, graph edges, edge attributes, resources, resource maps, and lookup
+  helpers.
+- `network.rs`: `ScaleOutNetwork`, `MeshNetwork`, `MeshLink`,
+  `MeshNetworkInterface`, mesh builder, topology helpers, and network resource
+  bindings.
+- `resource.rs`: `ResourceId` and exclusive/quantitative `Resource`.
+
+## `src/mlir`
+
+MLIR-facing import and export code.
+
+- `parser/mod.rs`: shared parser utilities and public parser re-exports.
+- `parser/structural.rs`: `MlirModule`, `MlirFunc`, `MlirFuncDetails`, module
+  file parsing, function block extraction, and structural metadata collection.
+- `parser/loom_ops.rs`: parser for `loom.sym`, `loom.bind_shape`,
+  `loom.bind_mem`, `loom.copy`, and `loom.gather`.
+- `parser/native_ops.rs`: lightweight extraction for native MLIR constructs such
+  as `linalg.*`, `memref.copy`, and output operands.
+- `export/mod.rs`: `architecture_to_mlir`.
+- `export/emitter.rs`: SSA-based emitter for `adl.*` operations, resources,
+  architecture arrays, graph composition, processors, data movers, and memory.
+- `export/rewrite.rs`: rewrites embedded functionality MLIR names to match
+  exported architecture/memory prefixes.
+- `export/names.rs`: name prefixing and structural keys used during export.
+- `tests/parser.rs` and `tests/export.rs`: parser/export tests included through
+  module-level `#[path]` test hooks.
+
+MLIR export returns `Option<String>` because symbolic dimensions or memory sizes
+that cannot become constants make `adl.*` emission impossible.
+
+## `src/math`
+
+Symbolic math support used by performance models and connectivity.
+
+- `expr.rs`: arithmetic expression AST, parsing, substitution, simplification,
+  constant evaluation, display, and free-symbol collection.
+- `constraint.rs`: boolean/comparison constraint AST, parsing, substitution,
+  constant evaluation, and symbol collection.
+- `parse.rs`: parser helpers for expressions and constraints.
+- `affine.rs`: affine expressions/maps used by mesh topology and IO maps.
+- `mod.rs`: public math exports.
+
+## `src/schedule`
+
+Schedule representation and in-process performance evaluation.
+
+- `schedule.rs`: `Schedule` enum and `SymbolicMapping`.
+- `evaluate.rs`: `evaluate(&Schedule, &Architecture)`, function lookup,
+  scenario fusion, sequential scenario cartesian products, and symbolic mapping
+  substitution.
+- `mod.rs`: public schedule and parser re-exports.
+
+Current evaluation supports `Func` and `Sequential`. `Parallel` is represented
+and serialized, but evaluation is not implemented.
+
+## `src/visualization`
+
+JSON payload builders for the web viewer.
+
+- `graph_json.rs`: graph payload (`mlar.arch-graph.v1`) with nodes, edges,
+  routers, memories, processor details, resources, bandwidths, affine maps, and
+  derived topology classifications.
+- `hierarchy_json.rs`: hierarchy payload (`mlar.arch-hierarchy.v1`).
+- `viewer_json.rs`: combined payload (`mlar.arch-viewer.v1`) containing a
+  hierarchy plus a map of per-path graphs.
+- `mod.rs`: public visualization exports.
+
+The viewer implementation is separate from the Rust crate under
+`web-visualization/`.
+
+## `src/abi`
+
+Helpers for external compiler/runtime tools that want to call generated
+executables.
+
+- `evaluator.rs`: `run_evaluator`, `run_evaluator_from_json`,
+  `generate_evaluator_binary`, and `mlar_evaluator!`.
+- `arch_query.rs`: `ArchitectureQuery`, `ArchitectureQueryResult`,
+  `query_architecture`, `run_arch_query`, `run_arch_query_from_json`,
+  `generate_arch_query_binary`, and `mlar_arch_query!`.
+
+Generated binaries embed a serialized architecture JSON at compile time. At
+runtime, evaluator binaries read a `Schedule` JSON from stdin and write an
+evaluated `Schedule` JSON to stdout. Architecture-query binaries read an
+`ArchitectureQuery` JSON from stdin; the only current query is `{"query":"mlir"}`,
+which writes raw MLIR to stdout.
+
+## Tests And Examples
+
+The most complete example is `tests/2d_mesh/arch.rs`.
+
+It demonstrates:
+
+- parsing processor functionality from MLIR files,
+- building compute processors and data movers,
+- attaching source/destination memory-region pairs,
+- deriving memory resources,
+- composing graphs with routers and annotated edges,
+- scaling a core graph into a 2D mesh,
+- exporting architecture MLIR,
+- exporting graph, hierarchy, and viewer JSON,
+- evaluating schedules with `SymbolicMapping`,
+- generating standalone evaluator and architecture-query binaries.
+
+Several export tests intentionally write generated artifacts:
+
+- `tests/2d_mesh/2d_mesh_torus.mlir`,
+- `tests/2d_mesh/2d_mesh_torus.json`,
+- `tests/2d_mesh/2d_mesh_torus_hierarchy.json`,
+- `web-visualization/public/sample-viewer.json`,
+- binaries under `tests/2d_mesh/bin/`.

@@ -1,91 +1,201 @@
 # Basic Architectural Concepts
 
-This project models hardware as structured, queryable compiler input.
+This project models hardware as structured, queryable compiler input. The
+representation is recursive, symbolic where useful, and designed to round-trip
+through JSON and an `adl.*` MLIR export.
 
-## Core Ideas
+## Memory Regions
 
-### 1. `MemoryRegion`
+`MemoryRegion` is the memory-side abstraction used by architectures and data
+movers.
 
-`MemoryRegion` is the memory-side abstraction used by the architecture model.
+- `MemoryRegion::Bank` wraps one `MemoryBank`.
+- `MemoryRegion::Array` scales a sub-region over one or more `Dimension`s.
+- `MemoryBank` stores `capacity_bytes`, optional `block_size`, optional name,
+  and optional performance model.
+- `MemoryRegion::total_size_bytes()` returns `None` if any size or dimension is
+  symbolic.
+- `MemoryRegion::generate_resource()` works for named concrete banks. Processor
+  region pairs can also derive quantitative resources for concrete arrays using
+  their total size.
 
-- A memory region is either:
-  - `Bank`: one atomic memory bank (`MemoryBank`) with capacity/block information.
-  - `Array`: homogeneous scaling of a sub-region along one or more dimensions.
-- Capacity and dimensions may be concrete or symbolic, so memory sizing can remain parametric until later compiler stages.
-- Memory regions are named and reused across architecture composition (for example, `DRAM`, `L1`).
-- In MLIR functionality modules, tensor/memref values are tied to memory regions via `loom.bind_mem`.
+MLIR functionality binds memrefs to memory regions with `loom.bind_mem`.
+Architecture MLIR export prefixes memory names in the generated output, for
+example `L1` becomes `mem_L1` in emitted `loom.bind_mem` annotations.
 
-In practice, memory regions define where data lives, while processors and data movers define how data is transformed and transferred across those regions.
+## Processors And Data Movers
 
-### 2. `Processor`
+The core runtime structure is `Processor`, but the public construction API
+distinguishes compute from movement:
 
-A `Processor` is the atomic execution component in MLAR.
+- `ComputeProcessor` is for pure compute functions.
+- `DataMover` is for transfer functions.
+- Both wrappers contain the same underlying `Processor` data and can be
+  converted back with `.into_processor()` or into an architecture leaf with
+  `.into_elem()`.
 
-Conceptually, a processor consumes data from one or multiple memory regions and writes data to one or multiple memory regions. This applies to both compute processors and data-mover style processors.
+A processor can be structural-only with `Processor::new("name")`, or linked to
+MLIR functionality with `Processor::from_module`,
+`ComputeProcessor::builder().from_module(...)`, or
+`DataMover::builder().from_module(...)`.
 
-- Compute-style processors perform arithmetic/algorithmic transformations.
-- Data-mover style processors represent movement (copy/broadcast/etc.) between regions.
-- Processor memory interfaces can be represented as source/target region pairs in the model.
+When linked from MLIR, one performance model is required for each parsed
+`func.func`, in module order. The processor name is checked against the MLIR
+module symbol when the module was loaded from a file.
 
-So, processor modeling is not just "compute kernel naming"; it is compute/move behavior bound to explicit memory interfaces.
+## MLIR Functionality
 
-### 3. `Processor` and Functionalities (MLIR)
+`MlirModule::from_mlir(path)` parses one MLIR file. The file must contain exactly
+one `module` declaration, named or unnamed. Each `func.func` is parsed into
+`MlirFunc` plus `MlirFuncDetails`.
 
-Functional behavior is represented in MLIR.
+The parser extracts:
 
-- One `Processor` corresponds to one MLIR module.
-- One `FunctionProcessor` corresponds to one `func.func` inside that module.
-- The function body uses `linalg` operations to describe compute semantics.
-- Symbolic shape/memory bindings are expressed with `loom.sym`, `loom.bind_shape`, and `loom.bind_mem`.
+- function name and `loom.sym` symbols,
+- tensor and memref arguments,
+- memref argument types,
+- `loom.bind_shape` tensor/memref symbol bindings,
+- `loom.bind_mem` memory-region bindings,
+- `loom.copy` and `loom.gather` data-movement operations,
+- `memref.copy` source/target pairs,
+- `linalg.*` operation names,
+- output tensor operands from `outs(...)`.
 
-Modeling assumption: multiple functions under the same processor are treated as not parallelizable with each other (a processor executes one function context at a time in scheduling semantics).
+Compute validation requires memref-based functions with shape bindings,
+memory-region bindings, and at least one `linalg.*` operation. Pure compute
+functions must not contain `loom.copy` or `loom.gather`.
 
-Example MLIR modules:
+Data-mover validation requires at least two memrefs, source/target bindings,
+exactly one `loom.copy` or `loom.gather`, no `linalg.*` operations, and region
+names that appear in the data mover's source/destination region pairs.
 
-- [vector_lane example](../tests/2d_mesh/processors_mlir/vector_lane.mlir)
-- [system-level ADL + embedded module example](../tests/2d_mesh/2d_mesh_torus.mlir)
+## Performance Models
 
-### 4. `Processor` and Performance Model
+Each linked function has a `FuncPerfModel`.
 
-Performance behavior is modeled separately from MLIR because timing/cost structure is often difficult to encode cleanly in MLIR compute IR.
+`FuncPerfModel` contains:
 
-For each MLIR function (`func.func`), MLAR attaches one `FuncPerfModel`.
-
-Each `FuncPerfModel` contains:
-
-- Declared symbolic variables (`symbols`).
-- Global constraints (`constraints`) that must hold for any scenario to apply.
-- Multiple `PerfScenario` entries.
+- declared `symbols`,
+- global `constraints`,
+- one or more `PerfScenario`s.
 
 Each `PerfScenario` contains:
 
-- Scenario-local constraints (`constraints`) describing when that scenario is valid.
-- A time-cost expression (`time_cost`, symbolic or concrete).
+- scenario-local `constraints`,
+- a `TimeCost`, either `Simple(SimpleTimeCost)` or `Concrete(Expr)`.
 
-A scenario is applicable only when both are satisfied:
+`SimpleTimeCost` represents:
 
-- perf-model global constraints, and
-- scenario-local constraints.
+```text
+fixed_latency + volume / throughput
+```
 
-When multiple scenarios exist, they should be mutually exclusive. This exclusivity is a model-author responsibility.
+The builder infers symbols from constraints and time-cost expressions unless
+symbols are declared explicitly. Validation checks that all symbols used by the
+model and by the linked function shape metadata are declared. It does not check
+that multiple scenarios are mutually exclusive.
 
-### 5. `Architecture`
+## Architecture Hierarchy
 
-`Architecture` is recursive and has three variants:
+`Architecture` has three variants:
 
-- `Unit`: the most basic architecture, wrapping one processor.
-- `Array`: homogeneous scaling of one architecture element (same type replicated over dimensions).
-- `Graph`: heterogeneous composition of different architecture nodes (processors/data movers/memory/routers) and their connectivity.
+- `Unit(Processor)`: one processor-like leaf.
+- `Array`: homogeneous scaling of a sub-architecture across dimensions, with
+  optional `ScaleOutNetwork` connectivity.
+- `Graph(ArchGraph)`: heterogeneous composition of memory, architecture,
+  data-mover, and router nodes.
 
-This gives two main composition styles:
+Important helpers:
 
-- Homogeneous scaling with `Array`.
-- Heterogeneous composing with `Graph`.
+- `.scale(...)` wraps an architecture in an array.
+- `.with_name(...)` sets the current architecture level's name.
+- `.with_connectivity(...)` attaches array-level scale-out networks.
+- `.total_instances()` and `.total_processing_elements()` count concrete
+  processor instances.
+- `.get_processor(...)`, `.get_data_mover(...)`, `.get_memory_region(...)`, and
+  `.get_scaled_memory_region(...)` search nested architectures.
 
-In real systems, these are commonly combined: build local units, scale them as arrays, then compose arrays and other components into a graph-level architecture.
+## Architecture Graphs
 
-## Symbolic-First Modeling
+`ArchGraph` is the heterogeneous composition layer. A graph contains:
 
-- Performance models and hardware constraints are symbolic by design.
-- Symbols can be solved/substituted inside the compiler workflow.
-- The current symbolic workflow is designed for the Loom MLIR-based compiler stack.
+- `ArchNodeComponent::Architecture`,
+- `ArchNodeComponent::DataMover`,
+- `ArchNodeComponent::MemoryRegion`,
+- `ArchNodeComponent::Router`,
+- `ArchEdge`s with optional attributes.
+
+Edges can carry:
+
+- `ArchEdgeAttr::Side(u32)` to identify router side,
+- `ArchEdgeAttr::Direction(Directional | Bidirectional)`.
+
+Graph node IDs and edge IDs are generated from component kind and name, with
+instance suffixes when needed. Lookup helpers such as `memory_ref`,
+`processor_ref`, `data_mover_ref`, and `router_ref` return generated node IDs by
+display name.
+
+## Resources
+
+Resources model contention relationships:
+
+- `Resource::Exclusive { id }` models a single exclusive resource.
+- `Resource::Quantitative { id, capacity }` models a finite-capacity resource.
+
+Processors can declare resources with `.with_resources(...)`. Compute builders
+also add an exclusive self resource when the processor is named. Memory
+resources are derived from region pairs where possible. When graph nodes are
+added, their resources are registered in `ArchGraph.resources`, and
+`ArchGraph.resource_map` records which nodes consume which resource IDs.
+
+Nodes absent from `resource_map` are treated as private, non-contentious
+consumers. The current schedule evaluator does not yet use these resource maps
+for parallel scheduling.
+
+## Scale-Out Networks
+
+`ScaleOutNetwork` currently has a mesh variant.
+
+A mesh network includes:
+
+- canonical `Dimension`s,
+- a concrete array `MemoryRegion`,
+- one or more `MeshLink`s, each with an `AffineMap`,
+- an IO interface (`MeshNetworkInterface`),
+- per-link bandwidth expression,
+- optional IO data movers.
+
+Mesh builders validate consistent dimensions across the explicit dimensions,
+memory region, and link source domains. Mesh links also expose generated
+exclusive resources, and IO data movers are auto-registered when an architecture
+array with connectivity is added to a graph.
+
+## Schedules And Evaluation
+
+`Schedule` has `Func`, `Sequential`, and `Parallel` variants. Schedules
+serialize with Serde and can carry optional evaluated scenarios.
+
+`evaluate(&schedule, &arch)` currently supports:
+
+- `Func`: finds the matching function in architecture processors or data
+  movers, fuses global and scenario constraints, concretizes simple costs, and
+  applies the function's `sym_map`.
+- `Sequential`: recursively evaluates children and produces the cartesian
+  product of child scenarios, summing costs and AND-ing constraints.
+
+`Parallel` evaluation is not implemented and currently panics if encountered.
+
+## Export And Visualization
+
+`architecture_to_mlir(&arch)` emits a top-level `module @arch_<name>` containing
+`adl.*` architecture operations and rewritten processor functionality MLIR
+sources. Export succeeds only when dimensions and memory sizes simplify to
+constants.
+
+Visualization exports include:
+
+- `architecture_to_graph_json*`: single graph payload,
+- `architecture_to_hierarchy_json*`: hierarchy tree payload,
+- `architecture_to_viewer_json*`: combined payload for the React viewer.
+
+The web viewer lives under [web-visualization](../web-visualization).

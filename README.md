@@ -1,11 +1,31 @@
-# MLAR Rust Front-end
+# MLAR Rust Front-End
 
-Rust implementation of MLAR (Multi-Level Architecture Representation).
+Rust implementation of MLAR, the Multi-Level Architecture Representation used
+to describe hardware to compiler flows.
 
-## Very Short Walkthrough
+This crate is a library. It provides Rust data structures, MLIR import/export,
+symbolic performance models, schedule evaluation helpers, and visualization JSON
+export. There is no top-level CLI binary in this repository.
 
-1. We provide a framework to represent hardware information and feed it to a compiler. You can model hardware components, their functionality, performance models, and the connectivity/hierarchy across hardware levels. This information is represented in a custom MLIR format, and the compiler can also query performance information that is difficult to encode directly in MLIR. We also provide visualization tools.
-2. We embrace symbolic expressions for performance models and hardware constraints. Symbols can be solved in the compiler framework. The current symbolic system is designed to work with our MLIR-based compiler stack, `Loom`.
+## What It Models
+
+MLAR describes hardware as:
+
+- Memory regions: banks and homogeneous arrays of banks.
+- Compute processors: MLIR functionality plus per-function performance models.
+- Data movers: MLIR transfer functions plus source/destination memory regions.
+- Architecture hierarchy: units, arrays, and heterogeneous graphs.
+- Graph infrastructure: memory, processors, data movers, routers, typed edges,
+  shared resources, and resource-consumer mappings.
+- Scale-out networks: currently mesh networks with affine-map links.
+- Symbolic costs and constraints: `Expr`, `ConstraintExpr`, `SimpleTimeCost`,
+  `PerfScenario`, and `FuncPerfModel`.
+
+Functionality lives in MLIR modules that use ordinary `func.func`/`linalg.*`
+operations plus Loom annotations such as `loom.sym`, `loom.bind_shape`,
+`loom.bind_mem`, `loom.copy`, and `loom.gather`. Performance models are kept in
+Rust because timing, throughput, and scenario constraints are easier to express
+symbolically outside compute IR.
 
 ## Documentation
 
@@ -13,6 +33,51 @@ Rust implementation of MLAR (Multi-Level Architecture Representation).
 - [Software Architecture and File Contents](docs/software-architecture.md)
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md)
+
+The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs).
+It builds a system graph containing an 8x8 mesh of cores, DRAM, two NoC data
+movers, routers, MLIR functionality modules, resource bindings, MLIR export,
+schedule evaluation, and viewer JSON export.
+
+## Minimal Example
+
+```rust
+use mlar_rust::*;
+
+let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
+    .with_name("L1");
+
+let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")?;
+let perf = module
+    .functions
+    .iter()
+    .map(|_| {
+        FuncPerfModel::builder()
+            .simple_time_cost(
+                Expr::parse("1").unwrap(),
+                Expr::parse("L").unwrap(),
+                Expr::parse("1024").unwrap(),
+            )
+            .build()
+    })
+    .collect();
+
+let lane = ComputeProcessor::builder()
+    .named("vector_lane")
+    .with_regions(vec![(l1.clone(), l1.clone())])
+    .from_module(module, perf)?
+    .into_elem();
+
+let arch: Architecture = ArchGraph::builder("core")
+    .mem(&l1)
+    .architecture(&lane)
+    .build()
+    .into();
+
+let mlir = architecture_to_mlir(&arch)
+    .expect("MLIR export requires concrete dimensions and memory sizes");
+let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
+```
 
 ## Performance Model Builder
 
@@ -61,6 +126,17 @@ assert_eq!(matmul.symbols, mlar_rust::Sym::from_names(["K", "M", "N"]));
 You can still call `.symbols([...])` or `.constraints(...)` explicitly when a
 model needs declarations that differ from inferred expression usage.
 
+## Current Limitations
+
+- MLIR export returns `None` if dimensions or memory sizes cannot be simplified
+  to constants.
+- Schedule evaluation supports `Schedule::Func` and `Schedule::Sequential`.
+  `Schedule::Parallel` is serialized but evaluation is not implemented yet.
+- Scenario overlap is not checked. Model authors should make scenario
+  constraints mutually exclusive when multiple scenarios are present.
+- Resource maps represent contention relationships, but the current schedule
+  evaluator does not perform resource-aware parallel scheduling.
+
 ## License
 
-TBD
+No license file is currently present in this repository.
