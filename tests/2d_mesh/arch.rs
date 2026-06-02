@@ -115,7 +115,7 @@ pub fn single_core() -> Architecture {
     let dim_bank = Dimension::new_int("nbank", 16);
 
     // ── Memory ────────────────────────────────────────────────────────────────
-    // L1 cache: 16 banks, each 91.5KB (5856 blocks × 16 bytes). 
+    // L1 cache: 16 banks, each 91.5KB (5856 blocks × 16 bytes).
     // It seems that real available L1 size is 1398784, each 85.375KB (5464 blocks × 16 bytes).
     let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5464))
         .scale(dim_bank.as_slice())
@@ -248,18 +248,22 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("scaled mesh should expose mesh-wide L1");
 
     // ── NoC data movers ───────────────────────────────────────────────────────
-    // NoC0: DRAM→L1 unicast (fixed_latency=454, volume=M*N*2, throughput=15)
+    // NoC0: DRAM→L1 unicast (fixed_latency=454, volume=M*N*2*effective_bandwidth, throughput=15)
     //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y]
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
-        let pm = simple_perf_model("454", "M * N * 2", "15");
+        let pm = simple_perf_model("454", "M * N * 2 * effective_bandwidth", "150");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
     let bcst_perf = {
         let pm = FuncPerfModel::builder()
-            .symbols(["M", "N", "bcst_x", "bcst_y"])
-            .simple_time_cost(expr("344"), expr("M * N * 2"), expr("28"))
+            .symbols(["M", "N", "bcst_x", "bcst_y", "effective_bandwidth"])
+            .simple_time_cost(
+                expr("344"),
+                expr("M * N * 2 * effective_bandwidth"),
+                expr("280"),
+            )
             .build();
         pm.validate().expect("bcst perf model should validate");
         pm
@@ -284,7 +288,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm
     };
     let noc1_unicast_perf = {
-        let pm = simple_perf_model("454", "M * N * 2", "15");
+        let pm = simple_perf_model("454", "M * N * 2", "150");
         pm.validate().expect("unicast perf model should validate");
         pm
     };

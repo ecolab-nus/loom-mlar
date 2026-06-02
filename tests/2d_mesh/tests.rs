@@ -239,7 +239,7 @@ fn test_2d_mesh_torus_perf_models() {
         .get_function("dram_to_l1_bcst")
         .expect("noc0 should expose dram_to_l1_bcst");
     let noc0_bcst_syms = &noc0_bcst.func.symbols;
-    for sym in ["M", "N", "bcst_x", "bcst_y"] {
+    for sym in ["M", "N", "bcst_x", "bcst_y", "effective_bandwidth"] {
         assert!(
             noc0_bcst_syms.iter().any(|s| s.0.as_str() == sym),
             "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
@@ -874,11 +874,16 @@ fn test_generate_core_evaluator_binary() {
 fn test_evaluate_system_data_mover_schedule() {
     let system = scaled_mesh_torus();
 
-    let mn_sym = vec![Sym::new("M"), Sym::new("N")];
+    let mn_sym = vec![
+        Sym::new("M"),
+        Sym::new("N"),
+        Sym::new("effective_bandwidth"),
+    ];
     let sym_map = {
         let mut m = SymbolicMapping::new();
         m.insert(Sym::new("M"), Expr::sym("BM"));
         m.insert(Sym::new("N"), Expr::sym("BN"));
+        m.insert(Sym::new("effective_bandwidth"), Expr::Const(1));
         Some(m)
     };
 
@@ -954,9 +959,10 @@ fn test_evaluate_system_data_mover_schedule() {
                 match s {
                     Schedule::Func { func, .. } => {
                         let sm = func.sym_map.as_ref().expect("sym_map should be present");
-                        assert_eq!(sm.entries.len(), 2);
+                        assert_eq!(sm.entries.len(), 3);
                         assert_eq!(sm.entries[0].0, Sym::new("M"));
                         assert_eq!(sm.entries[1].0, Sym::new("N"));
+                        assert_eq!(sm.entries[2].0, Sym::new("effective_bandwidth"));
                     }
                     _ => panic!("expected Func"),
                 }
@@ -1004,11 +1010,16 @@ fn test_generate_system_evaluator_binary() {
         "generated binary should exist at {binary:?}"
     );
 
-    let mn_sym = vec![Sym::new("M"), Sym::new("N")];
+    let mn_sym = vec![
+        Sym::new("M"),
+        Sym::new("N"),
+        Sym::new("effective_bandwidth"),
+    ];
     let sym_map = {
         let mut m = SymbolicMapping::new();
         m.insert(Sym::new("M"), Expr::sym("BM"));
         m.insert(Sym::new("N"), Expr::sym("BN"));
+        m.insert(Sym::new("effective_bandwidth"), Expr::Const(1));
         Some(m)
     };
 

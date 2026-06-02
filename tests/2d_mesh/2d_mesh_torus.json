@@ -187,18 +187,18 @@
               "kind": "bank",
               "name": null,
               "capacity_bytes": {
-                "expr": "(16 * 5856)",
-                "const_value": 93696
+                "expr": "(16 * 5464)",
+                "const_value": 87424
               },
               "access_granularity": {
                 "expr": "16",
                 "const_value": 16
               },
-              "total_size_bytes": 93696
+              "total_size_bytes": 87424
             },
-            "total_size_bytes": 1499136
+            "total_size_bytes": 1398784
           },
-          "total_size_bytes": 95944704
+          "total_size_bytes": 89522176
         }
       }
     },

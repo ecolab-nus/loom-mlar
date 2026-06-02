@@ -9,6 +9,7 @@ func.func @dram_to_l1_f16(
 ) {
   %M = loom.sym @M : index
   %N = loom.sym @N : index
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>
@@ -23,6 +24,7 @@ func.func @dram_to_l1_bcst(
 ) {
   %M = loom.sym @M : index
   %N = loom.sym @N : index
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
   loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
   loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
   loom.bind_mem %dram_src, @DRAM : memref<?x?xf16>

@@ -2,7 +2,7 @@ module @arch_system {
   %0 = adl.memory.bank "mem_DRAM_bank", {bsize = 8192, nblk = 196608}
   %1 = adl.spatial_dim "dim_dram_channel", 8
   %2 = adl.memory.array "mem_DRAM", [%1] of %0
-  %3 = adl.memory.bank "mem_bank", {bsize = 16, nblk = 5856}
+  %3 = adl.memory.bank "mem_bank", {bsize = 16, nblk = 5464}
   %4 = adl.spatial_dim "dim_nbank", 16
   %5 = adl.memory.array "mem_L1", [%4] of %3
   %6 = adl.resource.exclusive "res_matrix_lane"
@@ -549,6 +549,7 @@ module @arch_system {
   ) {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
@@ -563,6 +564,7 @@ module @arch_system {
   ) {
     %M = loom.sym @M : index
     %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
     loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
