@@ -60,13 +60,13 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                 scenario(
                     "M * N < 8192 && M == N",
                     "100",
-                    "M * N * K",
+                    "2 * M * N * K",
                     "(M * N / 8192) * 1024",
                 ),
                 scenario(
                     "M * N < 8192 && M != N",
                     "100",
-                    "M * N * K",
+                    "2 * M * N * K",
                     "(M * N / 8192) * 716",
                 ),
             ])
@@ -75,28 +75,28 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
             .constraints(constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
                 scenario(
-                    "(B * B * M * N >= 8192) && (M == N)",
+                    "(M * N >= 8192) && (M == N)",
                     "100",
-                    "B * M * N * K",
+                    "2 * B * M * N * K",
                     "1024",
                 ),
                 scenario(
-                    "(B * B * M * N >= 8192) && (M != N)",
+                    "(M * N >= 8192) && (M != N)",
                     "100",
-                    "B * M * N * K",
+                    "2 * B * M * N * K",
                     "716",
                 ),
                 scenario(
-                    "(B * B * M * N < 8192) && (M == N)",
+                    "(M * N < 8192) && (M == N)",
                     "100",
-                    "B * M * N * K",
-                    "(B * B * M * N / 8192) * 1024",
+                    "2 * B * M * N * K",
+                    "(M * N / 8192) * 1024",
                 ),
                 scenario(
-                    "(B * B * M * N < 8192) && (M != N)",
+                    "(M * N < 8192) && (M != N)",
                     "100",
-                    "B * M * N * K",
-                    "(B * B * M * N / 8192) * 716",
+                    "2 * B * M * N * K",
+                    "(M * N / 8192) * 716",
                 ),
             ])
             .build(),
@@ -115,8 +115,9 @@ pub fn single_core() -> Architecture {
     let dim_bank = Dimension::new_int("nbank", 16);
 
     // ── Memory ────────────────────────────────────────────────────────────────
-    // L1 cache: 16 banks, each 128KB (1024 blocks × 128 bytes).
-    let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
+    // L1 cache: 16 banks, each 91.5KB (5856 blocks × 16 bytes). 
+    // It seems that real available L1 size is 1398784, each 85.375KB (5464 blocks × 16 bytes).
+    let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5464))
         .scale(dim_bank.as_slice())
         .with_name("L1");
 
@@ -256,7 +257,10 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm
     };
     let bcst_perf = {
-        let pm = simple_perf_model("344 + bcst_x + bcst_y", "M * N * 2", "28/(bcst_x * bcst_y)");
+        let pm = FuncPerfModel::builder()
+            .symbols(["M", "N", "bcst_x", "bcst_y"])
+            .simple_time_cost(expr("344"), expr("M * N * 2"), expr("28"))
+            .build();
         pm.validate().expect("bcst perf model should validate");
         pm
     };
@@ -274,7 +278,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         let pm = simple_perf_model(
             "344 + gather_x + gather_y",
             "B * M * N * 2",
-            "28/(gather_x * gather_y)",
+            "28 / (gather_x * gather_y)",
         );
         pm.validate().expect("gather perf model should validate");
         pm
