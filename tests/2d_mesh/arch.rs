@@ -262,7 +262,7 @@ pub fn scaled_mesh_torus() -> Architecture {
             .simple_time_cost(
                 expr("344"),
                 expr("M * N * 2 * effective_bandwidth"),
-                expr("216"),
+                expr("150"),
             )
             .build();
         pm.validate().expect("bcst perf model should validate");
