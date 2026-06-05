@@ -55,17 +55,17 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
         "matmul" => FuncPerfModel::builder()
             .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
-                scenario("M * N >= 8192 && M == N", "100", "M * N * K", "1024"),
-                scenario("(M * N >= 8192) && (M != N)", "100", "M * N * K", "716"),
+                scenario("M * N >= 8192 && M == N", "M * N / 2", "M * N * K", "1024"),
+                scenario("(M * N >= 8192) && (M != N)", "M * N / 2", "M * N * K", "716"),
                 scenario(
                     "M * N < 8192 && M == N",
-                    "100",
+                    "M * N / 2",
                     "2 * M * N * K",
                     "(M * N / 8192) * 1024",
                 ),
                 scenario(
                     "M * N < 8192 && M != N",
-                    "100",
+                    "M * N / 2",
                     "2 * M * N * K",
                     "(M * N / 8192) * 716",
                 ),
@@ -76,25 +76,25 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
             .scenarios([
                 scenario(
                     "(M * N >= 8192) && (M == N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
                     "1024",
                 ),
                 scenario(
                     "(M * N >= 8192) && (M != N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
                     "716",
                 ),
                 scenario(
                     "(M * N < 8192) && (M == N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
                     "(M * N / 8192) * 1024",
                 ),
                 scenario(
                     "(M * N < 8192) && (M != N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
                     "(M * N / 8192) * 716",
                 ),
