@@ -55,19 +55,19 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
         "matmul" => FuncPerfModel::builder()
             .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
-                scenario("M * N >= 8192 && M == N", "100", "M * N * K", "1382"),
-                scenario("(M * N >= 8192) && (M != N)", "100", "M * N * K", "968"),
+                scenario("M * N >= 8192 && M == N", "M * N / 2", "M * N * K", "1080"),
+                scenario("(M * N >= 8192) && (M != N)", "M * N / 2", "M * N * K", "1080"),
                 scenario(
                     "M * N < 8192 && M == N",
-                    "100",
+                    "M * N / 2",
                     "2 * M * N * K",
-                    "(M * N / 8192) * 1382",
+                    "(M * N / 8192) * 1080",
                 ),
                 scenario(
                     "M * N < 8192 && M != N",
-                    "100",
+                    "M * N / 2",
                     "2 * M * N * K",
-                    "(M * N / 8192) * 968",
+                    "(M * N / 8192) * 1080",
                 ),
             ])
             .build(),
@@ -76,27 +76,27 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
             .scenarios([
                 scenario(
                     "(M * N >= 8192) && (M == N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
-                    "1382",
+                    "1080",
                 ),
                 scenario(
                     "(M * N >= 8192) && (M != N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
-                    "968",
+                    "1080",
                 ),
                 scenario(
                     "(M * N < 8192) && (M == N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
-                    "(M * N / 8192) * 1382",
+                    "(M * N / 8192) * 1080",
                 ),
                 scenario(
                     "(M * N < 8192) && (M != N)",
-                    "100",
+                    "M * N / 2",
                     "2 * B * M * N * K",
-                    "(M * N / 8192) * 968",
+                    "(M * N / 8192) * 1080",
                 ),
             ])
             .build(),
@@ -252,7 +252,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y]
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
-        let pm = simple_perf_model("400", "M * N * 2 * effective_bandwidth", "300");
+        let pm = simple_perf_model("400", "M * N * 2 * effective_bandwidth", "210");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
@@ -288,7 +288,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm
     };
     let noc1_unicast_perf = {
-        let pm = simple_perf_model("400", "M * N * 2", "300");
+        let pm = simple_perf_model("400", "M * N * 2", "210");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
