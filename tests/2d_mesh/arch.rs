@@ -55,6 +55,7 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
         "matmul" => FuncPerfModel::builder()
             .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
+<<<<<<< HEAD
                 scenario("M * N >= 8192 && M == N", "M * N / 2", "M * N * K", "1024"),
                 scenario("(M * N >= 8192) && (M != N)", "M * N / 2", "M * N * K", "716"),
                 scenario(
@@ -65,16 +66,22 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                 ),
                 scenario(
                     "M * N < 8192 && M != N",
+=======
+                scenario("M * N >= 8192", "M * N / 2", "M * N * K", "716"),
+                scenario(
+                    "M * N < 8192 ",
+>>>>>>> 0aa423f (update wormhole cost model)
                     "M * N / 2",
                     "2 * M * N * K",
                     "(M * N / 8192) * 716",
-                ),
+                )
             ])
             .build(),
         "batch_matmul" => FuncPerfModel::builder()
             .constraints(constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
                 scenario(
+<<<<<<< HEAD
                     "(M * N >= 8192) && (M == N)",
                     "M * N / 2",
                     "2 * B * M * N * K",
@@ -82,11 +89,15 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                 ),
                 scenario(
                     "(M * N >= 8192) && (M != N)",
+=======
+                    "M * N >= 8192",
+>>>>>>> 0aa423f (update wormhole cost model)
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "716",
-                ),
+                )
                 scenario(
+<<<<<<< HEAD
                     "(M * N < 8192) && (M == N)",
                     "M * N / 2",
                     "2 * B * M * N * K",
@@ -94,10 +105,13 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                 ),
                 scenario(
                     "(M * N < 8192) && (M != N)",
+=======
+                    "M * N < 8192",
+>>>>>>> 0aa423f (update wormhole cost model)
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "(M * N / 8192) * 716",
-                ),
+                )
             ])
             .build(),
         "vec_vsum" | "vec_vmax" => simple_perf_model("1", "P * R", "128"),
