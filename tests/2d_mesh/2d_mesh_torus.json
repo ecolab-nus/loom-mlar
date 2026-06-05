@@ -9,17 +9,17 @@
       "id": "proc:mesh",
       "kind": "array",
       "name": "mesh",
-      "label": "mesh [x=8, y=8]",
+      "label": "mesh [x=12, y=10]",
       "dimensions": [
         {
           "name": "x",
-          "size_expr": "8",
-          "size_const": 8
+          "size_expr": "12",
+          "size_const": 12
         },
         {
           "name": "y",
-          "size_expr": "8",
-          "size_const": 8
+          "size_expr": "10",
+          "size_const": 10
         }
       ],
       "details": {
@@ -30,13 +30,13 @@
           "dimensions": [
             {
               "name": "x",
-              "size_expr": "8",
-              "size_const": 8
+              "size_expr": "12",
+              "size_const": 12
             },
             {
               "name": "y",
-              "size_expr": "8",
-              "size_const": 8
+              "size_expr": "10",
+              "size_const": 10
             }
           ],
           "elem": {
@@ -46,7 +46,7 @@
             "link_count": 0
           }
         },
-        "total_instances": 128
+        "total_instances": 240
       }
     },
     {
@@ -138,17 +138,17 @@
       "id": "mem:array_l1",
       "kind": "memory",
       "name": "array_L1",
-      "label": "array_L1 [x=8, y=8, nbank=16]",
+      "label": "array_L1 [x=12, y=10, nbank=16]",
       "dimensions": [
         {
           "name": "x",
-          "size_expr": "8",
-          "size_const": 8
+          "size_expr": "12",
+          "size_const": 12
         },
         {
           "name": "y",
-          "size_expr": "8",
-          "size_const": 8
+          "size_expr": "10",
+          "size_const": 10
         },
         {
           "name": "nbank",
@@ -164,13 +164,13 @@
           "dimensions": [
             {
               "name": "x",
-              "size_expr": "8",
-              "size_const": 8
+              "size_expr": "12",
+              "size_const": 12
             },
             {
               "name": "y",
-              "size_expr": "8",
-              "size_const": 8
+              "size_expr": "10",
+              "size_const": 10
             }
           ],
           "sub_region": {
@@ -198,7 +198,7 @@
             },
             "total_size_bytes": 1398784
           },
-          "total_size_bytes": 89522176
+          "total_size_bytes": 167854080
         }
       }
     },

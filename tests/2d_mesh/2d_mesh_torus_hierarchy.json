@@ -3,7 +3,7 @@
   "root": {
     "kind": "graph",
     "name": "system",
-    "total_instances": 128,
+    "total_instances": 240,
     "children": [
       {
         "kind": "array",
@@ -11,16 +11,16 @@
         "dimensions": [
           {
             "name": "x",
-            "size_expr": "8",
-            "size_const": 8
+            "size_expr": "12",
+            "size_const": 12
           },
           {
             "name": "y",
-            "size_expr": "8",
-            "size_const": 8
+            "size_expr": "10",
+            "size_const": 10
           }
         ],
-        "total_instances": 128,
+        "total_instances": 240,
         "children": [
           {
             "kind": "graph",
