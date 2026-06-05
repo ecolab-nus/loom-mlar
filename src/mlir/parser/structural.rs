@@ -71,6 +71,9 @@ pub struct MlirFunc {
     /// Optional tensor-level metadata extracted from MLIR body/signature.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mlir_details: Option<MlirFuncDetails>,
+    /// Optional source MLIR operation label for a scheduled call site.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub op_label: Option<String>,
     /// Optional symbolic mapping for this function invocation.
     ///
     /// When a function is scheduled, each call site may bind its symbols to
@@ -168,6 +171,7 @@ impl MlirFunc {
             name: name.into(),
             symbols: vec![],
             mlir_details: None,
+            op_label: None,
             sym_map: None,
         }
     }
@@ -179,6 +183,7 @@ impl MlirFunc {
             name: name.into(),
             symbols,
             mlir_details: None,
+            op_label: None,
             sym_map: None,
         }
     }
@@ -360,6 +365,7 @@ impl MlirFunc {
                 gather_ops,
                 linalg_ops,
             }),
+            op_label: None,
             sym_map: None,
         })
     }

@@ -500,6 +500,7 @@ mod tests {
                 gather_ops: vec![],
                 linalg_ops: vec![],
             }),
+            op_label: None,
             sym_map: None,
         };
 
