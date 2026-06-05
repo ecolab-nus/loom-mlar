@@ -203,14 +203,14 @@ pub fn single_core() -> Architecture {
 }
 
 // ── Full system ───────────────────────────────────────────────────────────────
-// Builds the complete 8×8 mesh torus: mesh array, DRAM, two NoC data movers,
+// Builds the complete 12×10 mesh torus: mesh array, DRAM, two NoC data movers,
 // and a 3-sided mesh_dram_router connecting them.
 
 pub fn scaled_mesh_torus() -> Architecture {
     // ── Dimensions ────────────────────────────────────────────────────────────
     let dim_dram_channel = Dimension::new_int("dram_channel", 8);
-    let dim_x = Dimension::new_int("x", 8);
-    let dim_y = Dimension::new_int("y", 8);
+    let dim_x = Dimension::new_int("x", 12);
+    let dim_y = Dimension::new_int("y", 10);
 
     // ── Memory ────────────────────────────────────────────────────────────────
     // DRAM: 8 channels, each modeled as one memory bank.
@@ -220,7 +220,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .with_name("DRAM");
 
     // ── Mesh ──────────────────────────────────────────────────────────────────
-    // Scale a single core across the 8×8 grid. No explicit inter-core
+    // Scale a single core across the 12×10 grid. No explicit inter-core
     // connectivity — cross-core transfers go through the NoC data movers.
     let core = single_core();
     let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");

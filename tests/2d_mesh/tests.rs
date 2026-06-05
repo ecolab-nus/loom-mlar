@@ -42,7 +42,7 @@ fn mesh_node(arch: &Architecture) -> &Architecture {
 #[test]
 fn test_2d_mesh_torus_perf_models() {
     let mesh = scaled_mesh_torus();
-    assert_eq!(mesh.total_processing_elements(), Some(128));
+    assert_eq!(mesh.total_processing_elements(), Some(240));
 
     // === Verify processor functionality + per-function models survive scaling ===
     let core_graph = match mesh_node(&mesh) {
@@ -402,7 +402,7 @@ fn test_2d_mesh_torus() {
         _ => panic!("array element should be graph"),
     }
 
-    assert_eq!(mesh.total_processing_elements(), Some(128));
+    assert_eq!(mesh.total_processing_elements(), Some(240));
     assert_eq!(
         dims.iter().map(|d| d.name.0.as_str()).collect::<Vec<_>>(),
         vec!["x", "y"]
