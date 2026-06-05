@@ -10,8 +10,8 @@ module @arch_system {
   %8 = adl.processor.compute @proc_matrix_lane, [(%5, %5)], with [%6]
   %9 = adl.processor.compute @proc_vector_lane, [(%5, %5)], with [%7]
   %10 = adl.arch.compose "arch_core", arch[%8, %9], mem[%5]
-  %11 = adl.spatial_dim "dim_x", 12
-  %12 = adl.spatial_dim "dim_y", 10
+  %11 = adl.spatial_dim "dim_x", 8
+  %12 = adl.spatial_dim "dim_y", 8
   %13 = adl.memory.array "mem_array_L1", [%11, %12] of %5
   %14 = adl.arch.scale "arch_mesh", [%11, %12] of %10, mem_region %13
   %15 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %13)]

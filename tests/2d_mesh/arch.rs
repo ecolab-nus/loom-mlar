@@ -55,49 +55,30 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
         "matmul" => FuncPerfModel::builder()
             .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
-                scenario("M * N >= 8192 && M == N", "M * N / 2", "M * N * K", "1080"),
-                scenario("(M * N >= 8192) && (M != N)", "M * N / 2", "M * N * K", "1080"),
+                scenario("M * N >= 8192", "M * N / 2", "M * N * K", "1080"),
                 scenario(
-                    "M * N < 8192 && M == N",
+                    "M * N < 8192",
                     "M * N / 2",
                     "2 * M * N * K",
                     "(M * N / 8192) * 1080",
-                ),
-                scenario(
-                    "M * N < 8192 && M != N",
-                    "M * N / 2",
-                    "2 * M * N * K",
-                    "(M * N / 8192) * 1080",
-                ),
+                )
             ])
             .build(),
         "batch_matmul" => FuncPerfModel::builder()
             .constraints(constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
                 scenario(
-                    "(M * N >= 8192) && (M == N)",
+                    "M * N >= 8192",
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "1080",
                 ),
                 scenario(
-                    "(M * N >= 8192) && (M != N)",
-                    "M * N / 2",
-                    "2 * B * M * N * K",
-                    "1080",
-                ),
-                scenario(
-                    "(M * N < 8192) && (M == N)",
+                    "M * N < 8192",
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "(M * N / 8192) * 1080",
-                ),
-                scenario(
-                    "(M * N < 8192) && (M != N)",
-                    "M * N / 2",
-                    "2 * B * M * N * K",
-                    "(M * N / 8192) * 1080",
-                ),
+                )
             ])
             .build(),
         "vec_vsum" | "vec_vmax" => simple_perf_model("1", "P * R", "128"),
@@ -262,7 +243,7 @@ pub fn scaled_mesh_torus() -> Architecture {
             .simple_time_cost(
                 expr("500"),
                 expr("M * N * 2 * effective_bandwidth"),
-                expr("300"),
+                expr("210"),
             )
             .build();
         pm.validate().expect("bcst perf model should validate");
