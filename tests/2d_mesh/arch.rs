@@ -72,7 +72,7 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "716",
-                )
+                ),
                 scenario(
                     "M * N < 8192",
                     "M * N / 2",
