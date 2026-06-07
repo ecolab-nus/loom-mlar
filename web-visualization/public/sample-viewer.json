@@ -168,7 +168,9 @@
           "type": "processor",
           "functions": [
             "dram_to_l1_f16",
-            "dram_to_l1_bcst"
+            "batch_dram_to_l1_f16",
+            "dram_to_l1_bcst",
+            "batch_dram_to_l1_bcst"
           ]
         }
       },
@@ -180,7 +182,9 @@
           "type": "processor",
           "functions": [
             "l1_to_dram_f16",
-            "l1_gather"
+            "batch_l1_to_dram_f16",
+            "l1_gather",
+            "batch_l1_gather"
           ]
         }
       },
@@ -307,7 +311,9 @@
                 "source_mlir_module_name": "dram_l1_noc0",
                 "ops": [
                   "dram_to_l1_f16",
-                  "dram_to_l1_bcst"
+                  "batch_dram_to_l1_f16",
+                  "dram_to_l1_bcst",
+                  "batch_dram_to_l1_bcst"
                 ],
                 "op_details": [
                   {
@@ -320,7 +326,25 @@
                     ]
                   },
                   {
+                    "name": "batch_dram_to_l1_f16",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
                     "name": "dram_to_l1_bcst",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_dram_to_l1_bcst",
                     "source_memories": [
                       "DRAM"
                     ],
@@ -419,7 +443,9 @@
                 "source_mlir_module_name": "dram_l1_noc1",
                 "ops": [
                   "l1_to_dram_f16",
-                  "l1_gather"
+                  "batch_l1_to_dram_f16",
+                  "l1_gather",
+                  "batch_l1_gather"
                 ],
                 "op_details": [
                   {
@@ -432,7 +458,25 @@
                     ]
                   },
                   {
+                    "name": "batch_l1_to_dram_f16",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "DRAM"
+                    ]
+                  },
+                  {
                     "name": "l1_gather",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_l1_gather",
                     "source_memories": [
                       "array_L1"
                     ],
@@ -523,17 +567,6 @@
           "side": 2
         },
         {
-          "id": "resdep:dram_l1_noc1:array_l1",
-          "kind": "resource_dependency",
-          "name": "dram_l1_noc1 → array_L1",
-          "source": "dm:dram_l1_noc1",
-          "target": "mem:array_l1",
-          "source_name": "dram_l1_noc1",
-          "target_name": "array_L1",
-          "label": "dram_l1_noc1 → array_L1",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:dram_l1_noc0:array_l1",
           "kind": "resource_dependency",
           "name": "dram_l1_noc0 → array_L1",
@@ -542,6 +575,17 @@
           "source_name": "dram_l1_noc0",
           "target_name": "array_L1",
           "label": "dram_l1_noc0 → array_L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_noc1:array_l1",
+          "kind": "resource_dependency",
+          "name": "dram_l1_noc1 → array_L1",
+          "source": "dm:dram_l1_noc1",
+          "target": "mem:array_l1",
+          "source_name": "dram_l1_noc1",
+          "target_name": "array_L1",
+          "label": "dram_l1_noc1 → array_L1",
           "direction": "directional"
         }
       ]
@@ -1375,28 +1419,6 @@
           "side": 1
         },
         {
-          "id": "resdep:matrix_lane:l1",
-          "kind": "resource_dependency",
-          "name": "matrix_lane → L1",
-          "source": "proc:matrix_lane",
-          "target": "mem:l1",
-          "source_name": "matrix_lane",
-          "target_name": "L1",
-          "label": "matrix_lane → L1",
-          "direction": "directional"
-        },
-        {
-          "id": "resdep:matrix_lane:matrix_lane",
-          "kind": "resource_dependency",
-          "name": "matrix_lane → matrix_lane",
-          "source": "proc:matrix_lane",
-          "target": "res:matrix_lane",
-          "source_name": "matrix_lane",
-          "target_name": "matrix_lane",
-          "label": "matrix_lane → matrix_lane",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:vector_lane:l1",
           "kind": "resource_dependency",
           "name": "vector_lane → L1",
@@ -1416,6 +1438,28 @@
           "source_name": "vector_lane",
           "target_name": "vector_lane",
           "label": "vector_lane → vector_lane",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:matrix_lane:l1",
+          "kind": "resource_dependency",
+          "name": "matrix_lane → L1",
+          "source": "proc:matrix_lane",
+          "target": "mem:l1",
+          "source_name": "matrix_lane",
+          "target_name": "L1",
+          "label": "matrix_lane → L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:matrix_lane:matrix_lane",
+          "kind": "resource_dependency",
+          "name": "matrix_lane → matrix_lane",
+          "source": "proc:matrix_lane",
+          "target": "res:matrix_lane",
+          "source_name": "matrix_lane",
+          "target_name": "matrix_lane",
+          "label": "matrix_lane → matrix_lane",
           "direction": "directional"
         }
       ]

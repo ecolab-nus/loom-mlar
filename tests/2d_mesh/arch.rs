@@ -61,24 +61,19 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
                     "M * N / 2",
                     "2 * M * N * K",
                     "(M * N / 8192) * 1080",
-                )
+                ),
             ])
             .build(),
         "batch_matmul" => FuncPerfModel::builder()
             .constraints(constraint("B >= 1 && M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
-                scenario(
-                    "M * N >= 8192",
-                    "M * N / 2",
-                    "2 * B * M * N * K",
-                    "1080",
-                ),
+                scenario("M * N >= 8192", "M * N / 2", "2 * B * M * N * K", "1080"),
                 scenario(
                     "M * N < 8192",
                     "M * N / 2",
                     "2 * B * M * N * K",
                     "(M * N / 8192) * 1080",
-                )
+                ),
             ])
             .build(),
         "vec_vsum" | "vec_vmax" => simple_perf_model("1", "P * R", "128"),
@@ -229,11 +224,15 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("scaled mesh should expose mesh-wide L1");
 
     // ── NoC data movers ───────────────────────────────────────────────────────
-    // NoC0: DRAM→L1 unicast (fixed_latency=454, volume=M*N*2*effective_bandwidth, throughput=15)
-    //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y]
+    // NoC0: DRAM→L1 unicast and 2D broadcast, each with rank-2 and batched rank-3 forms.
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
         let pm = simple_perf_model("400", "M * N * 2 * effective_bandwidth", "210");
+        pm.validate().expect("unicast perf model should validate");
+        pm
+    };
+    let batch_unicast_perf = {
+        let pm = simple_perf_model("400", "B * M * N * 2 * effective_bandwidth", "210");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
@@ -249,28 +248,58 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm.validate().expect("bcst perf model should validate");
         pm
     };
+    let batch_bcst_perf = {
+        let pm = FuncPerfModel::builder()
+            .symbols(["B", "M", "N", "bcst_x", "bcst_y", "effective_bandwidth"])
+            .simple_time_cost(
+                expr("500"),
+                expr("B * M * N * 2 * effective_bandwidth"),
+                expr("210"),
+            )
+            .build();
+        pm.validate().expect("bcst perf model should validate");
+        pm
+    };
     let noc0_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")
         .expect("dram_l1_noc0.mlir should parse");
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
         .with_regions(vec![(dram.clone(), array_l1.clone())])
-        .from_module(noc0_func, vec![unicast_perf, bcst_perf])
+        .from_module(
+            noc0_func,
+            vec![unicast_perf, batch_unicast_perf, bcst_perf, batch_bcst_perf],
+        )
         .expect("dram_l1_noc0 data mover should link functionality and perf");
 
-    // NoC1: L1→DRAM writeback and L1→L1 gather [%gather_x, %gather_y].
+    // NoC1: L1→DRAM writeback, batched writeback, and L1→L1 gather [%gather_x, %gather_y].
+    // Gather transfer volume is always the destination payload size.
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
-        let pm = simple_perf_model(
-            "344 + gather_x + gather_y",
-            "B * M * N * 2",
-            "28 / (gather_x * gather_y)",
-        );
+        let pm = FuncPerfModel::builder()
+            .symbols(["B", "M", "N", "gather_x", "gather_y"])
+            .simple_time_cost(expr("400"), expr("B * M * N * 2"), expr("650"))
+            .build();
         pm.validate().expect("gather perf model should validate");
+        pm
+    };
+    let batch_gather_perf = {
+        let pm = FuncPerfModel::builder()
+            .symbols(["B", "M", "N", "gather_x", "gather_y"])
+            .simple_time_cost(expr("400"), expr("B * M * N * 2"), expr("650"))
+            .build();
+        pm.validate()
+            .expect("batched gather perf model should validate");
         pm
     };
     let noc1_unicast_perf = {
         let pm = simple_perf_model("400", "M * N * 2", "210");
         pm.validate().expect("unicast perf model should validate");
+        pm
+    };
+    let noc1_batch_unicast_perf = {
+        let pm = simple_perf_model("400", "B * M * N * 2", "210");
+        pm.validate()
+            .expect("batched unicast perf model should validate");
         pm
     };
     let noc1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir")
@@ -281,7 +310,15 @@ pub fn scaled_mesh_torus() -> Architecture {
             (array_l1.clone(), dram.clone()),
             (array_l1.clone(), array_l1.clone()),
         ])
-        .from_module(noc1_func, vec![noc1_unicast_perf, gather_perf])
+        .from_module(
+            noc1_func,
+            vec![
+                noc1_unicast_perf,
+                noc1_batch_unicast_perf,
+                gather_perf,
+                batch_gather_perf,
+            ],
+        )
         .expect("dram_l1_noc1 data mover should link functionality and perf");
 
     // ── System graph ──────────────────────────────────────────────────────────

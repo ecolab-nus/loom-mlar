@@ -539,7 +539,7 @@ module @arch_system {
   }
 
   // DRAM -> L1 transfers carried over NoC0:
-  // unicast plus a parameterized 2D broadcast.
+  // unicast plus parameterized 2D broadcast, with rank-2 and batched rank-3 forms.
 
   module @proc_dram_l1_noc0 {
 
@@ -555,6 +555,22 @@ module @arch_system {
     loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
     loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
     loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
+  func.func @batch_dram_to_l1_f16(
+      %dram_src: memref<?x?x?xf16>,
+      %l1_dst: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
+    loom.bind_shape %dram_src, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [1, 1] : memref<?x?x?xf16> to memref<?x?x?xf16>
     return
   }
 
@@ -575,9 +591,28 @@ module @arch_system {
     return
   }
 
+  func.func @batch_dram_to_l1_bcst(
+      %dram_src: memref<?x?x?xf16>,
+      %l1_dst: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
+    loom.bind_shape %dram_src, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
+    %bcst_x = loom.sym @bcst_x : index
+    %bcst_y = loom.sym @bcst_y : index
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [%bcst_x, %bcst_y] : memref<?x?x?xf16> to memref<?x?x?xf16>
+    return
+  }
+
   }
 
   // L1 -> DRAM writeback and L1 -> L1 gather transfers carried over NoC1.
+  // Writeback and gather each have rank-2 and batched rank-3 forms.
 
   module @proc_dram_l1_noc1 {
 
@@ -595,13 +630,28 @@ module @arch_system {
     return
   }
 
+  func.func @batch_l1_to_dram_f16(
+      %l1_src: memref<?x?x?xf16>,
+      %dram_dst: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %l1_src, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_shape %dram_dst, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?x?xf16>
+    loom.bind_mem %dram_dst, @mem_DRAM : memref<?x?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @mem_array_L1 dst_mem_space @mem_DRAM, area: [1, 1] : memref<?x?x?xf16> to memref<?x?x?xf16>
+    return
+  }
+
   func.func @l1_gather(
         %l1_src: memref<?x?xf16>,
         %l1_dst: memref<?x?x?xf16>
     ) {
+      %B = loom.sym @B : index
       %M = loom.sym @M : index
       %N = loom.sym @N : index
-      %B = loom.sym @B : index
       loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
       loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
       loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?xf16>
@@ -609,6 +659,23 @@ module @arch_system {
       %gather_x = loom.sym @gather_x : index
       %gather_y = loom.sym @gather_y : index
       loom.gather %l1_src, %l1_dst src_mem_space @mem_array_L1 dst_mem_space @mem_array_L1 area: [%gather_x, %gather_y] : memref<?x?xf16> to memref<?x?x?xf16>
+      return
+    }
+
+  func.func @batch_l1_gather(
+        %l1_src: memref<?x?x?xf16>,
+        %l1_dst: memref<?x?x?xf16>
+    ) {
+      %B = loom.sym @B : index
+      %M = loom.sym @M : index
+      %N = loom.sym @N : index
+      loom.bind_shape %l1_src, [%B, %M, %N] : memref<?x?x?xf16>
+      loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
+      loom.bind_mem %l1_src, @mem_array_L1 : memref<?x?x?xf16>
+      loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?x?xf16>
+      %gather_x = loom.sym @gather_x : index
+      %gather_y = loom.sym @gather_y : index
+      loom.gather %l1_src, %l1_dst src_mem_space @mem_array_L1 dst_mem_space @mem_array_L1 area: [%gather_x, %gather_y] : memref<?x?x?xf16> to memref<?x?x?xf16>
       return
     }
   }

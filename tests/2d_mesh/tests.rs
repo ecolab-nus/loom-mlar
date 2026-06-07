@@ -226,8 +226,24 @@ fn test_2d_mesh_torus_perf_models() {
         "noc0 should expose dram_to_l1_f16"
     );
     assert!(
+        noc0.get_function("batch_dram_to_l1_f16").is_some(),
+        "noc0 should expose batch_dram_to_l1_f16"
+    );
+    assert!(
+        noc0.get_function("dram_to_l1_bcst").is_some(),
+        "noc0 should expose dram_to_l1_bcst"
+    );
+    assert!(
+        noc0.get_function("batch_dram_to_l1_bcst").is_some(),
+        "noc0 should expose batch_dram_to_l1_bcst"
+    );
+    assert!(
         noc0.get_function("l1_to_dram_f16").is_none(),
         "noc0 should not expose l1_to_dram_f16 (read-only)"
+    );
+    assert!(
+        noc0.get_function("batch_l1_to_dram_f16").is_none(),
+        "noc0 should not expose batch_l1_to_dram_f16 (read-only)"
     );
     for stale in ["dram_to_l1_1d_bcst_f16", "dram_to_l1_2d_bcst_f16"] {
         assert!(
@@ -245,6 +261,16 @@ fn test_2d_mesh_torus_perf_models() {
             "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
         );
     }
+    let noc0_batch_bcst = noc0
+        .get_function("batch_dram_to_l1_bcst")
+        .expect("noc0 should expose batch_dram_to_l1_bcst");
+    let noc0_batch_bcst_syms = &noc0_batch_bcst.func.symbols;
+    for sym in ["B", "M", "N", "bcst_x", "bcst_y", "effective_bandwidth"] {
+        assert!(
+            noc0_batch_bcst_syms.iter().any(|s| s.0.as_str() == sym),
+            "noc0 batch_dram_to_l1_bcst should expose {sym} symbol, got {noc0_batch_bcst_syms:?}"
+        );
+    }
 
     // === NoC1: writeback + L1 gather (no DRAM load, no broadcast) ===
     let noc1 = mesh
@@ -255,12 +281,22 @@ fn test_2d_mesh_torus_perf_models() {
         "noc1 should expose l1_to_dram_f16"
     );
     assert!(
+        noc1.get_function("batch_l1_to_dram_f16").is_some(),
+        "noc1 should expose batch_l1_to_dram_f16"
+    );
+    assert!(
         noc1.get_function("l1_gather").is_some(),
         "noc1 should expose l1_gather"
     );
+    assert!(
+        noc1.get_function("batch_l1_gather").is_some(),
+        "noc1 should expose batch_l1_gather"
+    );
     for stale in [
         "dram_to_l1_f16",
+        "batch_dram_to_l1_f16",
         "dram_to_l1_bcst",
+        "batch_dram_to_l1_bcst",
         "dram_to_l1_1d_bcst_f16",
         "dram_to_l1_2d_bcst_f16",
     ] {
@@ -278,16 +314,130 @@ fn test_2d_mesh_torus_perf_models() {
         writeback_func.func.mlir_details.is_some(),
         "l1_to_dram_f16 should include MLIR details"
     );
+    assert_eq!(
+        writeback_func.func.symbols,
+        vec![Sym::new("M"), Sym::new("N")]
+    );
+    let writeback_free = writeback_func.perf.scenarios[0]
+        .time_cost
+        .to_expr()
+        .free_symbols();
+    assert!(
+        writeback_free.contains(&Sym::new("M"))
+            && writeback_free.contains(&Sym::new("N"))
+            && !writeback_free.contains(&Sym::new("B")),
+        "l1_to_dram_f16 should remain rank-2, got symbols {writeback_free:?}"
+    );
 
-    // Verify NoC1's gather function exposes gather_x and gather_y
+    let batch_writeback_func = noc1
+        .get_function("batch_l1_to_dram_f16")
+        .expect("batch_l1_to_dram_f16 binding");
+    assert_eq!(
+        batch_writeback_func.func.symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    let batch_writeback_details = batch_writeback_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_l1_to_dram_f16 should include MLIR details");
+    assert_eq!(
+        batch_writeback_details.memref_args,
+        vec!["l1_src", "dram_dst"]
+    );
+    assert_eq!(batch_writeback_details.source_memrefs, vec!["l1_src"]);
+    assert_eq!(batch_writeback_details.target_memrefs, vec!["dram_dst"]);
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    let batch_writeback_free = batch_writeback_func.perf.scenarios[0]
+        .time_cost
+        .to_expr()
+        .free_symbols();
+    assert!(
+        batch_writeback_free.contains(&Sym::new("B"))
+            && batch_writeback_free.contains(&Sym::new("M"))
+            && batch_writeback_free.contains(&Sym::new("N")),
+        "batch_l1_to_dram_f16 should expose batched symbols, got {batch_writeback_free:?}"
+    );
+
+    // Verify NoC1's gather functions expose gather_x and gather_y, and count
+    // destination payload volume.
     let gather_func = noc1.get_function("l1_gather").expect("l1_gather binding");
-    let gather_syms = &gather_func.func.symbols;
-    for sym in ["M", "N", "gather_x", "gather_y"] {
+    assert_eq!(
+        gather_func.func.symbols,
+        vec![
+            Sym::new("B"),
+            Sym::new("M"),
+            Sym::new("N"),
+            Sym::new("gather_x"),
+            Sym::new("gather_y"),
+        ]
+    );
+    let gather_details = gather_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("l1_gather should include MLIR details");
+    assert_eq!(gather_details.memref_args, vec!["l1_src", "l1_dst"]);
+    assert_eq!(gather_details.source_memrefs, vec!["l1_src"]);
+    assert_eq!(gather_details.target_memrefs, vec!["l1_dst"]);
+    assert_eq!(
+        gather_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        gather_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    let gather_cost = gather_func.perf.scenarios[0]
+        .time_cost
+        .as_simple()
+        .expect("l1_gather should use simple time cost");
+    assert_eq!(
+        gather_cost.volume,
+        Expr::parse("B * M * N * 2").expect("gather volume expression should parse")
+    );
+
+    let batch_gather_func = noc1
+        .get_function("batch_l1_gather")
+        .expect("batch_l1_gather binding");
+    let gather_syms = &batch_gather_func.func.symbols;
+    for sym in ["B", "M", "N", "gather_x", "gather_y"] {
         assert!(
             gather_syms.iter().any(|s| s.0.as_str() == sym),
-            "noc1 l1_gather should expose {sym} symbol, got {gather_syms:?}"
+            "noc1 batch_l1_gather should expose {sym} symbol, got {gather_syms:?}"
         );
     }
+    let batch_gather_details = batch_gather_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_l1_gather should include MLIR details");
+    assert_eq!(batch_gather_details.memref_args, vec!["l1_src", "l1_dst"]);
+    assert_eq!(batch_gather_details.source_memrefs, vec!["l1_src"]);
+    assert_eq!(batch_gather_details.target_memrefs, vec!["l1_dst"]);
+    assert_eq!(
+        batch_gather_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_gather_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    let batch_gather_cost = batch_gather_func.perf.scenarios[0]
+        .time_cost
+        .as_simple()
+        .expect("batch_l1_gather should use simple time cost");
+    assert_eq!(
+        batch_gather_cost.volume,
+        Expr::parse("B * M * N * 2").expect("batch gather volume expression should parse")
+    );
 
     // Verify NoC0's unicast load function shape
     let move_func = noc0
@@ -316,6 +466,36 @@ fn test_2d_mesh_torus_perf_models() {
     );
     assert_eq!(
         move_details
+            .mem_region_bindings
+            .iter()
+            .map(|b| (b.memref.as_str(), b.region.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("dram_src", "DRAM"), ("l1_dst", "array_L1")]
+    );
+
+    // Verify NoC0's batched unicast load function shape
+    let batch_move_func = noc0
+        .get_function("batch_dram_to_l1_f16")
+        .expect("batch_dram_to_l1_f16 binding");
+    let batch_move_details = batch_move_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_dram_to_l1_f16 should include MLIR details");
+    assert_eq!(batch_move_details.memref_args, vec!["dram_src", "l1_dst"]);
+    assert_eq!(batch_move_details.source_memrefs, vec!["dram_src"]);
+    assert_eq!(batch_move_details.target_memrefs, vec!["l1_dst"]);
+    assert_eq!(batch_move_details.memref_symbol_bindings.len(), 2);
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_move_details
             .mem_region_bindings
             .iter()
             .map(|b| (b.memref.as_str(), b.region.as_str()))
@@ -865,11 +1045,10 @@ fn test_generate_core_evaluator_binary() {
 /// Evaluate a data-mover schedule against the full system architecture.
 ///
 /// The `dram_to_l1_f16` function's perf model uses symbols M and N:
-///   fixed_latency = 20, volume = M * N, throughput = 2048
-///   → cost = 20 + (M*N) / 2048
+///   fixed_latency = 400, volume = M * N * 2 * effective_bandwidth, throughput = 210
+///   → cost = 400 + (M*N*2*effective_bandwidth) / 210
 ///
-/// After sym_map M → BM, N → BN the cost becomes 20 + (BM*BN) / 2048.
-/// At BM=32, BN=64 → cost = 20 + 2048/2048 = 21.
+/// After sym_map M → BM, N → BN the cost is expressed in tile symbols.
 #[test]
 fn test_evaluate_system_data_mover_schedule() {
     let system = scaled_mesh_torus();
@@ -970,6 +1149,53 @@ fn test_evaluate_system_data_mover_schedule() {
         }
         _ => panic!("expected Sequential"),
     }
+
+    let batch_sym = vec![
+        Sym::new("B"),
+        Sym::new("M"),
+        Sym::new("N"),
+        Sym::new("effective_bandwidth"),
+    ];
+    let batch_sym_map = {
+        let mut m = SymbolicMapping::new();
+        m.insert(Sym::new("B"), Expr::sym("BB"));
+        m.insert(Sym::new("M"), Expr::sym("BM"));
+        m.insert(Sym::new("N"), Expr::sym("BN"));
+        m.insert(Sym::new("effective_bandwidth"), Expr::Const(1));
+        Some(m)
+    };
+    let batch_result = evaluate(
+        &Schedule::Func {
+            func: {
+                let mut f = MlirFunc::with_symbols("batch_dram_to_l1_f16", batch_sym);
+                f.sym_map = batch_sym_map;
+                f
+            },
+            processor: None,
+            scenarios: None,
+        },
+        &system,
+    )
+    .expect("batched data mover schedule should evaluate");
+    let batch_scenarios = match &batch_result {
+        Schedule::Func {
+            scenarios: Some(sc),
+            ..
+        } => sc,
+        _ => panic!("expected batched Func with filled scenarios"),
+    };
+    assert_eq!(batch_scenarios.len(), 1);
+    let batch_free = batch_scenarios[0].time_cost.to_expr().free_symbols();
+    assert!(
+        !batch_free.contains(&Sym::new("B"))
+            && !batch_free.contains(&Sym::new("M"))
+            && !batch_free.contains(&Sym::new("N"))
+    );
+    assert!(
+        batch_free.contains(&Sym::new("BB"))
+            && batch_free.contains(&Sym::new("BM"))
+            && batch_free.contains(&Sym::new("BN"))
+    );
 
     // JSON round-trip
     let json = serde_json::to_string(&result).expect("Schedule should serialize");
