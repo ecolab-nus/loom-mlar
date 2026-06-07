@@ -168,7 +168,9 @@
           "type": "processor",
           "functions": [
             "dram_to_l1_f16",
-            "dram_to_l1_bcst"
+            "batch_dram_to_l1_f16",
+            "dram_to_l1_bcst",
+            "batch_dram_to_l1_bcst"
           ]
         }
       },
@@ -180,7 +182,9 @@
           "type": "processor",
           "functions": [
             "l1_to_dram_f16",
-            "l1_gather"
+            "batch_l1_to_dram_f16",
+            "l1_gather",
+            "batch_l1_gather"
           ]
         }
       },
@@ -198,6 +202,408 @@
     ]
   },
   "graphs": {
+    "mesh/core": {
+      "schema_version": "mlar.arch-graph.v1",
+      "architecture": {
+        "name": "core",
+        "labels": []
+      },
+      "nodes": [
+        {
+          "id": "mem:l1",
+          "kind": "memory",
+          "name": "L1",
+          "label": "L1 [nbank=16]",
+          "dimensions": [
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "L1",
+              "dimensions": [
+                {
+                  "name": "nbank",
+                  "size_expr": "16",
+                  "size_const": 16
+                }
+              ],
+              "sub_region": {
+                "kind": "bank",
+                "name": null,
+                "capacity_bytes": {
+                  "expr": "(16 * 5464)",
+                  "const_value": 87424
+                },
+                "access_granularity": {
+                  "expr": "16",
+                  "const_value": 16
+                },
+                "total_size_bytes": 87424
+              },
+              "total_size_bytes": 1398784
+            }
+          }
+        },
+        {
+          "id": "proc:matrix_lane",
+          "kind": "processor",
+          "name": "matrix_lane",
+          "label": "matrix_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "matrix_lane",
+              "functionality": {
+                "name": "matrix_lane",
+                "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
+                "source_mlir_module_name": "matrix_lane",
+                "ops": [
+                  "matmul_f16",
+                  "batch_matmul_f16",
+                  "vec_vsum_f16",
+                  "vec_vmax_f16",
+                  "vec_max1_f16",
+                  "elementwise_add_f16",
+                  "elementwise_mul_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vsum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vmax_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_max1_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
+                ]
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "proc:vector_lane",
+          "kind": "processor",
+          "name": "vector_lane",
+          "label": "vector_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "vector_lane",
+              "functionality": {
+                "name": "vector_lane",
+                "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
+                "source_mlir_module_name": "vector_lane",
+                "ops": [
+                  "vec_max_f16",
+                  "vec_exp_f16",
+                  "vec_sum_f16",
+                  "vec_add_f16",
+                  "vec_mul_f16",
+                  "vec_div_f16",
+                  "vec_sub_f16",
+                  "vec_powf_f16",
+                  "vec_cmpf_ogt_f16",
+                  "vec_select_f16",
+                  "vec_log_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "vec_max_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_exp_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_div_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sub_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_powf_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_cmpf_ogt_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_select_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_log_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
+                ]
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "router:core_router",
+          "kind": "router",
+          "name": "core_router",
+          "label": "core_router",
+          "dimensions": [],
+          "details": {
+            "type": "router",
+            "router": {
+              "name": "core_router",
+              "side_count": 2
+            }
+          }
+        },
+        {
+          "id": "res:matrix_lane",
+          "kind": "resource",
+          "name": "matrix_lane",
+          "label": "matrix_lane",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "matrix_lane",
+              "kind": "exclusive"
+            }
+          }
+        },
+        {
+          "id": "res:vector_lane",
+          "kind": "resource",
+          "name": "vector_lane",
+          "label": "vector_lane",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "vector_lane",
+              "kind": "exclusive"
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "iedge:matrix_lane:0",
+          "kind": "intra_graph",
+          "name": "matrix_lane↔core_router",
+          "source": "proc:matrix_lane",
+          "target": "router:core_router",
+          "source_name": "matrix_lane",
+          "target_name": "core_router",
+          "label": "matrix_lane ↔ core_router (side 0)",
+          "direction": "bidirectional",
+          "side": 0
+        },
+        {
+          "id": "iedge:vector_lane:1",
+          "kind": "intra_graph",
+          "name": "vector_lane↔core_router",
+          "source": "proc:vector_lane",
+          "target": "router:core_router",
+          "source_name": "vector_lane",
+          "target_name": "core_router",
+          "label": "vector_lane ↔ core_router (side 0)",
+          "direction": "bidirectional",
+          "side": 0
+        },
+        {
+          "id": "iedge:core_router:2",
+          "kind": "intra_graph",
+          "name": "core_router↔L1",
+          "source": "router:core_router",
+          "target": "mem:l1",
+          "source_name": "core_router",
+          "target_name": "L1",
+          "label": "core_router ↔ L1 (side 1)",
+          "direction": "bidirectional",
+          "side": 1
+        },
+        {
+          "id": "resdep:vector_lane:l1",
+          "kind": "resource_dependency",
+          "name": "vector_lane → L1",
+          "source": "proc:vector_lane",
+          "target": "mem:l1",
+          "source_name": "vector_lane",
+          "target_name": "L1",
+          "label": "vector_lane → L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:vector_lane:vector_lane",
+          "kind": "resource_dependency",
+          "name": "vector_lane → vector_lane",
+          "source": "proc:vector_lane",
+          "target": "res:vector_lane",
+          "source_name": "vector_lane",
+          "target_name": "vector_lane",
+          "label": "vector_lane → vector_lane",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:matrix_lane:l1",
+          "kind": "resource_dependency",
+          "name": "matrix_lane → L1",
+          "source": "proc:matrix_lane",
+          "target": "mem:l1",
+          "source_name": "matrix_lane",
+          "target_name": "L1",
+          "label": "matrix_lane → L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:matrix_lane:matrix_lane",
+          "kind": "resource_dependency",
+          "name": "matrix_lane → matrix_lane",
+          "source": "proc:matrix_lane",
+          "target": "res:matrix_lane",
+          "source_name": "matrix_lane",
+          "target_name": "matrix_lane",
+          "label": "matrix_lane → matrix_lane",
+          "direction": "directional"
+        }
+      ]
+    },
     "mesh": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
@@ -624,28 +1030,6 @@
             "side": 1
           },
           {
-            "id": "resdep:matrix_lane:l1",
-            "kind": "resource_dependency",
-            "name": "matrix_lane → L1",
-            "source": "proc:matrix_lane",
-            "target": "mem:l1",
-            "source_name": "matrix_lane",
-            "target_name": "L1",
-            "label": "matrix_lane → L1",
-            "direction": "directional"
-          },
-          {
-            "id": "resdep:matrix_lane:matrix_lane",
-            "kind": "resource_dependency",
-            "name": "matrix_lane → matrix_lane",
-            "source": "proc:matrix_lane",
-            "target": "res:matrix_lane",
-            "source_name": "matrix_lane",
-            "target_name": "matrix_lane",
-            "label": "matrix_lane → matrix_lane",
-            "direction": "directional"
-          },
-          {
             "id": "resdep:vector_lane:l1",
             "kind": "resource_dependency",
             "name": "vector_lane → L1",
@@ -666,411 +1050,31 @@
             "target_name": "vector_lane",
             "label": "vector_lane → vector_lane",
             "direction": "directional"
+          },
+          {
+            "id": "resdep:matrix_lane:l1",
+            "kind": "resource_dependency",
+            "name": "matrix_lane → L1",
+            "source": "proc:matrix_lane",
+            "target": "mem:l1",
+            "source_name": "matrix_lane",
+            "target_name": "L1",
+            "label": "matrix_lane → L1",
+            "direction": "directional"
+          },
+          {
+            "id": "resdep:matrix_lane:matrix_lane",
+            "kind": "resource_dependency",
+            "name": "matrix_lane → matrix_lane",
+            "source": "proc:matrix_lane",
+            "target": "res:matrix_lane",
+            "source_name": "matrix_lane",
+            "target_name": "matrix_lane",
+            "label": "matrix_lane → matrix_lane",
+            "direction": "directional"
           }
         ]
       }
-    },
-    "mesh/core": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "core",
-        "labels": []
-      },
-      "nodes": [
-        {
-          "id": "mem:l1",
-          "kind": "memory",
-          "name": "L1",
-          "label": "L1 [nbank=16]",
-          "dimensions": [
-            {
-              "name": "nbank",
-              "size_expr": "16",
-              "size_const": 16
-            }
-          ],
-          "details": {
-            "type": "memory",
-            "region": {
-              "kind": "array",
-              "name": "L1",
-              "dimensions": [
-                {
-                  "name": "nbank",
-                  "size_expr": "16",
-                  "size_const": 16
-                }
-              ],
-              "sub_region": {
-                "kind": "bank",
-                "name": null,
-                "capacity_bytes": {
-                  "expr": "(16 * 5464)",
-                  "const_value": 87424
-                },
-                "access_granularity": {
-                  "expr": "16",
-                  "const_value": 16
-                },
-                "total_size_bytes": 87424
-              },
-              "total_size_bytes": 1398784
-            }
-          }
-        },
-        {
-          "id": "proc:matrix_lane",
-          "kind": "processor",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "matrix_lane",
-              "functionality": {
-                "name": "matrix_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
-                "source_mlir_module_name": "matrix_lane",
-                "ops": [
-                  "matmul_f16",
-                  "batch_matmul_f16",
-                  "vec_vsum_f16",
-                  "vec_vmax_f16",
-                  "vec_max1_f16",
-                  "elementwise_add_f16",
-                  "elementwise_mul_f16"
-                ],
-                "op_details": [
-                  {
-                    "name": "matmul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "batch_matmul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_vsum_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_vmax_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_max1_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "elementwise_add_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "elementwise_mul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  }
-                ]
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "proc:vector_lane",
-          "kind": "processor",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "vector_lane",
-              "functionality": {
-                "name": "vector_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
-                "source_mlir_module_name": "vector_lane",
-                "ops": [
-                  "vec_max_f16",
-                  "vec_exp_f16",
-                  "vec_sum_f16",
-                  "vec_add_f16",
-                  "vec_mul_f16",
-                  "vec_div_f16",
-                  "vec_sub_f16",
-                  "vec_powf_f16",
-                  "vec_cmpf_ogt_f16",
-                  "vec_select_f16",
-                  "vec_log_f16"
-                ],
-                "op_details": [
-                  {
-                    "name": "vec_max_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_exp_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_sum_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_add_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_mul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_div_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_sub_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_powf_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_cmpf_ogt_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_select_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_log_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  }
-                ]
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "router:core_router",
-          "kind": "router",
-          "name": "core_router",
-          "label": "core_router",
-          "dimensions": [],
-          "details": {
-            "type": "router",
-            "router": {
-              "name": "core_router",
-              "side_count": 2
-            }
-          }
-        },
-        {
-          "id": "res:matrix_lane",
-          "kind": "resource",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "matrix_lane",
-              "kind": "exclusive"
-            }
-          }
-        },
-        {
-          "id": "res:vector_lane",
-          "kind": "resource",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "vector_lane",
-              "kind": "exclusive"
-            }
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "iedge:matrix_lane:0",
-          "kind": "intra_graph",
-          "name": "matrix_lane↔core_router",
-          "source": "proc:matrix_lane",
-          "target": "router:core_router",
-          "source_name": "matrix_lane",
-          "target_name": "core_router",
-          "label": "matrix_lane ↔ core_router (side 0)",
-          "direction": "bidirectional",
-          "side": 0
-        },
-        {
-          "id": "iedge:vector_lane:1",
-          "kind": "intra_graph",
-          "name": "vector_lane↔core_router",
-          "source": "proc:vector_lane",
-          "target": "router:core_router",
-          "source_name": "vector_lane",
-          "target_name": "core_router",
-          "label": "vector_lane ↔ core_router (side 0)",
-          "direction": "bidirectional",
-          "side": 0
-        },
-        {
-          "id": "iedge:core_router:2",
-          "kind": "intra_graph",
-          "name": "core_router↔L1",
-          "source": "router:core_router",
-          "target": "mem:l1",
-          "source_name": "core_router",
-          "target_name": "L1",
-          "label": "core_router ↔ L1 (side 1)",
-          "direction": "bidirectional",
-          "side": 1
-        },
-        {
-          "id": "resdep:matrix_lane:l1",
-          "kind": "resource_dependency",
-          "name": "matrix_lane → L1",
-          "source": "proc:matrix_lane",
-          "target": "mem:l1",
-          "source_name": "matrix_lane",
-          "target_name": "L1",
-          "label": "matrix_lane → L1",
-          "direction": "directional"
-        },
-        {
-          "id": "resdep:matrix_lane:matrix_lane",
-          "kind": "resource_dependency",
-          "name": "matrix_lane → matrix_lane",
-          "source": "proc:matrix_lane",
-          "target": "res:matrix_lane",
-          "source_name": "matrix_lane",
-          "target_name": "matrix_lane",
-          "label": "matrix_lane → matrix_lane",
-          "direction": "directional"
-        },
-        {
-          "id": "resdep:vector_lane:l1",
-          "kind": "resource_dependency",
-          "name": "vector_lane → L1",
-          "source": "proc:vector_lane",
-          "target": "mem:l1",
-          "source_name": "vector_lane",
-          "target_name": "L1",
-          "label": "vector_lane → L1",
-          "direction": "directional"
-        },
-        {
-          "id": "resdep:vector_lane:vector_lane",
-          "kind": "resource_dependency",
-          "name": "vector_lane → vector_lane",
-          "source": "proc:vector_lane",
-          "target": "res:vector_lane",
-          "source_name": "vector_lane",
-          "target_name": "vector_lane",
-          "label": "vector_lane → vector_lane",
-          "direction": "directional"
-        }
-      ]
     },
     "": {
       "schema_version": "mlar.arch-graph.v1",
@@ -1181,7 +1185,9 @@
                 "source_mlir_module_name": "dram_l1_noc0",
                 "ops": [
                   "dram_to_l1_f16",
-                  "dram_to_l1_bcst"
+                  "batch_dram_to_l1_f16",
+                  "dram_to_l1_bcst",
+                  "batch_dram_to_l1_bcst"
                 ],
                 "op_details": [
                   {
@@ -1194,7 +1200,25 @@
                     ]
                   },
                   {
+                    "name": "batch_dram_to_l1_f16",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
                     "name": "dram_to_l1_bcst",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_dram_to_l1_bcst",
                     "source_memories": [
                       "DRAM"
                     ],
@@ -1293,7 +1317,9 @@
                 "source_mlir_module_name": "dram_l1_noc1",
                 "ops": [
                   "l1_to_dram_f16",
-                  "l1_gather"
+                  "batch_l1_to_dram_f16",
+                  "l1_gather",
+                  "batch_l1_gather"
                 ],
                 "op_details": [
                   {
@@ -1306,7 +1332,25 @@
                     ]
                   },
                   {
+                    "name": "batch_l1_to_dram_f16",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "DRAM"
+                    ]
+                  },
+                  {
                     "name": "l1_gather",
+                    "source_memories": [
+                      "array_L1"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_l1_gather",
                     "source_memories": [
                       "array_L1"
                     ],
@@ -1397,17 +1441,6 @@
           "side": 2
         },
         {
-          "id": "resdep:dram_l1_noc0:array_l1",
-          "kind": "resource_dependency",
-          "name": "dram_l1_noc0 → array_L1",
-          "source": "dm:dram_l1_noc0",
-          "target": "mem:array_l1",
-          "source_name": "dram_l1_noc0",
-          "target_name": "array_L1",
-          "label": "dram_l1_noc0 → array_L1",
-          "direction": "directional"
-        },
-        {
           "id": "resdep:dram_l1_noc1:array_l1",
           "kind": "resource_dependency",
           "name": "dram_l1_noc1 → array_L1",
@@ -1416,6 +1449,17 @@
           "source_name": "dram_l1_noc1",
           "target_name": "array_L1",
           "label": "dram_l1_noc1 → array_L1",
+          "direction": "directional"
+        },
+        {
+          "id": "resdep:dram_l1_noc0:array_l1",
+          "kind": "resource_dependency",
+          "name": "dram_l1_noc0 → array_L1",
+          "source": "dm:dram_l1_noc0",
+          "target": "mem:array_l1",
+          "source_name": "dram_l1_noc0",
+          "target_name": "array_L1",
+          "label": "dram_l1_noc0 → array_L1",
           "direction": "directional"
         }
       ]

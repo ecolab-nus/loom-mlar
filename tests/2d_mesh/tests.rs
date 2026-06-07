@@ -226,8 +226,20 @@ fn test_2d_mesh_torus_perf_models() {
         "noc0 should expose dram_to_l1_f16"
     );
     assert!(
+        noc0.get_function("batch_dram_to_l1_f16").is_some(),
+        "noc0 should expose batch_dram_to_l1_f16"
+    );
+    assert!(
+        noc0.get_function("batch_dram_to_l1_bcst").is_some(),
+        "noc0 should expose batch_dram_to_l1_bcst"
+    );
+    assert!(
         noc0.get_function("l1_to_dram_f16").is_none(),
         "noc0 should not expose l1_to_dram_f16 (read-only)"
+    );
+    assert!(
+        noc0.get_function("batch_l1_to_dram_f16").is_none(),
+        "noc0 should not expose batch_l1_to_dram_f16 (read-only)"
     );
     for stale in ["dram_to_l1_1d_bcst_f16", "dram_to_l1_2d_bcst_f16"] {
         assert!(
@@ -245,6 +257,28 @@ fn test_2d_mesh_torus_perf_models() {
             "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
         );
     }
+    let noc0_batch_bcst = noc0
+        .get_function("batch_dram_to_l1_bcst")
+        .expect("noc0 should expose batch_dram_to_l1_bcst");
+    let noc0_batch_bcst_syms = &noc0_batch_bcst.func.symbols;
+    for sym in ["B", "M", "N", "bcst_x", "bcst_y", "effective_bandwidth"] {
+        assert!(
+            noc0_batch_bcst_syms.iter().any(|s| s.0.as_str() == sym),
+            "noc0 batch_dram_to_l1_bcst should expose {sym} symbol, got {noc0_batch_bcst_syms:?}"
+        );
+    }
+    assert!(
+        noc0_batch_bcst
+            .perf
+            .scenarios
+            .first()
+            .expect("batch_dram_to_l1_bcst should have a perf scenario")
+            .time_cost
+            .to_expr()
+            .free_symbols()
+            .contains(&Sym::new("B")),
+        "batch_dram_to_l1_bcst perf should include batch symbol B"
+    );
 
     // === NoC1: writeback + L1 gather (no DRAM load, no broadcast) ===
     let noc1 = mesh
@@ -255,12 +289,22 @@ fn test_2d_mesh_torus_perf_models() {
         "noc1 should expose l1_to_dram_f16"
     );
     assert!(
+        noc1.get_function("batch_l1_to_dram_f16").is_some(),
+        "noc1 should expose batch_l1_to_dram_f16"
+    );
+    assert!(
         noc1.get_function("l1_gather").is_some(),
         "noc1 should expose l1_gather"
     );
+    assert!(
+        noc1.get_function("batch_l1_gather").is_some(),
+        "noc1 should expose batch_l1_gather"
+    );
     for stale in [
         "dram_to_l1_f16",
+        "batch_dram_to_l1_f16",
         "dram_to_l1_bcst",
+        "batch_dram_to_l1_bcst",
         "dram_to_l1_1d_bcst_f16",
         "dram_to_l1_2d_bcst_f16",
     ] {
@@ -278,16 +322,122 @@ fn test_2d_mesh_torus_perf_models() {
         writeback_func.func.mlir_details.is_some(),
         "l1_to_dram_f16 should include MLIR details"
     );
+    let batch_writeback_func = noc1
+        .get_function("batch_l1_to_dram_f16")
+        .expect("batch_l1_to_dram_f16 binding");
+    let batch_writeback_details = batch_writeback_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_l1_to_dram_f16 should include MLIR details");
+    assert_eq!(
+        batch_writeback_details.memref_args,
+        vec!["l1_src", "dram_dst"]
+    );
+    assert_eq!(batch_writeback_details.source_memrefs, vec!["l1_src"]);
+    assert_eq!(batch_writeback_details.target_memrefs, vec!["dram_dst"]);
+    assert_eq!(batch_writeback_details.memref_symbol_bindings.len(), 2);
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[0].memref,
+        "l1_src"
+    );
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[1].memref,
+        "dram_dst"
+    );
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_writeback_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert!(
+        batch_writeback_func
+            .perf
+            .scenarios
+            .first()
+            .expect("batch_l1_to_dram_f16 should have a perf scenario")
+            .time_cost
+            .to_expr()
+            .free_symbols()
+            .contains(&Sym::new("B")),
+        "batch_l1_to_dram_f16 perf should include batch symbol B"
+    );
 
-    // Verify NoC1's gather function exposes gather_x and gather_y
+    // Verify NoC1's gather functions use destination-sized transfers.
     let gather_func = noc1.get_function("l1_gather").expect("l1_gather binding");
     let gather_syms = &gather_func.func.symbols;
-    for sym in ["M", "N", "gather_x", "gather_y"] {
+    for sym in ["B", "M", "N", "gather_x", "gather_y"] {
         assert!(
             gather_syms.iter().any(|s| s.0.as_str() == sym),
             "noc1 l1_gather should expose {sym} symbol, got {gather_syms:?}"
         );
     }
+    let gather_details = gather_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("l1_gather should include MLIR details");
+    assert_eq!(gather_details.memref_args, vec!["l1_src", "l1_dst"]);
+    assert_eq!(
+        gather_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        gather_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert!(
+        gather_func
+            .perf
+            .scenarios
+            .first()
+            .expect("l1_gather should have a perf scenario")
+            .time_cost
+            .to_expr()
+            .free_symbols()
+            .contains(&Sym::new("B")),
+        "l1_gather perf should include destination batch symbol B"
+    );
+
+    let batch_gather_func = noc1
+        .get_function("batch_l1_gather")
+        .expect("batch_l1_gather binding");
+    let batch_gather_syms = &batch_gather_func.func.symbols;
+    for sym in ["B", "M", "N", "gather_x", "gather_y"] {
+        assert!(
+            batch_gather_syms.iter().any(|s| s.0.as_str() == sym),
+            "noc1 batch_l1_gather should expose {sym} symbol, got {batch_gather_syms:?}"
+        );
+    }
+    let batch_gather_details = batch_gather_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_l1_gather should include MLIR details");
+    assert_eq!(batch_gather_details.memref_args, vec!["l1_src", "l1_dst"]);
+    assert_eq!(
+        batch_gather_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_gather_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert!(
+        batch_gather_func
+            .perf
+            .scenarios
+            .first()
+            .expect("batch_l1_gather should have a perf scenario")
+            .time_cost
+            .to_expr()
+            .free_symbols()
+            .contains(&Sym::new("B")),
+        "batch_l1_gather perf should include destination batch symbol B"
+    );
 
     // Verify NoC0's unicast load function shape
     let move_func = noc0
@@ -321,6 +471,48 @@ fn test_2d_mesh_torus_perf_models() {
             .map(|b| (b.memref.as_str(), b.region.as_str()))
             .collect::<Vec<_>>(),
         vec![("dram_src", "DRAM"), ("l1_dst", "array_L1")]
+    );
+
+    // Verify NoC0's batched unicast load function shape and perf symbols
+    let batch_move_func = noc0
+        .get_function("batch_dram_to_l1_f16")
+        .expect("batch_dram_to_l1_f16 binding");
+    let batch_move_details = batch_move_func
+        .func
+        .mlir_details
+        .as_ref()
+        .expect("batch_dram_to_l1_f16 should include MLIR details");
+    assert_eq!(batch_move_details.memref_args, vec!["dram_src", "l1_dst"]);
+    assert_eq!(batch_move_details.source_memrefs, vec!["dram_src"]);
+    assert_eq!(batch_move_details.target_memrefs, vec!["l1_dst"]);
+    assert_eq!(batch_move_details.memref_symbol_bindings.len(), 2);
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[0].memref,
+        "dram_src"
+    );
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[1].memref,
+        "l1_dst"
+    );
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[0].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert_eq!(
+        batch_move_details.memref_symbol_bindings[1].symbols,
+        vec![Sym::new("B"), Sym::new("M"), Sym::new("N")]
+    );
+    assert!(
+        batch_move_func
+            .perf
+            .scenarios
+            .first()
+            .expect("batch_dram_to_l1_f16 should have a perf scenario")
+            .time_cost
+            .to_expr()
+            .free_symbols()
+            .contains(&Sym::new("B")),
+        "batch_dram_to_l1_f16 perf should include batch symbol B"
     );
 }
 

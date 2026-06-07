@@ -168,7 +168,9 @@
           "type": "processor",
           "functions": [
             "dram_to_l1_f16",
-            "dram_to_l1_bcst"
+            "batch_dram_to_l1_f16",
+            "dram_to_l1_bcst",
+            "batch_dram_to_l1_bcst"
           ]
         }
       },
@@ -180,7 +182,9 @@
           "type": "processor",
           "functions": [
             "l1_to_dram_f16",
-            "l1_gather"
+            "batch_l1_to_dram_f16",
+            "l1_gather",
+            "batch_l1_gather"
           ]
         }
       },
