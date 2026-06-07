@@ -277,20 +277,18 @@ pub fn scaled_mesh_torus() -> Architecture {
     // NoC1: L1→DRAM writeback, batched writeback, and L1→L1 gather [%gather_x, %gather_y].
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
-        let pm = simple_perf_model(
-            "344",
-            "B * M * N * 2",
-            "28",
-        );
+        let pm = FuncPerfModel::builder()
+            .symbols(["B", "M", "N", "gather_x", "gather_y"])
+            .simple_time_cost(expr("344"), expr("B * M * N * 2"), expr("28"))
+            .build();
         pm.validate().expect("gather perf model should validate");
         pm
     };
     let batch_gather_perf = {
-        let pm = simple_perf_model(
-            "344",
-            "B * M * N * 2",
-            "28",
-        );
+        let pm = FuncPerfModel::builder()
+            .symbols(["B", "M", "N", "gather_x", "gather_y"])
+            .simple_time_cost(expr("344"), expr("B * M * N * 2"), expr("28"))
+            .build();
         pm.validate()
             .expect("batch gather perf model should validate");
         pm
