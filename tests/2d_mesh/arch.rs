@@ -224,20 +224,21 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("scaled mesh should expose mesh-wide L1");
 
     // ── NoC data movers ───────────────────────────────────────────────────────
-    // NoC0: DRAM→L1 unicast and batched unicast.
-    //       DRAM→L1 2D broadcast [%bcst_x, %bcst_y] and batched broadcast.
+    // NoC0: DRAM→L1 unicast plus 2D broadcast [%bcst_x, %bcst_y].
     //       Read-only — no L1→DRAM writeback path.
     let unicast_perf = {
         let pm = simple_perf_model("454", "M * N * 2 * effective_bandwidth", "150");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
-    let batch_unicast_perf = {
-        let pm = simple_perf_model("454", "B * M * N * 2 * effective_bandwidth", "150");
-        pm.validate()
-            .expect("batch unicast perf model should validate");
-        pm
-    };
+    // Batch-shaped copy functions are intentionally not registered. Runtime
+    // dispatch folds higher-rank tile dimensions into the 2D M/N symbols.
+    // let batch_unicast_perf = {
+    //     let pm = simple_perf_model("454", "B * M * N * 2 * effective_bandwidth", "150");
+    //     pm.validate()
+    //         .expect("batch unicast perf model should validate");
+    //     pm
+    // };
     let bcst_perf = {
         let pm = FuncPerfModel::builder()
             .symbols(["M", "N", "bcst_x", "bcst_y", "effective_bandwidth"])
@@ -250,31 +251,28 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm.validate().expect("bcst perf model should validate");
         pm
     };
-    let batch_bcst_perf = {
-        let pm = FuncPerfModel::builder()
-            .symbols(["B", "M", "N", "bcst_x", "bcst_y", "effective_bandwidth"])
-            .simple_time_cost(
-                expr("344"),
-                expr("B * M * N * 2 * effective_bandwidth"),
-                expr("150"),
-            )
-            .build();
-        pm.validate()
-            .expect("batch bcst perf model should validate");
-        pm
-    };
+    // let batch_bcst_perf = {
+    //     let pm = FuncPerfModel::builder()
+    //         .symbols(["B", "M", "N", "bcst_x", "bcst_y", "effective_bandwidth"])
+    //         .simple_time_cost(
+    //             expr("344"),
+    //             expr("B * M * N * 2 * effective_bandwidth"),
+    //             expr("150"),
+    //         )
+    //         .build();
+    //     pm.validate()
+    //         .expect("batch bcst perf model should validate");
+    //     pm
+    // };
     let noc0_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")
         .expect("dram_l1_noc0.mlir should parse");
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
         .with_regions(vec![(dram.clone(), array_l1.clone())])
-        .from_module(
-            noc0_func,
-            vec![unicast_perf, batch_unicast_perf, bcst_perf, batch_bcst_perf],
-        )
+        .from_module(noc0_func, vec![unicast_perf, bcst_perf])
         .expect("dram_l1_noc0 data mover should link functionality and perf");
 
-    // NoC1: L1→DRAM writeback, batched writeback, and L1→L1 gather [%gather_x, %gather_y].
+    // NoC1: L1→DRAM writeback and L1→L1 gather [%gather_x, %gather_y].
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
         let pm = FuncPerfModel::builder()
@@ -288,26 +286,29 @@ pub fn scaled_mesh_torus() -> Architecture {
         pm.validate().expect("gather perf model should validate");
         pm
     };
-    let batch_gather_perf = {
-        let pm = FuncPerfModel::builder()
-            .symbols(["B", "M", "N", "gather_x", "gather_y"])
-            .simple_time_cost(expr("344"), expr("B * M * N * 2"), expr("28"))
-            .build();
-        pm.validate()
-            .expect("batch gather perf model should validate");
-        pm
-    };
+    // Batch-shaped gather functions are intentionally not registered. Runtime
+    // dispatch derives B from the destination prefix and folds source tile
+    // dimensions into M/N.
+    // let batch_gather_perf = {
+    //     let pm = FuncPerfModel::builder()
+    //         .symbols(["B", "M", "N", "gather_x", "gather_y"])
+    //         .simple_time_cost(expr("344"), expr("B * M * N * 2"), expr("28"))
+    //         .build();
+    //     pm.validate()
+    //         .expect("batch gather perf model should validate");
+    //     pm
+    // };
     let noc1_unicast_perf = {
         let pm = simple_perf_model("454", "M * N * 2", "150");
         pm.validate().expect("unicast perf model should validate");
         pm
     };
-    let batch_noc1_unicast_perf = {
-        let pm = simple_perf_model("454", "B * M * N * 2", "150");
-        pm.validate()
-            .expect("batch noc1 unicast perf model should validate");
-        pm
-    };
+    // let batch_noc1_unicast_perf = {
+    //     let pm = simple_perf_model("454", "B * M * N * 2", "150");
+    //     pm.validate()
+    //         .expect("batch noc1 unicast perf model should validate");
+    //     pm
+    // };
     let noc1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir")
         .expect("dram_l1_noc1.mlir should parse");
     let noc1 = DataMover::builder()
@@ -316,15 +317,7 @@ pub fn scaled_mesh_torus() -> Architecture {
             (array_l1.clone(), dram.clone()),
             (array_l1.clone(), array_l1.clone()),
         ])
-        .from_module(
-            noc1_func,
-            vec![
-                noc1_unicast_perf,
-                batch_noc1_unicast_perf,
-                gather_perf,
-                batch_gather_perf,
-            ],
-        )
+        .from_module(noc1_func, vec![noc1_unicast_perf, gather_perf])
         .expect("dram_l1_noc1 data mover should link functionality and perf");
 
     // ── System graph ──────────────────────────────────────────────────────────

@@ -107,9 +107,7 @@
             "source_mlir_module_name": "dram_l1_noc0",
             "ops": [
               "dram_to_l1_f16",
-              "batch_dram_to_l1_f16",
-              "dram_to_l1_bcst",
-              "batch_dram_to_l1_bcst"
+              "dram_to_l1_bcst"
             ],
             "op_details": [
               {
@@ -122,25 +120,7 @@
                 ]
               },
               {
-                "name": "batch_dram_to_l1_f16",
-                "source_memories": [
-                  "DRAM"
-                ],
-                "destination_memories": [
-                  "array_L1"
-                ]
-              },
-              {
                 "name": "dram_to_l1_bcst",
-                "source_memories": [
-                  "DRAM"
-                ],
-                "destination_memories": [
-                  "array_L1"
-                ]
-              },
-              {
-                "name": "batch_dram_to_l1_bcst",
                 "source_memories": [
                   "DRAM"
                 ],
@@ -239,9 +219,7 @@
             "source_mlir_module_name": "dram_l1_noc1",
             "ops": [
               "l1_to_dram_f16",
-              "batch_l1_to_dram_f16",
-              "l1_gather",
-              "batch_l1_gather"
+              "l1_gather"
             ],
             "op_details": [
               {
@@ -254,25 +232,7 @@
                 ]
               },
               {
-                "name": "batch_l1_to_dram_f16",
-                "source_memories": [
-                  "array_L1"
-                ],
-                "destination_memories": [
-                  "DRAM"
-                ]
-              },
-              {
                 "name": "l1_gather",
-                "source_memories": [
-                  "array_L1"
-                ],
-                "destination_memories": [
-                  "array_L1"
-                ]
-              },
-              {
-                "name": "batch_l1_gather",
                 "source_memories": [
                   "array_L1"
                 ],
