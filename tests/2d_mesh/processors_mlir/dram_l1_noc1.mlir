@@ -38,6 +38,7 @@ func.func @l1_gather(
     %M = loom.sym @M : index
     %N = loom.sym @N : index
     %B = loom.sym @B : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
     loom.bind_shape %l1_src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %l1_dst, [%B, %M, %N] : memref<?x?x?xf16>
     loom.bind_mem %l1_src, @array_L1 : memref<?x?xf16>

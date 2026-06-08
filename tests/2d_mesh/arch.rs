@@ -279,7 +279,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     let gather_perf = {
         let pm = FuncPerfModel::builder()
             .symbols(["B", "M", "N", "gather_x", "gather_y"])
-            .simple_time_cost(expr("344"), expr("B * M * N * 2"), expr("28"))
+            .simple_time_cost(expr("344"), expr("B * M * N * 2 * effective_bandwidth"), expr("28"))
             .build();
         pm.validate().expect("gather perf model should validate");
         pm
