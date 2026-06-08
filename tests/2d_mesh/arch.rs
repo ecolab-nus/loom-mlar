@@ -278,8 +278,12 @@ pub fn scaled_mesh_torus() -> Architecture {
     //       No DRAM→L1 load or broadcast path.
     let gather_perf = {
         let pm = FuncPerfModel::builder()
-            .symbols(["B", "M", "N", "gather_x", "gather_y"])
-            .simple_time_cost(expr("344"), expr("B * M * N * 2 * effective_bandwidth"), expr("28"))
+            .symbols(["B", "M", "N", "gather_x", "gather_y", "effective_bandwidth"])
+            .simple_time_cost(
+                expr("344"),
+                expr("B * M * N * 2 * effective_bandwidth"),
+                expr("28"),
+            )
             .build();
         pm.validate().expect("gather perf model should validate");
         pm
