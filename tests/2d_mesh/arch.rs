@@ -55,7 +55,7 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
         "matmul" => FuncPerfModel::builder()
             .constraints(constraint("M >= 32 && N >= 32 && K >= 32"))
             .scenarios([
-                scenario("M * N >= 8192", "M * N / 2", "M * N * K", "716"),
+                scenario("M * N >= 8192", "M * N / 2", "2 * M * N * K", "716"),
                 scenario(
                     "M * N < 8192 ",
                     "M * N / 2",
