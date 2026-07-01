@@ -93,7 +93,7 @@ pub fn single_core() -> Architecture {
     // L1 cache: 16 banks, each 91.5KB (5856 blocks × 16 bytes).
     // It seems that real available L1 size is 1398784, each 85.375KB (5464 blocks × 16 bytes).
     let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5464))
-        .scale(dim_bank.as_slice())
+        .scale(&dim_bank)
         .with_name("L1");
 
     // ── Vector lane ───────────────────────────────────────────────────────────
@@ -109,8 +109,11 @@ pub fn single_core() -> Architecture {
         .collect();
     let vector_lane_proc = ComputeProcessor::builder()
         .named("vector_lane")
-        .with_regions(vec![(l1.clone(), l1.clone())])
-        .from_module(vector_lane_func, vector_lane_perf)
+        .from_region(l1.clone())
+        .to_region(l1.clone())
+        .functionality(vector_lane_func)
+        .perf(vector_lane_perf)
+        .finish()
         .expect("vector_lane processor should link functionality and perf")
         .into_processor();
 
@@ -131,8 +134,11 @@ pub fn single_core() -> Architecture {
         .collect();
     let matrix_lane_proc = ComputeProcessor::builder()
         .named("matrix_lane")
-        .with_regions(vec![(l1.clone(), l1.clone())])
-        .from_module(matrix_lane_func, matrix_lane_perf)
+        .from_region(l1.clone())
+        .to_region(l1.clone())
+        .functionality(matrix_lane_func)
+        .perf(matrix_lane_perf)
+        .finish()
         .expect("matrix_lane processor should link functionality and perf")
         .into_processor();
 
@@ -156,7 +162,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     // DRAM: 8 channels, each modeled as one memory bank.
     let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
         .with_name("DRAM_bank")
-        .scale(dim_dram_channel.as_slice())
+        .scale(&dim_dram_channel)
         .with_name("DRAM");
 
     // ── Mesh ──────────────────────────────────────────────────────────────────
@@ -213,9 +219,12 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("dram_l1_noc0.mlir should parse");
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
-        .with_regions(vec![(dram.clone(), array_l1.clone())])
+        .from_region(dram.clone())
+        .to_region(array_l1.clone())
         .with_resources(vec![Resource::exclusive("noc0")])
-        .from_module(noc0_func, vec![unicast_perf, bcst_perf])
+        .functionality(noc0_func)
+        .perf(vec![unicast_perf, bcst_perf])
+        .finish()
         .expect("dram_l1_noc0 data mover should link functionality and perf");
 
     // NoC0 also carries L1→L1 gather [%gather_x, %gather_y]. It is modeled as
@@ -248,9 +257,12 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("l1_l1_noc0.mlir should parse");
     let l1_l1 = DataMover::builder()
         .named("l1_l1_noc0")
-        .with_regions(vec![(array_l1.clone(), array_l1.clone())])
+        .from_region(array_l1.clone())
+        .to_region(array_l1.clone())
         .with_resources(vec![Resource::exclusive("noc0")])
-        .from_module(l1_l1_func, vec![gather_perf])
+        .functionality(l1_l1_func)
+        .perf(vec![gather_perf])
+        .finish()
         .expect("l1_l1_noc0 data mover should link functionality and perf");
 
     // NoC1: L1→DRAM writeback. No DRAM→L1 load or broadcast path.
@@ -269,9 +281,12 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("l1_dram_noc1.mlir should parse");
     let noc1 = DataMover::builder()
         .named("l1_dram_noc1")
-        .with_regions(vec![(array_l1.clone(), dram.clone())])
+        .from_region(array_l1.clone())
+        .to_region(dram.clone())
         .with_resources(vec![Resource::exclusive("noc1")])
-        .from_module(noc1_func, vec![noc1_unicast_perf])
+        .functionality(noc1_func)
+        .perf(vec![noc1_unicast_perf])
+        .finish()
         .expect("l1_dram_noc1 data mover should link functionality and perf");
 
     Architecture::scope("system")

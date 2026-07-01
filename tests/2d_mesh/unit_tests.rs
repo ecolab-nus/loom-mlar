@@ -2,35 +2,54 @@ use mlar_rust::*;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
+fn route_regions() -> (MemoryRegion, MemoryRegion) {
     let dim_bank = Dimension::new_int("nbank", 16);
     let dim_x = Dimension::new_int("x", 8);
     let dim_y = Dimension::new_int("y", 8);
     let dim_dram_channel = Dimension::new_int("dram_channel", 8);
     let l1 = MemoryRegion::bank(SizeExpr::Const(16), SizeExpr::Const(5856))
-        .scale(dim_bank.as_slice())
+        .scale(&dim_bank)
         .with_name("L1");
     let array_l1 = l1.scale(&[dim_x, dim_y]).with_name("array_L1");
     let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
         .with_name("DRAM_bank")
-        .scale(dim_dram_channel.as_slice())
+        .scale(&dim_dram_channel)
         .with_name("DRAM");
-    vec![(dram, array_l1)]
+    (dram, array_l1)
 }
 
 // ── from src/arch/processor.rs ───────────────────────────────────────────────
 
 #[test]
-fn processor_from_module_rejects_name_mismatch_with_mlir_module() {
+fn processor_builder_rejects_name_mismatch_with_mlir_module() {
     let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
         .expect("vector_lane should parse");
     let perf_models = vec![FuncPerfModel::trivial(); module.functions.len()];
 
-    let err = Processor::from_module("wrong_name", module, perf_models)
+    let err = ComputeProcessor::builder()
+        .named("wrong_name")
+        .functionality(module)
+        .perf(perf_models)
+        .finish()
         .expect_err("name mismatch should fail before interface validation");
     assert!(
         err.contains("Processor name 'wrong_name' does not match MLIR module name 'vector_lane'")
     );
+}
+
+#[test]
+fn processor_builder_rejects_functionality_perf_count_mismatch() {
+    let module =
+        MlirModule::from_functions("toy", vec![MlirFunc::named("f0"), MlirFunc::named("f1")]);
+
+    let err = ComputeProcessor::builder()
+        .named("toy")
+        .functionality(module)
+        .perf(vec![FuncPerfModel::trivial()])
+        .finish()
+        .expect_err("each function should require one performance model");
+
+    assert!(err.contains("has 1 performance models but functionality has 2 functions"));
 }
 
 #[test]
@@ -39,10 +58,14 @@ fn data_mover_validation_rejects_missing_memref_interface() {
         .expect("vector_lane should parse");
     let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
 
+    let (dram, array_l1) = route_regions();
     let err = DataMover::builder()
         .named("vector_lane")
-        .with_regions(region_pairs())
-        .from_module(functionality, perf_models)
+        .from_region(dram)
+        .to_region(array_l1)
+        .functionality(functionality)
+        .perf(perf_models)
+        .finish()
         .expect_err("vector lane functions should not satisfy data-mover interface");
     assert!(
         err.contains("pure data-mover function must contain exactly one loom.copy or loom.gather")

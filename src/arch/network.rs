@@ -689,7 +689,7 @@ mod tests {
         let map = AffineMap::new(bank.as_slice(), &[], vec![]);
 
         let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-            .scale(bank.as_slice())
+            .scale(&bank)
             .with_name("l1");
 
         let io = make_io(bank.as_slice(), 64);
@@ -859,7 +859,7 @@ mod tests {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
         let bad_region = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-            .scale(x.as_slice())
+            .scale(&x)
             .with_name("l1");
 
         let _ = ScaleOutNetwork::mesh("bad_mesh")
@@ -873,7 +873,7 @@ mod tests {
         let x = Dimension::new_int("x", 8);
         let y = Dimension::new_int("y", 8);
         let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-            .scale(x.as_slice())
+            .scale(&x)
             .with_name("l1");
         let bad_map = AffineMap::identity(y.as_slice());
 

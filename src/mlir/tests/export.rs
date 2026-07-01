@@ -55,6 +55,7 @@ fn compute_builder_self_resource_is_emitted_and_referenced() {
     let lane = ComputeProcessor::builder()
         .named("lane")
         .finish()
+        .expect("structural compute should build")
         .into_processor();
     let arch = Architecture::scope("core").with_processor(lane);
     let mlir = architecture_to_mlir(&arch).expect("should emit");
@@ -92,7 +93,7 @@ fn symbolic_dim_returns_none() {
 fn shared_dims_emitted_once() {
     let dim_x = Dimension::new_int("x", 4);
     let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(128))
-        .scale(dim_x.as_slice())
+        .scale(&dim_x)
         .with_name("L1");
     let lane = Processor::new("p");
     let core = Architecture::scope("core")

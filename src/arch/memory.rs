@@ -32,6 +32,59 @@ pub enum MemoryRegion {
     },
 }
 
+/// Inputs accepted by [`MemoryRegion::scale`].
+pub trait IntoMemoryDimensions {
+    fn into_memory_dimensions(self) -> Vec<Dimension>;
+}
+
+impl IntoMemoryDimensions for &Dimension {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        vec![self.clone()]
+    }
+}
+
+impl IntoMemoryDimensions for &[Dimension] {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.to_vec()
+    }
+}
+
+impl<const N: usize> IntoMemoryDimensions for &[Dimension; N] {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.to_vec()
+    }
+}
+
+impl<const N: usize> IntoMemoryDimensions for [Dimension; N] {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.into_iter().collect()
+    }
+}
+
+impl<const N: usize> IntoMemoryDimensions for [&Dimension; N] {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.into_iter().cloned().collect()
+    }
+}
+
+impl IntoMemoryDimensions for &[&Dimension] {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.iter().copied().cloned().collect()
+    }
+}
+
+impl IntoMemoryDimensions for Vec<Dimension> {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self
+    }
+}
+
+impl IntoMemoryDimensions for &Vec<Dimension> {
+    fn into_memory_dimensions(self) -> Vec<Dimension> {
+        self.clone()
+    }
+}
+
 impl MemoryBank {
     /// Create a bank from block_size and num_blocks.
     /// capacity_bytes = Mul(block_size, num_blocks), access_granularity = block_size
@@ -84,12 +137,14 @@ impl MemoryRegion {
         MemoryRegion::bank(SizeExpr::from(block_size), SizeExpr::from(num_blocks))
     }
 
-    /// Wrap this region in an Array with the given dimensions.
-    /// Accepts a slice reference; clones internally.
-    pub fn scale(self, dims: &[Dimension]) -> Self {
+    /// Wrap this region in an Array with the given dimension or dimensions.
+    pub fn scale<D>(self, dims: D) -> Self
+    where
+        D: IntoMemoryDimensions,
+    {
         MemoryRegion::Array {
             name: None,
-            dims: dims.to_vec(),
+            dims: dims.into_memory_dimensions(),
             sub_regions: Box::new(self),
         }
     }
@@ -237,7 +292,7 @@ mod tests {
     fn test_total_size_bytes() {
         let dim = Dimension::new_int("nbank", 16);
         let region = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-            .scale(dim.as_slice())
+            .scale(&dim)
             .with_name("L1");
 
         // 16 banks × 128 bytes/block × 1024 blocks = 2 MB
@@ -256,7 +311,7 @@ mod tests {
     fn test_scale() {
         let dim = Dimension::new_int("nbank", 16);
         let region = MemoryRegion::leaf_concrete(128, 1024)
-            .scale(dim.as_slice())
+            .scale(&dim)
             .with_name("test_mem");
 
         assert_eq!(region.name(), Some("test_mem"));
@@ -290,7 +345,7 @@ mod tests {
         let dim = Dimension::new_int("n", 4);
         let array =
             MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024)).with_name("bank"))
-                .scale(dim.as_slice())
+                .scale(&dim)
                 .with_name("L1");
         let err = array
             .generate_resource()

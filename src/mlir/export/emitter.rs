@@ -187,7 +187,7 @@ impl MlirEmitter {
         let prefixed_name = prefixed_processor_name(name);
         self.processor_name_map
             .insert(name.to_string(), prefixed_name.clone());
-        let region_pairs = self.format_region_pairs(proc)?;
+        let route_clause = self.format_route_clause(proc)?;
         let proc_ref = if matches!(kind, "compute" | "dmover") {
             format!("@{}", prefixed_name)
         } else {
@@ -199,7 +199,7 @@ impl MlirEmitter {
         writeln!(
             self.output,
             "{} = adl.processor.{} {}, {}{}",
-            ssa, kind, proc_ref, region_pairs, resource_clause
+            ssa, kind, proc_ref, route_clause, resource_clause
         )
         .unwrap();
 
@@ -227,7 +227,7 @@ impl MlirEmitter {
         format!(", with [{}]", ssas.join(", "))
     }
 
-    fn format_region_pairs(&self, proc: &Processor) -> Option<String> {
+    fn format_route_clause(&self, proc: &Processor) -> Option<String> {
         let (Some(source), Some(destination)) = (&proc.source, &proc.destination) else {
             return Some("[]".to_string());
         };

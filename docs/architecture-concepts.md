@@ -11,6 +11,8 @@ movers.
 
 - `MemoryRegion::Bank` wraps one `MemoryBank`.
 - `MemoryRegion::Array` scales a sub-region over one or more `Dimension`s.
+- `MemoryRegion::scale(&dim)` scales by one dimension; collections such as
+  `&[x.clone(), y.clone()]` or `[&x, &y]` scale by multiple dimensions.
 - `MemoryBank` stores `capacity_bytes`, optional `block_size`, optional name,
   and optional performance model.
 - `MemoryRegion::total_size_bytes()` returns `None` if any size or dimension is
@@ -34,19 +36,21 @@ distinguishes compute from movement:
   converted back with `.into_processor()` or into an architecture leaf with
   `.into_elem()`.
 
-A processor can be structural-only with `Processor::new("name")`, or linked to
-MLIR functionality with `Processor::from_module`,
-`ComputeProcessor::builder().from_module(...)`, or
-`DataMover::builder().from_module(...)`.
+A processor can be structural-only with `Processor::new("name")`, or built with
+`ComputeProcessor::builder()` / `DataMover::builder()`. Builders stage
+functionality and performance independently with `.functionality(...)` and
+`.perf(...)`, then validate and construct the processor with `.finish()`.
 
 When linked from MLIR, one performance model is required for each parsed
 `func.func`, in module order. The processor name is checked against the MLIR
 module symbol when the module was loaded from a file.
 
 Every linked processor has exactly one source memory region and one destination
-memory region. In-place compute or movement uses the same region for both.
-Different routes should be modeled as different processors. If they contend for
-the same physical hardware, attach the same `Resource` to those processors.
+memory region, specified with `.from_region(source)` and
+`.to_region(destination)`. In-place compute or movement uses the same region for
+both. Different routes should be modeled as different processors. If they
+contend for the same physical hardware, attach the same `Resource` to those
+processors.
 
 ## MLIR Functionality
 

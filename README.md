@@ -64,8 +64,11 @@ let perf = module
 
 let lane = ComputeProcessor::builder()
     .named("vector_lane")
-    .with_regions(vec![(l1.clone(), l1.clone())])
-    .from_module(module, perf)?
+    .from_region(l1.clone())
+    .to_region(l1.clone())
+    .functionality(module)
+    .perf(perf)
+    .finish()?
     .into_processor();
 
 let arch = Architecture::scope("core")

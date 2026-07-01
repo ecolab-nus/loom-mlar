@@ -26,8 +26,9 @@ let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
 
 let lane = ComputeProcessor::builder()
     .named("lane")
-    .with_regions(vec![(l1.clone(), l1.clone())])
-    .finish()
+    .from_region(l1.clone())
+    .to_region(l1.clone())
+    .finish()?
     .into_processor();
 
 let core = Architecture::scope("core")
@@ -35,8 +36,9 @@ let core = Architecture::scope("core")
     .with_processor(lane);
 ```
 
-`finish()` creates a structural-only processor. Use `from_module(...)` when the
-processor should validate against real MLIR functionality.
+`finish()` creates the processor. When `.functionality(...)` is staged, also
+stage `.perf(...)`; finalization checks that there is one performance model per
+function and validates the MLIR interface.
 
 ## Parse MLIR And Attach Performance
 
@@ -60,8 +62,11 @@ let perf_models = module.functions.iter().map(|_| vector_perf()).collect();
 
 let vector_lane = ComputeProcessor::builder()
     .named("vector_lane")
-    .with_regions(vec![(l1.clone(), l1.clone())])
-    .from_module(module, perf_models)?;
+    .from_region(l1.clone())
+    .to_region(l1.clone())
+    .functionality(module)
+    .perf(perf_models)
+    .finish()?;
 
 vector_lane.validate()?;
 ```
@@ -107,8 +112,11 @@ let perf_models = module
 
 let noc = DataMover::builder()
     .named("dram_l1_noc0")
-    .with_regions(vec![(dram.clone(), l1.clone())])
-    .from_module(module, perf_models)?;
+    .from_region(dram.clone())
+    .to_region(l1.clone())
+    .functionality(module)
+    .perf(perf_models)
+    .finish()?;
 
 noc.validate()?;
 ```
