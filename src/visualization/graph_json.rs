@@ -1,12 +1,9 @@
 use crate::arch::{
-    ArchEdgeDirection, ArchGraph, ArchNode, ArchNodeComponent, Architecture, DataMover, Dimension,
-    MemoryRegion, Router, SizeExpr,
+    Architecture, DataEffect, Dimension, MemoryAccessMode, MemoryRegion, Processor, Resource,
+    SizeExpr,
 };
-use crate::math::{AffineExpr, AffineMap, Expr};
-use crate::schedule::MlirModule;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
 
 const GRAPH_SCHEMA_VERSION: &str = "mlar.arch-graph.v1";
 
@@ -54,7 +51,6 @@ pub enum GraphLinkTopology {
     General,
 }
 
-/// Relation between map source and destination domains.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkMapRelation {
     OneToOne,
@@ -64,7 +60,6 @@ pub enum LinkMapRelation {
     Unknown,
 }
 
-/// Topological classification of a link map.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkTopology {
     Ring,
@@ -239,7 +234,6 @@ pub struct GraphArchitectureMeta {
     pub labels: Vec<GraphArchitectureLabel>,
 }
 
-/// Top-level JSON payload for web visualization.
 #[derive(Debug, Clone, Serialize)]
 pub struct ArchitectureGraphJson {
     pub schema_version: &'static str,
@@ -250,160 +244,133 @@ pub struct ArchitectureGraphJson {
     pub intra_core: Option<Box<ArchitectureGraphJson>>,
 }
 
-/// Convert an architecture to a JSON-ready graph representation.
 pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson {
-    let synthetic_graph;
-    let graph = if let Some(graph) = arch.as_graph() {
-        graph
-    } else {
-        synthetic_graph = ArchGraph {
-            name: arch.name().unwrap_or("architecture").to_string(),
-            nodes: vec![ArchNode::from_architecture(arch)],
-            edges: Vec::new(),
-            resources: Vec::new(),
-            resource_map: std::collections::HashMap::new(),
-        };
-        &synthetic_graph
-    };
-
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
-    let mut used_ids = HashSet::new();
-    let mut memory_node_ids = HashMap::new();
-    let mut processor_node_ids = HashMap::new();
-    let mut router_node_ids: HashMap<String, String> = HashMap::new();
-    let mut arch_node_id_map: HashMap<String, (String, String)> = HashMap::new();
-
-    for (idx, node) in graph.nodes.iter().enumerate() {
-        match &node.component {
-            ArchNodeComponent::MemoryRegion(region) => {
-                let name = named_or_fallback(region.name(), "memory", idx);
-                if memory_node_ids.contains_key(&name) {
-                    continue;
-                }
-                let id = unique_id(&format!("mem:{}", slugify(&name)), &mut used_ids);
-                memory_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
-                nodes.push(memory_node_from_region(id, &name, region));
-            }
-            ArchNodeComponent::Architecture(proc) => {
-                let name = named_or_fallback(proc.name(), "processor", idx);
-                if processor_node_ids.contains_key(&name) {
-                    continue;
-                }
-                let id = unique_id(&format!("proc:{}", slugify(&name)), &mut used_ids);
-                processor_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
-                nodes.push(processor_node_from_elem(id, &name, proc));
-            }
-            ArchNodeComponent::DataMover(mover) => {
-                let name = mover
-                    .name
-                    .clone()
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| format!("data_mover_{idx}"));
-                if processor_node_ids.contains_key(&name) {
-                    continue;
-                }
-                let id = unique_id(&format!("dm:{}", slugify(&name)), &mut used_ids);
-                processor_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
-                nodes.push(data_mover_node_from_elem(id, &name, mover));
-                ensure_region_pair_memory_nodes(
-                    &mover.region_pairs,
-                    &mut nodes,
-                    &mut memory_node_ids,
-                    &mut used_ids,
-                );
-            }
-            ArchNodeComponent::Router(router) => {
-                let name = node
-                    .name()
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| format!("router_{idx}"));
-                if router_node_ids.contains_key(&name) {
-                    continue;
-                }
-                let id = unique_id(&format!("router:{}", slugify(&name)), &mut used_ids);
-                router_node_ids.insert(name.clone(), id.clone());
-                arch_node_id_map.insert(node.id.as_str().to_owned(), (id.clone(), name.clone()));
-                nodes.push(router_node(id, &name, router));
-            }
-        }
+    append_scope(arch, &arch.name, &mut nodes, &mut edges);
+    ArchitectureGraphJson {
+        schema_version: GRAPH_SCHEMA_VERSION,
+        architecture: GraphArchitectureMeta {
+            name: arch.name.clone(),
+            labels: vec![GraphArchitectureLabel {
+                name: arch.name.clone(),
+                dimensions: arch.dims.iter().map(dimension_to_json).collect(),
+            }],
+        },
+        nodes,
+        edges,
+        intra_core: None,
     }
+}
 
-    let mut links = Vec::new();
-    collect_connectivity_links(arch, &mut links);
-    for (idx, link) in links.iter().enumerate() {
-        let (source, source_name) =
-            ensure_endpoint_node(link.src(), &mut nodes, &mut memory_node_ids, &mut used_ids);
-        let (target, target_name) =
-            ensure_endpoint_node(link.dst(), &mut nodes, &mut memory_node_ids, &mut used_ids);
+pub fn architecture_to_graph_json_value(arch: &Architecture) -> Value {
+    serde_json::to_value(architecture_to_graph_json(arch))
+        .expect("graph serialization must succeed")
+}
 
-        let link_name = link.name();
-        let edge_id = unique_id(
-            &format!("edge:{}:{}", slugify(link_name), idx),
-            &mut used_ids,
-        );
-        let bandwidth = expr_to_json(link.bandwidth());
-        edges.push(GraphEdge {
-            id: edge_id,
-            kind: GraphEdgeKind::ScaleOutNetwork,
-            name: link_name.to_owned(),
-            source,
-            target,
-            source_name,
-            target_name,
-            label: format!("{} ({} B/cycle)", link_name, bandwidth.expr),
-            direction: GraphEdgeDirection::Directional,
-            bandwidth: Some(bandwidth),
-            latency: link.latency().map(expr_to_json),
-            constraints: Some(String::new()),
-            sharing: Some(network_kind_label(link).to_owned()),
-            map_relation: Some(link_map_relation_to_json(link_map_relation(link))),
-            topology: Some(link_topology_to_json(link_topology(link))),
-            map: Some(affine_map_to_json(link.map())),
-            side: None,
+pub fn architecture_to_graph_json_string(arch: &Architecture) -> Result<String, serde_json::Error> {
+    serde_json::to_string(&architecture_to_graph_json(arch))
+}
+
+pub fn architecture_to_graph_json_string_pretty(
+    arch: &Architecture,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&architecture_to_graph_json(arch))
+}
+
+fn append_scope(
+    arch: &Architecture,
+    path: &str,
+    nodes: &mut Vec<GraphNode>,
+    edges: &mut Vec<GraphEdge>,
+) {
+    for memory in &arch.memories {
+        let name = memory.name().unwrap_or("memory").to_string();
+        let id = scoped_id(path, "mem", &name);
+        nodes.push(GraphNode {
+            id,
+            kind: GraphNodeKind::Memory,
+            name: name.clone(),
+            label: name,
+            dimensions: collect_memory_dims(memory)
+                .iter()
+                .map(|dim| dimension_to_json(dim))
+                .collect(),
+            details: GraphNodeDetails::Memory {
+                region: memory_region_to_json(memory),
+            },
         });
     }
 
-    for (idx, arch_edge) in graph.edges.iter().enumerate() {
-        let Some((source_id, source_name)) =
-            arch_node_id_map.get(arch_edge.source.as_str()).cloned()
-        else {
-            continue;
-        };
-        let Some((target_id, target_name)) =
-            arch_node_id_map.get(arch_edge.target.as_str()).cloned()
-        else {
-            continue;
-        };
+    for processor in &arch.processors {
+        append_processor(path, processor, nodes, edges);
+    }
 
-        let edge_id = unique_id(
-            &format!("iedge:{}:{}", slugify(&source_name), idx),
-            &mut used_ids,
-        );
-        let side_attr = arch_edge.side();
-        let direction = arch_edge_direction_to_json(arch_edge.direction());
-        let link_symbol = match direction {
-            GraphEdgeDirection::Directional => "→",
-            GraphEdgeDirection::Bidirectional => "↔",
-        };
-        let label = match side_attr {
-            Some(s) => format!("{source_name} {link_symbol} {target_name} (side {s})"),
-            None => format!("{source_name} {link_symbol} {target_name}"),
+    for resource in &arch.resources {
+        let id = scoped_id(path, "res", resource.id().as_str());
+        nodes.push(GraphNode {
+            id,
+            kind: GraphNodeKind::Resource,
+            name: resource.id().as_str().to_string(),
+            label: resource.id().as_str().to_string(),
+            dimensions: Vec::new(),
+            details: GraphNodeDetails::Resource {
+                resource: resource_to_json(resource),
+            },
+        });
+    }
+
+    for child in &arch.children {
+        append_scope(child, &format!("{path}/{}", child.name), nodes, edges);
+    }
+}
+
+fn append_processor(
+    path: &str,
+    processor: &Processor,
+    nodes: &mut Vec<GraphNode>,
+    edges: &mut Vec<GraphEdge>,
+) {
+    let name = processor.name.as_deref().unwrap_or("processor").to_string();
+    let id = scoped_id(path, "proc", &name);
+    let kind = if processor.effect == DataEffect::Preserve {
+        GraphNodeKind::DataMover
+    } else {
+        GraphNodeKind::Processor
+    };
+    nodes.push(GraphNode {
+        id: id.clone(),
+        kind,
+        name: name.clone(),
+        label: name.clone(),
+        dimensions: Vec::new(),
+        details: GraphNodeDetails::Processor {
+            element: processor_to_json(processor),
+            total_instances: Some(1),
+        },
+    });
+
+    for access in &processor.accesses {
+        let memory_id = scoped_id(path, "mem", &access.region.name);
+        let direction = match access.mode {
+            MemoryAccessMode::Read => (memory_id.clone(), id.clone(), "read"),
+            MemoryAccessMode::Write => (id.clone(), memory_id.clone(), "write"),
+            MemoryAccessMode::ReadWrite => (id.clone(), memory_id.clone(), "read_write"),
         };
         edges.push(GraphEdge {
-            id: edge_id,
+            id: scoped_id(path, "edge", &format!("{}_{}", name, access.region.name)),
             kind: GraphEdgeKind::IntraGraph,
-            name: format!("{source_name}{link_symbol}{target_name}"),
-            source: source_id,
-            target: target_id,
-            source_name,
-            target_name,
-            label,
-            direction,
+            name: direction.2.to_string(),
+            source: direction.0.clone(),
+            target: direction.1.clone(),
+            source_name: direction.0,
+            target_name: direction.1,
+            label: direction.2.to_string(),
+            direction: if access.mode == MemoryAccessMode::ReadWrite {
+                GraphEdgeDirection::Bidirectional
+            } else {
+                GraphEdgeDirection::Directional
+            },
             bandwidth: None,
             latency: None,
             constraints: None,
@@ -411,465 +378,26 @@ pub fn architecture_to_graph_json(arch: &Architecture) -> ArchitectureGraphJson 
             map_relation: None,
             topology: None,
             map: None,
-            side: side_attr,
+            side: None,
         });
     }
+}
 
-    // ── Resource nodes and dependency edges ────────────────────────
-    // Skip resources derived from memory regions (they are already displayed as memory nodes).
-    let memory_names: HashSet<String> = memory_node_ids.keys().cloned().collect();
-    let mut resource_node_ids: HashMap<String, String> = HashMap::new();
-    for resource in &graph.resources {
-        let res_id_str = resource.id().as_str().to_owned();
-        if memory_names.contains(&res_id_str) {
-            continue;
-        }
-        let capacity = resource.capacity();
-        let kind = if resource.is_quantitative() {
-            GraphResourceKind::Quantitative
-        } else {
-            GraphResourceKind::Exclusive
-        };
-        let label = match capacity {
-            Some(capacity) => format!("{} (cap={})", res_id_str, capacity),
-            None => res_id_str.clone(),
-        };
-        let node_id = unique_id(&format!("res:{}", slugify(&res_id_str)), &mut used_ids);
-        resource_node_ids.insert(res_id_str.clone(), node_id.clone());
-        nodes.push(GraphNode {
-            id: node_id,
-            kind: GraphNodeKind::Resource,
-            name: res_id_str.clone(),
-            label,
-            dimensions: Vec::new(),
-            details: GraphNodeDetails::Resource {
-                resource: GraphResourceInfo {
-                    id: res_id_str,
-                    kind,
-                    capacity,
-                },
-            },
-        });
-    }
+fn scoped_id(path: &str, kind: &str, name: &str) -> String {
+    format!("{kind}::{}::{}", sanitize(path), sanitize(name))
+}
 
-    for (arch_node_id, res_ids) in &graph.resource_map {
-        let Some((source_id, source_name)) = arch_node_id_map.get(arch_node_id.as_str()).cloned()
-        else {
-            continue;
-        };
-        for res_id in res_ids {
-            let target_id = resource_node_ids
-                .get(res_id.as_str())
-                .or_else(|| memory_node_ids.get(res_id.as_str()))
-                .cloned();
-            let Some(target_id) = target_id else {
-                continue;
-            };
-            if source_id == target_id {
-                continue;
+fn sanitize(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
             }
-            if has_existing_edge_between(&edges, &source_id, &target_id) {
-                continue;
-            }
-            let edge_id = unique_id(
-                &format!(
-                    "resdep:{}:{}",
-                    slugify(&source_name),
-                    slugify(res_id.as_str())
-                ),
-                &mut used_ids,
-            );
-            edges.push(GraphEdge {
-                id: edge_id,
-                kind: GraphEdgeKind::ResourceDependency,
-                name: format!("{source_name} → {}", res_id),
-                source: source_id.clone(),
-                target: target_id,
-                source_name: source_name.clone(),
-                target_name: res_id.to_string(),
-                label: format!("{source_name} → {}", res_id),
-                direction: GraphEdgeDirection::Directional,
-                bandwidth: None,
-                latency: None,
-                constraints: None,
-                sharing: None,
-                map_relation: None,
-                topology: None,
-                map: None,
-                side: None,
-            });
-        }
-    }
-
-    let (labels, intra_core) = build_labels_and_intra_core(arch);
-
-    ArchitectureGraphJson {
-        schema_version: GRAPH_SCHEMA_VERSION,
-        architecture: GraphArchitectureMeta {
-            name: graph.name.clone(),
-            labels,
-        },
-        nodes,
-        edges,
-        intra_core,
-    }
-}
-
-/// Convert an architecture graph to `serde_json::Value`.
-pub fn architecture_to_graph_json_value(arch: &Architecture) -> Value {
-    serde_json::to_value(architecture_to_graph_json(arch))
-        .expect("architecture graph serialization must succeed")
-}
-
-/// Convert an architecture graph to compact JSON string.
-pub fn architecture_to_graph_json_string(arch: &Architecture) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&architecture_to_graph_json(arch))
-}
-
-/// Convert an architecture graph to pretty-printed JSON string.
-pub fn architecture_to_graph_json_string_pretty(
-    arch: &Architecture,
-) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&architecture_to_graph_json(arch))
-}
-
-fn build_labels_and_intra_core(
-    arch: &Architecture,
-) -> (
-    Vec<GraphArchitectureLabel>,
-    Option<Box<ArchitectureGraphJson>>,
-) {
-    if let Architecture::Array {
-        name, dims, elem, ..
-    } = arch
-    {
-        if dims.len() >= 2 {
-            let label_name = name
-                .clone()
-                .or_else(|| elem.name().map(String::from))
-                .unwrap_or_else(|| "array".to_string());
-            let label = GraphArchitectureLabel {
-                name: label_name,
-                dimensions: dims.iter().map(dimension_to_json).collect(),
-            };
-            let intra = architecture_to_graph_json(elem);
-            return (vec![label], Some(Box::new(intra)));
-        }
-    }
-    (Vec::new(), None)
-}
-
-fn collect_connectivity_links<'a>(
-    arch: &'a Architecture,
-    out: &mut Vec<&'a crate::arch::ScaleOutNetwork>,
-) {
-    match arch {
-        Architecture::Unit(_) => {}
-        Architecture::Array {
-            connectivity, elem, ..
-        } => {
-            out.extend(connectivity.iter());
-            collect_connectivity_links(elem, out);
-        }
-        Architecture::Graph(graph) => {
-            for node in &graph.nodes {
-                if let ArchNodeComponent::Architecture(node_arch) = &node.component {
-                    collect_connectivity_links(node_arch, out);
-                }
-            }
-        }
-    }
-}
-
-fn ensure_endpoint_node(
-    endpoint: &MemoryRegion,
-    nodes: &mut Vec<GraphNode>,
-    memory_node_ids: &mut HashMap<String, String>,
-    used_ids: &mut HashSet<String>,
-) -> (String, String) {
-    let name = endpoint
-        .name()
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| "unnamed_memory".to_string());
-
-    if let Some(id) = memory_node_ids.get(&name) {
-        return (id.clone(), name);
-    }
-
-    let id = unique_id(&format!("mem:{}", slugify(&name)), used_ids);
-    nodes.push(memory_node_from_region(id.clone(), &name, endpoint));
-    memory_node_ids.insert(name.clone(), id.clone());
-    (id, name)
-}
-
-fn ensure_region_pair_memory_nodes(
-    region_pairs: &[(MemoryRegion, MemoryRegion)],
-    nodes: &mut Vec<GraphNode>,
-    memory_node_ids: &mut HashMap<String, String>,
-    used_ids: &mut HashSet<String>,
-) {
-    for (source, target) in region_pairs {
-        ensure_endpoint_node(source, nodes, memory_node_ids, used_ids);
-        ensure_endpoint_node(target, nodes, memory_node_ids, used_ids);
-    }
-}
-
-fn has_existing_edge_between(edges: &[GraphEdge], source_id: &str, target_id: &str) -> bool {
-    edges.iter().any(|edge| {
-        (edge.source == source_id && edge.target == target_id)
-            || (edge.direction == GraphEdgeDirection::Bidirectional
-                && edge.source == target_id
-                && edge.target == source_id)
-    })
-}
-
-fn memory_node_from_region(id: String, name: &str, region: &MemoryRegion) -> GraphNode {
-    let dimensions = dedup_dimensions(collect_memory_dims(region))
-        .iter()
-        .map(dimension_to_json)
-        .collect::<Vec<_>>();
-    GraphNode {
-        id,
-        kind: GraphNodeKind::Memory,
-        name: name.to_string(),
-        label: node_label(name, &dimensions),
-        dimensions,
-        details: GraphNodeDetails::Memory {
-            region: memory_region_to_json(region),
-        },
-    }
-}
-
-fn architecture_node_kind(elem: &Architecture) -> GraphNodeKind {
-    match elem {
-        Architecture::Unit(_) => GraphNodeKind::Processor,
-        Architecture::Array { .. } => GraphNodeKind::Array,
-        Architecture::Graph(_) => GraphNodeKind::Graph,
-    }
-}
-
-fn processor_node_from_elem(id: String, name: &str, elem: &Architecture) -> GraphNode {
-    let dimensions = dedup_dimensions(collect_processor_dims(elem))
-        .iter()
-        .map(dimension_to_json)
-        .collect::<Vec<_>>();
-    GraphNode {
-        id,
-        kind: architecture_node_kind(elem),
-        name: name.to_string(),
-        label: node_label(name, &dimensions),
-        dimensions,
-        details: GraphNodeDetails::Processor {
-            element: processors_to_json(elem),
-            total_instances: elem.total_instances(),
-        },
-    }
-}
-
-fn data_mover_node_from_elem(id: String, name: &str, mover: &DataMover) -> GraphNode {
-    GraphNode {
-        id,
-        kind: GraphNodeKind::DataMover,
-        name: name.to_string(),
-        label: name.to_string(),
-        dimensions: Vec::new(),
-        details: GraphNodeDetails::Processor {
-            element: GraphProcessors::Unit {
-                name: mover.name.clone(),
-                functionality: functionality_to_json(&mover.functionality),
-            },
-            total_instances: Some(1),
-        },
-    }
-}
-
-fn router_node(id: String, name: &str, router: &Router) -> GraphNode {
-    GraphNode {
-        id,
-        kind: GraphNodeKind::Router,
-        name: name.to_string(),
-        label: name.to_string(),
-        dimensions: Vec::new(),
-        details: GraphNodeDetails::Router {
-            router: GraphRouter {
-                name: router.name.clone(),
-                side_count: router.side_count(),
-            },
-        },
-    }
-}
-
-fn node_label(name: &str, dims: &[GraphDimension]) -> String {
-    if dims.is_empty() {
-        return name.to_string();
-    }
-
-    let suffix = dims
-        .iter()
-        .map(|d| format!("{}={}", d.name, d.size_expr))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("{name} [{suffix}]")
-}
-
-fn named_or_fallback(name: Option<&str>, kind: &str, index: usize) -> String {
-    name.map(|n| n.to_string())
-        .unwrap_or_else(|| format!("{kind}_{index}"))
-}
-
-fn unique_id(base: &str, used: &mut HashSet<String>) -> String {
-    if !used.contains(base) {
-        used.insert(base.to_string());
-        return base.to_string();
-    }
-
-    let mut counter = 1usize;
-    loop {
-        let candidate = format!("{base}__{counter}");
-        if !used.contains(&candidate) {
-            used.insert(candidate.clone());
-            return candidate;
-        }
-        counter += 1;
-    }
-}
-
-fn slugify(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            out.push(ch.to_ascii_lowercase());
-        } else if ch.is_ascii_whitespace() || ch == ':' || ch == '/' || ch == '.' {
-            out.push('_');
-        }
-    }
-
-    if out.is_empty() {
-        "unnamed".to_string()
-    } else {
-        out
-    }
-}
-
-fn network_kind_label(net: &crate::arch::ScaleOutNetwork) -> &'static str {
-    match net {
-        crate::arch::ScaleOutNetwork::Mesh(_) => "mesh",
-    }
-}
-
-fn link_map_relation(link: &crate::arch::ScaleOutNetwork) -> LinkMapRelation {
-    match (link.source_domain_size(), link.target_domain_size()) {
-        (Some(src), Some(dst)) if src == dst => LinkMapRelation::OneToOne,
-        (Some(src), Some(dst)) if src < dst => LinkMapRelation::OneToMany,
-        (Some(src), Some(dst)) if src > dst => LinkMapRelation::ManyToOne,
-        (Some(_), Some(_)) => LinkMapRelation::ManyToMany,
-        _ => LinkMapRelation::Unknown,
-    }
-}
-
-fn link_topology(link: &crate::arch::ScaleOutNetwork) -> LinkTopology {
-    if link.is_ring_topology() {
-        LinkTopology::Ring
-    } else {
-        LinkTopology::General
-    }
-}
-
-fn link_map_relation_to_json(relation: LinkMapRelation) -> GraphMapRelation {
-    match relation {
-        LinkMapRelation::OneToOne => GraphMapRelation::OneToOne,
-        LinkMapRelation::OneToMany => GraphMapRelation::OneToMany,
-        LinkMapRelation::ManyToOne => GraphMapRelation::ManyToOne,
-        LinkMapRelation::ManyToMany => GraphMapRelation::ManyToMany,
-        LinkMapRelation::Unknown => GraphMapRelation::Unknown,
-    }
-}
-
-fn link_topology_to_json(topology: LinkTopology) -> GraphLinkTopology {
-    match topology {
-        LinkTopology::Ring => GraphLinkTopology::Ring,
-        LinkTopology::General => GraphLinkTopology::General,
-    }
-}
-
-fn arch_edge_direction_to_json(direction: ArchEdgeDirection) -> GraphEdgeDirection {
-    match direction {
-        ArchEdgeDirection::Directional => GraphEdgeDirection::Directional,
-        ArchEdgeDirection::Bidirectional => GraphEdgeDirection::Bidirectional,
-    }
-}
-
-fn expr_to_json(expr: &Expr) -> GraphExpr {
-    GraphExpr {
-        expr: expr.to_string(),
-        const_value: expr.eval_const(),
-    }
-}
-
-fn size_expr_to_json(expr: &SizeExpr) -> GraphSizeExpr {
-    GraphSizeExpr {
-        expr: expr.to_string(),
-        const_value: expr.as_const(),
-    }
-}
-
-fn functionality_to_json(module: &MlirModule) -> GraphFunctionalityModule {
-    GraphFunctionalityModule {
-        name: module.module_name.clone(),
-        source_path: module.path.clone(),
-        source_mlir_module_name: module.module_name.clone(),
-        ops: module.functions.iter().map(|op| op.name.clone()).collect(),
-        op_details: module
-            .functions
-            .iter()
-            .map(functionality_op_to_json)
-            .collect(),
-    }
-}
-
-fn functionality_op_to_json(func: &crate::schedule::MlirFunc) -> GraphFunctionalityOp {
-    let (source_memories, destination_memories) = func
-        .mlir_details
-        .as_ref()
-        .map(function_memory_roles)
-        .unwrap_or_default();
-
-    GraphFunctionalityOp {
-        name: func.name.clone(),
-        source_memories,
-        destination_memories,
-    }
-}
-
-fn function_memory_roles(details: &crate::schedule::MlirFuncDetails) -> (Vec<String>, Vec<String>) {
-    let binding_by_memref: HashMap<&str, &str> = details
-        .mem_region_bindings
-        .iter()
-        .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
-        .collect();
-
-    let source_memories = memory_regions_for_memrefs(&details.source_memrefs, &binding_by_memref);
-    let destination_memories =
-        memory_regions_for_memrefs(&details.target_memrefs, &binding_by_memref);
-
-    (source_memories, destination_memories)
-}
-
-fn memory_regions_for_memrefs(
-    memrefs: &[String],
-    binding_by_memref: &HashMap<&str, &str>,
-) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut regions = Vec::new();
-    for memref in memrefs {
-        let Some(region) = binding_by_memref.get(memref.as_str()) else {
-            continue;
-        };
-        if seen.insert((*region).to_string()) {
-            regions.push((*region).to_string());
-        }
-    }
-    regions
+        })
+        .collect()
 }
 
 fn dimension_to_json(dim: &Dimension) -> GraphDimension {
@@ -880,379 +408,105 @@ fn dimension_to_json(dim: &Dimension) -> GraphDimension {
     }
 }
 
-fn affine_map_to_json(map: &AffineMap) -> GraphAffineMap {
-    GraphAffineMap {
-        source_dimensions: map.src_dims.iter().map(dimension_to_json).collect(),
-        target_dimensions: map.dst_dims.iter().map(dimension_to_json).collect(),
-        expressions: map.exprs.iter().map(format_affine_expr).collect(),
+fn size_expr_to_json(expr: &SizeExpr) -> GraphSizeExpr {
+    GraphSizeExpr {
+        expr: expr.to_string(),
+        const_value: expr.as_const(),
     }
 }
 
-fn format_affine_expr(expr: &AffineExpr) -> String {
-    match expr {
-        AffineExpr::Var(dim) => dim.name.0.clone(),
-        AffineExpr::Sym(sym) => sym.0.clone(),
-        AffineExpr::Const(v) => v.to_string(),
-        AffineExpr::Add(a, b) => format!("({} + {})", format_affine_expr(a), format_affine_expr(b)),
-        AffineExpr::MulConst(c, e) => format!("({} * {})", c, format_affine_expr(e)),
-        AffineExpr::Mod(a, b) => {
-            format!("({} mod {})", format_affine_expr(a), format_affine_expr(b))
-        }
-        AffineExpr::CeilDiv(a, b) => {
-            format!(
-                "({} ceildiv {})",
-                format_affine_expr(a),
-                format_affine_expr(b)
-            )
-        }
-    }
-}
-
-fn collect_memory_dims(region: &MemoryRegion) -> Vec<Dimension> {
+fn collect_memory_dims(region: &MemoryRegion) -> Vec<&Dimension> {
     match region {
         MemoryRegion::Bank(_) => Vec::new(),
         MemoryRegion::Array {
-            dims,
-            sub_regions: sub_region,
-            ..
+            dims, sub_regions, ..
         } => {
-            let mut out = dims.clone();
-            out.extend(collect_memory_dims(sub_region));
+            let mut out: Vec<&Dimension> = dims.iter().collect();
+            out.extend(collect_memory_dims(sub_regions));
             out
         }
     }
-}
-
-fn collect_processor_dims(elem: &Architecture) -> Vec<Dimension> {
-    match elem {
-        Architecture::Unit(_) => Vec::new(),
-        Architecture::Array { dims, elem, .. } => {
-            let mut out = dims.clone();
-            out.extend(collect_processor_dims(elem));
-            out
-        }
-        Architecture::Graph(graph) => {
-            let mut out = Vec::new();
-            for node in &graph.nodes {
-                if let ArchNodeComponent::Architecture(arch) = &node.component {
-                    out.extend(collect_processor_dims(arch));
-                }
-            }
-            out
-        }
-    }
-}
-
-fn dedup_dimensions(dims: Vec<Dimension>) -> Vec<Dimension> {
-    let mut seen = HashSet::new();
-    let mut deduped = Vec::new();
-    for dim in dims {
-        if seen.insert(dim.name.0.clone()) {
-            deduped.push(dim);
-        }
-    }
-    deduped
 }
 
 fn memory_region_to_json(region: &MemoryRegion) -> GraphMemoryRegion {
-    let total_size_bytes = region.total_size_bytes();
     match region {
         MemoryRegion::Bank(bank) => GraphMemoryRegion::Bank {
             name: bank.name.clone(),
             capacity_bytes: size_expr_to_json(&bank.capacity_bytes),
             access_granularity: bank.block_size.as_ref().map(size_expr_to_json),
-            total_size_bytes,
+            total_size_bytes: region.total_size_bytes(),
         },
         MemoryRegion::Array {
             name,
             dims,
-            sub_regions: sub_region,
+            sub_regions,
         } => GraphMemoryRegion::Array {
             name: name.clone(),
             dimensions: dims.iter().map(dimension_to_json).collect(),
-            sub_region: Box::new(memory_region_to_json(sub_region)),
-            total_size_bytes,
+            sub_region: Box::new(memory_region_to_json(sub_regions)),
+            total_size_bytes: region.total_size_bytes(),
         },
     }
 }
 
-fn processors_to_json(elem: &Architecture) -> GraphProcessors {
-    match elem {
-        Architecture::Unit(proc) => GraphProcessors::Unit {
-            name: proc.name.clone(),
-            functionality: functionality_to_json(&proc.functionality),
-        },
-        Architecture::Array {
-            name, dims, elem, ..
-        } => GraphProcessors::Array {
-            name: name.clone(),
-            dimensions: dims.iter().map(dimension_to_json).collect(),
-            elem: Box::new(processors_to_json(elem)),
-        },
-        Architecture::Graph(graph) => GraphProcessors::Graph {
-            name: graph.name.clone(),
-            processor_count: graph
-                .nodes
+fn processor_to_json(processor: &Processor) -> GraphProcessors {
+    GraphProcessors::Unit {
+        name: processor.name.clone(),
+        functionality: GraphFunctionalityModule {
+            name: processor.functionality.module_name.clone(),
+            source_path: processor.functionality.path.clone(),
+            source_mlir_module_name: processor.functionality.module_name.clone(),
+            ops: processor
+                .functionality
+                .functions
                 .iter()
-                .filter(|n| matches!(n.component, ArchNodeComponent::Architecture(_)))
-                .count(),
-            link_count: 0,
+                .map(|func| func.name.clone())
+                .collect(),
+            op_details: processor
+                .functionality
+                .functions
+                .iter()
+                .map(|func| GraphFunctionalityOp {
+                    name: func.name.clone(),
+                    source_memories: processor
+                        .accesses
+                        .iter()
+                        .filter(|access| {
+                            matches!(
+                                access.mode,
+                                MemoryAccessMode::Read | MemoryAccessMode::ReadWrite
+                            )
+                        })
+                        .map(|access| access.region.name.clone())
+                        .collect(),
+                    destination_memories: processor
+                        .accesses
+                        .iter()
+                        .filter(|access| {
+                            matches!(
+                                access.mode,
+                                MemoryAccessMode::Write | MemoryAccessMode::ReadWrite
+                            )
+                        })
+                        .map(|access| access.region.name.clone())
+                        .collect(),
+                })
+                .collect(),
         },
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{architecture_to_graph_json, architecture_to_graph_json_value};
-    use crate::arch::{
-        ArchEdgeAttr, ArchEdgeDirection, ArchGraph, Architecture, Dimension, MemoryRegion,
-        MeshNetworkInterface, Processor, Router, ScaleOutNetwork, SizeExpr,
-    };
-    use crate::math::{AffineExpr, AffineMap, Expr};
-
-    #[test]
-    fn serializes_architecture_graph_schema() {
-        let core_dim = Dimension::new_int("core", 4);
-        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
-            .scale(core_dim.as_slice())
-            .with_name("l1");
-        let l2 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(1024))
-            .scale(core_dim.as_slice())
-            .with_name("l2");
-        let lane = Processor::new("lane").replicate(core_dim.as_slice());
-        let map = AffineMap::identity(core_dim.as_slice());
-
-        let io =
-            MeshNetworkInterface::new(AffineMap::identity(core_dim.as_slice()), Expr::Const(128));
-        let link = ScaleOutNetwork::mesh("l1_to_l2")
-            .mem_region(&l1)
-            .map(&map)
-            .io(&io)
-            .link_bandwidth(128)
-            .build();
-
-        let arch: Architecture = ArchGraph::builder("unit")
-            .mem(&l1)
-            .mem(&l2)
-            .architecture(&lane)
-            .build()
-            .into();
-        let arch = arch
-            .scale(core_dim.as_slice())
-            .with_connectivity(vec![link]);
-        let value = architecture_to_graph_json_value(&arch);
-        assert_eq!(value["schema_version"], "mlar.arch-graph.v1");
-        assert_eq!(value["architecture"]["name"], "unit");
-        assert_eq!(value["nodes"].as_array().map(|v| v.len()), Some(2));
-        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
-        assert_eq!(value["edges"][0]["map"]["expressions"][0], "core");
-        assert_eq!(value["edges"][0]["bandwidth"]["const_value"], 128);
-        assert_eq!(value["edges"][0]["map_relation"], "one_to_one");
-        assert_eq!(value["edges"][0]["topology"], "general");
-        assert_eq!(value["edges"][0]["direction"], "directional");
-        assert!(value.get("intra_core").is_none());
-    }
-
-    #[test]
-    fn scaled_architecture_has_no_intra_core_graph() {
-        let bank_dim = Dimension::new_int("nbank", 16);
-        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
-            .scale(bank_dim.as_slice())
-            .with_name("l1");
-        let lane = Processor::new("lane").into_elem();
-
-        let core: Architecture = ArchGraph::builder("core")
-            .mem(&l1)
-            .architecture(&lane)
-            .build()
-            .into();
-
-        let dim_x = Dimension::new_int("x", 4);
-        let dim_y = Dimension::new_int("y", 4);
-        let mesh = core.scale([&dim_x, &dim_y]).with_name("mesh");
-
-        let graph = architecture_to_graph_json(&mesh);
-        assert!(
-            graph.intra_core.is_some(),
-            "2D Array should produce intra_core"
-        );
-        assert_eq!(graph.architecture.labels.len(), 1);
-        assert_eq!(graph.architecture.labels[0].dimensions.len(), 2);
-        let intra = graph.intra_core.as_ref().unwrap();
-        assert_eq!(intra.architecture.name, "core");
-        assert!(!graph.nodes.is_empty());
-    }
-
-    #[test]
-    fn serializes_many_to_one_map_relation() {
-        let dim_x = Dimension::new_int("x", 4);
-        let map_dim = Dimension::new_int("bank", 16);
-        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
-            .scale(map_dim.as_slice())
-            .with_name("l1");
-        let map = AffineMap::new(map_dim.as_slice(), &[], vec![]);
-
-        let io =
-            MeshNetworkInterface::new(AffineMap::identity(map_dim.as_slice()), Expr::Const(64));
-        let link = ScaleOutNetwork::mesh("reduce")
-            .mem_region(&l1)
-            .map(&map)
-            .io(&io)
-            .link_bandwidth(64)
-            .build();
-
-        let lane = Processor::new("lane").into_elem();
-        let arch: Architecture = ArchGraph::builder("unit")
-            .mem(&l1)
-            .architecture(&lane)
-            .build()
-            .into();
-        let arch = arch.scale(dim_x.as_slice()).with_connectivity(vec![link]);
-
-        let value = architecture_to_graph_json_value(&arch);
-        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
-        assert_eq!(value["edges"][0]["map_relation"], "many_to_one");
-        assert_eq!(value["edges"][0]["topology"], "general");
-    }
-
-    #[test]
-    fn serializes_bidirectional_intra_graph_edges() {
-        let mut graph = ArchGraph::new("core");
-        let src_id = graph.add_router(&Router::new("src", 2));
-        let dst_id = graph.add_router(&Router::new("dst", 2));
-        let src = graph
-            .get_node(&src_id)
-            .expect("source node should exist")
-            .clone();
-        let dst = graph
-            .get_node(&dst_id)
-            .expect("target node should exist")
-            .clone();
-        graph.connect_with_attrs(
-            &src,
-            &dst,
-            vec![ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional)],
-        );
-
-        let arch: Architecture = graph.into();
-        let value = architecture_to_graph_json_value(&arch);
-        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
-        assert_eq!(value["edges"][0]["kind"], "intra_graph");
-        assert_eq!(value["edges"][0]["direction"], "bidirectional");
-    }
-
-    #[test]
-    fn serializes_ring_topology() {
-        let x = Dimension::new_int("x", 8);
-        let y = Dimension::new_int("y", 8);
-        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512))
-            .scale(&[x.clone(), y.clone()])
-            .with_name("l1");
-        let map = AffineMap::new(
-            &[x.clone(), y.clone()],
-            &[x.clone(), y.clone()],
-            vec![
-                AffineExpr::var(x.clone()),
-                AffineExpr::modulo(
-                    AffineExpr::add(AffineExpr::var(y.clone()), AffineExpr::constant(1)),
-                    AffineExpr::constant(8),
-                ),
-            ],
-        );
-
-        let io = MeshNetworkInterface::new(
-            AffineMap::identity(&[x.clone(), y.clone()]),
-            Expr::Const(64),
-        );
-        let link = ScaleOutNetwork::mesh("ring")
-            .mem_region(&l1)
-            .map(&map)
-            .io(&io)
-            .link_bandwidth(64)
-            .build();
-
-        let lane = Processor::new("lane").into_elem();
-        let arch: Architecture = ArchGraph::builder("unit")
-            .mem(&l1)
-            .architecture(&lane)
-            .build()
-            .into();
-        let arch = arch.scale([&x, &y]).with_connectivity(vec![link]);
-
-        let value = architecture_to_graph_json_value(&arch);
-        assert_eq!(value["edges"].as_array().map(|v| v.len()), Some(1));
-        assert_eq!(value["edges"][0]["topology"], "ring");
-    }
-
-    #[test]
-    fn serializes_resource_nodes_and_dependency_edges() {
-        use crate::arch::resource::Resource;
-
-        let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(512)).with_name("l1");
-
-        let mut matrix_lane = Processor::new("matrix_lane");
-        matrix_lane.resources = vec![Resource::quantitative("l1_port", 2)];
-
-        let mut vector_lane = Processor::new("vector_lane");
-        vector_lane.resources = vec![Resource::quantitative("l1_port", 2)];
-
-        let core: Architecture = ArchGraph::builder("core")
-            .mem(&l1)
-            .architecture(&matrix_lane.into_elem())
-            .architecture(&vector_lane.into_elem())
-            .build()
-            .into();
-
-        let value = architecture_to_graph_json_value(&core);
-
-        let nodes = value["nodes"].as_array().unwrap();
-        let resource_nodes: Vec<_> = nodes.iter().filter(|n| n["kind"] == "resource").collect();
-        assert_eq!(
-            resource_nodes.len(),
-            1,
-            "only l1_port resource should appear (memory-derived 'l1' resource is filtered)"
-        );
-
-        let l1_port_node = &resource_nodes[0];
-        assert_eq!(l1_port_node["name"], "l1_port");
-        assert_eq!(l1_port_node["details"]["type"], "resource");
-        assert_eq!(l1_port_node["details"]["resource"]["capacity"], 2);
-
-        let edges = value["edges"].as_array().unwrap();
-        let dep_edges: Vec<_> = edges
-            .iter()
-            .filter(|e| e["kind"] == "resource_dependency")
-            .collect();
-        assert_eq!(
-            dep_edges.len(),
-            2,
-            "both processors should depend on l1_port"
-        );
-    }
-
-    #[test]
-    fn serializes_exclusive_resource_without_capacity() {
-        use crate::arch::resource::Resource;
-
-        let mut lane = Processor::new("lane");
-        lane.resources = vec![Resource::exclusive("dma_lock")];
-
-        let core: Architecture = ArchGraph::builder("core")
-            .architecture(&lane.into_elem())
-            .build()
-            .into();
-
-        let value = architecture_to_graph_json_value(&core);
-        let nodes = value["nodes"].as_array().unwrap();
-        let resource_nodes: Vec<_> = nodes.iter().filter(|n| n["kind"] == "resource").collect();
-        assert_eq!(resource_nodes.len(), 1);
-        assert_eq!(
-            resource_nodes[0]["details"]["resource"]["kind"],
-            "exclusive"
-        );
-        assert!(
-            resource_nodes[0]["details"]["resource"]["capacity"].is_null(),
-            "exclusive resources should omit numeric capacity"
-        );
+fn resource_to_json(resource: &Resource) -> GraphResourceInfo {
+    match resource {
+        Resource::Quantitative { id, capacity } => GraphResourceInfo {
+            id: id.as_str().to_string(),
+            kind: GraphResourceKind::Quantitative,
+            capacity: Some(*capacity),
+        },
+        Resource::Exclusive { id } => GraphResourceInfo {
+            id: id.as_str().to_string(),
+            kind: GraphResourceKind::Exclusive,
+            capacity: None,
+        },
     }
 }

@@ -32,14 +32,11 @@ Hardware modeling types.
 - `memory.rs`: `MemoryBank` and recursive `MemoryRegion`.
 - `perf.rs`: `SimpleTimeCost`, `TimeCost`, `PerfScenario`, `FuncPerfModel`,
   and `FuncPerfModelBuilder`.
-- `processor.rs`: `Processor`, `ComputeProcessor`, `DataMover`,
-  `FunctionProcessor`, builders, and validation of compute/data-mover MLIR
-  interfaces.
-- `architecture.rs`: recursive `Architecture` enum, lookup helpers, scaling,
-  naming, and instance-count utilities.
-- `architecture_graph.rs`: `ArchGraph`, `ArchGraphBuilder`, graph nodes,
-  routers, graph edges, edge attributes, resources, resource maps, and lookup
-  helpers.
+- `processor.rs`: executable `Processor`s, typed convenience builders,
+  memory-access/effect metadata, resources, and validation of compute/data-mover
+  MLIR interfaces.
+- `architecture.rs`: scoped `Architecture` composition, lookup helpers,
+  homogeneous scaling, resource registration, and instance-count utilities.
 - `network.rs`: `ScaleOutNetwork`, `MeshNetwork`, `MeshLink`,
   `MeshNetworkInterface`, mesh builder, topology helpers, and network resource
   bindings.

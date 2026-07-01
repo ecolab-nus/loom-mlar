@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use super::architecture_to_mlir;
 use super::rewrite::rewrite_mlir_source;
 use crate::arch::{
-    ArchGraph, Architecture, ComputeProcessor, Dimension, MemoryBank, MemoryRegion, Processor,
-    Resource, SizeExpr,
+    Architecture, ComputeProcessor, Dimension, MemoryBank, MemoryRegion, Processor, Resource,
+    SizeExpr,
 };
 
 #[test]
@@ -25,12 +25,10 @@ fn output_wrapped_in_module() {
 #[test]
 fn graph_emits_compose() {
     let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
-    let lane = Processor::new("lane").into_elem();
-    let arch: Architecture = ArchGraph::builder("core")
-        .mem(&l1)
-        .architecture(&lane)
-        .build()
-        .into();
+    let lane = Processor::new("lane");
+    let arch = Architecture::scope("core")
+        .with_memory(l1)
+        .with_processor(lane);
     let mlir = architecture_to_mlir(&arch).expect("should emit");
     assert!(mlir.contains("adl.memory.bank"));
     assert!(mlir.contains("adl.processor.compute @proc_lane, []"));
@@ -42,14 +40,10 @@ fn graph_emits_compose() {
 #[test]
 fn memory_resources_not_emitted_as_adl_resource() {
     let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
-    let lane = Processor::new("lane")
-        .with_resources(vec![Resource::exclusive("alu")])
-        .into_elem();
-    let arch: Architecture = ArchGraph::builder("core")
-        .mem(&l1)
-        .architecture(&lane)
-        .build()
-        .into();
+    let lane = Processor::new("lane").with_resources(vec![Resource::exclusive("alu")]);
+    let arch = Architecture::scope("core")
+        .with_memory(l1)
+        .with_processor(lane);
     let mlir = architecture_to_mlir(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.exclusive \"res_alu\""));
     assert!(!mlir.contains("adl.resource.exclusive \"L1\""));
@@ -61,11 +55,8 @@ fn compute_builder_self_resource_is_emitted_and_referenced() {
     let lane = ComputeProcessor::builder()
         .named("lane")
         .finish()
-        .into_elem();
-    let arch: Architecture = ArchGraph::builder("core")
-        .architecture(&lane)
-        .build()
-        .into();
+        .into_processor();
+    let arch = Architecture::scope("core").with_processor(lane);
     let mlir = architecture_to_mlir(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.exclusive \"res_lane\""));
     assert!(mlir.contains("adl.processor.compute @proc_lane, [], with ["));
@@ -73,13 +64,8 @@ fn compute_builder_self_resource_is_emitted_and_referenced() {
 
 #[test]
 fn quantitative_resource_is_emitted_with_capacity() {
-    let lane = Processor::new("lane")
-        .with_resources(vec![Resource::quantitative("l1_port", 2)])
-        .into_elem();
-    let arch: Architecture = ArchGraph::builder("core")
-        .architecture(&lane)
-        .build()
-        .into();
+    let lane = Processor::new("lane").with_resources(vec![Resource::quantitative("l1_port", 2)]);
+    let arch = Architecture::scope("core").with_processor(lane);
     let mlir = architecture_to_mlir(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.quantitative \"res_l1_port\", {capacity = 2}"));
 }
@@ -108,12 +94,10 @@ fn shared_dims_emitted_once() {
     let l1 = MemoryRegion::bank(SizeExpr::Const(64), SizeExpr::Const(128))
         .scale(dim_x.as_slice())
         .with_name("L1");
-    let lane = Processor::new("p").into_elem();
-    let core: Architecture = ArchGraph::builder("core")
-        .mem(&l1)
-        .architecture(&lane)
-        .build()
-        .into();
+    let lane = Processor::new("p");
+    let core = Architecture::scope("core")
+        .with_memory(l1)
+        .with_processor(lane);
     let scaled = core.scale(&[dim_x]).with_name("mesh");
     let mlir = architecture_to_mlir(&scaled).expect("should emit");
     assert!(mlir.contains("adl.memory.array \"mem_L1\", ["));

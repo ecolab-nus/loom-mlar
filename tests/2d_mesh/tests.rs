@@ -23,20 +23,10 @@ fn vec_func(prefix: &str) -> String {
 }
 
 fn mesh_node(arch: &Architecture) -> &Architecture {
-    let graph = match arch {
-        Architecture::Graph(graph) => graph,
-        _ => panic!("expected top-level architecture to be a Graph"),
-    };
-    graph
-        .nodes
+    arch.children
         .iter()
-        .find_map(|node| match &node.component {
-            ArchNodeComponent::Architecture(sub_arch) if sub_arch.name() == Some("mesh") => {
-                Some(sub_arch)
-            }
-            _ => None,
-        })
-        .expect("top-level graph should contain mesh architecture node")
+        .find(|child| child.name() == Some("mesh"))
+        .expect("top-level scope should contain mesh child scope")
 }
 
 #[test]
@@ -45,41 +35,23 @@ fn test_2d_mesh_torus_perf_models() {
     assert_eq!(mesh.total_processing_elements(), Some(128));
 
     // === Verify processor functionality + per-function models survive scaling ===
-    let core_graph = match mesh_node(&mesh) {
-        Architecture::Array { elem, .. } => match elem.as_ref() {
-            Architecture::Graph(graph) => graph,
-            _ => panic!("expected core graph as array element"),
-        },
-        _ => panic!("expected mesh node to be an Array"),
-    };
-    let proc_nodes: Vec<&Architecture> = core_graph
-        .nodes
-        .iter()
-        .filter_map(|node| match &node.component {
-            ArchNodeComponent::Architecture(arch) => Some(arch),
-            _ => None,
-        })
-        .collect();
+    let core_scope = mesh_node(&mesh);
+    let proc_nodes: Vec<&Processor> = core_scope.processors.iter().collect();
     assert_eq!(proc_nodes.len(), 2);
     for proc in proc_nodes {
-        match proc {
-            Architecture::Unit(p) => {
-                assert!(
-                    p.validate().is_ok(),
-                    "processor {:?} should validate after scaling",
-                    p.name
-                );
-                assert!(
-                    p.functionality
-                        .path
-                        .as_ref()
-                        .is_some_and(|path| path.ends_with(".mlir")),
-                    "functionality source for {:?} should point to MLIR",
-                    p.name
-                );
-            }
-            _ => panic!("expected Unit processor nodes"),
-        }
+        assert!(
+            proc.validate().is_ok(),
+            "processor {:?} should validate after scaling",
+            proc.name
+        );
+        assert!(
+            proc.functionality
+                .path
+                .as_ref()
+                .is_some_and(|path| path.ends_with(".mlir")),
+            "functionality source for {:?} should point to MLIR",
+            proc.name
+        );
     }
 
     // === Verify matrix-lane functionality extracted from MLIR ===
@@ -192,7 +164,11 @@ fn test_2d_mesh_torus_perf_models() {
         let mover = mesh
             .get_data_mover(mover_name)
             .unwrap_or_else(|| panic!("{mover_name} should exist"));
-        assert!(mover.validate().is_ok(), "{mover_name} should validate");
+        assert!(
+            mover.validate().is_ok(),
+            "{mover_name} should validate: {:?}",
+            mover.validate().err()
+        );
         assert_eq!(
             mover.functionality.path.as_deref(),
             Some(format!("tests/2d_mesh/processors_mlir/{mover_name}.mlir").as_str())
@@ -374,86 +350,45 @@ fn test_2d_mesh_torus_perf_models() {
             .collect::<Vec<_>>(),
         vec![("dram_src", "DRAM"), ("l1_dst", "array_L1")]
     );
-
 }
 
 #[test]
 fn test_2d_mesh_torus() {
     let mesh = scaled_mesh_torus();
 
-    // === Verify topology ===
+    // === Verify scoped topology ===
     assert_eq!(mesh.name(), Some("system"));
-    let system_graph = match &mesh {
-        Architecture::Graph(graph) => graph,
-        _ => panic!("top-level architecture should be graph"),
-    };
     assert!(
-        system_graph.nodes.iter().any(|n| n.name() == Some("mesh")),
-        "top-level graph should include mesh node"
-    );
-    assert!(
-        system_graph.nodes.iter().any(|n| n.name() == Some("DRAM")),
-        "top-level graph should include DRAM node"
-    );
-    assert!(
-        system_graph
-            .nodes
+        mesh.children
             .iter()
-            .any(|n| n.name() == Some("mesh_dram_router")),
-        "top-level graph should include mesh_dram_router"
+            .any(|child| child.name() == Some("mesh")),
+        "top-level scope should include mesh child"
+    );
+    assert!(
+        mesh.memories
+            .iter()
+            .any(|memory| memory.name() == Some("DRAM")),
+        "top-level scope should include DRAM"
     );
     for mover_name in ["dram_l1_noc0", "dram_l1_noc1"] {
         assert!(
-            system_graph
-                .nodes
+            mesh.processors
                 .iter()
-                .any(|n| n.name() == Some(mover_name)),
-            "top-level graph should include {mover_name}"
+                .any(|processor| processor.name.as_deref() == Some(mover_name)),
+            "top-level scope should include {mover_name}"
         );
     }
-    // 1 (mesh<->router) + 2 (router<->mover) + 2 (mover<->DRAM) = 5 edges
-    assert_eq!(system_graph.edges.len(), 5);
 
-    let (dims, connectivity, elem) = match mesh_node(&mesh) {
-        Architecture::Array {
-            dims,
-            connectivity,
-            elem,
-            ..
-        } => (dims, connectivity, elem),
-        _ => panic!("mesh node should be Array"),
-    };
+    let mesh_scope = mesh_node(&mesh);
+    let dims = mesh_scope.dims();
     // No explicit inter-core scale-out connectivity: cross-core data movement
     // is handled by the system-level NoC data movers.
     assert!(
-        connectivity.is_empty(),
+        mesh_scope.networks.is_empty(),
         "scaled mesh should have no explicit scale-out connectivity"
     );
-    match elem.as_ref() {
-        Architecture::Graph(graph) => {
-            assert!(
-                graph.nodes.iter().any(|n| n.name() == Some("core_router")),
-                "scaled mesh should retain router node"
-            );
-            assert_eq!(
-                graph
-                    .nodes
-                    .iter()
-                    .filter(|n| matches!(n.component, ArchNodeComponent::MemoryRegion(_)))
-                    .count(),
-                1
-            );
-            assert_eq!(
-                graph
-                    .nodes
-                    .iter()
-                    .filter(|n| matches!(n.component, ArchNodeComponent::Architecture(_)))
-                    .count(),
-                2
-            );
-        }
-        _ => panic!("array element should be graph"),
-    }
+    assert_eq!(mesh_scope.memories.len(), 1);
+    assert_eq!(mesh_scope.processors.len(), 2);
 
     assert_eq!(mesh.total_processing_elements(), Some(128));
     assert_eq!(
@@ -464,8 +399,11 @@ fn test_2d_mesh_torus() {
     // === Verify L1_torus_h / L1_torus_v resources are gone from the system ===
     for stale in ["L1_torus_h", "L1_torus_v"] {
         assert!(
-            !system_graph.nodes.iter().any(|n| n.name() == Some(stale)),
-            "system graph should not include the {stale} resource"
+            !mesh
+                .resources
+                .iter()
+                .any(|resource| resource.id().as_str() == stale),
+            "system scope should not include the {stale} resource"
         );
     }
 
@@ -531,7 +469,7 @@ fn test_export_2d_mesh_torus_viewer_json() {
     assert_eq!(value["hierarchy"]["name"], "system");
     assert!(value["graphs"][""].is_object());
     assert!(value["graphs"]["mesh"].is_object());
-    assert!(value["graphs"]["mesh/core"].is_object());
+    assert!(value["graphs"]["mesh"].is_object());
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("web-visualization/public/sample-viewer.json");

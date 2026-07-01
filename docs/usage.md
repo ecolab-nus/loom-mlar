@@ -6,8 +6,9 @@
 2. Parse processor/data-mover functionality from MLIR modules.
 3. Build one `FuncPerfModel` per parsed `func.func`.
 4. Construct `ComputeProcessor` and `DataMover` modules with memory-region
-   pairs.
-5. Compose units, arrays, routers, memory, and data movers into `ArchGraph`s.
+   pairs or named memory accesses.
+5. Compose memories, processors, resources, networks, and child scopes into an
+   `Architecture`.
 6. Export architecture MLIR or visualization JSON.
 7. Evaluate schedules in-process or through generated evaluator binaries.
 8. Query architecture MLIR in-process or through generated query binaries.
@@ -15,7 +16,7 @@
 The full example in [tests/2d_mesh/arch.rs](../tests/2d_mesh/arch.rs) follows
 this workflow end to end.
 
-## Build A Small Graph
+## Build A Small Scope
 
 ```rust
 use mlar_rust::*;
@@ -27,40 +28,11 @@ let lane = ComputeProcessor::builder()
     .named("lane")
     .with_regions(vec![(l1.clone(), l1.clone())])
     .finish()
-    .into_elem();
+    .into_processor();
 
-let mut core: Architecture = ArchGraph::builder("core")
-    .mem(&l1)
-    .architecture(&lane)
-    .router(&Router::new("core_router", 2))
-    .build()
-    .into();
-
-let graph = core.as_graph_mut().unwrap();
-let lane_id = graph.processor_ref("lane").unwrap();
-let l1_id = graph.memory_ref("L1").unwrap();
-let router_id = graph.router_ref("core_router").unwrap();
-
-let lane_node = graph.get_node(&lane_id).unwrap().clone();
-let l1_node = graph.get_node(&l1_id).unwrap().clone();
-let router_node = graph.get_node(&router_id).unwrap().clone();
-
-graph.connect_with_attrs(
-    &lane_node,
-    &router_node,
-    vec![
-        ArchEdgeAttr::Side(0),
-        ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-    ],
-);
-graph.connect_with_attrs(
-    &router_node,
-    &l1_node,
-    vec![
-        ArchEdgeAttr::Side(1),
-        ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-    ],
-);
+let core = Architecture::scope("core")
+    .with_memory(l1)
+    .with_processor(lane);
 ```
 
 `finish()` creates a structural-only processor. Use `from_module(...)` when the
@@ -199,15 +171,13 @@ let network = ScaleOutNetwork::mesh("l1_x_ring")
     .link_bandwidth(64)
     .build();
 
-let mesh = Processor::new("lane")
-    .into_elem()
+let mesh = Architecture::from_processor(Processor::new("lane"))
     .scale([&x, &y])
     .with_connectivity(vec![network]);
 ```
 
-Mesh connectivity belongs to `Architecture::Array`. If that array is added to a
-graph through `ArchGraphBuilder::architecture`, network resources and IO data
-movers are registered with the graph.
+Mesh connectivity belongs to the scoped `Architecture`. Network resources and
+IO processors are registered with the scope when attached.
 
 ## Export MLIR
 

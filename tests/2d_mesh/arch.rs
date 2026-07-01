@@ -114,7 +114,6 @@ pub fn single_core() -> Architecture {
         .from_module(vector_lane_func, vector_lane_perf)
         .expect("vector_lane processor should link functionality and perf")
         .into_processor();
-    let vector_lane = vector_lane_proc.into_elem();
 
     // ── Matrix lane ───────────────────────────────────────────────────────────
     // matmul_*/batch_matmul_* use shape-aware throughput scenarios.
@@ -137,64 +136,11 @@ pub fn single_core() -> Architecture {
         .from_module(matrix_lane_func, matrix_lane_perf)
         .expect("matrix_lane processor should link functionality and perf")
         .into_processor();
-    let matrix_lane = matrix_lane_proc.into_elem();
 
-    // ── Core graph ────────────────────────────────────────────────────────────
-    // side 0: compute (matrix_lane, vector_lane) ↔ core_router
-    // side 1: memory (L1)                        ↔ core_router
-    let mut core: Architecture = ArchGraph::builder("core")
-        .mem(&l1)
-        .architecture(&matrix_lane)
-        .architecture(&vector_lane)
-        .build()
-        .into();
-
-    let graph = core
-        .as_graph_mut()
-        .expect("core builder should produce graph architecture");
-
-    let core_router = Router::new("core_router", 2);
-    let router_id = graph.add_router(&core_router);
-
-    let mem_id = graph.memory_ref("L1").expect("L1 memory node");
-    let mat_id = graph
-        .processor_ref("matrix_lane")
-        .expect("matrix_lane node");
-    let vec_id = graph
-        .processor_ref("vector_lane")
-        .expect("vector_lane node");
-
-    let router_node = graph.get_node(&router_id).unwrap().clone();
-    let mem_node = graph.get_node(&mem_id).unwrap().clone();
-    let mat_node = graph.get_node(&mat_id).unwrap().clone();
-    let vec_node = graph.get_node(&vec_id).unwrap().clone();
-
-    graph.connect_with_attrs(
-        &mat_node,
-        &router_node,
-        vec![
-            ArchEdgeAttr::Side(0),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
-    graph.connect_with_attrs(
-        &vec_node,
-        &router_node,
-        vec![
-            ArchEdgeAttr::Side(0),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
-    graph.connect_with_attrs(
-        &router_node,
-        &mem_node,
-        vec![
-            ArchEdgeAttr::Side(1),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
-
-    core
+    Architecture::scope("core")
+        .with_memory(l1)
+        .with_processor(matrix_lane_proc)
+        .with_processor(vector_lane_proc)
 }
 
 // ── Full system ───────────────────────────────────────────────────────────────
@@ -320,66 +266,9 @@ pub fn scaled_mesh_torus() -> Architecture {
         .from_module(noc1_func, vec![noc1_unicast_perf, gather_perf])
         .expect("dram_l1_noc1 data mover should link functionality and perf");
 
-    // ── System graph ──────────────────────────────────────────────────────────
-    // Topology: mesh ↔ mesh_dram_router (side 0)
-    //                   mesh_dram_router ↔ noc0/noc1 (side 1)
-    //                                      noc0/noc1 ↔ DRAM (side 2)
-    let mut system: Architecture = ArchGraph::builder("system")
-        .architecture(&mesh)
-        .mem(&dram)
-        .data_mover(&noc0)
-        .data_mover(&noc1)
-        .build()
-        .into();
-
-    let graph = system
-        .as_graph_mut()
-        .expect("system architecture should be a graph");
-
-    let router_id = graph.add_router(&Router::new("mesh_dram_router", 3));
-    let mesh_id = graph.processor_ref("mesh").expect("mesh node");
-    let noc0_id = graph
-        .data_mover_ref("dram_l1_noc0")
-        .expect("dram_l1_noc0 node");
-    let noc1_id = graph
-        .data_mover_ref("dram_l1_noc1")
-        .expect("dram_l1_noc1 node");
-    let dram_id = graph.memory_ref("DRAM").expect("DRAM node");
-
-    let router_node = graph.get_node(&router_id).expect("router node").clone();
-    let mesh_node = graph.get_node(&mesh_id).expect("mesh node").clone();
-    let dram_node = graph.get_node(&dram_id).expect("DRAM node").clone();
-    let mover_nodes: Vec<_> = [noc0_id, noc1_id]
-        .iter()
-        .map(|id| graph.get_node(id).expect("mover node").clone())
-        .collect();
-
-    graph.connect_with_attrs(
-        &mesh_node,
-        &router_node,
-        vec![
-            ArchEdgeAttr::Side(0),
-            ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-        ],
-    );
-    for mover_node in &mover_nodes {
-        graph.connect_with_attrs(
-            &router_node,
-            mover_node,
-            vec![
-                ArchEdgeAttr::Side(1),
-                ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-            ],
-        );
-        graph.connect_with_attrs(
-            mover_node,
-            &dram_node,
-            vec![
-                ArchEdgeAttr::Side(2),
-                ArchEdgeAttr::Direction(ArchEdgeDirection::Bidirectional),
-            ],
-        );
-    }
-
-    system
+    Architecture::scope("system")
+        .with_child(mesh)
+        .with_memory(dram)
+        .with_processor(noc0.into_processor())
+        .with_processor(noc1.into_processor())
 }

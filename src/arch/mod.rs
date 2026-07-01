@@ -1,5 +1,4 @@
 pub mod architecture;
-pub mod architecture_graph;
 pub mod memory;
 pub mod network;
 pub mod perf;
@@ -19,10 +18,6 @@ pub use crate::schedule::{
     MlirTensorSymbolBinding,
 };
 pub use architecture::Architecture;
-pub use architecture_graph::{
-    ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
-    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Router, RouterSide,
-};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{
     MeshLink, MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings,
@@ -31,8 +26,9 @@ pub use perf::{
     FuncPerfModel, FuncPerfModelBuilder, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr,
 };
 pub use processor::{
-    ComputeProcessor, ComputeProcessorBuilder, DataMover, DataMoverBuilder, FunctionDataMover,
-    FunctionProcessor, Module as ProcessorModule, Processor,
+    ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover, DataMoverBuilder,
+    FunctionDataMover, FunctionProcessor, MemoryAccess, MemoryAccessMode, MemoryRegionRef,
+    Module as ProcessorModule, Processor,
 };
 pub use resource::{Resource, ResourceId};
 pub use size_dim::{Dimension, SizeExpr, Sym};

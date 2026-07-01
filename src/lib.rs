@@ -9,13 +9,12 @@ pub use abi::{arch_query, evaluator};
 
 // Re-export commonly used architecture types
 pub use arch::{
-    ArchEdge, ArchEdgeAttr, ArchEdgeDirection, ArchEdgeId, ArchGraph, ArchGraphBuilder,
-    ArchGraphNode, ArchNode, ArchNodeComponent, ArchNodeId, Architecture, ComputeProcessor,
-    ComputeProcessorBuilder, DataMover, DataMoverBuilder, Dimension, FuncPerfModel,
-    FuncPerfModelBuilder, FunctionDataMover, FunctionProcessor, MemoryBank, MemoryRegion, MeshLink,
-    MeshNetwork, MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource,
-    ResourceId, Router, RouterSide, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost,
-    SizeExpr, Sym, TimeCost, TimeExpr, architecture_to_mlir,
+    Architecture, ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover,
+    DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
+    FunctionProcessor, MemoryAccess, MemoryAccessMode, MemoryBank, MemoryRegion, MemoryRegionRef,
+    MeshLink, MeshNetwork, MeshNetworkInterface, PerfScenario, Processor, ProcessorModule,
+    Resource, ResourceId, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
+    TimeCost, TimeExpr, architecture_to_mlir,
 };
 
 // Re-export commonly used math types

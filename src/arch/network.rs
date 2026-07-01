@@ -2,7 +2,7 @@ use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRegion;
-use super::processor::DataMover;
+use super::processor::Processor;
 use super::resource::Resource;
 use super::size_dim::Dimension;
 use crate::math::{AffineExpr, AffineMap, Expr};
@@ -16,14 +16,15 @@ pub struct MeshNetworkInterface {
     pub map: AffineMap,
     /// Bandwidth per IO link for the selected subregions.
     pub link_bandwidth: Expr,
-    /// Data movers that handle transfers through this IO interface.
+    /// Processors that handle transfers through this IO interface.
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
-        deserialize_with = "deserialize_data_movers",
-        alias = "data_mover"
+        deserialize_with = "deserialize_processors",
+        alias = "data_mover",
+        alias = "processor"
     )]
-    pub data_movers: Vec<DataMover>,
+    pub processors: Vec<Processor>,
 }
 
 /// A named or unnamed link in a mesh network topology.
@@ -104,8 +105,8 @@ pub enum ScaleOutNetwork {
 pub trait ScaleOutNetworkBindings {
     /// Resource set associated with this network.
     fn resources(&self) -> Vec<Resource>;
-    /// Data-mover set associated with this network.
-    fn data_movers(&self) -> Vec<DataMover>;
+    /// Processor set associated with this network.
+    fn processors(&self) -> Vec<Processor>;
 }
 
 /// Builder for constructing a [`MeshNetwork`] via [`ScaleOutNetwork::mesh`].
@@ -123,23 +124,36 @@ impl MeshNetworkInterface {
         Self {
             map,
             link_bandwidth,
-            data_movers: Vec::new(),
+            processors: Vec::new(),
         }
     }
 
-    /// Attach one data mover to this IO interface (builder-style).
-    pub fn with_data_mover(mut self, data_mover: DataMover) -> Self {
-        self.data_movers.push(data_mover);
+    /// Attach one processor to this IO interface (builder-style).
+    pub fn with_processor(mut self, processor: Processor) -> Self {
+        self.processors.push(processor);
         self
     }
 
-    /// Attach multiple data movers to this IO interface (builder-style).
-    pub fn with_data_movers<I>(mut self, data_movers: I) -> Self
+    /// Compatibility helper for older data-mover-oriented examples.
+    pub fn with_data_mover(self, processor: Processor) -> Self {
+        self.with_processor(processor)
+    }
+
+    /// Attach multiple processors to this IO interface (builder-style).
+    pub fn with_processors<I>(mut self, processors: I) -> Self
     where
-        I: IntoIterator<Item = DataMover>,
+        I: IntoIterator<Item = Processor>,
     {
-        self.data_movers.extend(data_movers);
+        self.processors.extend(processors);
         self
+    }
+
+    /// Compatibility helper for older data-mover-oriented examples.
+    pub fn with_data_movers<I>(self, processors: I) -> Self
+    where
+        I: IntoIterator<Item = Processor>,
+    {
+        self.with_processors(processors)
     }
 
     /// Prepend identity dimensions to the IO map (used during scaling).
@@ -156,7 +170,7 @@ impl MeshNetworkInterface {
         Self {
             map: AffineMap::new(&src_dims, &dst_dims, exprs),
             link_bandwidth: self.link_bandwidth,
-            data_movers: self.data_movers,
+            processors: self.processors,
         }
     }
 }
@@ -170,8 +184,8 @@ impl ScaleOutNetworkBindings for MeshNetwork {
             .collect()
     }
 
-    fn data_movers(&self) -> Vec<DataMover> {
-        self.io.data_movers.clone()
+    fn processors(&self) -> Vec<Processor> {
+        self.io.processors.clone()
     }
 }
 
@@ -182,27 +196,27 @@ impl ScaleOutNetworkBindings for ScaleOutNetwork {
         }
     }
 
-    fn data_movers(&self) -> Vec<DataMover> {
+    fn processors(&self) -> Vec<Processor> {
         match self {
-            Self::Mesh(mesh) => mesh.data_movers(),
+            Self::Mesh(mesh) => mesh.processors(),
         }
     }
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-enum DataMoverField {
-    One(DataMover),
-    Many(Vec<DataMover>),
+enum ProcessorField {
+    One(Processor),
+    Many(Vec<Processor>),
 }
 
-fn deserialize_data_movers<'de, D>(deserializer: D) -> Result<Vec<DataMover>, D::Error>
+fn deserialize_processors<'de, D>(deserializer: D) -> Result<Vec<Processor>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    match DataMoverField::deserialize(deserializer)? {
-        DataMoverField::One(mover) => Ok(vec![mover]),
-        DataMoverField::Many(movers) => Ok(movers),
+    match ProcessorField::deserialize(deserializer)? {
+        ProcessorField::One(processor) => Ok(vec![processor]),
+        ProcessorField::Many(processors) => Ok(processors),
     }
 }
 
@@ -642,9 +656,9 @@ mod tests {
             Processor::new("io_dm_1").into(),
         ]);
 
-        assert_eq!(io.data_movers.len(), 2);
-        assert_eq!(io.data_movers[0].name.as_deref(), Some("io_dm_0"));
-        assert_eq!(io.data_movers[1].name.as_deref(), Some("io_dm_1"));
+        assert_eq!(io.processors.len(), 2);
+        assert_eq!(io.processors[0].name.as_deref(), Some("io_dm_0"));
+        assert_eq!(io.processors[1].name.as_deref(), Some("io_dm_1"));
     }
 
     #[test]
@@ -814,9 +828,9 @@ mod tests {
         assert_eq!(network.resources().len(), 2);
         assert_eq!(network.resources()[0].id().as_str(), "torus_link_0");
         assert_eq!(network.resources()[1].id().as_str(), "torus_link_1");
-        assert_eq!(network.data_movers().len(), 2);
-        assert_eq!(network.data_movers()[0].name.as_deref(), Some("m0"));
-        assert_eq!(network.data_movers()[1].name.as_deref(), Some("m1"));
+        assert_eq!(network.processors().len(), 2);
+        assert_eq!(network.processors()[0].name.as_deref(), Some("m0"));
+        assert_eq!(network.processors()[1].name.as_deref(), Some("m1"));
     }
 
     #[test]

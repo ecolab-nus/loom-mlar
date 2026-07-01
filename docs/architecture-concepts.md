@@ -95,45 +95,30 @@ symbols are declared explicitly. Validation checks that all symbols used by the
 model and by the linked function shape metadata are declared. It does not check
 that multiple scenarios are mutually exclusive.
 
-## Architecture Hierarchy
+## Architecture Scopes
 
-`Architecture` has three variants:
+`Architecture` is a named scope/level. A scope contains:
 
-- `Unit(Processor)`: one processor-like leaf.
-- `Array`: homogeneous scaling of a sub-architecture across dimensions, with
-  optional `ScaleOutNetwork` connectivity.
-- `Graph(ArchGraph)`: heterogeneous composition of memory, architecture,
-  data-mover, and router nodes.
+- `memories`: `MemoryRegion`s visible in that scope.
+- `processors`: executable actors that read/write named memory regions.
+- `resources`: explicit contention/capacity limits.
+- `children`: nested architecture scopes.
+- `dims`: homogeneous replication of the scope.
+- `networks`: scale-out network descriptions that can contribute resources and
+  IO processors.
 
 Important helpers:
 
-- `.scale(...)` wraps an architecture in an array.
+- `Architecture::scope(...)` creates a named scope.
+- `.with_memory(...)`, `.with_processor(...)`, `.with_child(...)`, and
+  `.with_network(...)` compose the scope.
+- `.scale(...)` adds homogeneous dimensions to the current scope.
 - `.with_name(...)` sets the current architecture level's name.
-- `.with_connectivity(...)` attaches array-level scale-out networks.
+- `.with_connectivity(...)` attaches scale-out networks.
 - `.total_instances()` and `.total_processing_elements()` count concrete
   processor instances.
 - `.get_processor(...)`, `.get_data_mover(...)`, `.get_memory_region(...)`, and
   `.get_scaled_memory_region(...)` search nested architectures.
-
-## Architecture Graphs
-
-`ArchGraph` is the heterogeneous composition layer. A graph contains:
-
-- `ArchNodeComponent::Architecture`,
-- `ArchNodeComponent::DataMover`,
-- `ArchNodeComponent::MemoryRegion`,
-- `ArchNodeComponent::Router`,
-- `ArchEdge`s with optional attributes.
-
-Edges can carry:
-
-- `ArchEdgeAttr::Side(u32)` to identify router side,
-- `ArchEdgeAttr::Direction(Directional | Bidirectional)`.
-
-Graph node IDs and edge IDs are generated from component kind and name, with
-instance suffixes when needed. Lookup helpers such as `memory_ref`,
-`processor_ref`, `data_mover_ref`, and `router_ref` return generated node IDs by
-display name.
 
 ## Resources
 
@@ -144,13 +129,11 @@ Resources model contention relationships:
 
 Processors can declare resources with `.with_resources(...)`. Compute builders
 also add an exclusive self resource when the processor is named. Memory
-resources are derived from region pairs where possible. When graph nodes are
-added, their resources are registered in `ArchGraph.resources`, and
-`ArchGraph.resource_map` records which nodes consume which resource IDs.
+resources are derived from memory accesses/region pairs where possible and are
+registered with the containing architecture scope.
 
-Nodes absent from `resource_map` are treated as private, non-contentious
-consumers. The current schedule evaluator does not yet use these resource maps
-for parallel scheduling.
+The current schedule evaluator does not yet use these resource declarations for
+parallel scheduling.
 
 ## Scale-Out Networks
 

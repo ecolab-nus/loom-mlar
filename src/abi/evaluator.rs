@@ -170,7 +170,6 @@ macro_rules! mlar_evaluator {
 mod tests {
     use super::*;
     use crate::Sym;
-    use crate::arch::ArchGraph;
     use crate::arch::perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost};
     use crate::arch::processor::{FunctionProcessor, Processor};
     use crate::math::constraint::ConstraintExpr;
@@ -228,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_with_graph_round_trips() {
+    fn scoped_architecture_round_trips() {
         let arch = {
             let fp = FunctionProcessor::new(
                 MlirFunc::with_symbols("f", vec![Sym::new("N")]),
@@ -245,16 +244,13 @@ mod tests {
                     }],
                 },
             );
-            let proc = Processor::with_functions("inner", vec![fp]).into_elem();
-            let graph_arch: Architecture =
-                ArchGraph::builder("top").architecture(&proc).build().into();
-            graph_arch
+            let proc = Processor::with_functions("inner", vec![fp]);
+            Architecture::scope("top").with_processor(proc)
         };
 
-        let json =
-            serde_json::to_string_pretty(&arch).expect("graph Architecture should serialize");
+        let json = serde_json::to_string_pretty(&arch).expect("Architecture should serialize");
         let decoded: Architecture =
-            serde_json::from_str(&json).expect("graph Architecture should deserialize");
+            serde_json::from_str(&json).expect("Architecture should deserialize");
 
         assert_eq!(decoded.name(), Some("top"));
         assert!(decoded.get_processor("inner").is_some());

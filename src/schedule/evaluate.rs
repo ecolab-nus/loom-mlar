@@ -24,7 +24,6 @@
 //! Model authors are expected to provide mutually exclusive scenarios per
 //! [`FuncPerfModel`].
 
-use crate::arch::ArchNodeComponent;
 use crate::arch::architecture::Architecture;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
 use crate::arch::processor::FunctionProcessor;
@@ -179,21 +178,19 @@ fn find_function_processor<'a>(
     arch: &'a Architecture,
     func_name: &str,
 ) -> Option<&'a FunctionProcessor> {
-    match arch {
-        Architecture::Unit(processor) => processor.get_function(func_name),
-        Architecture::Array { elem, .. } => find_function_processor(elem, func_name),
-        Architecture::Graph(graph) => graph.nodes.iter().find_map(|node| match &node.component {
-            ArchNodeComponent::Architecture(sub) => find_function_processor(sub, func_name),
-            ArchNodeComponent::DataMover(mover) => mover.get_function(func_name),
-            _ => None,
-        }),
-    }
+    arch.processors
+        .iter()
+        .find_map(|processor| processor.get_function(func_name))
+        .or_else(|| {
+            arch.children
+                .iter()
+                .find_map(|child| find_function_processor(child, func_name))
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::ArchGraph;
     use crate::arch::perf::FuncPerfModel;
     use crate::arch::processor::Processor;
     use crate::schedule::MlirFunc;
@@ -417,10 +414,10 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_finds_function_in_graph_architecture() {
+    fn evaluate_finds_function_in_child_scope() {
         let fp = FunctionProcessor::new(MlirFunc::named("f"), simple_model(7, 42));
-        let proc = Processor::with_functions("inner", vec![fp]).into_elem();
-        let arch: Architecture = ArchGraph::builder("top").architecture(&proc).build().into();
+        let proc = Processor::with_functions("inner", vec![fp]);
+        let arch = Architecture::scope("top").with_processor(proc);
 
         let schedule = Schedule::Func {
             func: MlirFunc::named("f"),
@@ -428,7 +425,7 @@ mod tests {
             scenarios: None,
         };
 
-        let result = evaluate(&schedule, &arch).expect("should find f in graph");
+        let result = evaluate(&schedule, &arch).expect("should find f in scope");
         let scenarios = extract_func_scenarios(&result);
         assert_eq!(scenarios.len(), 1);
         assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(7 + 42));

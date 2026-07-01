@@ -2,9 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use crate::arch::architecture::Architecture;
-use crate::arch::architecture_graph::ArchNodeComponent;
 use crate::arch::memory::{MemoryBank, MemoryRegion};
-use crate::arch::processor::{DataMover, Processor};
+use crate::arch::processor::{DataEffect, MemoryAccessMode, Processor};
 use crate::arch::resource::Resource;
 use crate::arch::size_dim::Dimension;
 
@@ -173,14 +172,13 @@ impl MlirEmitter {
         ssa
     }
 
-    /// Emit a `adl.processor` op and record its MLIR source, if any.
+    /// Emit a processor op and record its MLIR source, if any.
     fn emit_processor(&mut self, proc: &Processor) -> Option<String> {
-        self.emit_processor_like("compute", proc)
-    }
-
-    /// Emit a `adl.processor.dmover` op and record its MLIR source, if any.
-    fn emit_data_mover(&mut self, mover: &DataMover) -> Option<String> {
-        self.emit_processor_like("dmover", mover)
+        let kind = match proc.effect {
+            DataEffect::Preserve => "dmover",
+            DataEffect::Transform | DataEffect::Reduce | DataEffect::Accumulate => "compute",
+        };
+        self.emit_processor_like(kind, proc)
     }
 
     fn emit_processor_like(&mut self, kind: &str, proc: &Processor) -> Option<String> {
@@ -189,7 +187,7 @@ impl MlirEmitter {
         let prefixed_name = prefixed_processor_name(name);
         self.processor_name_map
             .insert(name.to_string(), prefixed_name.clone());
-        let region_pairs = self.format_region_pairs(&proc.region_pairs)?;
+        let region_pairs = self.format_region_pairs(proc)?;
         let proc_ref = if matches!(kind, "compute" | "dmover") {
             format!("@{}", prefixed_name)
         } else {
@@ -229,118 +227,127 @@ impl MlirEmitter {
         format!(", with [{}]", ssas.join(", "))
     }
 
-    fn format_region_pairs(&self, region_pairs: &[(MemoryRegion, MemoryRegion)]) -> Option<String> {
-        let pairs: Vec<String> = region_pairs
+    fn format_region_pairs(&self, proc: &Processor) -> Option<String> {
+        let reads: Vec<&str> = proc
+            .accesses
             .iter()
-            .map(|(src, dst)| {
-                let src_name = src.name()?;
-                let dst_name = dst.name()?;
-                let src_ssa = self.memory_map.get(src_name)?;
-                let dst_ssa = self.memory_map.get(dst_name)?;
-                Some(format!("({}, {})", src_ssa, dst_ssa))
+            .filter(|access| {
+                matches!(
+                    access.mode,
+                    MemoryAccessMode::Read | MemoryAccessMode::ReadWrite
+                )
             })
-            .collect::<Option<Vec<_>>>()?;
+            .map(|access| access.region.name.as_str())
+            .collect();
+        let writes: Vec<&str> = proc
+            .accesses
+            .iter()
+            .filter(|access| {
+                matches!(
+                    access.mode,
+                    MemoryAccessMode::Write | MemoryAccessMode::ReadWrite
+                )
+            })
+            .map(|access| access.region.name.as_str())
+            .collect();
+
+        let pairs: Vec<String> = match (reads.as_slice(), writes.as_slice()) {
+            ([], []) => Vec::new(),
+            ([], writes) => writes
+                .iter()
+                .map(|name| {
+                    let ssa = self.memory_map.get(*name)?;
+                    Some(format!("({}, {})", ssa, ssa))
+                })
+                .collect::<Option<Vec<_>>>()?,
+            (reads, []) => reads
+                .iter()
+                .map(|name| {
+                    let ssa = self.memory_map.get(*name)?;
+                    Some(format!("({}, {})", ssa, ssa))
+                })
+                .collect::<Option<Vec<_>>>()?,
+            (reads, writes) => reads
+                .iter()
+                .flat_map(|src| writes.iter().map(move |dst| (*src, *dst)))
+                .map(|(src, dst)| {
+                    let src_ssa = self.memory_map.get(src)?;
+                    let dst_ssa = self.memory_map.get(dst)?;
+                    Some(format!("({}, {})", src_ssa, dst_ssa))
+                })
+                .collect::<Option<Vec<_>>>()?,
+        };
         Some(format!("[{}]", pairs.join(", ")))
     }
 
     /// Recursively emit the full architecture tree, returning the SSA value
     /// for the top-level result.
     pub(super) fn emit_architecture(&mut self, arch: &Architecture) -> Option<String> {
-        match arch {
-            Architecture::Unit(proc) => self.emit_processor(proc),
-            Architecture::Graph(graph) => {
-                let mut arch_components: Vec<String> = Vec::new();
-                let mut mem_components: Vec<String> = Vec::new();
-                let mut memory_resource_ids: HashSet<String> = HashSet::new();
-                for node in &graph.nodes {
-                    match &node.component {
-                        ArchNodeComponent::MemoryRegion(region) => {
-                            if let Ok(resource) = region.generate_resource() {
-                                memory_resource_ids.insert(resource.id().as_str().to_string());
-                            }
-                        }
-                        ArchNodeComponent::DataMover(mover) => {
-                            collect_region_pair_memory_resource_ids(
-                                &mover.region_pairs,
-                                &mut memory_resource_ids,
-                            );
-                        }
-                        ArchNodeComponent::Architecture(sub_arch) => {
-                            collect_arch_memory_resource_ids(sub_arch, &mut memory_resource_ids);
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Emit memory first so processors can safely reference memory SSA values.
-                for node in &graph.nodes {
-                    if let ArchNodeComponent::MemoryRegion(region) = &node.component {
-                        mem_components.push(self.emit_memory(region)?);
-                    }
-                }
-
-                // Emit resources so processors can reference them.
-                for resource in &graph.resources {
-                    if memory_resource_ids.contains(resource.id().as_str()) {
-                        continue;
-                    }
-                    self.emit_resource(resource);
-                }
-
-                for node in &graph.nodes {
-                    match &node.component {
-                        ArchNodeComponent::Architecture(sub_arch) => {
-                            arch_components.push(self.emit_architecture(sub_arch)?);
-                        }
-                        ArchNodeComponent::DataMover(mover) => {
-                            self.emit_region_pair_array_memories(&mover.region_pairs)?;
-                            arch_components.push(self.emit_data_mover(mover)?);
-                        }
-                        ArchNodeComponent::MemoryRegion(_) => {}
-                        // Routers are not part of the df dialect.
-                        _ => {}
-                    }
-                }
-                let ssa = self.next_ssa();
-                let arch = arch_components.join(", ");
-                let mem = mem_components.join(", ");
-                writeln!(
-                    self.output,
-                    "{} = adl.arch.compose \"{}\", arch[{}], mem[{}]",
-                    ssa,
-                    prefixed_arch_name(&graph.name),
-                    arch,
-                    mem
-                )
-                .unwrap();
-                Some(ssa)
-            }
-            Architecture::Array {
-                name, dims, elem, ..
-            } => {
-                let elem_ssa = self.emit_architecture(elem)?;
-                let dim_ssas: Vec<String> = dims
-                    .iter()
-                    .map(|d| self.emit_dim(d))
-                    .collect::<Option<Vec<_>>>()?;
-                let mem_region_ssas = self.emit_scaled_array_mem_regions(dims, elem)?;
-                let ssa = self.next_ssa();
-                let arch_name = name.as_deref().or_else(|| elem.name()).unwrap_or("unnamed");
-                let dim_list = dim_ssas.join(", ");
-                let mem_region_clause = format_scale_mem_region_clause(&mem_region_ssas);
-                writeln!(
-                    self.output,
-                    "{} = adl.arch.scale \"{}\", [{}] of {}{}",
-                    ssa,
-                    prefixed_arch_name(arch_name),
-                    dim_list,
-                    elem_ssa,
-                    mem_region_clause
-                )
-                .unwrap();
-                Some(ssa)
-            }
+        let elem_ssa = self.emit_architecture_scope(arch)?;
+        if arch.dims.is_empty() {
+            return Some(elem_ssa);
         }
+        let dim_ssas: Vec<String> = arch
+            .dims
+            .iter()
+            .map(|d| self.emit_dim(d))
+            .collect::<Option<Vec<_>>>()?;
+        let mem_region_ssas = self.emit_scaled_array_mem_regions(&arch.dims, arch)?;
+        let ssa = self.next_ssa();
+        let dim_list = dim_ssas.join(", ");
+        let mem_region_clause = format_scale_mem_region_clause(&mem_region_ssas);
+        writeln!(
+            self.output,
+            "{} = adl.arch.scale \"{}\", [{}] of {}{}",
+            ssa,
+            prefixed_arch_name(&arch.name),
+            dim_list,
+            elem_ssa,
+            mem_region_clause
+        )
+        .unwrap();
+        Some(ssa)
+    }
+
+    fn emit_architecture_scope(&mut self, arch: &Architecture) -> Option<String> {
+        let mut arch_components: Vec<String> = Vec::new();
+        let mut mem_components: Vec<String> = Vec::new();
+        let mut memory_resource_ids: HashSet<String> = HashSet::new();
+
+        collect_arch_memory_resource_ids(arch, &mut memory_resource_ids);
+
+        for memory in &arch.memories {
+            mem_components.push(self.emit_memory(memory)?);
+        }
+
+        for child in &arch.children {
+            arch_components.push(self.emit_architecture(child)?);
+        }
+
+        for resource in &arch.resources {
+            if memory_resource_ids.contains(resource.id().as_str()) {
+                continue;
+            }
+            self.emit_resource(resource);
+        }
+
+        for processor in &arch.processors {
+            arch_components.push(self.emit_processor(processor)?);
+        }
+
+        let ssa = self.next_ssa();
+        let arch_values = arch_components.join(", ");
+        let mem_values = mem_components.join(", ");
+        writeln!(
+            self.output,
+            "{} = adl.arch.compose \"{}\", arch[{}], mem[{}]",
+            ssa,
+            prefixed_arch_name(&arch.name),
+            arch_values,
+            mem_values
+        )
+        .unwrap();
+        Some(ssa)
     }
 
     fn emit_scaled_array_mem_regions(
@@ -353,21 +360,6 @@ impl MlirEmitter {
             .iter()
             .map(|region| self.emit_memory(region))
             .collect()
-    }
-
-    fn emit_region_pair_array_memories(
-        &mut self,
-        region_pairs: &[(MemoryRegion, MemoryRegion)],
-    ) -> Option<()> {
-        for (src, dst) in region_pairs {
-            if matches!(src, MemoryRegion::Array { .. }) {
-                self.emit_memory(src)?;
-            }
-            if matches!(dst, MemoryRegion::Array { .. }) {
-                self.emit_memory(dst)?;
-            }
-        }
-        Some(())
     }
 }
 
@@ -390,78 +382,31 @@ fn collect_array_scaled_memory_regions(
 }
 
 fn collect_arch_memory_regions_with_base_names(arch: &Architecture) -> Vec<(String, MemoryRegion)> {
-    match arch {
-        Architecture::Unit(_) => Vec::new(),
-        Architecture::Array { dims, elem, .. } => collect_arch_memory_regions_with_base_names(elem)
-            .into_iter()
-            .map(|(base_name, region)| {
-                (
-                    base_name.clone(),
-                    region.scale(dims).with_name(format!("array_{base_name}")),
-                )
-            })
-            .collect(),
-        Architecture::Graph(graph) => {
-            let mut regions = Vec::new();
-            for node in &graph.nodes {
-                match &node.component {
-                    ArchNodeComponent::MemoryRegion(region) => {
-                        if let Some(name) = region.name() {
-                            regions.push((name.to_string(), region.clone()));
-                        }
-                    }
-                    ArchNodeComponent::Architecture(sub_arch) => {
-                        regions.extend(collect_arch_memory_regions_with_base_names(sub_arch));
-                    }
-                    _ => {}
-                }
-            }
-            regions
+    let mut regions = Vec::new();
+    for region in &arch.memories {
+        if let Some(name) = region.name() {
+            regions.push((name.to_string(), region.clone()));
         }
     }
-}
-
-/// Collect memory resource IDs used by region pairs.
-fn collect_region_pair_memory_resource_ids(
-    region_pairs: &[(MemoryRegion, MemoryRegion)],
-    out: &mut HashSet<String>,
-) {
-    for (src, dst) in region_pairs {
-        if let Some(id) = memory_region_resource_id(src) {
-            out.insert(id);
-        }
-        if let Some(id) = memory_region_resource_id(dst) {
-            out.insert(id);
-        }
+    for child in &arch.children {
+        regions.extend(collect_arch_memory_regions_with_base_names(child));
     }
+    regions
 }
 
 /// Recursively collect memory resource IDs referenced by an architecture tree.
 fn collect_arch_memory_resource_ids(arch: &Architecture, out: &mut HashSet<String>) {
-    match arch {
-        Architecture::Unit(proc) => {
-            collect_region_pair_memory_resource_ids(&proc.region_pairs, out);
+    for memory in &arch.memories {
+        if let Some(id) = memory_region_resource_id(memory) {
+            out.insert(id);
         }
-        Architecture::Array { elem, .. } => {
-            collect_arch_memory_resource_ids(elem, out);
+    }
+    for processor in &arch.processors {
+        for access in &processor.accesses {
+            out.insert(access.region.name.clone());
         }
-        Architecture::Graph(graph) => {
-            for node in &graph.nodes {
-                match &node.component {
-                    ArchNodeComponent::Architecture(sub_arch) => {
-                        collect_arch_memory_resource_ids(sub_arch, out);
-                    }
-                    ArchNodeComponent::DataMover(mover) => {
-                        collect_region_pair_memory_resource_ids(&mover.region_pairs, out);
-                    }
-                    ArchNodeComponent::MemoryRegion(region) => {
-                        if let Ok(resource) = region.generate_resource() {
-                            out.insert(resource.id().as_str().to_string());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+    }
+    for child in &arch.children {
+        collect_arch_memory_resource_ids(child, out);
     }
 }

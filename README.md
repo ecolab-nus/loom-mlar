@@ -66,13 +66,11 @@ let lane = ComputeProcessor::builder()
     .named("vector_lane")
     .with_regions(vec![(l1.clone(), l1.clone())])
     .from_module(module, perf)?
-    .into_elem();
+    .into_processor();
 
-let arch: Architecture = ArchGraph::builder("core")
-    .mem(&l1)
-    .architecture(&lane)
-    .build()
-    .into();
+let arch = Architecture::scope("core")
+    .with_memory(l1)
+    .with_processor(lane);
 
 let mlir = architecture_to_mlir(&arch)
     .expect("MLIR export requires concrete dimensions and memory sizes");

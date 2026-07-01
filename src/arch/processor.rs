@@ -15,28 +15,64 @@ pub struct FunctionProcessor {
     pub perf: FuncPerfModel,
 }
 
-/// Processor — the atomic compute unit that executes a functionality module.
+/// Named reference to a memory region visible from an architecture scope.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MemoryRegionRef {
+    pub name: String,
+}
+
+/// How a processor touches a memory region.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryAccessMode {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+/// Whether a processor preserves or transforms data.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataEffect {
+    Preserve,
+    Transform,
+    Reduce,
+    Accumulate,
+}
+
+/// A processor memory effect at architecture scope.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryAccess {
+    pub region: MemoryRegionRef,
+    pub mode: MemoryAccessMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+}
+
+/// Processor — an executable actor over memory regions.
 ///
 /// A processor is described by:
 /// - `functionality`: set of supported functions (module-level interface)
 /// - `functions`: per-function performance bindings (`FunctionProcessor`)
+/// - `accesses`: memory regions read/written by this executable actor
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Processor {
     pub name: Option<String>,
     pub functionality: MlirModule,
     pub functions: Vec<FunctionProcessor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
+    pub accesses: Vec<MemoryAccess>,
+    #[serde(default = "default_data_effect")]
+    pub effect: DataEffect,
     /// Resources this processor requires when executing.
     ///
-    /// When the processor is added to an [`super::architecture_graph::ArchGraph`],
-    /// each resource is auto-registered in the graph and the node-to-resource
-    /// association is recorded in the graph's resource map.
+    /// When the processor is added to an [`super::architecture::Architecture`],
+    /// each resource is auto-registered in the containing scope.
     ///
     /// If empty, the processor is treated as the sole consumer of itself —
     /// no contention with other nodes.
     ///
-    /// When `region_pairs` are provided during construction, memory resources
+    /// When memory regions are provided during construction, memory resources
     /// are auto-derived from those regions and merged here.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<Resource>,
@@ -72,7 +108,9 @@ pub struct ComputeProcessor(pub Processor);
 #[derive(Clone, Debug)]
 struct ProcessorModuleBuilder {
     name: Option<String>,
-    region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
+    accesses: Vec<MemoryAccess>,
+    resources: Vec<Resource>,
+    effect: DataEffect,
     module_ctor: fn(Processor) -> Module,
     kind_for_errors: &'static str,
 }
@@ -112,6 +150,55 @@ fn merge_resource_sets(
     Ok(base)
 }
 
+fn default_data_effect() -> DataEffect {
+    DataEffect::Transform
+}
+
+impl MemoryRegionRef {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
+}
+
+impl From<&str> for MemoryRegionRef {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for MemoryRegionRef {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl MemoryAccess {
+    pub fn new(region: impl Into<MemoryRegionRef>, mode: MemoryAccessMode) -> Self {
+        Self {
+            region: region.into(),
+            mode,
+            role: None,
+        }
+    }
+
+    pub fn read(region: impl Into<MemoryRegionRef>) -> Self {
+        Self::new(region, MemoryAccessMode::Read)
+    }
+
+    pub fn write(region: impl Into<MemoryRegionRef>) -> Self {
+        Self::new(region, MemoryAccessMode::Write)
+    }
+
+    pub fn read_write(region: impl Into<MemoryRegionRef>) -> Self {
+        Self::new(region, MemoryAccessMode::ReadWrite)
+    }
+
+    pub fn with_role(mut self, role: impl Into<String>) -> Self {
+        self.role = Some(role.into());
+        self
+    }
+}
+
 /// Derive memory resources from all source/destination region pairs.
 ///
 /// Each region must support `MemoryRegion::generate_resource()` (currently
@@ -131,6 +218,53 @@ fn memory_resources_from_region_pairs(
         );
     }
     merge_resource_sets(Vec::new(), resources)
+}
+
+fn accesses_and_resources_from_region_pairs(
+    region_pairs: &[(MemoryRegion, MemoryRegion)],
+) -> Result<(Vec<MemoryAccess>, Vec<Resource>), String> {
+    let mut accesses = Vec::with_capacity(region_pairs.len() * 2);
+    for (src, dst) in region_pairs {
+        let src_name = src
+            .name()
+            .ok_or_else(|| "source memory region must be named".to_string())?;
+        let dst_name = dst
+            .name()
+            .ok_or_else(|| "destination memory region must be named".to_string())?;
+        accesses.push(MemoryAccess::read(src_name.to_string()).with_role("source"));
+        accesses.push(MemoryAccess::write(dst_name.to_string()).with_role("destination"));
+    }
+    let resources = memory_resources_from_region_pairs(region_pairs)?;
+    Ok((merge_access_sets(Vec::new(), accesses), resources))
+}
+
+fn merge_access_sets(
+    mut base: Vec<MemoryAccess>,
+    additional: Vec<MemoryAccess>,
+) -> Vec<MemoryAccess> {
+    for access in additional {
+        if let Some(existing) = base
+            .iter_mut()
+            .find(|existing| existing.region == access.region && existing.role == access.role)
+        {
+            existing.mode = merge_access_mode(&existing.mode, &access.mode);
+            continue;
+        }
+        base.push(access);
+    }
+    base
+}
+
+fn merge_access_mode(a: &MemoryAccessMode, b: &MemoryAccessMode) -> MemoryAccessMode {
+    match (a, b) {
+        (MemoryAccessMode::ReadWrite, _) | (_, MemoryAccessMode::ReadWrite) => {
+            MemoryAccessMode::ReadWrite
+        }
+        (MemoryAccessMode::Read, MemoryAccessMode::Write)
+        | (MemoryAccessMode::Write, MemoryAccessMode::Read) => MemoryAccessMode::ReadWrite,
+        (MemoryAccessMode::Read, MemoryAccessMode::Read) => MemoryAccessMode::Read,
+        (MemoryAccessMode::Write, MemoryAccessMode::Write) => MemoryAccessMode::Write,
+    }
 }
 
 fn memory_resource_from_region(region: &MemoryRegion) -> Result<Resource, String> {
@@ -193,7 +327,9 @@ impl DataMover {
         DataMoverBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                region_pairs: Vec::new(),
+                accesses: Vec::new(),
+                resources: Vec::new(),
+                effect: DataEffect::Preserve,
                 module_ctor: Module::DataMover,
                 kind_for_errors: "DataMover",
             },
@@ -222,7 +358,9 @@ impl ComputeProcessor {
         ComputeProcessorBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                region_pairs: Vec::new(),
+                accesses: Vec::new(),
+                resources: Vec::new(),
+                effect: DataEffect::Transform,
                 module_ctor: Module::Compute,
                 kind_for_errors: "Processor",
             },
@@ -253,7 +391,8 @@ impl Processor {
             name: Some(name.into()),
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            region_pairs: Vec::new(),
+            accesses: Vec::new(),
+            effect: DataEffect::Transform,
             resources: Vec::new(),
         }
     }
@@ -266,7 +405,8 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            region_pairs: Vec::new(),
+            accesses: Vec::new(),
+            effect: DataEffect::Transform,
             resources: Vec::new(),
         }
     }
@@ -305,7 +445,8 @@ impl Processor {
             name: Some(name),
             functionality,
             functions,
-            region_pairs: Vec::new(),
+            accesses: Vec::new(),
+            effect: DataEffect::Transform,
             resources: Vec::new(),
         };
         processor.validate()?;
@@ -323,8 +464,8 @@ impl Processor {
         region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
     ) -> Result<Self, String> {
         let mut proc = Self::from_module(name, functionality, perf_models)?;
-        let memory_resources = memory_resources_from_region_pairs(&region_pairs)?;
-        proc.region_pairs = region_pairs;
+        let (accesses, memory_resources) = accesses_and_resources_from_region_pairs(&region_pairs)?;
+        proc.accesses = accesses;
         proc.resources = merge_resource_sets(proc.resources, memory_resources)?;
         proc.validate()?;
         Ok(proc)
@@ -341,15 +482,25 @@ impl Processor {
     /// Memory resources are auto-derived from those regions and merged into
     /// `self.resources`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
-        let memory_resources =
-            memory_resources_from_region_pairs(&region_pairs).unwrap_or_else(|err| {
-                panic!("failed to derive processor memory resources from regions: {err}")
+        let (accesses, memory_resources) = accesses_and_resources_from_region_pairs(&region_pairs)
+            .unwrap_or_else(|err| {
+                panic!("failed to derive processor memory accesses/resources from regions: {err}")
             });
-        self.region_pairs = region_pairs;
+        self.accesses = merge_access_sets(self.accesses, accesses);
         self.resources =
             merge_resource_sets(self.resources, memory_resources).unwrap_or_else(|err| {
                 panic!("failed to merge processor resources after region assignment: {err}")
             });
+        self
+    }
+
+    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
+        self.accesses = merge_access_sets(self.accesses, accesses);
+        self
+    }
+
+    pub fn with_effect(mut self, effect: DataEffect) -> Self {
+        self.effect = effect;
         self
     }
 
@@ -365,68 +516,30 @@ impl Processor {
 
     /// Validate module/function binding consistency and per-function symbol use.
     pub fn validate(&self) -> Result<(), String> {
-        if self.functions.len() != self.functionality.functions.len() {
-            return Err(format!(
-                "Processor '{}' has {} function processors but functionality has {} ops",
-                self.name.as_deref().unwrap_or("<unnamed>"),
-                self.functions.len(),
-                self.functionality.functions.len()
-            ));
-        }
-
-        for (idx, (fp, op)) in self
-            .functions
-            .iter()
-            .zip(self.functionality.functions.iter())
-            .enumerate()
-        {
-            if fp.func.name != op.name {
-                return Err(format!(
-                    "Processor '{}' function index {} binds function '{}' but functionality expects '{}'",
-                    self.name.as_deref().unwrap_or("<unnamed>"),
-                    idx,
-                    fp.func.name,
-                    op.name
-                ));
+        match self.effect {
+            DataEffect::Preserve => validate_data_mover_processor(self),
+            DataEffect::Transform | DataEffect::Reduce | DataEffect::Accumulate => {
+                validate_compute_processor(self)
             }
-            validate_pure_compute_interface(&fp.func).map_err(|e| {
-                format!(
-                    "Processor '{}' function '{}' interface error: {}",
-                    self.name.as_deref().unwrap_or("<unnamed>"),
-                    fp.func.name,
-                    e
-                )
-            })?;
-            validate_processor_memref_regions(self, &fp.func).map_err(|e| {
-                format!(
-                    "Processor '{}' function '{}' memory interface error: {}",
-                    self.name.as_deref().unwrap_or("<unnamed>"),
-                    fp.func.name,
-                    e
-                )
-            })?;
-            fp.validate()?;
         }
-        Ok(())
     }
 
     pub fn get_function(&self, func_name: &str) -> Option<&FunctionProcessor> {
         self.functions.iter().find(|fp| fp.func.name == func_name)
     }
 
+    pub fn functionality(&self) -> Option<&MlirModule> {
+        Some(&self.functionality)
+    }
+
     /// Wrap this processor in an Array with the given dimensions.
     pub fn replicate(self, dims: &[Dimension]) -> Architecture {
-        Architecture::Array {
-            name: None,
-            dims: dims.to_vec(),
-            elem: Box::new(Architecture::Unit(self)),
-            connectivity: Vec::new(),
-        }
+        Architecture::from_processor(self).with_dims(dims)
     }
 
     /// Convert this processor into an architecture leaf.
     pub fn into_elem(self) -> Architecture {
-        Architecture::Unit(self)
+        Architecture::from_processor(self)
     }
 }
 
@@ -440,7 +553,19 @@ impl ProcessorModuleBuilder {
     ///
     /// The actual memory-resource derivation happens in `finish`/`from_module`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
-        self.region_pairs = region_pairs;
+        let (accesses, resources) = accesses_and_resources_from_region_pairs(&region_pairs)
+            .unwrap_or_else(|err| {
+                panic!("failed to derive processor memory accesses/resources from regions: {err}")
+            });
+        self.accesses = merge_access_sets(self.accesses, accesses);
+        self.resources = merge_resource_sets(self.resources, resources).unwrap_or_else(|err| {
+            panic!("failed to merge processor resources after region assignment: {err}")
+        });
+        self
+    }
+
+    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
+        self.accesses = merge_access_sets(self.accesses, accesses);
         self
     }
 
@@ -450,20 +575,19 @@ impl ProcessorModuleBuilder {
     pub fn finish(self) -> Module {
         let ProcessorModuleBuilder {
             name,
-            region_pairs,
+            accesses,
+            resources,
+            effect,
             module_ctor,
             ..
         } = self;
-        let memory_resources =
-            memory_resources_from_region_pairs(&region_pairs).unwrap_or_else(|err| {
-                panic!("failed to derive processor memory resources from regions: {err}")
-            });
         let processor = Processor {
             name,
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            region_pairs,
-            resources: memory_resources,
+            accesses,
+            effect,
+            resources,
         };
         module_ctor(processor)
     }
@@ -478,7 +602,9 @@ impl ProcessorModuleBuilder {
     ) -> Result<Module, String> {
         let ProcessorModuleBuilder {
             name,
-            region_pairs,
+            accesses,
+            resources,
+            effect,
             module_ctor,
             kind_for_errors,
         } = self;
@@ -506,14 +632,13 @@ impl ProcessorModuleBuilder {
             .zip(perf_models)
             .map(|(func, perf)| FunctionProcessor::new(func, perf))
             .collect();
-        let memory_resources = memory_resources_from_region_pairs(&region_pairs)?;
-
         let processor = Processor {
             name,
             functionality,
             functions,
-            region_pairs,
-            resources: memory_resources,
+            accesses,
+            effect,
+            resources,
         };
 
         let module = module_ctor(processor);
@@ -543,6 +668,11 @@ impl DataMoverBuilder {
         self
     }
 
+    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
+        self.inner = self.inner.with_accesses(accesses);
+        self
+    }
+
     pub fn finish(self) -> DataMover {
         DataMover(self.inner.finish().into_processor())
     }
@@ -566,6 +696,11 @@ impl ComputeProcessorBuilder {
 
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
         self.inner = self.inner.with_regions(region_pairs);
+        self
+    }
+
+    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
+        self.inner = self.inner.with_accesses(accesses);
         self
     }
 
@@ -635,12 +770,12 @@ impl Module {
 
     /// Wrap this module in an array by first converting to architecture.
     pub fn replicate(self, dims: &[Dimension]) -> Architecture {
-        self.into_elem().scale(dims)
+        self.into_elem().with_dims(dims)
     }
 
     /// Convert this module into an architecture leaf.
     pub fn into_elem(self) -> Architecture {
-        Architecture::Unit(self.into_processor())
+        Architecture::from_processor(self.into_processor())
     }
 
     /// Convert this module to the processor representation.
@@ -769,18 +904,6 @@ impl TryFrom<Module> for ComputeProcessor {
     }
 }
 
-impl From<Processor> for Architecture {
-    fn from(p: Processor) -> Self {
-        Architecture::Unit(p)
-    }
-}
-
-impl From<&Architecture> for Architecture {
-    fn from(p: &Architecture) -> Self {
-        p.clone()
-    }
-}
-
 fn validate_pure_compute_interface(func: &MlirFunc) -> Result<(), String> {
     let Some(details) = func.mlir_details.as_ref() else {
         return Ok(());
@@ -871,11 +994,57 @@ fn validate_name_matches_mlir_module(
     Err(message)
 }
 
+fn validate_compute_processor(processor: &Processor) -> Result<(), String> {
+    if processor.functions.len() != processor.functionality.functions.len() {
+        return Err(format!(
+            "Processor '{}' has {} function processors but functionality has {} ops",
+            processor.name.as_deref().unwrap_or("<unnamed>"),
+            processor.functions.len(),
+            processor.functionality.functions.len()
+        ));
+    }
+
+    for (idx, (fp, op)) in processor
+        .functions
+        .iter()
+        .zip(processor.functionality.functions.iter())
+        .enumerate()
+    {
+        if fp.func.name != op.name {
+            return Err(format!(
+                "Processor '{}' function index {} binds function '{}' but functionality expects '{}'",
+                processor.name.as_deref().unwrap_or("<unnamed>"),
+                idx,
+                fp.func.name,
+                op.name
+            ));
+        }
+        validate_pure_compute_interface(&fp.func).map_err(|e| {
+            format!(
+                "Processor '{}' function '{}' interface error: {}",
+                processor.name.as_deref().unwrap_or("<unnamed>"),
+                fp.func.name,
+                e
+            )
+        })?;
+        validate_processor_memref_regions(processor, &fp.func).map_err(|e| {
+            format!(
+                "Processor '{}' function '{}' memory interface error: {}",
+                processor.name.as_deref().unwrap_or("<unnamed>"),
+                fp.func.name,
+                e
+            )
+        })?;
+        fp.validate()?;
+    }
+    Ok(())
+}
+
 fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
     let dm_name = processor.name.as_deref().unwrap_or("<unnamed>");
-    if processor.region_pairs.is_empty() {
+    if processor.accesses.is_empty() {
         return Err(format!(
-            "DataMover '{}' must have at least one source/destination memory-region pair",
+            "DataMover '{}' must have at least one memory access",
             dm_name
         ));
     }
@@ -937,35 +1106,23 @@ fn validate_processor_memref_regions(processor: &Processor, func: &MlirFunc) -> 
         return Ok(());
     };
 
-    if details.mem_region_bindings.is_empty() || processor.region_pairs.is_empty() {
+    if details.mem_region_bindings.is_empty() || processor.accesses.is_empty() {
         return Ok(());
     }
 
     for binding in &details.mem_region_bindings {
-        find_region_pair_memory_region(&processor.region_pairs, &binding.region)
+        processor
+            .accesses
+            .iter()
+            .find(|access| access.region.name == binding.region)
             .ok_or_else(|| {
                 format!(
-                    "loom.bind_mem region '{}' for memref '{}' is not present in processor region pairs",
+                    "loom.bind_mem region '{}' for memref '{}' is not present in processor memory accesses",
                     binding.region, binding.memref
                 )
             })?;
     }
     Ok(())
-}
-
-fn find_region_pair_memory_region<'a>(
-    region_pairs: &'a [(MemoryRegion, MemoryRegion)],
-    name: &str,
-) -> Option<&'a MemoryRegion> {
-    region_pairs.iter().find_map(|(src, dst)| {
-        if src.name() == Some(name) {
-            Some(src)
-        } else if dst.name() == Some(name) {
-            Some(dst)
-        } else {
-            None
-        }
-    })
 }
 
 fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
@@ -1066,7 +1223,7 @@ fn validate_data_mover_interface(func: &MlirFunc) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Architecture, ComputeProcessor, DataMover, FunctionProcessor, Processor};
+    use super::{ComputeProcessor, DataMover, FunctionProcessor, Processor};
     use crate::arch::MemoryRegion;
     use crate::arch::size_dim::{Dimension, SizeExpr};
     use crate::math::ConstraintExpr;
@@ -1158,7 +1315,7 @@ mod tests {
 
         let proc = Processor::from_module_with_regions("proc", module, perf_models, region_pairs)
             .expect("processor with regions should build");
-        assert_eq!(proc.region_pairs.len(), 1);
+        assert_eq!(proc.accesses.len(), 2);
         assert_eq!(proc.resources.len(), 2);
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));
@@ -1222,7 +1379,7 @@ mod tests {
         assert_eq!(module.functions[0].name, "f");
 
         assert_eq!(elem.total_instances(), Some(8));
-        assert!(matches!(elem, Architecture::Array { .. }));
+        assert_eq!(elem.dims(), dim.as_slice());
     }
 
     fn stub_region_pairs() -> Vec<(MemoryRegion, MemoryRegion)> {
@@ -1458,7 +1615,7 @@ func.func @bad_vec_add(
             .expect_err("bound memory region should exist in processor region pairs");
         assert!(err.contains("memory interface error"));
         assert!(err.contains("SRAM"));
-        assert!(err.contains("not present in processor region pairs"));
+        assert!(err.contains("not present in processor memory accesses"));
     }
 
     #[test]
@@ -1504,7 +1661,7 @@ func.func @mixed_copy_compute(
             .with_regions(region_pairs)
             .finish()
             .into_processor();
-        assert_eq!(proc.region_pairs.len(), 1);
+        assert_eq!(proc.accesses.len(), 2);
         assert_eq!(proc.resources.len(), 2);
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));
