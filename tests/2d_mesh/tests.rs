@@ -159,8 +159,8 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    // === Verify DRAM<->L1 NoC data movers and their resource bindings ===
-    for mover_name in ["dram_l1_noc0", "dram_l1_noc1"] {
+    // === Verify NoC data movers and their resource bindings ===
+    for mover_name in ["dram_l1_noc0", "l1_l1_noc0", "l1_dram_noc1"] {
         let mover = mesh
             .get_data_mover(mover_name)
             .unwrap_or_else(|| panic!("{mover_name} should exist"));
@@ -173,16 +173,10 @@ fn test_2d_mesh_torus_perf_models() {
             mover.functionality.path.as_deref(),
             Some(format!("tests/2d_mesh/processors_mlir/{mover_name}.mlir").as_str())
         );
+        assert!(mover.source.is_some(), "{mover_name} should have source");
         assert!(
-            mover.resources.iter().any(|r| r.id().as_str() == "DRAM"),
-            "{mover_name} should include DRAM memory resource"
-        );
-        assert!(
-            mover
-                .resources
-                .iter()
-                .any(|r| r.id().as_str() == "array_L1"),
-            "{mover_name} should include L1 memory resource"
+            mover.destination.is_some(),
+            "{mover_name} should have destination"
         );
         assert!(
             !mover
@@ -192,6 +186,24 @@ fn test_2d_mesh_torus_perf_models() {
             "{mover_name} should not include torus link resources"
         );
     }
+    assert!(
+        ["dram_l1_noc0", "l1_l1_noc0"].iter().all(|name| {
+            mesh.get_data_mover(name)
+                .expect("NoC0 data mover should exist")
+                .resources
+                .iter()
+                .any(|r| r.id().as_str() == "noc0")
+        }),
+        "DRAM->L1 and L1->L1 processors should share noc0"
+    );
+    assert!(
+        mesh.get_data_mover("l1_dram_noc1")
+            .expect("l1_dram_noc1 should exist")
+            .resources
+            .iter()
+            .any(|r| r.id().as_str() == "noc1"),
+        "L1->DRAM processor should use noc1"
+    );
 
     // === NoC0: read-only path with unicast + parameterized broadcast ===
     let noc0 = mesh
@@ -238,10 +250,10 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    // === NoC1: writeback + L1 gather (no DRAM load, no broadcast) ===
+    // === NoC1: writeback (no DRAM load, no broadcast) ===
     let noc1 = mesh
-        .get_data_mover("dram_l1_noc1")
-        .expect("dram_l1_noc1 should exist");
+        .get_data_mover("l1_dram_noc1")
+        .expect("l1_dram_noc1 should exist");
     assert!(
         noc1.get_function("l1_to_dram_f16").is_some(),
         "noc1 should expose l1_to_dram_f16"
@@ -250,19 +262,13 @@ fn test_2d_mesh_torus_perf_models() {
         noc1.get_function("batch_l1_to_dram_f16").is_none(),
         "noc1 should not expose batch_l1_to_dram_f16"
     );
-    assert!(
-        noc1.get_function("l1_gather").is_some(),
-        "noc1 should expose l1_gather"
-    );
-    assert!(
-        noc1.get_function("batch_l1_gather").is_none(),
-        "noc1 should not expose batch_l1_gather"
-    );
     for stale in [
         "dram_to_l1_f16",
         "batch_dram_to_l1_f16",
         "dram_to_l1_bcst",
         "batch_dram_to_l1_bcst",
+        "l1_gather",
+        "batch_l1_gather",
         "dram_to_l1_1d_bcst_f16",
         "dram_to_l1_2d_bcst_f16",
     ] {
@@ -281,13 +287,16 @@ fn test_2d_mesh_torus_perf_models() {
         "l1_to_dram_f16 should include MLIR details"
     );
 
-    // Verify NoC1's gather functions use destination-sized transfers.
-    let gather_func = noc1.get_function("l1_gather").expect("l1_gather binding");
+    // Verify NoC0's gather function uses destination-sized transfers.
+    let l1_l1 = mesh
+        .get_data_mover("l1_l1_noc0")
+        .expect("l1_l1_noc0 should exist");
+    let gather_func = l1_l1.get_function("l1_gather").expect("l1_gather binding");
     let gather_syms = &gather_func.func.symbols;
     for sym in ["B", "M", "N", "gather_x", "gather_y"] {
         assert!(
             gather_syms.iter().any(|s| s.0.as_str() == sym),
-            "noc1 l1_gather should expose {sym} symbol, got {gather_syms:?}"
+            "l1_l1_noc0 l1_gather should expose {sym} symbol, got {gather_syms:?}"
         );
     }
     let gather_details = gather_func
@@ -370,7 +379,7 @@ fn test_2d_mesh_torus() {
             .any(|memory| memory.name() == Some("DRAM")),
         "top-level scope should include DRAM"
     );
-    for mover_name in ["dram_l1_noc0", "dram_l1_noc1"] {
+    for mover_name in ["dram_l1_noc0", "l1_l1_noc0", "l1_dram_noc1"] {
         assert!(
             mesh.processors
                 .iter()
@@ -986,8 +995,8 @@ fn test_export_2d_mesh_torus_mlir() {
 /// when invoked as an external process.
 ///
 /// This mirrors `test_generate_core_evaluator_binary` but operates at the
-/// system level: the architecture includes the mesh, DRAM, routers, and the
-/// split data movers (direct, bcst, bcst_v, bcst_h).
+/// system level: the architecture includes the mesh, DRAM, route-specific data
+/// movers, and shared NoC resources.
 #[test]
 fn test_generate_system_evaluator_binary() {
     let system = scaled_mesh_torus();

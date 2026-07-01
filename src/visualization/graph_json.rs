@@ -1,6 +1,5 @@
 use crate::arch::{
-    Architecture, DataEffect, Dimension, MemoryAccessMode, MemoryRegion, Processor, Resource,
-    SizeExpr,
+    Architecture, DataEffect, Dimension, MemoryRegion, Processor, Resource, SizeExpr,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -350,27 +349,45 @@ fn append_processor(
         },
     });
 
-    for access in &processor.accesses {
-        let memory_id = scoped_id(path, "mem", &access.region.name);
-        let direction = match access.mode {
-            MemoryAccessMode::Read => (memory_id.clone(), id.clone(), "read"),
-            MemoryAccessMode::Write => (id.clone(), memory_id.clone(), "write"),
-            MemoryAccessMode::ReadWrite => (id.clone(), memory_id.clone(), "read_write"),
-        };
+    if let Some(source) = &processor.source {
+        let memory_id = scoped_id(path, "mem", &source.name);
         edges.push(GraphEdge {
-            id: scoped_id(path, "edge", &format!("{}_{}", name, access.region.name)),
+            id: scoped_id(path, "edge", &format!("{}_source_{}", name, source.name)),
             kind: GraphEdgeKind::IntraGraph,
-            name: direction.2.to_string(),
-            source: direction.0.clone(),
-            target: direction.1.clone(),
-            source_name: direction.0,
-            target_name: direction.1,
-            label: direction.2.to_string(),
-            direction: if access.mode == MemoryAccessMode::ReadWrite {
-                GraphEdgeDirection::Bidirectional
-            } else {
-                GraphEdgeDirection::Directional
-            },
+            name: "read".to_string(),
+            source: memory_id.clone(),
+            target: id.clone(),
+            source_name: memory_id,
+            target_name: id.clone(),
+            label: "read".to_string(),
+            direction: GraphEdgeDirection::Directional,
+            bandwidth: None,
+            latency: None,
+            constraints: None,
+            sharing: None,
+            map_relation: None,
+            topology: None,
+            map: None,
+            side: None,
+        });
+    }
+
+    if let Some(destination) = &processor.destination {
+        let memory_id = scoped_id(path, "mem", &destination.name);
+        edges.push(GraphEdge {
+            id: scoped_id(
+                path,
+                "edge",
+                &format!("{}_destination_{}", name, destination.name),
+            ),
+            kind: GraphEdgeKind::IntraGraph,
+            name: "write".to_string(),
+            source: id.clone(),
+            target: memory_id.clone(),
+            source_name: id,
+            target_name: memory_id,
+            label: "write".to_string(),
+            direction: GraphEdgeDirection::Directional,
             bandwidth: None,
             latency: None,
             constraints: None,
@@ -469,26 +486,14 @@ fn processor_to_json(processor: &Processor) -> GraphProcessors {
                 .map(|func| GraphFunctionalityOp {
                     name: func.name.clone(),
                     source_memories: processor
-                        .accesses
+                        .source
                         .iter()
-                        .filter(|access| {
-                            matches!(
-                                access.mode,
-                                MemoryAccessMode::Read | MemoryAccessMode::ReadWrite
-                            )
-                        })
-                        .map(|access| access.region.name.clone())
+                        .map(|source| source.name.clone())
                         .collect(),
                     destination_memories: processor
-                        .accesses
+                        .destination
                         .iter()
-                        .filter(|access| {
-                            matches!(
-                                access.mode,
-                                MemoryAccessMode::Write | MemoryAccessMode::ReadWrite
-                            )
-                        })
-                        .map(|access| access.region.name.clone())
+                        .map(|destination| destination.name.clone())
                         .collect(),
                 })
                 .collect(),

@@ -16,8 +16,8 @@ movers.
 - `MemoryRegion::total_size_bytes()` returns `None` if any size or dimension is
   symbolic.
 - `MemoryRegion::generate_resource()` works for named concrete banks. Processor
-  region pairs can also derive quantitative resources for concrete arrays using
-  their total size.
+  source/destination regions can also derive quantitative resources for concrete
+  arrays using their total size.
 
 MLIR functionality binds memrefs to memory regions with `loom.bind_mem`.
 Architecture MLIR export prefixes memory names in the generated output, for
@@ -43,6 +43,11 @@ When linked from MLIR, one performance model is required for each parsed
 `func.func`, in module order. The processor name is checked against the MLIR
 module symbol when the module was loaded from a file.
 
+Every linked processor has exactly one source memory region and one destination
+memory region. In-place compute or movement uses the same region for both.
+Different routes should be modeled as different processors. If they contend for
+the same physical hardware, attach the same `Resource` to those processors.
+
 ## MLIR Functionality
 
 `MlirModule::from_mlir(path)` parses one MLIR file. The file must contain exactly
@@ -67,7 +72,7 @@ functions must not contain `loom.copy` or `loom.gather`.
 
 Data-mover validation requires at least two memrefs, source/target bindings,
 exactly one `loom.copy` or `loom.gather`, no `linalg.*` operations, and region
-names that appear in the data mover's source/destination region pairs.
+names that match the data mover's source or destination region.
 
 ## Performance Models
 
@@ -129,8 +134,9 @@ Resources model contention relationships:
 
 Processors can declare resources with `.with_resources(...)`. Compute builders
 also add an exclusive self resource when the processor is named. Memory
-resources are derived from memory accesses/region pairs where possible and are
-registered with the containing architecture scope.
+resources are derived from source/destination regions where possible and are
+registered with the containing architecture scope. Shared resources, such as
+`noc0`, express contention among otherwise separate processors.
 
 The current schedule evaluator does not yet use these resource declarations for
 parallel scheduling.

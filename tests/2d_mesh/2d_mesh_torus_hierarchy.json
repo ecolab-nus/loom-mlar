@@ -3,7 +3,7 @@
   "root": {
     "kind": "graph",
     "name": "system",
-    "total_instances": 130,
+    "total_instances": 131,
     "children": [
       {
         "kind": "memory",
@@ -59,13 +59,23 @@
       },
       {
         "kind": "unit",
-        "name": "dram_l1_noc1",
+        "name": "l1_l1_noc0",
         "total_instances": 1,
         "details": {
           "type": "processor",
           "functions": [
-            "l1_to_dram_f16",
             "l1_gather"
+          ]
+        }
+      },
+      {
+        "kind": "unit",
+        "name": "l1_dram_noc1",
+        "total_instances": 1,
+        "details": {
+          "type": "processor",
+          "functions": [
+            "l1_to_dram_f16"
           ]
         }
       },

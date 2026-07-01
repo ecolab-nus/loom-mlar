@@ -94,8 +94,8 @@ and serialized, but evaluation is not implemented.
 
 JSON payload builders for the web viewer.
 
-- `graph_json.rs`: graph payload (`mlar.arch-graph.v1`) with nodes, edges,
-  routers, memories, processor details, resources, bandwidths, affine maps, and
+- `graph_json.rs`: derived graph payload (`mlar.arch-graph.v1`) with scope
+  nodes, memory/processor route edges, resources, bandwidths, affine maps, and
   derived topology classifications.
 - `hierarchy_json.rs`: hierarchy payload (`mlar.arch-hierarchy.v1`).
 - `viewer_json.rs`: combined payload (`mlar.arch-viewer.v1`) containing a
@@ -130,10 +130,10 @@ It demonstrates:
 
 - parsing processor functionality from MLIR files,
 - building compute processors and data movers,
-- attaching source/destination memory-region pairs,
+- attaching one source and one destination memory region per processor,
 - deriving memory resources,
-- composing graphs with routers and annotated edges,
-- scaling a core graph into a 2D mesh,
+- composing scoped architectures,
+- scaling a core scope into a 2D mesh,
 - exporting architecture MLIR,
 - exporting graph, hierarchy, and viewer JSON,
 - evaluating schedules with `SymbolicMapping`,

@@ -13,10 +13,10 @@ MLAR describes hardware as:
 
 - Memory regions: banks and homogeneous arrays of banks.
 - Compute processors: MLIR functionality plus per-function performance models.
-- Data movers: MLIR transfer functions plus source/destination memory regions.
-- Architecture hierarchy: units, arrays, and heterogeneous graphs.
-- Graph infrastructure: memory, processors, data movers, routers, typed edges,
-  shared resources, and resource-consumer mappings.
+- Data movers: MLIR transfer functions plus one source and one destination
+  memory region.
+- Architecture hierarchy: scoped composition plus homogeneous dimensions.
+- Resources: shared contention/capacity limits used by processors.
 - Scale-out networks: currently mesh networks with affine-map links.
 - Symbolic costs and constraints: `Expr`, `ConstraintExpr`, `SimpleTimeCost`,
   `PerfScenario`, and `FuncPerfModel`.
@@ -35,9 +35,9 @@ symbolically outside compute IR.
 - [Usage](docs/usage.md)
 
 The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs).
-It builds a system graph containing an 8x8 mesh of cores, DRAM, two NoC data
-movers, routers, MLIR functionality modules, resource bindings, MLIR export,
-schedule evaluation, and viewer JSON export.
+It builds a scoped system containing an 8x8 mesh of cores, DRAM, route-specific
+data movers, NoC resources, MLIR functionality modules, MLIR export, schedule
+evaluation, and viewer JSON export.
 
 ## Minimal Example
 

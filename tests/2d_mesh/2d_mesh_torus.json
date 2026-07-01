@@ -96,23 +96,56 @@
       }
     },
     {
-      "id": "proc::system::dram_l1_noc1",
+      "id": "proc::system::l1_l1_noc0",
       "kind": "data_mover",
-      "name": "dram_l1_noc1",
-      "label": "dram_l1_noc1",
+      "name": "l1_l1_noc0",
+      "label": "l1_l1_noc0",
       "dimensions": [],
       "details": {
         "type": "processor",
         "element": {
           "kind": "unit",
-          "name": "dram_l1_noc1",
+          "name": "l1_l1_noc0",
           "functionality": {
-            "name": "dram_l1_noc1",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir",
-            "source_mlir_module_name": "dram_l1_noc1",
+            "name": "l1_l1_noc0",
+            "source_path": "tests/2d_mesh/processors_mlir/l1_l1_noc0.mlir",
+            "source_mlir_module_name": "l1_l1_noc0",
             "ops": [
-              "l1_to_dram_f16",
               "l1_gather"
+            ],
+            "op_details": [
+              {
+                "name": "l1_gather",
+                "source_memories": [
+                  "array_L1"
+                ],
+                "destination_memories": [
+                  "array_L1"
+                ]
+              }
+            ]
+          }
+        },
+        "total_instances": 1
+      }
+    },
+    {
+      "id": "proc::system::l1_dram_noc1",
+      "kind": "data_mover",
+      "name": "l1_dram_noc1",
+      "label": "l1_dram_noc1",
+      "dimensions": [],
+      "details": {
+        "type": "processor",
+        "element": {
+          "kind": "unit",
+          "name": "l1_dram_noc1",
+          "functionality": {
+            "name": "l1_dram_noc1",
+            "source_path": "tests/2d_mesh/processors_mlir/l1_dram_noc1.mlir",
+            "source_mlir_module_name": "l1_dram_noc1",
+            "ops": [
+              "l1_to_dram_f16"
             ],
             "op_details": [
               {
@@ -121,18 +154,7 @@
                   "array_L1"
                 ],
                 "destination_memories": [
-                  "DRAM",
-                  "array_L1"
-                ]
-              },
-              {
-                "name": "l1_gather",
-                "source_memories": [
-                  "array_L1"
-                ],
-                "destination_memories": [
-                  "DRAM",
-                  "array_L1"
+                  "DRAM"
                 ]
               }
             ]
@@ -211,6 +233,34 @@
           "id": "array_L1",
           "kind": "quantitative",
           "capacity": 89522176
+        }
+      }
+    },
+    {
+      "id": "res::system::noc0",
+      "kind": "resource",
+      "name": "noc0",
+      "label": "noc0",
+      "dimensions": [],
+      "details": {
+        "type": "resource",
+        "resource": {
+          "id": "noc0",
+          "kind": "exclusive"
+        }
+      }
+    },
+    {
+      "id": "res::system::noc1",
+      "kind": "resource",
+      "name": "noc1",
+      "label": "noc1",
+      "dimensions": [],
+      "details": {
+        "type": "resource",
+        "resource": {
+          "id": "noc1",
+          "kind": "exclusive"
         }
       }
     },
@@ -529,7 +579,7 @@
   ],
   "edges": [
     {
-      "id": "edge::system::dram_l1_noc0_DRAM",
+      "id": "edge::system::dram_l1_noc0_source_DRAM",
       "kind": "intra_graph",
       "name": "read",
       "source": "mem::system::DRAM",
@@ -540,7 +590,7 @@
       "direction": "directional"
     },
     {
-      "id": "edge::system::dram_l1_noc0_array_L1",
+      "id": "edge::system::dram_l1_noc0_destination_array_L1",
       "kind": "intra_graph",
       "name": "write",
       "source": "proc::system::dram_l1_noc0",
@@ -551,40 +601,51 @@
       "direction": "directional"
     },
     {
-      "id": "edge::system::dram_l1_noc1_array_L1",
+      "id": "edge::system::l1_l1_noc0_source_array_L1",
       "kind": "intra_graph",
       "name": "read",
       "source": "mem::system::array_L1",
-      "target": "proc::system::dram_l1_noc1",
+      "target": "proc::system::l1_l1_noc0",
       "source_name": "mem::system::array_L1",
-      "target_name": "proc::system::dram_l1_noc1",
+      "target_name": "proc::system::l1_l1_noc0",
       "label": "read",
       "direction": "directional"
     },
     {
-      "id": "edge::system::dram_l1_noc1_DRAM",
+      "id": "edge::system::l1_l1_noc0_destination_array_L1",
       "kind": "intra_graph",
       "name": "write",
-      "source": "proc::system::dram_l1_noc1",
-      "target": "mem::system::DRAM",
-      "source_name": "proc::system::dram_l1_noc1",
-      "target_name": "mem::system::DRAM",
-      "label": "write",
-      "direction": "directional"
-    },
-    {
-      "id": "edge::system::dram_l1_noc1_array_L1",
-      "kind": "intra_graph",
-      "name": "write",
-      "source": "proc::system::dram_l1_noc1",
+      "source": "proc::system::l1_l1_noc0",
       "target": "mem::system::array_L1",
-      "source_name": "proc::system::dram_l1_noc1",
+      "source_name": "proc::system::l1_l1_noc0",
       "target_name": "mem::system::array_L1",
       "label": "write",
       "direction": "directional"
     },
     {
-      "id": "edge::system_mesh::matrix_lane_L1",
+      "id": "edge::system::l1_dram_noc1_source_array_L1",
+      "kind": "intra_graph",
+      "name": "read",
+      "source": "mem::system::array_L1",
+      "target": "proc::system::l1_dram_noc1",
+      "source_name": "mem::system::array_L1",
+      "target_name": "proc::system::l1_dram_noc1",
+      "label": "read",
+      "direction": "directional"
+    },
+    {
+      "id": "edge::system::l1_dram_noc1_destination_DRAM",
+      "kind": "intra_graph",
+      "name": "write",
+      "source": "proc::system::l1_dram_noc1",
+      "target": "mem::system::DRAM",
+      "source_name": "proc::system::l1_dram_noc1",
+      "target_name": "mem::system::DRAM",
+      "label": "write",
+      "direction": "directional"
+    },
+    {
+      "id": "edge::system_mesh::matrix_lane_source_L1",
       "kind": "intra_graph",
       "name": "read",
       "source": "mem::system_mesh::L1",
@@ -595,7 +656,7 @@
       "direction": "directional"
     },
     {
-      "id": "edge::system_mesh::matrix_lane_L1",
+      "id": "edge::system_mesh::matrix_lane_destination_L1",
       "kind": "intra_graph",
       "name": "write",
       "source": "proc::system_mesh::matrix_lane",
@@ -606,7 +667,7 @@
       "direction": "directional"
     },
     {
-      "id": "edge::system_mesh::vector_lane_L1",
+      "id": "edge::system_mesh::vector_lane_source_L1",
       "kind": "intra_graph",
       "name": "read",
       "source": "mem::system_mesh::L1",
@@ -617,7 +678,7 @@
       "direction": "directional"
     },
     {
-      "id": "edge::system_mesh::vector_lane_L1",
+      "id": "edge::system_mesh::vector_lane_destination_L1",
       "kind": "intra_graph",
       "name": "write",
       "source": "proc::system_mesh::vector_lane",

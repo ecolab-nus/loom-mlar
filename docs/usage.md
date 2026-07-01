@@ -5,8 +5,8 @@
 1. Define memory regions and dimensions.
 2. Parse processor/data-mover functionality from MLIR modules.
 3. Build one `FuncPerfModel` per parsed `func.func`.
-4. Construct `ComputeProcessor` and `DataMover` modules with memory-region
-   pairs or named memory accesses.
+4. Construct `ComputeProcessor` and `DataMover` modules with one source memory
+   region and one destination memory region.
 5. Compose memories, processors, resources, networks, and child scopes into an
    `Architecture`.
 6. Export architecture MLIR or visualization JSON.
@@ -113,9 +113,11 @@ let noc = DataMover::builder()
 noc.validate()?;
 ```
 
-Data-mover MLIR functions must contain exactly one `loom.copy` or `loom.gather`,
-must not contain `linalg.*`, and must bind source/target memrefs to regions
-present in `.with_regions(...)`.
+Each processor/data mover has exactly one route. Data-mover MLIR functions must
+contain exactly one `loom.copy` or `loom.gather`, must not contain `linalg.*`,
+and must bind source/target memrefs to the processor's source or destination
+region. Use shared `Resource`s, not multiple routes on one processor, to model
+contention.
 
 ## Scale An Architecture
 
@@ -312,8 +314,8 @@ let result = query_architecture(&arch, &ArchitectureQuery::Mlir)?;
 
 ## Related Components
 
-- `src/arch/`: architecture objects, graph composition, processors, data movers,
-  memory, networks, routers, resources, and performance models.
+- `src/arch/`: scoped architecture objects, processors, data movers, memory,
+  networks, resources, and performance models.
 - `src/mlir/`: MLIR parsing and architecture export to `adl.*`.
 - `src/visualization/`: graph, hierarchy, and viewer JSON export.
 - `src/schedule/`: schedule representation and in-process evaluation.

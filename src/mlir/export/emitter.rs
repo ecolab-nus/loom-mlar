@@ -3,7 +3,7 @@ use std::fmt::Write;
 
 use crate::arch::architecture::Architecture;
 use crate::arch::memory::{MemoryBank, MemoryRegion};
-use crate::arch::processor::{DataEffect, MemoryAccessMode, Processor};
+use crate::arch::processor::{DataEffect, Processor};
 use crate::arch::resource::Resource;
 use crate::arch::size_dim::Dimension;
 
@@ -228,56 +228,12 @@ impl MlirEmitter {
     }
 
     fn format_region_pairs(&self, proc: &Processor) -> Option<String> {
-        let reads: Vec<&str> = proc
-            .accesses
-            .iter()
-            .filter(|access| {
-                matches!(
-                    access.mode,
-                    MemoryAccessMode::Read | MemoryAccessMode::ReadWrite
-                )
-            })
-            .map(|access| access.region.name.as_str())
-            .collect();
-        let writes: Vec<&str> = proc
-            .accesses
-            .iter()
-            .filter(|access| {
-                matches!(
-                    access.mode,
-                    MemoryAccessMode::Write | MemoryAccessMode::ReadWrite
-                )
-            })
-            .map(|access| access.region.name.as_str())
-            .collect();
-
-        let pairs: Vec<String> = match (reads.as_slice(), writes.as_slice()) {
-            ([], []) => Vec::new(),
-            ([], writes) => writes
-                .iter()
-                .map(|name| {
-                    let ssa = self.memory_map.get(*name)?;
-                    Some(format!("({}, {})", ssa, ssa))
-                })
-                .collect::<Option<Vec<_>>>()?,
-            (reads, []) => reads
-                .iter()
-                .map(|name| {
-                    let ssa = self.memory_map.get(*name)?;
-                    Some(format!("({}, {})", ssa, ssa))
-                })
-                .collect::<Option<Vec<_>>>()?,
-            (reads, writes) => reads
-                .iter()
-                .flat_map(|src| writes.iter().map(move |dst| (*src, *dst)))
-                .map(|(src, dst)| {
-                    let src_ssa = self.memory_map.get(src)?;
-                    let dst_ssa = self.memory_map.get(dst)?;
-                    Some(format!("({}, {})", src_ssa, dst_ssa))
-                })
-                .collect::<Option<Vec<_>>>()?,
+        let (Some(source), Some(destination)) = (&proc.source, &proc.destination) else {
+            return Some("[]".to_string());
         };
-        Some(format!("[{}]", pairs.join(", ")))
+        let src_ssa = self.memory_map.get(source.name.as_str())?;
+        let dst_ssa = self.memory_map.get(destination.name.as_str())?;
+        Some(format!("[({}, {})]", src_ssa, dst_ssa))
     }
 
     /// Recursively emit the full architecture tree, returning the SSA value
@@ -402,8 +358,11 @@ fn collect_arch_memory_resource_ids(arch: &Architecture, out: &mut HashSet<Strin
         }
     }
     for processor in &arch.processors {
-        for access in &processor.accesses {
-            out.insert(access.region.name.clone());
+        if let Some(source) = &processor.source {
+            out.insert(source.name.clone());
+        }
+        if let Some(destination) = &processor.destination {
+            out.insert(destination.name.clone());
         }
     }
     for child in &arch.children {

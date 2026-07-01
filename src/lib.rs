@@ -11,10 +11,10 @@ pub use abi::{arch_query, evaluator};
 pub use arch::{
     Architecture, ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover,
     DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
-    FunctionProcessor, MemoryAccess, MemoryAccessMode, MemoryBank, MemoryRegion, MemoryRegionRef,
-    MeshLink, MeshNetwork, MeshNetworkInterface, PerfScenario, Processor, ProcessorModule,
-    Resource, ResourceId, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
-    TimeCost, TimeExpr, architecture_to_mlir,
+    FunctionProcessor, MemoryBank, MemoryRegion, MemoryRegionRef, MeshLink, MeshNetwork,
+    MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource, ResourceId,
+    ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
+    architecture_to_mlir,
 };
 
 // Re-export commonly used math types

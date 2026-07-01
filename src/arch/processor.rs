@@ -21,15 +21,6 @@ pub struct MemoryRegionRef {
     pub name: String,
 }
 
-/// How a processor touches a memory region.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MemoryAccessMode {
-    Read,
-    Write,
-    ReadWrite,
-}
-
 /// Whether a processor preserves or transforms data.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,28 +31,21 @@ pub enum DataEffect {
     Accumulate,
 }
 
-/// A processor memory effect at architecture scope.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryAccess {
-    pub region: MemoryRegionRef,
-    pub mode: MemoryAccessMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-}
-
 /// Processor — an executable actor over memory regions.
 ///
 /// A processor is described by:
 /// - `functionality`: set of supported functions (module-level interface)
 /// - `functions`: per-function performance bindings (`FunctionProcessor`)
-/// - `accesses`: memory regions read/written by this executable actor
+/// - `source` and `destination`: the single memory route this actor operates on
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Processor {
     pub name: Option<String>,
     pub functionality: MlirModule,
     pub functions: Vec<FunctionProcessor>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub accesses: Vec<MemoryAccess>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<MemoryRegionRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<MemoryRegionRef>,
     #[serde(default = "default_data_effect")]
     pub effect: DataEffect,
     /// Resources this processor requires when executing.
@@ -108,7 +92,8 @@ pub struct ComputeProcessor(pub Processor);
 #[derive(Clone, Debug)]
 struct ProcessorModuleBuilder {
     name: Option<String>,
-    accesses: Vec<MemoryAccess>,
+    source: Option<MemoryRegionRef>,
+    destination: Option<MemoryRegionRef>,
     resources: Vec<Resource>,
     effect: DataEffect,
     module_ctor: fn(Processor) -> Module,
@@ -172,34 +157,7 @@ impl From<String> for MemoryRegionRef {
     }
 }
 
-impl MemoryAccess {
-    pub fn new(region: impl Into<MemoryRegionRef>, mode: MemoryAccessMode) -> Self {
-        Self {
-            region: region.into(),
-            mode,
-            role: None,
-        }
-    }
-
-    pub fn read(region: impl Into<MemoryRegionRef>) -> Self {
-        Self::new(region, MemoryAccessMode::Read)
-    }
-
-    pub fn write(region: impl Into<MemoryRegionRef>) -> Self {
-        Self::new(region, MemoryAccessMode::Write)
-    }
-
-    pub fn read_write(region: impl Into<MemoryRegionRef>) -> Self {
-        Self::new(region, MemoryAccessMode::ReadWrite)
-    }
-
-    pub fn with_role(mut self, role: impl Into<String>) -> Self {
-        self.role = Some(role.into());
-        self
-    }
-}
-
-/// Derive memory resources from all source/destination region pairs.
+/// Derive memory resources from source/destination regions.
 ///
 /// Each region must support `MemoryRegion::generate_resource()` (currently
 /// `Bank` only). The returned list is de-duplicated by resource ID.
@@ -220,51 +178,27 @@ fn memory_resources_from_region_pairs(
     merge_resource_sets(Vec::new(), resources)
 }
 
-fn accesses_and_resources_from_region_pairs(
+fn route_and_resources_from_region_pairs(
     region_pairs: &[(MemoryRegion, MemoryRegion)],
-) -> Result<(Vec<MemoryAccess>, Vec<Resource>), String> {
-    let mut accesses = Vec::with_capacity(region_pairs.len() * 2);
-    for (src, dst) in region_pairs {
-        let src_name = src
-            .name()
-            .ok_or_else(|| "source memory region must be named".to_string())?;
-        let dst_name = dst
-            .name()
-            .ok_or_else(|| "destination memory region must be named".to_string())?;
-        accesses.push(MemoryAccess::read(src_name.to_string()).with_role("source"));
-        accesses.push(MemoryAccess::write(dst_name.to_string()).with_role("destination"));
-    }
+) -> Result<(MemoryRegionRef, MemoryRegionRef, Vec<Resource>), String> {
+    let [(src, dst)] = region_pairs else {
+        return Err(format!(
+            "processor requires exactly one source/destination memory-region pair, found {}",
+            region_pairs.len()
+        ));
+    };
+    let src_name = src
+        .name()
+        .ok_or_else(|| "source memory region must be named".to_string())?;
+    let dst_name = dst
+        .name()
+        .ok_or_else(|| "destination memory region must be named".to_string())?;
     let resources = memory_resources_from_region_pairs(region_pairs)?;
-    Ok((merge_access_sets(Vec::new(), accesses), resources))
-}
-
-fn merge_access_sets(
-    mut base: Vec<MemoryAccess>,
-    additional: Vec<MemoryAccess>,
-) -> Vec<MemoryAccess> {
-    for access in additional {
-        if let Some(existing) = base
-            .iter_mut()
-            .find(|existing| existing.region == access.region && existing.role == access.role)
-        {
-            existing.mode = merge_access_mode(&existing.mode, &access.mode);
-            continue;
-        }
-        base.push(access);
-    }
-    base
-}
-
-fn merge_access_mode(a: &MemoryAccessMode, b: &MemoryAccessMode) -> MemoryAccessMode {
-    match (a, b) {
-        (MemoryAccessMode::ReadWrite, _) | (_, MemoryAccessMode::ReadWrite) => {
-            MemoryAccessMode::ReadWrite
-        }
-        (MemoryAccessMode::Read, MemoryAccessMode::Write)
-        | (MemoryAccessMode::Write, MemoryAccessMode::Read) => MemoryAccessMode::ReadWrite,
-        (MemoryAccessMode::Read, MemoryAccessMode::Read) => MemoryAccessMode::Read,
-        (MemoryAccessMode::Write, MemoryAccessMode::Write) => MemoryAccessMode::Write,
-    }
+    Ok((
+        MemoryRegionRef::new(src_name.to_string()),
+        MemoryRegionRef::new(dst_name.to_string()),
+        resources,
+    ))
 }
 
 fn memory_resource_from_region(region: &MemoryRegion) -> Result<Resource, String> {
@@ -327,7 +261,8 @@ impl DataMover {
         DataMoverBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                accesses: Vec::new(),
+                source: None,
+                destination: None,
                 resources: Vec::new(),
                 effect: DataEffect::Preserve,
                 module_ctor: Module::DataMover,
@@ -358,7 +293,8 @@ impl ComputeProcessor {
         ComputeProcessorBuilder {
             inner: ProcessorModuleBuilder {
                 name: None,
-                accesses: Vec::new(),
+                source: None,
+                destination: None,
                 resources: Vec::new(),
                 effect: DataEffect::Transform,
                 module_ctor: Module::Compute,
@@ -391,7 +327,8 @@ impl Processor {
             name: Some(name.into()),
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            accesses: Vec::new(),
+            source: None,
+            destination: None,
             effect: DataEffect::Transform,
             resources: Vec::new(),
         }
@@ -405,7 +342,8 @@ impl Processor {
             name: Some(name.into()),
             functionality,
             functions,
-            accesses: Vec::new(),
+            source: None,
+            destination: None,
             effect: DataEffect::Transform,
             resources: Vec::new(),
         }
@@ -445,7 +383,8 @@ impl Processor {
             name: Some(name),
             functionality,
             functions,
-            accesses: Vec::new(),
+            source: None,
+            destination: None,
             effect: DataEffect::Transform,
             resources: Vec::new(),
         };
@@ -453,7 +392,7 @@ impl Processor {
         Ok(processor)
     }
 
-    /// Build a processor with explicit source/destination memory-region pairs.
+    /// Build a processor with one explicit source/destination memory-region pair.
     ///
     /// Memory resources are auto-derived from those regions and merged into
     /// `self.resources`.
@@ -463,9 +402,38 @@ impl Processor {
         perf_models: Vec<FuncPerfModel>,
         region_pairs: Vec<(MemoryRegion, MemoryRegion)>,
     ) -> Result<Self, String> {
-        let mut proc = Self::from_module(name, functionality, perf_models)?;
-        let (accesses, memory_resources) = accesses_and_resources_from_region_pairs(&region_pairs)?;
-        proc.accesses = accesses;
+        let name = name.into();
+        validate_name_matches_mlir_module(
+            "Processor",
+            Some(name.as_str()),
+            functionality.module_name.as_deref(),
+            functionality.path.as_deref(),
+        )?;
+        if functionality.functions.len() != perf_models.len() {
+            return Err(format!(
+                "Processor has {} perf models but functionality module has {} ops",
+                perf_models.len(),
+                functionality.functions.len()
+            ));
+        }
+        let (source, destination, memory_resources) =
+            route_and_resources_from_region_pairs(&region_pairs)?;
+        let functions: Vec<FunctionProcessor> = functionality
+            .functions
+            .iter()
+            .cloned()
+            .zip(perf_models)
+            .map(|(func, perf)| FunctionProcessor::new(func, perf))
+            .collect();
+        let mut proc = Processor {
+            name: Some(name),
+            functionality,
+            functions,
+            source: Some(source),
+            destination: Some(destination),
+            effect: DataEffect::Transform,
+            resources: Vec::new(),
+        };
         proc.resources = merge_resource_sets(proc.resources, memory_resources)?;
         proc.validate()?;
         Ok(proc)
@@ -477,16 +445,19 @@ impl Processor {
         self
     }
 
-    /// Attach source/destination memory-region pairs (builder-style, consumes self).
+    /// Attach one source/destination memory-region pair (builder-style, consumes self).
     ///
     /// Memory resources are auto-derived from those regions and merged into
     /// `self.resources`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
-        let (accesses, memory_resources) = accesses_and_resources_from_region_pairs(&region_pairs)
-            .unwrap_or_else(|err| {
-                panic!("failed to derive processor memory accesses/resources from regions: {err}")
+        let (source, destination, memory_resources) =
+            route_and_resources_from_region_pairs(&region_pairs).unwrap_or_else(|err| {
+                panic!(
+                    "failed to derive processor source/destination/resources from regions: {err}"
+                )
             });
-        self.accesses = merge_access_sets(self.accesses, accesses);
+        self.source = Some(source);
+        self.destination = Some(destination);
         self.resources =
             merge_resource_sets(self.resources, memory_resources).unwrap_or_else(|err| {
                 panic!("failed to merge processor resources after region assignment: {err}")
@@ -494,8 +465,13 @@ impl Processor {
         self
     }
 
-    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
-        self.accesses = merge_access_sets(self.accesses, accesses);
+    pub fn with_memory_regions(
+        mut self,
+        source: impl Into<MemoryRegionRef>,
+        destination: impl Into<MemoryRegionRef>,
+    ) -> Self {
+        self.source = Some(source.into());
+        self.destination = Some(destination.into());
         self
     }
 
@@ -549,33 +525,48 @@ impl ProcessorModuleBuilder {
         self
     }
 
-    /// Stage source/destination region pairs for later module construction.
+    /// Stage one source/destination region pair for later module construction.
     ///
     /// The actual memory-resource derivation happens in `finish`/`from_module`.
     pub fn with_regions(mut self, region_pairs: Vec<(MemoryRegion, MemoryRegion)>) -> Self {
-        let (accesses, resources) = accesses_and_resources_from_region_pairs(&region_pairs)
+        let (source, destination, resources) = route_and_resources_from_region_pairs(&region_pairs)
             .unwrap_or_else(|err| {
-                panic!("failed to derive processor memory accesses/resources from regions: {err}")
+                panic!(
+                    "failed to derive processor source/destination/resources from regions: {err}"
+                )
             });
-        self.accesses = merge_access_sets(self.accesses, accesses);
+        self.source = Some(source);
+        self.destination = Some(destination);
         self.resources = merge_resource_sets(self.resources, resources).unwrap_or_else(|err| {
             panic!("failed to merge processor resources after region assignment: {err}")
         });
         self
     }
 
-    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
-        self.accesses = merge_access_sets(self.accesses, accesses);
+    pub fn with_memory_regions(
+        mut self,
+        source: impl Into<MemoryRegionRef>,
+        destination: impl Into<MemoryRegionRef>,
+    ) -> Self {
+        self.source = Some(source.into());
+        self.destination = Some(destination.into());
+        self
+    }
+
+    pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
+        self.resources = merge_resource_sets(self.resources, resources)
+            .unwrap_or_else(|err| panic!("failed to merge processor resources: {err}"));
         self
     }
 
     /// Build an empty module without interface validation.
     ///
-    /// Memory resources are auto-derived from staged region pairs.
+    /// Memory resources are auto-derived from the staged source/destination pair.
     pub fn finish(self) -> Module {
         let ProcessorModuleBuilder {
             name,
-            accesses,
+            source,
+            destination,
             resources,
             effect,
             module_ctor,
@@ -585,7 +576,8 @@ impl ProcessorModuleBuilder {
             name,
             functionality: MlirModule::unnamed(vec![]),
             functions: Vec::new(),
-            accesses,
+            source,
+            destination,
             effect,
             resources,
         };
@@ -594,7 +586,7 @@ impl ProcessorModuleBuilder {
 
     /// Build and validate from MLIR functionality + perf models.
     ///
-    /// Memory resources are auto-derived from staged region pairs.
+    /// Memory resources are auto-derived from the staged source/destination pair.
     pub fn from_module(
         self,
         functionality: MlirModule,
@@ -602,7 +594,8 @@ impl ProcessorModuleBuilder {
     ) -> Result<Module, String> {
         let ProcessorModuleBuilder {
             name,
-            accesses,
+            source,
+            destination,
             resources,
             effect,
             module_ctor,
@@ -636,7 +629,8 @@ impl ProcessorModuleBuilder {
             name,
             functionality,
             functions,
-            accesses,
+            source,
+            destination,
             effect,
             resources,
         };
@@ -668,8 +662,17 @@ impl DataMoverBuilder {
         self
     }
 
-    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
-        self.inner = self.inner.with_accesses(accesses);
+    pub fn with_memory_regions(
+        mut self,
+        source: impl Into<MemoryRegionRef>,
+        destination: impl Into<MemoryRegionRef>,
+    ) -> Self {
+        self.inner = self.inner.with_memory_regions(source, destination);
+        self
+    }
+
+    pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
+        self.inner = self.inner.with_resources(resources);
         self
     }
 
@@ -699,8 +702,17 @@ impl ComputeProcessorBuilder {
         self
     }
 
-    pub fn with_accesses(mut self, accesses: Vec<MemoryAccess>) -> Self {
-        self.inner = self.inner.with_accesses(accesses);
+    pub fn with_memory_regions(
+        mut self,
+        source: impl Into<MemoryRegionRef>,
+        destination: impl Into<MemoryRegionRef>,
+    ) -> Self {
+        self.inner = self.inner.with_memory_regions(source, destination);
+        self
+    }
+
+    pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
+        self.inner = self.inner.with_resources(resources);
         self
     }
 
@@ -995,6 +1007,8 @@ fn validate_name_matches_mlir_module(
 }
 
 fn validate_compute_processor(processor: &Processor) -> Result<(), String> {
+    validate_processor_route(processor, "Processor")?;
+
     if processor.functions.len() != processor.functionality.functions.len() {
         return Err(format!(
             "Processor '{}' has {} function processors but functionality has {} ops",
@@ -1041,13 +1055,7 @@ fn validate_compute_processor(processor: &Processor) -> Result<(), String> {
 }
 
 fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
-    let dm_name = processor.name.as_deref().unwrap_or("<unnamed>");
-    if processor.accesses.is_empty() {
-        return Err(format!(
-            "DataMover '{}' must have at least one memory access",
-            dm_name
-        ));
-    }
+    validate_processor_route(processor, "DataMover")?;
 
     if processor.functions.len() != processor.functionality.functions.len() {
         return Err(format!(
@@ -1101,26 +1109,51 @@ fn validate_data_mover_processor(processor: &Processor) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_processor_route(processor: &Processor, kind: &str) -> Result<(), String> {
+    if processor.source.is_some() && processor.destination.is_some() {
+        return Ok(());
+    }
+    if processor.functions.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} '{}' must have exactly one source and one destination memory region",
+        kind,
+        processor.name.as_deref().unwrap_or("<unnamed>")
+    ))
+}
+
 fn validate_processor_memref_regions(processor: &Processor, func: &MlirFunc) -> Result<(), String> {
     let Some(details) = func.mlir_details.as_ref() else {
         return Ok(());
     };
 
-    if details.mem_region_bindings.is_empty() || processor.accesses.is_empty() {
+    if details.mem_region_bindings.is_empty()
+        || processor.source.is_none()
+        || processor.destination.is_none()
+    {
         return Ok(());
     }
 
+    let source = processor
+        .source
+        .as_ref()
+        .expect("checked source exists")
+        .name
+        .as_str();
+    let destination = processor
+        .destination
+        .as_ref()
+        .expect("checked destination exists")
+        .name
+        .as_str();
     for binding in &details.mem_region_bindings {
-        processor
-            .accesses
-            .iter()
-            .find(|access| access.region.name == binding.region)
-            .ok_or_else(|| {
-                format!(
-                    "loom.bind_mem region '{}' for memref '{}' is not present in processor memory accesses",
-                    binding.region, binding.memref
-                )
-            })?;
+        if binding.region != source && binding.region != destination {
+            return Err(format!(
+                "loom.bind_mem region '{}' for memref '{}' is not this processor's source '{}' or destination '{}'",
+                binding.region, binding.memref, source, destination
+            ));
+        }
     }
     Ok(())
 }
@@ -1278,7 +1311,9 @@ mod tests {
         let module =
             MlirModule::from_functions("toy", vec![MlirFunc::named("f1"), MlirFunc::named("f2")]);
 
-        let p = Processor::from_module(
+        let src = MemoryRegion::leaf_concrete(128, 1).with_name("src");
+        let dst = MemoryRegion::leaf_concrete(128, 1).with_name("dst");
+        let p = Processor::from_module_with_regions(
             "proc",
             module,
             vec![
@@ -1293,6 +1328,7 @@ mod tests {
                     scenarios: vec![],
                 },
             ],
+            vec![(src, dst)],
         )
         .expect("from_module should succeed");
 
@@ -1315,7 +1351,11 @@ mod tests {
 
         let proc = Processor::from_module_with_regions("proc", module, perf_models, region_pairs)
             .expect("processor with regions should build");
-        assert_eq!(proc.accesses.len(), 2);
+        assert_eq!(proc.source.as_ref().map(|r| r.name.as_str()), Some("src"));
+        assert_eq!(
+            proc.destination.as_ref().map(|r| r.name.as_str()),
+            Some("dst")
+        );
         assert_eq!(proc.resources.len(), 2);
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));
@@ -1563,6 +1603,7 @@ func.func @tensor_compute(
 
         let err = ComputeProcessor::builder()
             .named("invalid_compute")
+            .with_memory_regions("L1", "L1")
             .from_module(functionality, perf_models)
             .expect_err("tensor compute should be rejected");
         assert!(err.contains("must use memrefs"));
@@ -1612,10 +1653,10 @@ func.func @bad_vec_add(
             .named("bad_compute")
             .with_regions(local_l1_region_pairs())
             .from_module(functionality, perf_models)
-            .expect_err("bound memory region should exist in processor region pairs");
+            .expect_err("bound memory region should match processor route");
         assert!(err.contains("memory interface error"));
         assert!(err.contains("SRAM"));
-        assert!(err.contains("not present in processor memory accesses"));
+        assert!(err.contains("not this processor's source"));
     }
 
     #[test]
@@ -1661,7 +1702,11 @@ func.func @mixed_copy_compute(
             .with_regions(region_pairs)
             .finish()
             .into_processor();
-        assert_eq!(proc.accesses.len(), 2);
+        assert_eq!(proc.source.as_ref().map(|r| r.name.as_str()), Some("src"));
+        assert_eq!(
+            proc.destination.as_ref().map(|r| r.name.as_str()),
+            Some("dst")
+        );
         assert_eq!(proc.resources.len(), 2);
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "src"));
         assert!(proc.resources.iter().any(|r| r.id().as_str() == "dst"));

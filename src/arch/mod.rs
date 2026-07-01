@@ -27,8 +27,7 @@ pub use perf::{
 };
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover, DataMoverBuilder,
-    FunctionDataMover, FunctionProcessor, MemoryAccess, MemoryAccessMode, MemoryRegionRef,
-    Module as ProcessorModule, Processor,
+    FunctionDataMover, FunctionProcessor, MemoryRegionRef, Module as ProcessorModule, Processor,
 };
 pub use resource::{Resource, ResourceId};
 pub use size_dim::{Dimension, SizeExpr, Sym};

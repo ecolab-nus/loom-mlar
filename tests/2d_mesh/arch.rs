@@ -83,8 +83,7 @@ fn matrix_func_perf_model(func: &str) -> FuncPerfModel {
 }
 
 // ── Single core ───────────────────────────────────────────────────────────────
-// Builds one core: matrix_lane + vector_lane on side 0, L1 on side 1, joined
-// by a 2-sided core_router.
+// Builds one core scope: matrix_lane + vector_lane both read/write L1.
 
 pub fn single_core() -> Architecture {
     // ── Dimensions ────────────────────────────────────────────────────────────
@@ -144,8 +143,8 @@ pub fn single_core() -> Architecture {
 }
 
 // ── Full system ───────────────────────────────────────────────────────────────
-// Builds the complete 8×8 mesh torus: mesh array, DRAM, two NoC data movers,
-// and a 3-sided mesh_dram_router connecting them.
+// Builds the complete 8×8 mesh torus: mesh array, DRAM, route-specific data
+// movers, and shared NoC resources.
 
 pub fn scaled_mesh_torus() -> Architecture {
     // ── Dimensions ────────────────────────────────────────────────────────────
@@ -215,11 +214,12 @@ pub fn scaled_mesh_torus() -> Architecture {
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
         .with_regions(vec![(dram.clone(), array_l1.clone())])
+        .with_resources(vec![Resource::exclusive("noc0")])
         .from_module(noc0_func, vec![unicast_perf, bcst_perf])
         .expect("dram_l1_noc0 data mover should link functionality and perf");
 
-    // NoC1: L1→DRAM writeback and L1→L1 gather [%gather_x, %gather_y].
-    //       No DRAM→L1 load or broadcast path.
+    // NoC0 also carries L1→L1 gather [%gather_x, %gather_y]. It is modeled as
+    // a separate executable processor sharing the same `noc0` resource.
     let gather_perf = {
         let pm = FuncPerfModel::builder()
             .symbols(["B", "M", "N", "gather_x", "gather_y", "effective_bandwidth"])
@@ -244,6 +244,16 @@ pub fn scaled_mesh_torus() -> Architecture {
     //         .expect("batch gather perf model should validate");
     //     pm
     // };
+    let l1_l1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/l1_l1_noc0.mlir")
+        .expect("l1_l1_noc0.mlir should parse");
+    let l1_l1 = DataMover::builder()
+        .named("l1_l1_noc0")
+        .with_regions(vec![(array_l1.clone(), array_l1.clone())])
+        .with_resources(vec![Resource::exclusive("noc0")])
+        .from_module(l1_l1_func, vec![gather_perf])
+        .expect("l1_l1_noc0 data mover should link functionality and perf");
+
+    // NoC1: L1→DRAM writeback. No DRAM→L1 load or broadcast path.
     let noc1_unicast_perf = {
         let pm = simple_perf_model("454", "M * N * 2", "150");
         pm.validate().expect("unicast perf model should validate");
@@ -255,20 +265,19 @@ pub fn scaled_mesh_torus() -> Architecture {
     //         .expect("batch noc1 unicast perf model should validate");
     //     pm
     // };
-    let noc1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc1.mlir")
-        .expect("dram_l1_noc1.mlir should parse");
+    let noc1_func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/l1_dram_noc1.mlir")
+        .expect("l1_dram_noc1.mlir should parse");
     let noc1 = DataMover::builder()
-        .named("dram_l1_noc1")
-        .with_regions(vec![
-            (array_l1.clone(), dram.clone()),
-            (array_l1.clone(), array_l1.clone()),
-        ])
-        .from_module(noc1_func, vec![noc1_unicast_perf, gather_perf])
-        .expect("dram_l1_noc1 data mover should link functionality and perf");
+        .named("l1_dram_noc1")
+        .with_regions(vec![(array_l1.clone(), dram.clone())])
+        .with_resources(vec![Resource::exclusive("noc1")])
+        .from_module(noc1_func, vec![noc1_unicast_perf])
+        .expect("l1_dram_noc1 data mover should link functionality and perf");
 
     Architecture::scope("system")
         .with_child(mesh)
         .with_memory(dram)
         .with_processor(noc0.into_processor())
+        .with_processor(l1_l1.into_processor())
         .with_processor(noc1.into_processor())
 }
