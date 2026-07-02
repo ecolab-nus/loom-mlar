@@ -233,7 +233,7 @@ impl MlirEmitter {
         };
         let src_ssa = self.memory_map.get(source.name.as_str())?;
         let dst_ssa = self.memory_map.get(destination.name.as_str())?;
-        Some(format!("[({}, {})]", src_ssa, dst_ssa))
+        Some(format!("from {} to {}", src_ssa, dst_ssa))
     }
 
     /// Recursively emit the full architecture tree, returning the SSA value

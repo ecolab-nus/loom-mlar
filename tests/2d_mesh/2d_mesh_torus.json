@@ -64,7 +64,7 @@
           "name": "dram_l1_noc0",
           "functionality": {
             "name": "dram_l1_noc0",
-            "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir",
+            "source_path": "tests/2d_mesh/processors/dram_l1_noc0.mlir",
             "source_mlir_module_name": "dram_l1_noc0",
             "ops": [
               "dram_to_l1_f16",
@@ -108,7 +108,7 @@
           "name": "l1_l1_noc0",
           "functionality": {
             "name": "l1_l1_noc0",
-            "source_path": "tests/2d_mesh/processors_mlir/l1_l1_noc0.mlir",
+            "source_path": "tests/2d_mesh/processors/l1_l1_noc0.mlir",
             "source_mlir_module_name": "l1_l1_noc0",
             "ops": [
               "l1_gather"
@@ -142,7 +142,7 @@
           "name": "l1_dram_noc1",
           "functionality": {
             "name": "l1_dram_noc1",
-            "source_path": "tests/2d_mesh/processors_mlir/l1_dram_noc1.mlir",
+            "source_path": "tests/2d_mesh/processors/l1_dram_noc1.mlir",
             "source_mlir_module_name": "l1_dram_noc1",
             "ops": [
               "l1_to_dram_f16"
@@ -318,7 +318,7 @@
           "name": "matrix_lane",
           "functionality": {
             "name": "matrix_lane",
-            "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
+            "source_path": "tests/2d_mesh/processors/matrix_lane.mlir",
             "source_mlir_module_name": "matrix_lane",
             "ops": [
               "matmul_f16",
@@ -412,7 +412,7 @@
           "name": "vector_lane",
           "functionality": {
             "name": "vector_lane",
-            "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
+            "source_path": "tests/2d_mesh/processors/vector_lane.mlir",
             "source_mlir_module_name": "vector_lane",
             "ops": [
               "vec_max_f16",

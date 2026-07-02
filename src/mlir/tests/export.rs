@@ -64,6 +64,25 @@ fn compute_builder_self_resource_is_emitted_and_referenced() {
 }
 
 #[test]
+fn processor_route_emits_from_to_syntax() {
+    let l1 = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024))).with_name("L1");
+    let lane = ComputeProcessor::builder()
+        .named("lane")
+        .from_region(l1.clone())
+        .to_region(l1.clone())
+        .finish()
+        .expect("routed compute should build")
+        .into_processor();
+    let arch = Architecture::scope("core")
+        .with_memory(l1)
+        .with_processor(lane);
+    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    assert!(mlir.contains("adl.processor.compute @proc_lane, from %"));
+    assert!(mlir.contains(" to %"));
+    assert!(!mlir.contains("[("));
+}
+
+#[test]
 fn quantitative_resource_is_emitted_with_capacity() {
     let lane = Processor::new("lane").with_resources(vec![Resource::quantitative("l1_port", 2)]);
     let arch = Architecture::scope("core").with_processor(lane);

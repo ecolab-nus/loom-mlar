@@ -179,389 +179,6 @@
     ]
   },
   "graphs": {
-    "mesh": {
-      "schema_version": "mlar.arch-graph.v1",
-      "architecture": {
-        "name": "mesh",
-        "labels": [
-          {
-            "name": "mesh",
-            "dimensions": [
-              {
-                "name": "x",
-                "size_expr": "8",
-                "size_const": 8
-              },
-              {
-                "name": "y",
-                "size_expr": "8",
-                "size_const": 8
-              }
-            ]
-          }
-        ]
-      },
-      "nodes": [
-        {
-          "id": "mem::mesh::L1",
-          "kind": "memory",
-          "name": "L1",
-          "label": "L1",
-          "dimensions": [
-            {
-              "name": "nbank",
-              "size_expr": "16",
-              "size_const": 16
-            }
-          ],
-          "details": {
-            "type": "memory",
-            "region": {
-              "kind": "array",
-              "name": "L1",
-              "dimensions": [
-                {
-                  "name": "nbank",
-                  "size_expr": "16",
-                  "size_const": 16
-                }
-              ],
-              "sub_region": {
-                "kind": "bank",
-                "name": null,
-                "capacity_bytes": {
-                  "expr": "(16 * 5464)",
-                  "const_value": 87424
-                },
-                "access_granularity": {
-                  "expr": "16",
-                  "const_value": 16
-                },
-                "total_size_bytes": 87424
-              },
-              "total_size_bytes": 1398784
-            }
-          }
-        },
-        {
-          "id": "proc::mesh::matrix_lane",
-          "kind": "processor",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "matrix_lane",
-              "functionality": {
-                "name": "matrix_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
-                "source_mlir_module_name": "matrix_lane",
-                "ops": [
-                  "matmul_f16",
-                  "batch_matmul_f16",
-                  "vec_vsum_f16",
-                  "vec_vmax_f16",
-                  "vec_max1_f16",
-                  "elementwise_add_f16",
-                  "elementwise_mul_f16"
-                ],
-                "op_details": [
-                  {
-                    "name": "matmul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "batch_matmul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_vsum_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_vmax_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_max1_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "elementwise_add_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "elementwise_mul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  }
-                ]
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "proc::mesh::vector_lane",
-          "kind": "processor",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "processor",
-            "element": {
-              "kind": "unit",
-              "name": "vector_lane",
-              "functionality": {
-                "name": "vector_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
-                "source_mlir_module_name": "vector_lane",
-                "ops": [
-                  "vec_max_f16",
-                  "vec_exp_f16",
-                  "vec_sum_f16",
-                  "vec_add_f16",
-                  "vec_mul_f16",
-                  "vec_div_f16",
-                  "vec_sub_f16",
-                  "vec_powf_f16",
-                  "vec_cmpf_ogt_f16",
-                  "vec_select_f16",
-                  "vec_log_f16"
-                ],
-                "op_details": [
-                  {
-                    "name": "vec_max_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_exp_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_sum_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_add_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_mul_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_div_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_sub_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_powf_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_cmpf_ogt_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_select_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  },
-                  {
-                    "name": "vec_log_f16",
-                    "source_memories": [
-                      "L1"
-                    ],
-                    "destination_memories": [
-                      "L1"
-                    ]
-                  }
-                ]
-              }
-            },
-            "total_instances": 1
-          }
-        },
-        {
-          "id": "res::mesh::L1",
-          "kind": "resource",
-          "name": "L1",
-          "label": "L1",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "L1",
-              "kind": "quantitative",
-              "capacity": 1398784
-            }
-          }
-        },
-        {
-          "id": "res::mesh::matrix_lane",
-          "kind": "resource",
-          "name": "matrix_lane",
-          "label": "matrix_lane",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "matrix_lane",
-              "kind": "exclusive"
-            }
-          }
-        },
-        {
-          "id": "res::mesh::vector_lane",
-          "kind": "resource",
-          "name": "vector_lane",
-          "label": "vector_lane",
-          "dimensions": [],
-          "details": {
-            "type": "resource",
-            "resource": {
-              "id": "vector_lane",
-              "kind": "exclusive"
-            }
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "edge::mesh::matrix_lane_source_L1",
-          "kind": "intra_graph",
-          "name": "read",
-          "source": "mem::mesh::L1",
-          "target": "proc::mesh::matrix_lane",
-          "source_name": "mem::mesh::L1",
-          "target_name": "proc::mesh::matrix_lane",
-          "label": "read",
-          "direction": "directional"
-        },
-        {
-          "id": "edge::mesh::matrix_lane_destination_L1",
-          "kind": "intra_graph",
-          "name": "write",
-          "source": "proc::mesh::matrix_lane",
-          "target": "mem::mesh::L1",
-          "source_name": "proc::mesh::matrix_lane",
-          "target_name": "mem::mesh::L1",
-          "label": "write",
-          "direction": "directional"
-        },
-        {
-          "id": "edge::mesh::vector_lane_source_L1",
-          "kind": "intra_graph",
-          "name": "read",
-          "source": "mem::mesh::L1",
-          "target": "proc::mesh::vector_lane",
-          "source_name": "mem::mesh::L1",
-          "target_name": "proc::mesh::vector_lane",
-          "label": "read",
-          "direction": "directional"
-        },
-        {
-          "id": "edge::mesh::vector_lane_destination_L1",
-          "kind": "intra_graph",
-          "name": "write",
-          "source": "proc::mesh::vector_lane",
-          "target": "mem::mesh::L1",
-          "source_name": "proc::mesh::vector_lane",
-          "target_name": "mem::mesh::L1",
-          "label": "write",
-          "direction": "directional"
-        }
-      ]
-    },
     "": {
       "schema_version": "mlar.arch-graph.v1",
       "architecture": {
@@ -628,7 +245,7 @@
               "name": "dram_l1_noc0",
               "functionality": {
                 "name": "dram_l1_noc0",
-                "source_path": "tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir",
+                "source_path": "tests/2d_mesh/processors/dram_l1_noc0.mlir",
                 "source_mlir_module_name": "dram_l1_noc0",
                 "ops": [
                   "dram_to_l1_f16",
@@ -672,7 +289,7 @@
               "name": "l1_l1_noc0",
               "functionality": {
                 "name": "l1_l1_noc0",
-                "source_path": "tests/2d_mesh/processors_mlir/l1_l1_noc0.mlir",
+                "source_path": "tests/2d_mesh/processors/l1_l1_noc0.mlir",
                 "source_mlir_module_name": "l1_l1_noc0",
                 "ops": [
                   "l1_gather"
@@ -706,7 +323,7 @@
               "name": "l1_dram_noc1",
               "functionality": {
                 "name": "l1_dram_noc1",
-                "source_path": "tests/2d_mesh/processors_mlir/l1_dram_noc1.mlir",
+                "source_path": "tests/2d_mesh/processors/l1_dram_noc1.mlir",
                 "source_mlir_module_name": "l1_dram_noc1",
                 "ops": [
                   "l1_to_dram_f16"
@@ -882,7 +499,7 @@
               "name": "matrix_lane",
               "functionality": {
                 "name": "matrix_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/matrix_lane.mlir",
+                "source_path": "tests/2d_mesh/processors/matrix_lane.mlir",
                 "source_mlir_module_name": "matrix_lane",
                 "ops": [
                   "matmul_f16",
@@ -976,7 +593,7 @@
               "name": "vector_lane",
               "functionality": {
                 "name": "vector_lane",
-                "source_path": "tests/2d_mesh/processors_mlir/vector_lane.mlir",
+                "source_path": "tests/2d_mesh/processors/vector_lane.mlir",
                 "source_mlir_module_name": "vector_lane",
                 "ops": [
                   "vec_max_f16",
@@ -1249,6 +866,389 @@
           "target": "mem::system_mesh::L1",
           "source_name": "proc::system_mesh::vector_lane",
           "target_name": "mem::system_mesh::L1",
+          "label": "write",
+          "direction": "directional"
+        }
+      ]
+    },
+    "mesh": {
+      "schema_version": "mlar.arch-graph.v1",
+      "architecture": {
+        "name": "mesh",
+        "labels": [
+          {
+            "name": "mesh",
+            "dimensions": [
+              {
+                "name": "x",
+                "size_expr": "8",
+                "size_const": 8
+              },
+              {
+                "name": "y",
+                "size_expr": "8",
+                "size_const": 8
+              }
+            ]
+          }
+        ]
+      },
+      "nodes": [
+        {
+          "id": "mem::mesh::L1",
+          "kind": "memory",
+          "name": "L1",
+          "label": "L1",
+          "dimensions": [
+            {
+              "name": "nbank",
+              "size_expr": "16",
+              "size_const": 16
+            }
+          ],
+          "details": {
+            "type": "memory",
+            "region": {
+              "kind": "array",
+              "name": "L1",
+              "dimensions": [
+                {
+                  "name": "nbank",
+                  "size_expr": "16",
+                  "size_const": 16
+                }
+              ],
+              "sub_region": {
+                "kind": "bank",
+                "name": null,
+                "capacity_bytes": {
+                  "expr": "(16 * 5464)",
+                  "const_value": 87424
+                },
+                "access_granularity": {
+                  "expr": "16",
+                  "const_value": 16
+                },
+                "total_size_bytes": 87424
+              },
+              "total_size_bytes": 1398784
+            }
+          }
+        },
+        {
+          "id": "proc::mesh::matrix_lane",
+          "kind": "processor",
+          "name": "matrix_lane",
+          "label": "matrix_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "matrix_lane",
+              "functionality": {
+                "name": "matrix_lane",
+                "source_path": "tests/2d_mesh/processors/matrix_lane.mlir",
+                "source_mlir_module_name": "matrix_lane",
+                "ops": [
+                  "matmul_f16",
+                  "batch_matmul_f16",
+                  "vec_vsum_f16",
+                  "vec_vmax_f16",
+                  "vec_max1_f16",
+                  "elementwise_add_f16",
+                  "elementwise_mul_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vsum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_vmax_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_max1_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "elementwise_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
+                ]
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "proc::mesh::vector_lane",
+          "kind": "processor",
+          "name": "vector_lane",
+          "label": "vector_lane",
+          "dimensions": [],
+          "details": {
+            "type": "processor",
+            "element": {
+              "kind": "unit",
+              "name": "vector_lane",
+              "functionality": {
+                "name": "vector_lane",
+                "source_path": "tests/2d_mesh/processors/vector_lane.mlir",
+                "source_mlir_module_name": "vector_lane",
+                "ops": [
+                  "vec_max_f16",
+                  "vec_exp_f16",
+                  "vec_sum_f16",
+                  "vec_add_f16",
+                  "vec_mul_f16",
+                  "vec_div_f16",
+                  "vec_sub_f16",
+                  "vec_powf_f16",
+                  "vec_cmpf_ogt_f16",
+                  "vec_select_f16",
+                  "vec_log_f16"
+                ],
+                "op_details": [
+                  {
+                    "name": "vec_max_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_exp_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sum_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_add_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_mul_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_div_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_sub_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_powf_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_cmpf_ogt_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_select_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "vec_log_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  }
+                ]
+              }
+            },
+            "total_instances": 1
+          }
+        },
+        {
+          "id": "res::mesh::L1",
+          "kind": "resource",
+          "name": "L1",
+          "label": "L1",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "L1",
+              "kind": "quantitative",
+              "capacity": 1398784
+            }
+          }
+        },
+        {
+          "id": "res::mesh::matrix_lane",
+          "kind": "resource",
+          "name": "matrix_lane",
+          "label": "matrix_lane",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "matrix_lane",
+              "kind": "exclusive"
+            }
+          }
+        },
+        {
+          "id": "res::mesh::vector_lane",
+          "kind": "resource",
+          "name": "vector_lane",
+          "label": "vector_lane",
+          "dimensions": [],
+          "details": {
+            "type": "resource",
+            "resource": {
+              "id": "vector_lane",
+              "kind": "exclusive"
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge::mesh::matrix_lane_source_L1",
+          "kind": "intra_graph",
+          "name": "read",
+          "source": "mem::mesh::L1",
+          "target": "proc::mesh::matrix_lane",
+          "source_name": "mem::mesh::L1",
+          "target_name": "proc::mesh::matrix_lane",
+          "label": "read",
+          "direction": "directional"
+        },
+        {
+          "id": "edge::mesh::matrix_lane_destination_L1",
+          "kind": "intra_graph",
+          "name": "write",
+          "source": "proc::mesh::matrix_lane",
+          "target": "mem::mesh::L1",
+          "source_name": "proc::mesh::matrix_lane",
+          "target_name": "mem::mesh::L1",
+          "label": "write",
+          "direction": "directional"
+        },
+        {
+          "id": "edge::mesh::vector_lane_source_L1",
+          "kind": "intra_graph",
+          "name": "read",
+          "source": "mem::mesh::L1",
+          "target": "proc::mesh::vector_lane",
+          "source_name": "mem::mesh::L1",
+          "target_name": "proc::mesh::vector_lane",
+          "label": "read",
+          "direction": "directional"
+        },
+        {
+          "id": "edge::mesh::vector_lane_destination_L1",
+          "kind": "intra_graph",
+          "name": "write",
+          "source": "proc::mesh::vector_lane",
+          "target": "mem::mesh::L1",
+          "source_name": "proc::mesh::vector_lane",
+          "target_name": "mem::mesh::L1",
           "label": "write",
           "direction": "directional"
         }

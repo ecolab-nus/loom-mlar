@@ -22,7 +22,7 @@ fn route_regions() -> (MemoryRegion, MemoryRegion) {
 
 #[test]
 fn processor_builder_rejects_name_mismatch_with_mlir_module() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("vector_lane should parse");
     let perf_models = vec![FuncPerfModel::trivial(); module.functions.len()];
 
@@ -54,7 +54,7 @@ fn processor_builder_rejects_functionality_perf_count_mismatch() {
 
 #[test]
 fn data_mover_validation_rejects_missing_memref_interface() {
-    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let functionality = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("vector_lane should parse");
     let perf_models = vec![FuncPerfModel::trivial(); functionality.functions.len()];
 
@@ -76,11 +76,11 @@ fn data_mover_validation_rejects_missing_memref_interface() {
 
 #[test]
 fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("vector_lane.mlir should parse");
     assert_eq!(
         module.path.as_deref(),
-        Some("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+        Some("tests/2d_mesh/processors/vector_lane.mlir")
     );
     assert_eq!(module.module_name.as_deref(), Some("vector_lane"));
     assert!(
@@ -97,14 +97,14 @@ fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
     );
 
     // Uppercase alias naming is also supported.
-    let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let alias_module = MLIRModuleRef::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("alias constructor should parse");
     assert_eq!(alias_module.module_name.as_deref(), Some("vector_lane"));
 }
 
 #[test]
 fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/matrix_lane.mlir")
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors/matrix_lane.mlir")
         .expect("matrix_lane.mlir should parse");
     let func = module
         .functions
@@ -148,7 +148,7 @@ fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
 
 #[test]
 fn schedule_serializes_and_deserializes() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("vector_lane MLIR should parse");
     let add_func = module
         .functions
@@ -238,7 +238,7 @@ fn schedule_serializes_and_deserializes() {
 
 #[test]
 fn schedule_serializes_and_deserializes_with_absent_optional_fields() {
-    let func = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")
+    let func = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")
         .expect("vector_lane MLIR should parse")
         .functions
         .into_iter()

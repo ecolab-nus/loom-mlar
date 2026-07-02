@@ -57,7 +57,7 @@ fn vector_perf() -> FuncPerfModel {
 
 let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
     .with_name("L1");
-let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")?;
+let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")?;
 let perf_models = module.functions.iter().map(|_| vector_perf()).collect();
 
 let vector_lane = ComputeProcessor::builder()
@@ -85,7 +85,7 @@ let dram = MemoryRegion::bank(SizeExpr::Const(8192), SizeExpr::Const(196608))
 let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
     .with_name("array_L1");
 
-let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/dram_l1_noc0.mlir")?;
+let module = MlirModule::from_mlir("tests/2d_mesh/processors/dram_l1_noc0.mlir")?;
 let perf_models = module
     .functions
     .iter()

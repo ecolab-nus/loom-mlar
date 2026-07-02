@@ -34,10 +34,11 @@ symbolically outside compute IR.
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md)
 
-The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs).
+The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs),
+with processor MLIR and performance models under [tests/2d_mesh/processors/](tests/2d_mesh/processors/).
 It builds a scoped system containing an 8x8 mesh of cores, DRAM, route-specific
-data movers, NoC resources, MLIR functionality modules, MLIR export, schedule
-evaluation, and viewer JSON export.
+data movers, NoC resources, MLIR export, schedule evaluation, and viewer JSON
+export.
 
 ## Minimal Example
 
@@ -47,7 +48,7 @@ use mlar_rust::*;
 let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
     .with_name("L1");
 
-let module = MlirModule::from_mlir("tests/2d_mesh/processors_mlir/vector_lane.mlir")?;
+let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")?;
 let perf = module
     .functions
     .iter()

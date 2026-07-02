@@ -7,8 +7,8 @@ module @arch_system {
   %5 = adl.memory.array "mem_L1", [%4] of %3
   %6 = adl.resource.exclusive "res_matrix_lane"
   %7 = adl.resource.exclusive "res_vector_lane"
-  %8 = adl.processor.compute @proc_matrix_lane, [(%5, %5)], with [%6]
-  %9 = adl.processor.compute @proc_vector_lane, [(%5, %5)], with [%7]
+  %8 = adl.processor.compute @proc_matrix_lane, from %5 to %5, with [%6]
+  %9 = adl.processor.compute @proc_vector_lane, from %5 to %5, with [%7]
   %10 = adl.arch.compose "arch_mesh", arch[%8, %9], mem[%5]
   %11 = adl.spatial_dim "dim_x", 8
   %12 = adl.spatial_dim "dim_y", 8
@@ -16,9 +16,9 @@ module @arch_system {
   %14 = adl.arch.scale "arch_mesh", [%11, %12] of %10, mem_region %13
   %15 = adl.resource.exclusive "res_noc0"
   %16 = adl.resource.exclusive "res_noc1"
-  %17 = adl.processor.dmover @proc_dram_l1_noc0, [(%2, %13)], with [%15]
-  %18 = adl.processor.dmover @proc_l1_l1_noc0, [(%13, %13)], with [%15]
-  %19 = adl.processor.dmover @proc_l1_dram_noc1, [(%13, %2)], with [%16]
+  %17 = adl.processor.dmover @proc_dram_l1_noc0, from %2 to %13, with [%15]
+  %18 = adl.processor.dmover @proc_l1_l1_noc0, from %13 to %13, with [%15]
+  %19 = adl.processor.dmover @proc_l1_dram_noc1, from %13 to %2, with [%16]
   %20 = adl.arch.compose "arch_system", arch[%14, %17, %18, %19], mem[%2]
 
   // Matrix lane compute semantics — fp16 matrix kernels and row-wise reductions.
