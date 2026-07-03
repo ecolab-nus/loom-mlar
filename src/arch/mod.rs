@@ -2,6 +2,7 @@ pub mod architecture;
 pub mod memory;
 pub mod network;
 pub mod perf;
+pub mod perf_toml;
 pub mod processor;
 pub mod resource;
 pub mod size_dim;
@@ -24,6 +25,9 @@ pub use network::{
 };
 pub use perf::{
     FuncPerfModel, FuncPerfModelBuilder, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr,
+};
+pub use perf_toml::{
+    PerfModelToml, PerfRuleToml, PerfScenarioToml, PerfTomlError, PerfTomlSpec, SimpleCostToml,
 };
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover, DataMoverBuilder,

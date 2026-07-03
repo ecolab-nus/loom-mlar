@@ -1,0 +1,4 @@
+[models.l1_to_dram_f16.simple]
+fixed_latency = "454"
+volume = "M * N * 2"
+throughput = "150"

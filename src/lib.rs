@@ -12,8 +12,9 @@ pub use arch::{
     Architecture, ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover,
     DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
     FunctionProcessor, MemoryBank, MemoryRegion, MemoryRegionRef, MeshLink, MeshNetwork,
-    MeshNetworkInterface, PerfScenario, Processor, ProcessorModule, Resource, ResourceId,
-    ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
+    MeshNetworkInterface, PerfModelToml, PerfRuleToml, PerfScenario, PerfScenarioToml,
+    PerfTomlError, PerfTomlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
+    ScaleOutNetworkBindings, SimpleCostToml, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
     architecture_to_mlir,
 };
 

@@ -86,6 +86,9 @@ let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
 Use `FuncPerfModel::builder()` for new performance models. If global or
 scenario constraints are omitted, they default to `true`; if symbols are
 omitted, they are inferred from the constraints and time-cost expressions.
+For hand-authored descriptive models,
+`PerfTomlSpec::from_file(...).models_for_module(...)` loads TOML files that use
+the same expression and constraint syntax.
 
 ```rust
 use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost};

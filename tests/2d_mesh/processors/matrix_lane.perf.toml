@@ -1,0 +1,56 @@
+[models.elementwise_add_f16.simple]
+fixed_latency = "10"
+volume = "M * N"
+throughput = "43"
+
+[models.elementwise_mul_f16.simple]
+fixed_latency = "10"
+volume = "M * N"
+throughput = "15"
+
+[models.vec_vsum_f16.simple]
+fixed_latency = "1"
+volume = "P * R"
+throughput = "128"
+
+[models.vec_vmax_f16.simple]
+fixed_latency = "1"
+volume = "P * R"
+throughput = "128"
+
+[models.vec_max1_f16.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "128"
+
+[[rules]]
+match_prefix = "matmul"
+constraints = "M >= 32 && N >= 32 && K >= 32"
+
+[[rules.scenarios]]
+when = "M * N >= 8192"
+fixed_latency = "M * N / 2"
+volume = "2 * M * N * K"
+throughput = "716"
+
+[[rules.scenarios]]
+when = "M * N < 8192"
+fixed_latency = "M * N / 2"
+volume = "2 * M * N * K"
+throughput = "(M * N / 8192) * 716"
+
+[[rules]]
+match_prefix = "batch_matmul"
+constraints = "B >= 1 && M >= 32 && N >= 32 && K >= 32"
+
+[[rules.scenarios]]
+when = "M * N >= 8192"
+fixed_latency = "M * N / 2"
+volume = "2 * B * M * N * K"
+throughput = "716"
+
+[[rules.scenarios]]
+when = "M * N < 8192"
+fixed_latency = "M * N / 2"
+volume = "2 * B * M * N * K"
+throughput = "(M * N / 8192) * 716"

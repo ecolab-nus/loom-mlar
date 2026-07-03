@@ -75,6 +75,41 @@ When the MLIR file has `module @vector_lane`, the builder name must also be
 `vector_lane`. Each parsed function must have exactly one matching performance
 model.
 
+## Load Performance From TOML
+
+For hand-authored models, use `PerfTomlSpec` to keep the formulas outside Rust:
+
+```toml
+[models.vec_add_f16.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "1024"
+
+[[rules]]
+match_prefix = "matmul"
+constraints = "M >= 32 && N >= 32 && K >= 32"
+
+[[rules.scenarios]]
+when = "M * N >= 8192"
+fixed_latency = "M * N / 2"
+volume = "2 * M * N * K"
+throughput = "716"
+```
+
+```rust
+use mlar_rust::*;
+
+let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")?;
+let perf_models = PerfTomlSpec::from_file(
+    "tests/2d_mesh/processors/vector_lane.perf.toml",
+)?
+.models_for_module(&module)?;
+```
+
+`models` are matched by exact function name. `rules` are tried after exact
+matches and currently support `match_name` and `match_prefix`. Expressions and
+constraints use the same parser as `Expr::parse` and `ConstraintExpr::parse`.
+
 ## Build A Data Mover
 
 ```rust

@@ -1,5 +1,17 @@
-use crate::processors::{dram_l1_noc0, l1_dram_noc1, l1_l1_noc0, matrix_lane, vector_lane};
 use mlar_rust::*;
+
+const PROCESSOR_DIR: &str = "tests/2d_mesh/processors";
+
+fn functionality_and_perf(processor_name: &str) -> (MlirModule, Vec<FuncPerfModel>) {
+    let mlir_path = format!("{PROCESSOR_DIR}/{processor_name}.mlir");
+    let perf_path = format!("{PROCESSOR_DIR}/{processor_name}.perf.toml");
+    let functionality = MlirModule::from_mlir(&mlir_path)
+        .unwrap_or_else(|err| panic!("{processor_name}.mlir should parse: {err}"));
+    let perf = PerfTomlSpec::from_file(&perf_path)
+        .and_then(|spec| spec.models_for_module(&functionality))
+        .unwrap_or_else(|err| panic!("{processor_name}.perf.toml should load: {err}"));
+    (functionality, perf)
+}
 
 // ── Single core ───────────────────────────────────────────────────────────────
 // Builds one core scope: matrix_lane + vector_lane both read/write L1.
@@ -16,8 +28,7 @@ pub fn single_core() -> Architecture {
         .with_name("L1");
 
     // ── Vector lane ───────────────────────────────────────────────────────────
-    let vector_lane_func = vector_lane::functionality();
-    let vector_lane_perf = vector_lane::perf(&vector_lane_func);
+    let (vector_lane_func, vector_lane_perf) = functionality_and_perf("vector_lane");
     let vector_lane_proc = ComputeProcessor::builder()
         .named("vector_lane")
         .from_region(l1.clone())
@@ -29,8 +40,7 @@ pub fn single_core() -> Architecture {
         .into_processor();
 
     // ── Matrix lane ───────────────────────────────────────────────────────────
-    let matrix_lane_func = matrix_lane::functionality();
-    let matrix_lane_perf = matrix_lane::perf(&matrix_lane_func);
+    let (matrix_lane_func, matrix_lane_perf) = functionality_and_perf("matrix_lane");
     let matrix_lane_proc = ComputeProcessor::builder()
         .named("matrix_lane")
         .from_region(l1.clone())
@@ -76,8 +86,7 @@ pub fn scaled_mesh_torus() -> Architecture {
     // ── NoC data movers ───────────────────────────────────────────────────────
     // NoC0: DRAM→L1 unicast plus 2D broadcast [%bcst_x, %bcst_y].
     //       Read-only — no L1→DRAM writeback path.
-    let noc0_func = dram_l1_noc0::functionality();
-    let noc0_perf = dram_l1_noc0::perf(&noc0_func);
+    let (noc0_func, noc0_perf) = functionality_and_perf("dram_l1_noc0");
     let noc0 = DataMover::builder()
         .named("dram_l1_noc0")
         .from_region(dram.clone())
@@ -90,8 +99,7 @@ pub fn scaled_mesh_torus() -> Architecture {
 
     // NoC0 also carries L1→L1 gather [%gather_x, %gather_y]. It is modeled as
     // a separate executable processor sharing the same `noc0` resource.
-    let l1_l1_func = l1_l1_noc0::functionality();
-    let l1_l1_perf = l1_l1_noc0::perf(&l1_l1_func);
+    let (l1_l1_func, l1_l1_perf) = functionality_and_perf("l1_l1_noc0");
     let l1_l1 = DataMover::builder()
         .named("l1_l1_noc0")
         .from_region(array_l1.clone())
@@ -103,8 +111,7 @@ pub fn scaled_mesh_torus() -> Architecture {
         .expect("l1_l1_noc0 data mover should link functionality and perf");
 
     // NoC1: L1→DRAM writeback. No DRAM→L1 load or broadcast path.
-    let noc1_func = l1_dram_noc1::functionality();
-    let noc1_perf = l1_dram_noc1::perf(&noc1_func);
+    let (noc1_func, noc1_perf) = functionality_and_perf("l1_dram_noc1");
     let noc1 = DataMover::builder()
         .named("l1_dram_noc1")
         .from_region(array_l1.clone())

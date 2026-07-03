@@ -1,0 +1,87 @@
+[[rules]]
+match_prefix = "vec_max"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "1024"
+
+[[rules]]
+match_prefix = "vec_sum"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "1024"
+
+[[rules]]
+match_prefix = "vec_add"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "1024"
+
+[[rules]]
+match_prefix = "vec_mul"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "1024"
+
+[[rules]]
+match_prefix = "vec_exp"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "7"
+
+[[rules]]
+match_prefix = "vec_log"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "7"
+
+[[rules]]
+match_prefix = "vec_div"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "6"
+
+[[rules]]
+match_prefix = "vec_sub"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "4"
+
+[[rules]]
+match_prefix = "vec_powf"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "7"
+
+[[rules]]
+match_prefix = "vec_cmpf_ogt"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "8"
+
+[[rules]]
+match_prefix = "vec_select"
+
+[rules.simple]
+fixed_latency = "1"
+volume = "L"
+throughput = "8"
