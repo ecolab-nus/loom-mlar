@@ -23,9 +23,9 @@ MLAR describes hardware as:
 
 Functionality lives in MLIR modules that use ordinary `func.func`/`linalg.*`
 operations plus Loom annotations such as `loom.sym`, `loom.bind_shape`,
-`loom.bind_mem`, `loom.copy`, and `loom.gather`. Performance models are kept in
-Rust because timing, throughput, and scenario constraints are easier to express
-symbolically outside compute IR.
+`loom.bind_mem`, `loom.copy`, and `loom.gather`. Performance models are
+represented in Rust and can be loaded from YAML because timing, throughput, and
+scenario constraints are easier to express symbolically outside compute IR.
 
 ## Documentation
 
@@ -33,6 +33,7 @@ symbolically outside compute IR.
 - [Software Architecture and File Contents](docs/software-architecture.md)
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md)
+- [Performance YAML](docs/perf-yaml.md)
 
 The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs),
 with processor MLIR and performance models under [tests/2d_mesh/processors/](tests/2d_mesh/processors/).
@@ -87,7 +88,7 @@ Use `FuncPerfModel::builder()` for new performance models. If global or
 scenario constraints are omitted, they default to `true`; if symbols are
 omitted, they are inferred from the constraints and time-cost expressions.
 For hand-authored descriptive models,
-`PerfTomlSpec::from_file(...).models_for_module(...)` loads TOML files that use
+`PerfYamlSpec::from_file(...).models_for_module(...)` loads YAML files that use
 the same expression and constraint syntax.
 
 ```rust

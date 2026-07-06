@@ -4,12 +4,12 @@ const PROCESSOR_DIR: &str = "tests/2d_mesh/processors";
 
 fn functionality_and_perf(processor_name: &str) -> (MlirModule, Vec<FuncPerfModel>) {
     let mlir_path = format!("{PROCESSOR_DIR}/{processor_name}.mlir");
-    let perf_path = format!("{PROCESSOR_DIR}/{processor_name}.perf.toml");
+    let perf_path = format!("{PROCESSOR_DIR}/{processor_name}.perf.yaml");
     let functionality = MlirModule::from_mlir(&mlir_path)
         .unwrap_or_else(|err| panic!("{processor_name}.mlir should parse: {err}"));
-    let perf = PerfTomlSpec::from_file(&perf_path)
+    let perf = PerfYamlSpec::from_file(&perf_path)
         .and_then(|spec| spec.models_for_module(&functionality))
-        .unwrap_or_else(|err| panic!("{processor_name}.perf.toml should load: {err}"));
+        .unwrap_or_else(|err| panic!("{processor_name}.perf.yaml should load: {err}"));
     (functionality, perf)
 }
 

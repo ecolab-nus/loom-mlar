@@ -12,10 +12,10 @@ pub use arch::{
     Architecture, ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover,
     DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
     FunctionProcessor, MemoryBank, MemoryRegion, MemoryRegionRef, MeshLink, MeshNetwork,
-    MeshNetworkInterface, PerfModelToml, PerfRuleToml, PerfScenario, PerfScenarioToml,
-    PerfTomlError, PerfTomlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
-    ScaleOutNetworkBindings, SimpleCostToml, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeExpr,
-    architecture_to_mlir,
+    MeshNetworkInterface, PerfFunctionYaml, PerfScenario, PerfScenarioYaml, PerfYamlError,
+    PerfYamlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
+    ScaleOutNetworkBindings, SimpleCostYaml, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeCostYaml,
+    TimeExpr, architecture_to_mlir,
 };
 
 // Re-export commonly used math types

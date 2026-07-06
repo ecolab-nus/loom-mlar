@@ -1,0 +1,12 @@
+time_costs:
+  l1_gather: &l1_gather
+    simple:
+      fixed_latency: "344"
+      volume: "B * M * N * 2 * effective_bandwidth"
+      throughput: "28"
+
+functions:
+  l1_gather:
+    symbols: ["B", "M", "N", "gather_x", "gather_y", "effective_bandwidth"]
+    scenarios:
+      - time_cost: *l1_gather

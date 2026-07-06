@@ -99,6 +99,11 @@ Each `PerfScenario` contains:
 fixed_latency + volume / throughput
 ```
 
+The YAML form mirrors this hierarchy: each function model contains `scenarios`,
+each scenario contains its local `constraints`, and each scenario's cost is
+nested under a variant such as `time_cost.simple`. See
+[Performance YAML](perf-yaml.md) for the full hand-authored YAML schema.
+
 The builder infers symbols from constraints and time-cost expressions unless
 symbols are declared explicitly. Validation checks that all symbols used by the
 model and by the linked function shape metadata are declared. It does not check
