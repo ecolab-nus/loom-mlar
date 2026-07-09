@@ -85,12 +85,12 @@ Schedule representation and in-process performance evaluation.
 
 - `schedule.rs`: `Schedule` enum and `SymbolicMapping`.
 - `evaluate.rs`: `evaluate(&Schedule, &Architecture)`, function lookup,
-  scenario fusion, sequential scenario cartesian products, and symbolic mapping
-  substitution.
+  scenario fusion, sequential/parallel scenario cartesian products, and
+  symbolic mapping substitution.
 - `mod.rs`: public schedule and parser re-exports.
 
-Current evaluation supports `Func` and `Sequential`. `Parallel` is represented
-and serialized, but evaluation is not implemented.
+Current evaluation supports `Func`, `Sequential`, and `Parallel`. Sequential
+composition sums child costs; parallel composition takes the maximum child cost.
 
 ## `src/visualization`
 

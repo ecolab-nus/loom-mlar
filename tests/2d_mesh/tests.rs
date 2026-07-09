@@ -5,23 +5,10 @@ use std::process::Command;
 use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
 use mlar_rust::*;
 
-use crate::arch::scaled_mesh_torus;
+use crate::arch::{scaled_mesh_torus, single_core};
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors/vector_lane.mlir";
-const MATRIX_LANE_MLIR: &str = "tests/2d_mesh/processors/matrix_lane.mlir";
-const DRAM_L1_NOC0_MLIR: &str = "tests/2d_mesh/processors/dram_l1_noc0.mlir";
-
-fn mlir_function_text<'a>(source: &'a str, name: &str) -> &'a str {
-    let marker = format!("func.func @{name}(");
-    let start = source
-        .find(&marker)
-        .unwrap_or_else(|| panic!("missing MLIR function {name}"));
-    let rest = &source[start..];
-    let end = rest[marker.len()..]
-        .find("\nfunc.func @")
-        .map_or(rest.len(), |offset| marker.len() + offset);
-    &rest[..end]
-}
+const SCHEDULE_DIR: &str = "tests/2d_mesh/schedules";
 
 /// Look up the full function name for a given operation prefix (e.g. `"vec_add"`)
 /// from the vector-lane MLIR module. This makes tests resilient to datatype changes
@@ -41,6 +28,31 @@ fn mesh_node(arch: &Architecture) -> &Architecture {
         .iter()
         .find(|child| child.name() == Some("mesh"))
         .expect("top-level scope should contain mesh child scope")
+}
+
+fn load_example_schedule(name: &str) -> Schedule {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(SCHEDULE_DIR)
+        .join(name);
+    let json = fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("example schedule {path:?} should be readable: {err}"));
+    serde_json::from_str(&json)
+        .unwrap_or_else(|err| panic!("example schedule {path:?} should parse: {err}"))
+}
+
+fn node_scenarios(schedule: &Schedule) -> &[PerfScenario] {
+    match schedule {
+        Schedule::Func {
+            scenarios: Some(s), ..
+        }
+        | Schedule::Sequential {
+            scenarios: Some(s), ..
+        }
+        | Schedule::Parallel {
+            scenarios: Some(s), ..
+        } => s,
+        _ => panic!("expected evaluated schedule node"),
+    }
 }
 
 #[test]
@@ -611,6 +623,93 @@ fn test_export_2d_mesh_torus_viewer_json() {
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("web-visualization/public/sample-viewer.json");
     fs::write(out_path, &json).expect("Failed to write viewer JSON file");
+}
+
+#[test]
+fn test_2d_mesh_example_schedules() {
+    let core = single_core();
+
+    let vector = load_example_schedule("core_vector_two_ops.json");
+    let vector_result = evaluate(&vector, &core).expect("vector example schedule should evaluate");
+    let vector_scenarios = node_scenarios(&vector_result);
+    assert_eq!(vector_scenarios.len(), 1);
+    assert_eq!(
+        vector_scenarios[0]
+            .time_cost
+            .to_expr()
+            .substitute(&[
+                (Sym::new("BM"), Expr::Const(32)),
+                (Sym::new("BN"), Expr::Const(32)),
+            ])
+            .eval_const(),
+        Some(4)
+    );
+
+    let parallel_vector = load_example_schedule("core_parallel_vector.json");
+    let parallel_vector_result = evaluate(&parallel_vector, &core)
+        .expect("parallel vector example schedule should evaluate");
+    let parallel_vector_scenarios = node_scenarios(&parallel_vector_result);
+    assert_eq!(parallel_vector_scenarios.len(), 1);
+    assert_eq!(
+        parallel_vector_scenarios[0]
+            .time_cost
+            .to_expr()
+            .substitute(&[
+                (Sym::new("BM"), Expr::Const(32)),
+                (Sym::new("BN"), Expr::Const(32)),
+            ])
+            .eval_const(),
+        Some(147)
+    );
+
+    let nested = load_example_schedule("core_nested_parallel_sequential.json");
+    let nested_result = evaluate(&nested, &core).expect("nested example schedule should evaluate");
+    let nested_scenarios = node_scenarios(&nested_result);
+    assert_eq!(nested_scenarios.len(), 1);
+    assert_eq!(
+        nested_scenarios[0]
+            .time_cost
+            .to_expr()
+            .substitute(&[
+                (Sym::new("BM"), Expr::Const(32)),
+                (Sym::new("BN"), Expr::Const(32)),
+            ])
+            .eval_const(),
+        Some(149)
+    );
+
+    let matmul = load_example_schedule("core_matmul.json");
+    let matmul_result = evaluate(&matmul, &core).expect("matmul example schedule should evaluate");
+    let matmul_scenarios = node_scenarios(&matmul_result);
+    assert_eq!(matmul_scenarios.len(), 2);
+    for scenario in matmul_scenarios {
+        let mut free = scenario.time_cost.to_expr().free_symbols();
+        free.extend(scenario.constraints.free_symbols());
+        assert!(!free.contains(&Sym::new("M")));
+        assert!(!free.contains(&Sym::new("N")));
+        assert!(!free.contains(&Sym::new("K")));
+        assert!(free.contains(&Sym::new("BM")));
+        assert!(free.contains(&Sym::new("BN")));
+        assert!(free.contains(&Sym::new("BK")));
+    }
+
+    let system = scaled_mesh_torus();
+    let data_roundtrip = load_example_schedule("system_data_roundtrip.json");
+    let data_result =
+        evaluate(&data_roundtrip, &system).expect("system data example schedule should evaluate");
+    let data_scenarios = node_scenarios(&data_result);
+    assert_eq!(data_scenarios.len(), 1);
+    assert_eq!(
+        data_scenarios[0]
+            .time_cost
+            .to_expr()
+            .substitute(&[
+                (Sym::new("BM"), Expr::Const(30)),
+                (Sym::new("BN"), Expr::Const(25)),
+            ])
+            .eval_const(),
+        Some(928)
+    );
 }
 
 /// Evaluate a sequential schedule of different vector-lane instructions

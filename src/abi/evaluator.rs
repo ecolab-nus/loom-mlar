@@ -212,6 +212,53 @@ mod tests {
     }
 
     #[test]
+    fn evaluator_input_applies_schedule_symbolic_mapping() {
+        let arch = test_arch();
+        let json = r#"{
+            "Func": {
+                "func": {
+                    "name": "vec_add_f32",
+                    "symbols": ["L"],
+                    "sym_map": {
+                        "entries": [
+                            [
+                                "L",
+                                {
+                                    "Mul": [
+                                        { "Sym": "BM" },
+                                        { "Sym": "BN" }
+                                    ]
+                                }
+                            ]
+                        ]
+                    }
+                }
+            }
+        }"#;
+        let input: Schedule = serde_json::from_str(json).expect("mapped schedule should parse");
+
+        let result = evaluate(&input, &arch).expect("mapped schedule should evaluate");
+        let scenarios = match &result {
+            Schedule::Func {
+                scenarios: Some(s), ..
+            } => s,
+            _ => panic!("expected evaluated Func schedule"),
+        };
+
+        let expr = scenarios[0].time_cost.to_expr();
+        let free = expr.free_symbols();
+        assert!(!free.contains(&Sym::new("L")));
+        assert!(free.contains(&Sym::new("BM")));
+        assert!(free.contains(&Sym::new("BN")));
+
+        let concrete = expr.substitute(&[
+            (Sym::new("BM"), Expr::Const(32)),
+            (Sym::new("BN"), Expr::Const(32)),
+        ]);
+        assert_eq!(concrete.eval_const(), Some(2));
+    }
+
+    #[test]
     fn evaluator_preserves_func_op_label() {
         let arch = test_arch();
         let json = r#"{"Func":{"func":{"name":"vec_add_f32","symbols":["L"],"op_label":"linalg.map(%arg0, %arg1)","read":"%arg0: 0","write":"%arg1: 1"}}}"#;

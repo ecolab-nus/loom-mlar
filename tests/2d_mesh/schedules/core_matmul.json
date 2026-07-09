@@ -1,0 +1,16 @@
+{
+  "Func": {
+    "func": {
+      "name": "matmul_f16",
+      "symbols": ["M", "N", "K"],
+      "op_label": "example.matmul",
+      "sym_map": {
+        "entries": [
+          ["M", { "Sym": "BM" }],
+          ["N", { "Sym": "BN" }],
+          ["K", { "Sym": "BK" }]
+        ]
+      }
+    }
+  }
+}

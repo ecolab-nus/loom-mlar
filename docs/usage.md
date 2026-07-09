@@ -302,10 +302,68 @@ let evaluated = evaluate(&schedule, &arch)?;
 
 Evaluation fills `scenarios` on the returned schedule. For sequential schedules,
 it builds the cartesian product of child scenarios, sums costs, and ANDs
-constraints.
+constraints. For parallel schedules, it builds the same cartesian product, takes
+the maximum child cost, and ANDs constraints.
 
-`Schedule::Parallel` currently serializes and deserializes, but evaluating it is
-not implemented.
+## Schedule JSON Input
+
+`Schedule` uses Serde's externally tagged enum format. A function invocation is
+encoded as a `Func` node, and call-site symbol bindings are stored on
+`Func.func.sym_map`. For example, this evaluator input maps the MLIR/perf-model
+symbol `L` to the schedule expression `BM * BN`:
+
+```json
+{
+  "Func": {
+    "func": {
+      "name": "vec_add_f32",
+      "symbols": ["L"],
+      "sym_map": {
+        "entries": [
+          [
+            "L",
+            {
+              "Mul": [
+                { "Sym": "BM" },
+                { "Sym": "BN" }
+              ]
+            }
+          ]
+        ]
+      }
+    }
+  }
+}
+```
+
+During evaluation, `sym_map.entries` are applied to the matched performance
+model's constraints and time costs. If the architecture model contains a cost
+like `1 + L / 1024`, the evaluated scenario will contain
+`1 + (BM * BN) / 1024`. Symbols without a mapping are left unchanged.
+
+Sequential schedules wrap child nodes in `Sequential.schedules`:
+
+```json
+{
+  "Sequential": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "vec_add_f32",
+            "symbols": ["L"],
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
 
 ## Generate Standalone Evaluator Binaries
 

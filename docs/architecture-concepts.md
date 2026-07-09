@@ -180,8 +180,8 @@ serialize with Serde and can carry optional evaluated scenarios.
   applies the function's `sym_map`.
 - `Sequential`: recursively evaluates children and produces the cartesian
   product of child scenarios, summing costs and AND-ing constraints.
-
-`Parallel` evaluation is not implemented and currently panics if encountered.
+- `Parallel`: recursively evaluates children and produces the cartesian product
+  of child scenarios, taking the maximum cost and AND-ing constraints.
 
 ## Export And Visualization
 

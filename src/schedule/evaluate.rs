@@ -2,11 +2,7 @@
 //!
 //! Evaluates a [`Schedule`] tree by matching each leaf [`MlirFunc`] to its
 //! [`FunctionProcessor`] in the architecture, extracting the [`FuncPerfModel`],
-//! and combining scenarios across the sequential composition.
-//!
-//! **Parallel schedules are not supported in this prototype.** Only
-//! [`Schedule::Sequential`] and [`Schedule::Func`] are handled; encountering
-//! a [`Schedule::Parallel`] panics.
+//! and combining scenarios across sequential and parallel compositions.
 //!
 //! # Algorithm
 //!
@@ -19,6 +15,10 @@
 //! 2. **Sequential**: recursively evaluate every sub-schedule, then compute the
 //!    cartesian product of all sub-schedule scenarios. Each product element
 //!    sums the time costs and ANDs the constraints.
+//!
+//! 3. **Parallel**: recursively evaluate every sub-schedule, then compute the
+//!    cartesian product of all sub-schedule scenarios. Each product element
+//!    takes the maximum time cost and ANDs the constraints.
 //!
 //! Overlapping [`PerfScenario`] constraints are not detected or resolved here.
 //! Model authors are expected to provide mutually exclusive scenarios per
@@ -38,7 +38,8 @@ use crate::schedule::schedule::Schedule;
 /// - **Func**: scenarios come from the architecture's [`FuncPerfModel`].
 /// - **Sequential**: scenarios are the cartesian product of all sub-schedule
 ///   scenarios (times summed, constraints AND-ed).
-/// - **Parallel**: not yet supported — panics.
+/// - **Parallel**: scenarios are the cartesian product of all sub-schedule
+///   scenarios (times max-ed, constraints AND-ed).
 ///
 /// Overlapping constraints are preserved as-is; evaluation does not check
 /// scenario exclusivity.
@@ -48,8 +49,20 @@ use crate::schedule::schedule::Schedule;
 /// A `Func` whose name cannot be found in `arch` returns an error.
 pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, String> {
     match schedule {
-        Schedule::Parallel { .. } => {
-            unimplemented!("Parallel schedule evaluation is not yet supported");
+        Schedule::Parallel { schedules, .. } => {
+            let evaluated: Result<Vec<Schedule>, String> =
+                schedules.iter().map(|sub| evaluate(sub, arch)).collect();
+            let evaluated = evaluated?;
+
+            let sub_scenarios: Vec<&[PerfScenario]> =
+                evaluated.iter().map(|s| extract_scenarios(s)).collect();
+            let combined =
+                cartesian_product_scenarios(&sub_scenarios, ScheduleComposition::Parallel);
+
+            Ok(Schedule::Parallel {
+                schedules: evaluated,
+                scenarios: Some(combined),
+            })
         }
 
         Schedule::Sequential { schedules, .. } => {
@@ -59,7 +72,8 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
 
             let sub_scenarios: Vec<&[PerfScenario]> =
                 evaluated.iter().map(|s| extract_scenarios(s)).collect();
-            let combined = cartesian_product_scenarios(&sub_scenarios);
+            let combined =
+                cartesian_product_scenarios(&sub_scenarios, ScheduleComposition::Sequential);
 
             Ok(Schedule::Sequential {
                 schedules: evaluated,
@@ -116,30 +130,54 @@ fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ScheduleComposition {
+    Sequential,
+    Parallel,
+}
+
 /// Compute the cartesian product of scenario vectors from sequential sub-schedules.
 ///
 /// For each combination (one scenario per sub-schedule), produces a single
-/// [`PerfScenario`] whose time cost is the sum and whose constraints are the
-/// conjunction (AND) of all selected scenarios.
+/// [`PerfScenario`] whose constraints are the conjunction (AND) of all selected
+/// scenarios. Time costs are summed for sequential composition and max-ed for
+/// parallel composition.
 ///
 /// An empty input (no sub-schedules) yields a single identity scenario with
 /// zero cost and `True` constraint.
-fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfScenario> {
-    let mut result = vec![PerfScenario {
-        constraints: ConstraintExpr::True,
-        time_cost: TimeCost::Concrete(Expr::Const(0)),
-    }];
+fn cartesian_product_scenarios(
+    sub_scenarios: &[&[PerfScenario]],
+    composition: ScheduleComposition,
+) -> Vec<PerfScenario> {
+    let Some((first, rest)) = sub_scenarios.split_first() else {
+        return vec![PerfScenario {
+            constraints: ConstraintExpr::True,
+            time_cost: TimeCost::Concrete(Expr::Const(0)),
+        }];
+    };
 
-    for scenarios in sub_scenarios {
+    let mut result: Vec<PerfScenario> = first
+        .iter()
+        .map(|scenario| PerfScenario {
+            constraints: scenario.constraints.clone(),
+            time_cost: TimeCost::Concrete(scenario.time_cost.to_expr()),
+        })
+        .collect();
+
+    for scenarios in rest {
         let mut next = Vec::with_capacity(result.len() * scenarios.len());
         for existing in &result {
             for new in *scenarios {
+                let existing_time = existing.time_cost.to_expr();
+                let new_time = new.time_cost.to_expr();
+                let time_cost = match composition {
+                    ScheduleComposition::Sequential => Expr::add(existing_time, new_time),
+                    ScheduleComposition::Parallel => Expr::max(existing_time, new_time),
+                };
+
                 next.push(PerfScenario {
                     constraints: and_constraints(&existing.constraints, &new.constraints),
-                    time_cost: TimeCost::Concrete(Expr::add(
-                        existing.time_cost.to_expr(),
-                        new.time_cost.to_expr(),
-                    )),
+                    time_cost: TimeCost::Concrete(time_cost),
                 });
             }
         }
@@ -265,6 +303,9 @@ mod tests {
                 scenarios: Some(s), ..
             } => s,
             Schedule::Sequential {
+                scenarios: Some(s), ..
+            } => s,
+            Schedule::Parallel {
                 scenarios: Some(s), ..
             } => s,
             _ => panic!("expected schedule node with filled scenarios"),
@@ -396,6 +437,86 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_parallel_uses_max_time() {
+        let arch = make_arch(vec![
+            ("f1", simple_model(10, 100)),
+            ("f2", simple_model(20, 200)),
+        ]);
+        let schedule = Schedule::Parallel {
+            schedules: vec![
+                Schedule::Func {
+                    func: MlirFunc::named("f1"),
+                    processor: None,
+                    scenarios: None,
+                },
+                Schedule::Func {
+                    func: MlirFunc::named("f2"),
+                    processor: None,
+                    scenarios: None,
+                },
+            ],
+            scenarios: None,
+        };
+
+        let result = evaluate(&schedule, &arch).expect("parallel should evaluate");
+        match &result {
+            Schedule::Parallel {
+                schedules,
+                scenarios: Some(par_scenarios),
+                ..
+            } => {
+                assert_eq!(extract_func_scenarios(&schedules[0]).len(), 1);
+                assert_eq!(extract_func_scenarios(&schedules[1]).len(), 1);
+                assert_eq!(par_scenarios.len(), 1);
+                assert_eq!(
+                    par_scenarios[0].time_cost.to_expr().eval_const(),
+                    Some((20 + 200).max(10 + 100))
+                );
+            }
+            _ => panic!("expected Parallel"),
+        }
+    }
+
+    #[test]
+    fn evaluate_parallel_multi_scenario_cartesian_product() {
+        let arch = make_arch(vec![
+            ("f1", two_scenario_model()),
+            ("f2", simple_model(1, 1)),
+        ]);
+        let schedule = Schedule::Parallel {
+            schedules: vec![
+                Schedule::Func {
+                    func: MlirFunc::named("f1"),
+                    processor: None,
+                    scenarios: None,
+                },
+                Schedule::Func {
+                    func: MlirFunc::named("f2"),
+                    processor: None,
+                    scenarios: None,
+                },
+            ],
+            scenarios: None,
+        };
+
+        let result = evaluate(&schedule, &arch).expect("parallel should evaluate");
+        let par_scenarios = extract_node_scenarios(&result);
+
+        assert_eq!(par_scenarios.len(), 2);
+        assert_eq!(
+            par_scenarios[0].time_cost.to_expr().eval_const(),
+            Some((10 + 100).max(1 + 1))
+        );
+        assert_eq!(
+            par_scenarios[1].time_cost.to_expr().eval_const(),
+            Some((5 + 50).max(1 + 1))
+        );
+        for scenario in par_scenarios {
+            assert!(matches!(scenario.constraints, ConstraintExpr::And(_)));
+        }
+    }
+
+    #[test]
     fn evaluate_fuses_global_constraints() {
         let arch = make_arch(vec![("f1", two_scenario_model())]);
         let schedule = Schedule::Func {
@@ -453,6 +574,30 @@ mod tests {
                 assert_eq!(seq_scenarios[0].constraints.eval_const(), Some(true));
             }
             _ => panic!("expected Sequential with scenarios"),
+        }
+    }
+
+    #[test]
+    fn evaluate_empty_parallel_returns_identity() {
+        let arch = make_arch(vec![]);
+        let schedule = Schedule::Parallel {
+            schedules: vec![],
+            scenarios: None,
+        };
+
+        let result = evaluate(&schedule, &arch).expect("empty parallel should work");
+        match &result {
+            Schedule::Parallel {
+                schedules,
+                scenarios: Some(par_scenarios),
+                ..
+            } => {
+                assert!(schedules.is_empty());
+                assert_eq!(par_scenarios.len(), 1);
+                assert_eq!(par_scenarios[0].time_cost.to_expr().eval_const(), Some(0));
+                assert_eq!(par_scenarios[0].constraints.eval_const(), Some(true));
+            }
+            _ => panic!("expected Parallel with scenarios"),
         }
     }
 

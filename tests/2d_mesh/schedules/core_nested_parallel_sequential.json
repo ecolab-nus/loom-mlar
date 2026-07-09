@@ -1,0 +1,54 @@
+{
+  "Sequential": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "vec_add_f16",
+            "symbols": ["L"],
+            "op_label": "example.nested.vector.add",
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      },
+      {
+        "Parallel": {
+          "schedules": [
+            {
+              "Func": {
+                "func": {
+                  "name": "vec_exp_f16",
+                  "symbols": ["L"],
+                  "op_label": "example.nested.parallel.exp",
+                  "sym_map": {
+                    "entries": [
+                      ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "Func": {
+                "func": {
+                  "name": "vec_mul_f16",
+                  "symbols": ["L"],
+                  "op_label": "example.nested.parallel.mul",
+                  "sym_map": {
+                    "entries": [
+                      ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

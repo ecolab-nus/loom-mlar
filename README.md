@@ -148,8 +148,9 @@ model needs declarations that differ from inferred expression usage.
 
 - MLIR export returns `None` if dimensions or memory sizes cannot be simplified
   to constants.
-- Schedule evaluation supports `Schedule::Func` and `Schedule::Sequential`.
-  `Schedule::Parallel` is serialized but evaluation is not implemented yet.
+- Schedule evaluation supports `Schedule::Func`, `Schedule::Sequential`, and
+  `Schedule::Parallel`; sequential compositions sum child times, while parallel
+  compositions take the maximum child time.
 - Scenario overlap is not checked. Model authors should make scenario
   constraints mutually exclusive when multiple scenarios are present.
 - Resource maps represent contention relationships, but the current schedule
