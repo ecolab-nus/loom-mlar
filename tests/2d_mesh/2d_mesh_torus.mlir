@@ -33,7 +33,7 @@ module @arch_system {
 
   module @proc_matrix_lane {
 
-  func.func @matmul_f16(
+  func.func @matmul_SS_f16(
       %A: memref<?x?xf16>,
       %B: memref<?x?xf16>,
       %C: memref<?x?xf16>
@@ -53,8 +53,68 @@ module @arch_system {
     return
   }
 
+  func.func @matmul_SR_f16(
+      %A: memref<?x?xf16>,
+      %B: memref<?x?xf16, 1>,
+      %C: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%M, %K] : memref<?x?xf16>
+    loom.bind_mem %A, @mem_L1 : memref<?x?xf16>
+    loom.bind_shape %B, [%K, %N] : memref<?x?xf16, 1>
+    loom.bind_mem %B, @mem_L1 : memref<?x?xf16, 1>
+    loom.bind_shape %C, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?xf16>
+    linalg.matmul
+        ins(%A, %B : memref<?x?xf16>, memref<?x?xf16, 1>)
+        outs(%C : memref<?x?xf16>)
+    return
+  }
+
+  func.func @matmul_RS_f16(
+      %A: memref<?x?xf16, 1>,
+      %B: memref<?x?xf16>,
+      %C: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%M, %K] : memref<?x?xf16, 1>
+    loom.bind_mem %A, @mem_L1 : memref<?x?xf16, 1>
+    loom.bind_shape %B, [%K, %N] : memref<?x?xf16>
+    loom.bind_mem %B, @mem_L1 : memref<?x?xf16>
+    loom.bind_shape %C, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?xf16>
+    linalg.matmul
+        ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16>)
+        outs(%C : memref<?x?xf16>)
+    return
+  }
+
+  func.func @matmul_RR_f16(
+      %A: memref<?x?xf16, 1>,
+      %B: memref<?x?xf16, 1>,
+      %C: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%M, %K] : memref<?x?xf16, 1>
+    loom.bind_mem %A, @mem_L1 : memref<?x?xf16, 1>
+    loom.bind_shape %B, [%K, %N] : memref<?x?xf16, 1>
+    loom.bind_mem %B, @mem_L1 : memref<?x?xf16, 1>
+    loom.bind_shape %C, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?xf16>
+    linalg.matmul
+        ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16, 1>)
+        outs(%C : memref<?x?xf16>)
+    return
+  }
+
   // C[B, M, N] = A[B, M, K] * B[B, K, N]  (batched matmul)
-  func.func @batch_matmul_f16(
+  func.func @batch_matmul_SS_f16(
       %A: memref<?x?x?xf16>,
       %Bmat: memref<?x?x?xf16>,
       %C: memref<?x?x?xf16>
@@ -71,6 +131,69 @@ module @arch_system {
     loom.bind_mem %C, @mem_L1 : memref<?x?x?xf16>
     linalg.batch_matmul
         ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16>)
+        outs(%C : memref<?x?x?xf16>)
+    return
+  }
+
+  func.func @batch_matmul_SR_f16(
+      %A: memref<?x?x?xf16>,
+      %Bmat: memref<?x?x?xf16, 1>,
+      %C: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%B, %M, %K] : memref<?x?x?xf16>
+    loom.bind_mem %A, @mem_L1 : memref<?x?x?xf16>
+    loom.bind_shape %Bmat, [%B, %K, %N] : memref<?x?x?xf16, 1>
+    loom.bind_mem %Bmat, @mem_L1 : memref<?x?x?xf16, 1>
+    loom.bind_shape %C, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?x?xf16>
+    linalg.batch_matmul
+        ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16, 1>)
+        outs(%C : memref<?x?x?xf16>)
+    return
+  }
+
+  func.func @batch_matmul_RS_f16(
+      %A: memref<?x?x?xf16, 1>,
+      %Bmat: memref<?x?x?xf16>,
+      %C: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%B, %M, %K] : memref<?x?x?xf16, 1>
+    loom.bind_mem %A, @mem_L1 : memref<?x?x?xf16, 1>
+    loom.bind_shape %Bmat, [%B, %K, %N] : memref<?x?x?xf16>
+    loom.bind_mem %Bmat, @mem_L1 : memref<?x?x?xf16>
+    loom.bind_shape %C, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?x?xf16>
+    linalg.batch_matmul
+        ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16>)
+        outs(%C : memref<?x?x?xf16>)
+    return
+  }
+
+  func.func @batch_matmul_RR_f16(
+      %A: memref<?x?x?xf16, 1>,
+      %Bmat: memref<?x?x?xf16, 1>,
+      %C: memref<?x?x?xf16>
+  ) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %K = loom.sym @K : index
+    loom.bind_shape %A, [%B, %M, %K] : memref<?x?x?xf16, 1>
+    loom.bind_mem %A, @mem_L1 : memref<?x?x?xf16, 1>
+    loom.bind_shape %Bmat, [%B, %K, %N] : memref<?x?x?xf16, 1>
+    loom.bind_mem %Bmat, @mem_L1 : memref<?x?x?xf16, 1>
+    loom.bind_shape %C, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %C, @mem_L1 : memref<?x?x?xf16>
+    linalg.batch_matmul
+        ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16, 1>)
         outs(%C : memref<?x?x?xf16>)
     return
   }
@@ -546,7 +669,7 @@ module @arch_system {
 
   module @proc_dram_l1_noc0 {
 
-  func.func @dram_to_l1_f16(
+  func.func @dram_to_l1_S_f16(
       %dram_src: memref<?x?xf16>,
       %l1_dst: memref<?x?xf16>
   ) {
@@ -561,7 +684,7 @@ module @arch_system {
     return
   }
 
-  func.func @dram_to_l1_bcst(
+  func.func @dram_to_l1_S_bcst(
       %dram_src: memref<?x?xf16>,
       %l1_dst: memref<?x?xf16>
   ) {
@@ -575,6 +698,38 @@ module @arch_system {
     %bcst_x = loom.sym @bcst_x : index
     %bcst_y = loom.sym @bcst_y : index
     loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
+  func.func @dram_to_l1_R_f16(
+      %dram_src: memref<?x?xf16>,
+      %l1_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
+    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1 : 1, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    return
+  }
+
+  func.func @dram_to_l1_R_bcst(
+      %dram_src: memref<?x?xf16>,
+      %l1_dst: memref<?x?xf16>
+  ) {
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    %effective_bandwidth = loom.sym @effective_bandwidth : index
+    loom.bind_shape %dram_src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %l1_dst, [%M, %N] : memref<?x?xf16>
+    loom.bind_mem %dram_src, @mem_DRAM : memref<?x?xf16>
+    loom.bind_mem %l1_dst, @mem_array_L1 : memref<?x?xf16>
+    %bcst_x = loom.sym @bcst_x : index
+    %bcst_y = loom.sym @bcst_y : index
+    loom.copy %dram_src, %l1_dst src_mem_space @mem_DRAM dst_mem_space @mem_array_L1 : 1, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 

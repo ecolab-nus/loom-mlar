@@ -42,17 +42,23 @@ pub struct MlirMemRegionBinding {
 /// A `loom.copy` operation parsed from an MLIR function body.
 ///
 /// Syntax:
-/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, area: [d0, @sym, ...] : type to type`
+/// `loom.copy %src, %dst src_mem_space @SrcRegion[:kind] dst_mem_space @DstRegion[:kind], area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MlirCopyOp {
     /// Source memref SSA name, without `%`.
     pub src: String,
     /// Source memory region name, without `@`.
     pub src_region: String,
+    /// Optional source memory kind selected within `src_region`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src_mem_kind: Option<u64>,
     /// Destination memref SSA name, without `%`.
     pub dst: String,
     /// Destination memory region name, without `@`.
     pub dst_region: String,
+    /// Optional destination memory kind selected within `dst_region`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dst_mem_kind: Option<u64>,
     /// Area (broadcast) dimensions — `[1, 1]` means no broadcast,
     /// `[8, 8]` means broadcast over an 8x8 mesh, and `[@B, 8]`
     /// means a symbolic subregion by 8-wide broadcast.
@@ -180,7 +186,7 @@ fn bind_mem_decl(input: &str) -> IResult<&str, (&str, &str, &str)> {
 }
 
 /// Parse
-/// `loom.copy %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion, area: [d0, ...] ...`.
+/// `loom.copy %src, %dst src_mem_space @SrcRegion[:kind] dst_mem_space @DstRegion[:kind], area: [d0, ...] ...`.
 fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = tag("loom.copy").parse(input)?;
     let (input, _) = multispace1(input)?;
@@ -191,10 +197,12 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
     let (input, _) = tag("src_mem_space").parse(input)?;
     let (input, _) = multispace1(input)?;
     let (input, src_region) = symbol_ref(input)?;
+    let (input, src_mem_kind) = opt((multispace0, char(':'), multispace0, nom_u64)).parse(input)?;
     let (input, _) = multispace1(input)?;
     let (input, _) = tag("dst_mem_space").parse(input)?;
     let (input, _) = multispace1(input)?;
     let (input, dst_region) = symbol_ref(input)?;
+    let (input, dst_mem_kind) = opt((multispace0, char(':'), multispace0, nom_u64)).parse(input)?;
     let (input, _) = comma_sep(input)?;
     let (input, _) = tag("area").parse(input)?;
     let (input, _) = multispace0(input)?;
@@ -211,8 +219,10 @@ fn loom_copy_decl(input: &str) -> IResult<&str, MlirCopyOp> {
         MlirCopyOp {
             src: src.to_string(),
             src_region: src_region.to_string(),
+            src_mem_kind: src_mem_kind.map(|(_, _, _, kind)| kind),
             dst: dst.to_string(),
             dst_region: dst_region.to_string(),
+            dst_mem_kind: dst_mem_kind.map(|(_, _, _, kind)| kind),
             broadcast,
         },
     ))

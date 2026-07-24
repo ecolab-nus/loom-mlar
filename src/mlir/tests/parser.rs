@@ -164,8 +164,10 @@ func.func @dram_to_l1_2d_bcst(
     let cop = &details.copy_ops[0];
     assert_eq!(cop.src, "dram_src");
     assert_eq!(cop.src_region, "DRAM");
+    assert_eq!(cop.src_mem_kind, None);
     assert_eq!(cop.dst, "l1_dst");
     assert_eq!(cop.dst_region, "L1");
+    assert_eq!(cop.dst_mem_kind, None);
     assert_eq!(
         cop.broadcast,
         vec![MlirBroadcastDim::Const(8), MlirBroadcastDim::Const(8)]
@@ -176,6 +178,33 @@ func.func @dram_to_l1_2d_bcst(
     assert_eq!(details.mem_region_bindings[0].region, "DRAM");
     assert_eq!(details.mem_region_bindings[1].memref, "l1_dst");
     assert_eq!(details.mem_region_bindings[1].region, "L1");
+}
+
+#[test]
+fn mlir_func_ref_from_mlir_parses_loom_copy_memory_kinds() {
+    let snippet = r#"
+func.func @dram_to_l1_mem_kind(
+%dram_src: memref<?xf16>,
+%l1_dst: memref<?xf16>
+) {
+  %L = loom.sym @L : index
+  loom.bind_shape %dram_src, [%L] : memref<?xf16>
+  loom.bind_shape %l1_dst, [%L] : memref<?xf16>
+  loom.bind_mem %dram_src, @DRAM : memref<?xf16>
+  loom.bind_mem %l1_dst, @L1 : memref<?xf16>
+  loom.copy %dram_src, %l1_dst src_mem_space @DRAM : 2 dst_mem_space @L1 : 1, area: [1] : memref<?xf16> to memref<?xf16>
+  return
+}
+"#;
+
+    let func = MlirFunc::from_mlir(snippet).expect("copy with memory kinds should parse");
+    let copy = &func
+        .mlir_details
+        .as_ref()
+        .expect("MLIR details should be present")
+        .copy_ops[0];
+    assert_eq!(copy.src_mem_kind, Some(2));
+    assert_eq!(copy.dst_mem_kind, Some(1));
 }
 
 #[test]

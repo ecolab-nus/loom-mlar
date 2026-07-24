@@ -8,6 +8,20 @@ use mlar_rust::*;
 use crate::arch::scaled_mesh_torus;
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors/vector_lane.mlir";
+const MATRIX_LANE_MLIR: &str = "tests/2d_mesh/processors/matrix_lane.mlir";
+const DRAM_L1_NOC0_MLIR: &str = "tests/2d_mesh/processors/dram_l1_noc0.mlir";
+
+fn mlir_function_text<'a>(source: &'a str, name: &str) -> &'a str {
+    let marker = format!("func.func @{name}(");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing MLIR function {name}"));
+    let rest = &source[start..];
+    let end = rest[marker.len()..]
+        .find("\nfunc.func @")
+        .map_or(rest.len(), |offset| marker.len() + offset);
+    &rest[..end]
+}
 
 /// Look up the full function name for a given operation prefix (e.g. `"vec_add"`)
 /// from the vector-lane MLIR module. This makes tests resilient to datatype changes
@@ -65,18 +79,98 @@ fn test_2d_mesh_torus_perf_models() {
         Some("tests/2d_mesh/processors/matrix_lane.mlir")
     );
     assert_eq!(mat_module.module_name.as_deref(), Some("matrix_lane"));
-    assert!(
-        mat_module
-            .functions
-            .iter()
-            .any(|op| op.name.starts_with("matmul_"))
-    );
-    assert!(
-        mat_module
-            .functions
-            .iter()
-            .any(|op| op.name.starts_with("batch_matmul_"))
-    );
+    for name in [
+        "matmul_SS_f16",
+        "matmul_SR_f16",
+        "matmul_RS_f16",
+        "matmul_RR_f16",
+        "batch_matmul_SS_f16",
+        "batch_matmul_SR_f16",
+        "batch_matmul_RS_f16",
+        "batch_matmul_RR_f16",
+    ] {
+        assert!(
+            mat_module.functions.iter().any(|op| op.name == name),
+            "matrix_lane should expose {name}"
+        );
+    }
+    let matrix_mlir =
+        fs::read_to_string(MATRIX_LANE_MLIR).expect("matrix_lane MLIR should be readable");
+    for (name, a_is_rram, b_is_rram) in [
+        ("matmul_SS_f16", false, false),
+        ("matmul_SR_f16", false, true),
+        ("matmul_RS_f16", true, false),
+        ("matmul_RR_f16", true, true),
+        ("batch_matmul_SS_f16", false, false),
+        ("batch_matmul_SR_f16", false, true),
+        ("batch_matmul_RS_f16", true, false),
+        ("batch_matmul_RR_f16", true, true),
+    ] {
+        let text = mlir_function_text(&matrix_mlir, name);
+        let rank = if name.starts_with("batch_") {
+            "?x?x?"
+        } else {
+            "?x?"
+        };
+        let a_type = format!(
+            "%A: memref<{rank}xf16{}>",
+            if a_is_rram { ", 1" } else { "" }
+        );
+        let b_type = format!(
+            "%B{}: memref<{rank}xf16{}>",
+            if name.starts_with("batch_") {
+                "mat"
+            } else {
+                ""
+            },
+            if b_is_rram { ", 1" } else { "" }
+        );
+        assert!(text.contains(&a_type), "{name} should contain {a_type}");
+        assert!(text.contains(&b_type), "{name} should contain {b_type}");
+        assert!(
+            text.contains(&format!("%C: memref<{rank}xf16>")),
+            "{name} output should remain in SRAM"
+        );
+    }
+    let matrix_lane = mesh
+        .get_processor("matrix_lane")
+        .expect("matrix_lane should exist");
+    for name in [
+        "matmul_SR_f16",
+        "matmul_RS_f16",
+        "matmul_RR_f16",
+        "batch_matmul_SR_f16",
+        "batch_matmul_RS_f16",
+        "batch_matmul_RR_f16",
+    ] {
+        let model = matrix_lane
+            .get_function(name)
+            .unwrap_or_else(|| panic!("matrix_lane should have a performance model for {name}"));
+        let cost = model.perf.scenarios[0]
+            .time_cost
+            .as_simple()
+            .unwrap_or_else(|| panic!("{name} should use a simple performance model"));
+        assert_eq!(cost.fixed_latency.eval_const(), Some(888));
+        assert_eq!(cost.throughput.eval_const(), Some(888));
+    }
+    let matmul_ss = matrix_lane
+        .get_function("matmul_SS_f16")
+        .expect("matmul_SS_f16 performance model");
+    assert_eq!(matmul_ss.perf.scenarios.len(), 2);
+    let matmul_ss_large = matmul_ss.perf.scenarios[0]
+        .time_cost
+        .as_simple()
+        .expect("matmul_SS_f16 should retain its simple performance model");
+    assert_eq!(matmul_ss_large.throughput.eval_const(), Some(716));
+    let batch_matmul_ss = matrix_lane
+        .get_function("batch_matmul_SS_f16")
+        .expect("batch_matmul_SS_f16 performance model");
+    assert_eq!(batch_matmul_ss.perf.scenarios.len(), 2);
+    let batch_matmul_ss_large = batch_matmul_ss.perf.scenarios[0]
+        .time_cost
+        .as_simple()
+        .expect("batch_matmul_SS_f16 should retain its simple performance model");
+    assert_eq!(batch_matmul_ss_large.throughput.eval_const(), Some(716));
     for prefix in ["vec_vsum_", "vec_vmax_", "vec_max1_"] {
         assert!(
             mat_module
@@ -90,8 +184,8 @@ fn test_2d_mesh_torus_perf_models() {
     let matmul_details = mat_module
         .functions
         .iter()
-        .find(|op| op.name.starts_with("matmul_"))
-        .expect("matmul_* should exist")
+        .find(|op| op.name == "matmul_SS_f16")
+        .expect("matmul_SS_f16 should exist")
         .mlir_details
         .as_ref()
         .expect("matmul_* should include MLIR details");
@@ -209,14 +303,46 @@ fn test_2d_mesh_torus_perf_models() {
     let noc0 = mesh
         .get_data_mover("dram_l1_noc0")
         .expect("dram_l1_noc0 should exist");
-    assert!(
-        noc0.get_function("dram_to_l1_f16").is_some(),
-        "noc0 should expose dram_to_l1_f16"
-    );
-    assert!(
-        noc0.get_function("dram_to_l1_bcst").is_some(),
-        "noc0 should expose dram_to_l1_bcst"
-    );
+    for name in [
+        "dram_to_l1_S_f16",
+        "dram_to_l1_R_f16",
+        "dram_to_l1_S_bcst",
+        "dram_to_l1_R_bcst",
+    ] {
+        assert!(
+            noc0.get_function(name).is_some(),
+            "noc0 should expose {name}"
+        );
+    }
+    let copy_mlir =
+        fs::read_to_string(DRAM_L1_NOC0_MLIR).expect("dram_l1_noc0 MLIR should be readable");
+    for (name, expected_dst_kind) in [
+        ("dram_to_l1_S_f16", "dst_mem_space @array_L1,"),
+        ("dram_to_l1_S_bcst", "dst_mem_space @array_L1,"),
+        ("dram_to_l1_R_f16", "dst_mem_space @array_L1 : 1,"),
+        ("dram_to_l1_R_bcst", "dst_mem_space @array_L1 : 1,"),
+    ] {
+        assert!(
+            mlir_function_text(&copy_mlir, name).contains(expected_dst_kind),
+            "{name} should contain {expected_dst_kind}"
+        );
+    }
+    for (name, fixed_latency, throughput) in [
+        ("dram_to_l1_S_f16", 454, 150),
+        ("dram_to_l1_S_bcst", 344, 150),
+        ("dram_to_l1_R_f16", 888, 888),
+        ("dram_to_l1_R_bcst", 888, 888),
+    ] {
+        let model = noc0
+            .get_function(name)
+            .unwrap_or_else(|| panic!("noc0 should expose {name}"));
+        let cost = model.perf.scenarios[0]
+            .time_cost
+            .as_simple()
+            .unwrap_or_else(|| panic!("{name} should use a simple performance model"));
+        assert_eq!(cost.fixed_latency.eval_const(), Some(fixed_latency));
+        assert_eq!(cost.throughput.eval_const(), Some(throughput));
+    }
     assert!(
         noc0.get_function("batch_dram_to_l1_f16").is_none(),
         "noc0 should not expose batch_dram_to_l1_f16"
@@ -240,13 +366,13 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
     let noc0_bcst = noc0
-        .get_function("dram_to_l1_bcst")
-        .expect("noc0 should expose dram_to_l1_bcst");
+        .get_function("dram_to_l1_S_bcst")
+        .expect("noc0 should expose dram_to_l1_S_bcst");
     let noc0_bcst_syms = &noc0_bcst.func.symbols;
     for sym in ["M", "N", "bcst_x", "bcst_y", "effective_bandwidth"] {
         assert!(
             noc0_bcst_syms.iter().any(|s| s.0.as_str() == sym),
-            "noc0 dram_to_l1_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
+            "noc0 dram_to_l1_S_bcst should expose {sym} symbol, got {noc0_bcst_syms:?}"
         );
     }
 
@@ -263,9 +389,11 @@ fn test_2d_mesh_torus_perf_models() {
         "noc1 should not expose batch_l1_to_dram_f16"
     );
     for stale in [
-        "dram_to_l1_f16",
+        "dram_to_l1_S_f16",
+        "dram_to_l1_R_f16",
         "batch_dram_to_l1_f16",
-        "dram_to_l1_bcst",
+        "dram_to_l1_S_bcst",
+        "dram_to_l1_R_bcst",
         "batch_dram_to_l1_bcst",
         "l1_gather",
         "batch_l1_gather",
@@ -328,13 +456,13 @@ fn test_2d_mesh_torus_perf_models() {
 
     // Verify NoC0's unicast load function shape
     let move_func = noc0
-        .get_function("dram_to_l1_f16")
-        .expect("dram_to_l1_f16 binding");
+        .get_function("dram_to_l1_S_f16")
+        .expect("dram_to_l1_S_f16 binding");
     let move_details = move_func
         .func
         .mlir_details
         .as_ref()
-        .expect("dram_to_l1_f16 should include MLIR details");
+        .expect("dram_to_l1_S_f16 should include MLIR details");
     assert_eq!(move_details.memref_args, vec!["dram_src", "l1_dst"]);
     assert_eq!(move_details.source_memrefs, vec!["dram_src"]);
     assert_eq!(move_details.target_memrefs, vec!["l1_dst"]);
@@ -864,7 +992,7 @@ fn test_generate_core_evaluator_binary() {
 
 /// Evaluate a data-mover schedule against the full system architecture.
 ///
-/// The `dram_to_l1_f16` function's perf model uses symbols M and N:
+/// The `dram_to_l1_S_f16` function's perf model uses symbols M and N:
 ///   fixed_latency = 20, volume = M * N, throughput = 2048
 ///   → cost = 20 + (M*N) / 2048
 ///
@@ -891,7 +1019,7 @@ fn test_evaluate_system_data_mover_schedule() {
         schedules: vec![
             Schedule::Func {
                 func: {
-                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_S_f16", mn_sym.clone());
                     f.sym_map = sym_map.clone();
                     f
                 },
@@ -900,7 +1028,7 @@ fn test_evaluate_system_data_mover_schedule() {
             },
             Schedule::Func {
                 func: {
-                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_S_f16", mn_sym.clone());
                     f.sym_map = sym_map.clone();
                     f
                 },
@@ -1027,7 +1155,7 @@ fn test_generate_system_evaluator_binary() {
         schedules: vec![
             Schedule::Func {
                 func: {
-                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_S_f16", mn_sym.clone());
                     f.sym_map = sym_map.clone();
                     f
                 },
@@ -1036,7 +1164,7 @@ fn test_generate_system_evaluator_binary() {
             },
             Schedule::Func {
                 func: {
-                    let mut f = MlirFunc::with_symbols("dram_to_l1_f16", mn_sym.clone());
+                    let mut f = MlirFunc::with_symbols("dram_to_l1_S_f16", mn_sym.clone());
                     f.sym_map = sym_map.clone();
                     f
                 },

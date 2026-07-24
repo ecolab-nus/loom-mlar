@@ -52,8 +52,10 @@
         "details": {
           "type": "processor",
           "functions": [
-            "dram_to_l1_f16",
-            "dram_to_l1_bcst"
+            "dram_to_l1_S_f16",
+            "dram_to_l1_S_bcst",
+            "dram_to_l1_R_f16",
+            "dram_to_l1_R_bcst"
           ]
         }
       },
@@ -143,8 +145,14 @@
             "details": {
               "type": "processor",
               "functions": [
-                "matmul_f16",
-                "batch_matmul_f16",
+                "matmul_SS_f16",
+                "matmul_SR_f16",
+                "matmul_RS_f16",
+                "matmul_RR_f16",
+                "batch_matmul_SS_f16",
+                "batch_matmul_SR_f16",
+                "batch_matmul_RS_f16",
+                "batch_matmul_RR_f16",
                 "vec_vsum_f16",
                 "vec_vmax_f16",
                 "vec_max1_f16",
@@ -248,12 +256,14 @@
                 "source_path": "tests/2d_mesh/processors/dram_l1_noc0.mlir",
                 "source_mlir_module_name": "dram_l1_noc0",
                 "ops": [
-                  "dram_to_l1_f16",
-                  "dram_to_l1_bcst"
+                  "dram_to_l1_S_f16",
+                  "dram_to_l1_S_bcst",
+                  "dram_to_l1_R_f16",
+                  "dram_to_l1_R_bcst"
                 ],
                 "op_details": [
                   {
-                    "name": "dram_to_l1_f16",
+                    "name": "dram_to_l1_S_f16",
                     "source_memories": [
                       "DRAM"
                     ],
@@ -262,7 +272,25 @@
                     ]
                   },
                   {
-                    "name": "dram_to_l1_bcst",
+                    "name": "dram_to_l1_S_bcst",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "dram_to_l1_R_f16",
+                    "source_memories": [
+                      "DRAM"
+                    ],
+                    "destination_memories": [
+                      "array_L1"
+                    ]
+                  },
+                  {
+                    "name": "dram_to_l1_R_bcst",
                     "source_memories": [
                       "DRAM"
                     ],
@@ -502,8 +530,14 @@
                 "source_path": "tests/2d_mesh/processors/matrix_lane.mlir",
                 "source_mlir_module_name": "matrix_lane",
                 "ops": [
-                  "matmul_f16",
-                  "batch_matmul_f16",
+                  "matmul_SS_f16",
+                  "matmul_SR_f16",
+                  "matmul_RS_f16",
+                  "matmul_RR_f16",
+                  "batch_matmul_SS_f16",
+                  "batch_matmul_SR_f16",
+                  "batch_matmul_RS_f16",
+                  "batch_matmul_RR_f16",
                   "vec_vsum_f16",
                   "vec_vmax_f16",
                   "vec_max1_f16",
@@ -512,7 +546,7 @@
                 ],
                 "op_details": [
                   {
-                    "name": "matmul_f16",
+                    "name": "matmul_SS_f16",
                     "source_memories": [
                       "L1"
                     ],
@@ -521,7 +555,61 @@
                     ]
                   },
                   {
-                    "name": "batch_matmul_f16",
+                    "name": "matmul_SR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "matmul_RS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "matmul_RR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_SS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_SR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_RS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_RR_f16",
                     "source_memories": [
                       "L1"
                     ],
@@ -951,8 +1039,14 @@
                 "source_path": "tests/2d_mesh/processors/matrix_lane.mlir",
                 "source_mlir_module_name": "matrix_lane",
                 "ops": [
-                  "matmul_f16",
-                  "batch_matmul_f16",
+                  "matmul_SS_f16",
+                  "matmul_SR_f16",
+                  "matmul_RS_f16",
+                  "matmul_RR_f16",
+                  "batch_matmul_SS_f16",
+                  "batch_matmul_SR_f16",
+                  "batch_matmul_RS_f16",
+                  "batch_matmul_RR_f16",
                   "vec_vsum_f16",
                   "vec_vmax_f16",
                   "vec_max1_f16",
@@ -961,7 +1055,7 @@
                 ],
                 "op_details": [
                   {
-                    "name": "matmul_f16",
+                    "name": "matmul_SS_f16",
                     "source_memories": [
                       "L1"
                     ],
@@ -970,7 +1064,61 @@
                     ]
                   },
                   {
-                    "name": "batch_matmul_f16",
+                    "name": "matmul_SR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "matmul_RS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "matmul_RR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_SS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_SR_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_RS_f16",
+                    "source_memories": [
+                      "L1"
+                    ],
+                    "destination_memories": [
+                      "L1"
+                    ]
+                  },
+                  {
+                    "name": "batch_matmul_RR_f16",
                     "source_memories": [
                       "L1"
                     ],

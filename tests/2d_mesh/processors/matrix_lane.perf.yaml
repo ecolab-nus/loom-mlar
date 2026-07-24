@@ -39,9 +39,19 @@ time_costs:
       fixed_latency: "M * N / 2"
       volume: "2 * B * M * N * K"
       throughput: "(M * N / 8192) * 716"
+  matmul_rram_placeholder: &matmul_rram_placeholder
+    simple:
+      fixed_latency: "888"
+      volume: "2 * M * N * K"
+      throughput: "888"
+  batch_matmul_rram_placeholder: &batch_matmul_rram_placeholder
+    simple:
+      fixed_latency: "888"
+      volume: "2 * B * M * N * K"
+      throughput: "888"
 
 functions:
-  matmul_f16:
+  matmul_SS_f16:
     constraints: "M >= 32 && N >= 32 && K >= 32"
     scenarios:
       - constraints: "M * N >= 8192"
@@ -49,13 +59,43 @@ functions:
       - constraints: "M * N < 8192"
         time_cost: *matmul_small
 
-  batch_matmul_f16:
+  matmul_SR_f16:
+    constraints: "M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *matmul_rram_placeholder
+
+  matmul_RS_f16:
+    constraints: "M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *matmul_rram_placeholder
+
+  matmul_RR_f16:
+    constraints: "M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *matmul_rram_placeholder
+
+  batch_matmul_SS_f16:
     constraints: "B >= 1 && M >= 32 && N >= 32 && K >= 32"
     scenarios:
       - constraints: "M * N >= 8192"
         time_cost: *batch_matmul_large
       - constraints: "M * N < 8192"
         time_cost: *batch_matmul_small
+
+  batch_matmul_SR_f16:
+    constraints: "B >= 1 && M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *batch_matmul_rram_placeholder
+
+  batch_matmul_RS_f16:
+    constraints: "B >= 1 && M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *batch_matmul_rram_placeholder
+
+  batch_matmul_RR_f16:
+    constraints: "B >= 1 && M >= 32 && N >= 32 && K >= 32"
+    scenarios:
+      - time_cost: *batch_matmul_rram_placeholder
 
   vec_vsum_f16:
     scenarios:

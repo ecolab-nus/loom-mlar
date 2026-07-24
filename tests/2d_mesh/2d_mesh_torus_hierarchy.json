@@ -52,8 +52,10 @@
         "details": {
           "type": "processor",
           "functions": [
-            "dram_to_l1_f16",
-            "dram_to_l1_bcst"
+            "dram_to_l1_S_f16",
+            "dram_to_l1_S_bcst",
+            "dram_to_l1_R_f16",
+            "dram_to_l1_R_bcst"
           ]
         }
       },
@@ -143,8 +145,14 @@
             "details": {
               "type": "processor",
               "functions": [
-                "matmul_f16",
-                "batch_matmul_f16",
+                "matmul_SS_f16",
+                "matmul_SR_f16",
+                "matmul_RS_f16",
+                "matmul_RR_f16",
+                "batch_matmul_SS_f16",
+                "batch_matmul_SR_f16",
+                "batch_matmul_RS_f16",
+                "batch_matmul_RR_f16",
                 "vec_vsum_f16",
                 "vec_vmax_f16",
                 "vec_max1_f16",
