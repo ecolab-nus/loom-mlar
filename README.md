@@ -78,9 +78,18 @@ let arch = Architecture::scope("core")
     .with_processor(lane);
 
 let mlir = architecture_to_mlir(&arch)
-    .expect("MLIR export requires concrete dimensions and memory sizes");
+    .expect("MLIR export and validation should succeed");
 let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
 ```
+
+MLIR export invokes `adl-opt` for the architecture-only module and then
+`loom-opt` for the complete module. Set `ADL_OPT` and `LOOM_OPT` to explicit
+executable paths, or make both tools available on `PATH`. For debugging or
+experimental output without compiler validation, use
+`architecture_to_mlir_unchecked`.
+
+`adl.resource.quantitative` is experimental. The unchecked exporter preserves
+it, but the current ADL/MLIR compiler and checked export path do not support it.
 
 ## Performance Model Builder
 

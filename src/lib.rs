@@ -15,8 +15,9 @@ pub use arch::{
     MeshNetworkInterface, PerfFunctionYaml, PerfScenario, PerfScenarioYaml, PerfYamlError,
     PerfYamlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
     ScaleOutNetworkBindings, SimpleCostYaml, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeCostYaml,
-    TimeExpr, architecture_to_mlir,
+    TimeExpr, architecture_to_mlir, architecture_to_mlir_unchecked,
 };
+pub use mlir::MlirExportError;
 
 // Re-export commonly used math types
 pub use math::{

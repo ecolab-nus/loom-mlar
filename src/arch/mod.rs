@@ -8,11 +8,11 @@ pub mod resource;
 pub mod size_dim;
 
 pub mod mlir_export {
-    pub use crate::mlir::architecture_to_mlir;
+    pub use crate::mlir::{MlirExportError, architecture_to_mlir, architecture_to_mlir_unchecked};
 }
 
 // Re-export commonly used types
-pub use crate::mlir::architecture_to_mlir;
+pub use crate::mlir::{architecture_to_mlir, architecture_to_mlir_unchecked};
 pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,

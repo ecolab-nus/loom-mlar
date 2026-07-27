@@ -68,12 +68,9 @@ pub fn query_architecture(
     query: &ArchitectureQuery,
 ) -> Result<ArchitectureQueryResult, String> {
     match query {
-        ArchitectureQuery::Mlir => architecture_to_mlir(arch).map(ArchitectureQueryResult::Mlir).ok_or_else(
-            || {
-                "failed to export architecture to MLIR: symbolic dimensions or sizes are not concretizable"
-                    .to_string()
-            },
-        ),
+        ArchitectureQuery::Mlir => architecture_to_mlir(arch)
+            .map(ArchitectureQueryResult::Mlir)
+            .map_err(|error| format!("failed to export architecture to MLIR: {error}")),
     }
 }
 

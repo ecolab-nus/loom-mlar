@@ -1109,7 +1109,7 @@ fn test_evaluate_system_data_mover_schedule() {
 #[test]
 fn test_export_2d_mesh_torus_mlir() {
     let mesh = scaled_mesh_torus();
-    let mlir = architecture_to_mlir(&mesh).expect("MLIR export should succeed for concrete dims");
+    let mlir = architecture_to_mlir(&mesh).expect("MLIR export and validation should succeed");
 
     println!("{}", mlir);
 
@@ -1270,7 +1270,7 @@ fn test_generate_system_arch_query_binary_mlir() {
     let mlir = String::from_utf8(output.stdout).expect("binary output should be valid UTF-8");
 
     let expected =
-        architecture_to_mlir(&system).expect("MLIR export should succeed for concrete dims");
+        architecture_to_mlir(&system).expect("MLIR export and validation should succeed");
     assert_eq!(mlir, expected);
     assert!(mlir.starts_with("module @arch_system {\n"));
 }

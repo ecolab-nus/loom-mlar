@@ -187,8 +187,13 @@ serialize with Serde and can carry optional evaluated scenarios.
 
 `architecture_to_mlir(&arch)` emits a top-level `module @arch_<name>` containing
 `adl.*` architecture operations and rewritten processor functionality MLIR
-sources. Export succeeds only when dimensions and memory sizes simplify to
-constants.
+sources. It validates the architecture portion with `adl-opt` and the complete
+module with `loom-opt`. Export succeeds only when dimensions and memory sizes
+simplify to constants and both validators accept the result.
+
+`architecture_to_mlir_unchecked` is available for debugging and experimental
+output. In particular, `adl.resource.quantitative` can be emitted through the
+unchecked API but is not currently supported by the MLIR compiler.
 
 Visualization exports include:
 

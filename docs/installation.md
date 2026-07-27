@@ -22,6 +22,18 @@ Run the test suite:
 cargo test
 ```
 
+Checked MLIR export requires compatible `adl-opt` and `loom-opt` executables.
+Install both tools and either add them to `PATH` or configure explicit paths:
+
+```bash
+export ADL_OPT=/path/to/adl-opt
+export LOOM_OPT=/path/to/loom-opt
+```
+
+The first tool validates the generated architecture-only ADL module. The second
+validates the complete module after processor functionality using the Loom
+dialect has been appended.
+
 For test output:
 
 ```bash

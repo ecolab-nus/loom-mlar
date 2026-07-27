@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 
-use super::architecture_to_mlir;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::architecture_to_mlir_unchecked;
 use super::rewrite::rewrite_mlir_source;
 use crate::arch::{
     Architecture, ComputeProcessor, Dimension, MemoryBank, MemoryRegion, Processor, Resource,
@@ -10,14 +15,14 @@ use crate::arch::{
 #[test]
 fn single_processor_emits_df_processor() {
     let arch = Processor::new("vec_lane").into_elem();
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.processor.compute @proc_vec_lane, []"));
 }
 
 #[test]
 fn output_wrapped_in_module() {
     let arch = Processor::new("p").into_elem();
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.starts_with("module @arch_p {\n"));
     assert!(mlir.ends_with("}\n"));
 }
@@ -29,7 +34,7 @@ fn graph_emits_compose() {
     let arch = Architecture::scope("core")
         .with_memory(l1)
         .with_processor(lane);
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.memory.bank"));
     assert!(mlir.contains("adl.processor.compute @proc_lane, []"));
     assert!(!mlir.contains("adl.resource \"L1\""));
@@ -44,7 +49,7 @@ fn memory_resources_not_emitted_as_adl_resource() {
     let arch = Architecture::scope("core")
         .with_memory(l1)
         .with_processor(lane);
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.exclusive \"res_alu\""));
     assert!(!mlir.contains("adl.resource.exclusive \"L1\""));
     assert!(!mlir.contains("adl.resource.quantitative \"L1\""));
@@ -58,7 +63,7 @@ fn compute_builder_self_resource_is_emitted_and_referenced() {
         .expect("structural compute should build")
         .into_processor();
     let arch = Architecture::scope("core").with_processor(lane);
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.exclusive \"res_lane\""));
     assert!(mlir.contains("adl.processor.compute @proc_lane, [], with ["));
 }
@@ -76,7 +81,7 @@ fn processor_route_emits_from_to_syntax() {
     let arch = Architecture::scope("core")
         .with_memory(l1)
         .with_processor(lane);
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.processor.compute @proc_lane, from %"));
     assert!(mlir.contains(" to %"));
     assert!(!mlir.contains("[("));
@@ -86,7 +91,7 @@ fn processor_route_emits_from_to_syntax() {
 fn quantitative_resource_is_emitted_with_capacity() {
     let lane = Processor::new("lane").with_resources(vec![Resource::quantitative("l1_port", 2)]);
     let arch = Architecture::scope("core").with_processor(lane);
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.resource.quantitative \"res_l1_port\", {capacity = 2}"));
 }
 
@@ -95,17 +100,149 @@ fn array_emits_scale_with_dims() {
     let dim = Dimension::new_int("x", 8);
     let lane = Processor::new("lane").into_elem();
     let arch = lane.scale(&[dim]).with_name("mesh");
-    let mlir = architecture_to_mlir(&arch).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&arch).expect("should emit");
     assert!(mlir.contains("adl.spatial_dim \"dim_x\", 8"));
     assert!(mlir.contains("adl.arch.scale \"arch_mesh\", ["));
 }
 
 #[test]
-fn symbolic_dim_returns_none() {
+fn symbolic_dim_returns_non_concrete_error() {
     let dim = Dimension::new_sym("x", "N");
     let lane = Processor::new("lane").into_elem();
     let arch = lane.scale(&[dim]).with_name("mesh");
-    assert!(architecture_to_mlir(&arch).is_none());
+    assert!(matches!(
+        architecture_to_mlir_unchecked(&arch),
+        Err(super::MlirExportError::NonConcreteArchitecture)
+    ));
+}
+
+#[cfg(unix)]
+fn validator_script(body: &str) -> std::path::PathBuf {
+    static NEXT_SCRIPT: AtomicUsize = AtomicUsize::new(0);
+    let id = NEXT_SCRIPT.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("mlar-validator-{}-{id}.sh", std::process::id()));
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write validator script");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("validator metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(&path, permissions).expect("make validator executable");
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn checked_export_runs_adl_then_loom_validators() {
+    let adl_capture = std::env::temp_dir().join(format!("mlar-adl-{}.mlir", std::process::id()));
+    let loom_capture = std::env::temp_dir().join(format!("mlar-loom-{}.mlir", std::process::id()));
+    let adl = validator_script(&format!("cat > '{}'", adl_capture.display()));
+    let loom = validator_script(&format!("cat > '{}'", loom_capture.display()));
+    let arch = Processor::new("lane").into_elem();
+
+    let mlir = super::architecture_to_mlir_with_tools(&arch, adl.as_os_str(), loom.as_os_str())
+        .expect("both validators should accept input");
+
+    let adl_input = std::fs::read_to_string(adl_capture).expect("ADL capture");
+    let loom_input = std::fs::read_to_string(loom_capture).expect("Loom capture");
+    assert_eq!(adl_input, super::generate_mlir(&arch).unwrap().adl_only);
+    assert_eq!(loom_input, mlir);
+}
+
+#[cfg(unix)]
+#[test]
+fn adl_failure_preserves_stderr_and_skips_loom() {
+    let loom_marker = std::env::temp_dir().join(format!("mlar-loom-marker-{}", std::process::id()));
+    let _ = std::fs::remove_file(&loom_marker);
+    let adl = validator_script("cat >/dev/null; echo 'bad adl syntax' >&2; exit 7");
+    let loom = validator_script(&format!(
+        "cat >/dev/null; touch '{}'",
+        loom_marker.display()
+    ));
+    let arch = Processor::new("lane").into_elem();
+
+    let error = super::architecture_to_mlir_with_tools(&arch, adl.as_os_str(), loom.as_os_str())
+        .expect_err("ADL validation should fail");
+    match error {
+        super::MlirExportError::InvalidAdl { stderr, .. } => {
+            assert!(stderr.contains("bad adl syntax"));
+        }
+        other => panic!("expected InvalidAdl, got {other:?}"),
+    }
+    assert!(
+        !loom_marker.exists(),
+        "loom-opt must not run after ADL failure"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn loom_failure_preserves_stderr() {
+    let adl = validator_script("cat >/dev/null");
+    let loom = validator_script("cat >/dev/null; echo 'bad loom syntax' >&2; exit 9");
+    let arch = Processor::new("lane").into_elem();
+
+    let error = super::architecture_to_mlir_with_tools(&arch, adl.as_os_str(), loom.as_os_str())
+        .expect_err("complete validation should fail");
+    match error {
+        super::MlirExportError::InvalidLoomMlir { stderr, .. } => {
+            assert!(stderr.contains("bad loom syntax"));
+        }
+        other => panic!("expected InvalidLoomMlir, got {other:?}"),
+    }
+}
+
+#[test]
+fn checked_export_reports_missing_adl_validator() {
+    let missing = std::env::temp_dir().join("mlar-validator-that-does-not-exist");
+    let arch = Processor::new("lane").into_elem();
+    let error =
+        super::architecture_to_mlir_with_tools(&arch, missing.as_os_str(), missing.as_os_str())
+            .expect_err("missing validator should fail");
+    assert!(matches!(
+        error,
+        super::MlirExportError::ToolNotFound {
+            tool: "adl-opt",
+            ..
+        }
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn checked_export_reports_validator_start_failure() {
+    let directory = std::env::temp_dir();
+    let arch = Processor::new("lane").into_elem();
+    let error =
+        super::architecture_to_mlir_with_tools(&arch, directory.as_os_str(), directory.as_os_str())
+            .expect_err("a directory cannot be executed as a validator");
+    assert!(matches!(
+        error,
+        super::MlirExportError::ToolInvocation {
+            tool: "adl-opt",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn quantitative_resource_remains_emittable_but_checked_export_is_unsupported() {
+    let lane = Processor::new("lane").with_resources(vec![Resource::quantitative("port", 2)]);
+    let arch = Architecture::scope("core").with_processor(lane);
+    let unchecked = architecture_to_mlir_unchecked(&arch).expect("experimental op should emit");
+    assert!(unchecked.contains("adl.resource.quantitative"));
+
+    let error = super::architecture_to_mlir_with_tools(
+        &arch,
+        std::ffi::OsStr::new("unused-adl-opt"),
+        std::ffi::OsStr::new("unused-loom-opt"),
+    )
+    .expect_err("checked export should reject unsupported experimental op");
+    assert!(matches!(
+        error,
+        super::MlirExportError::UnsupportedExperimentalFeature {
+            feature: "adl.resource.quantitative"
+        }
+    ));
 }
 
 #[test]
@@ -119,7 +256,7 @@ fn shared_dims_emitted_once() {
         .with_memory(l1)
         .with_processor(lane);
     let scaled = core.scale(&[dim_x]).with_name("mesh");
-    let mlir = architecture_to_mlir(&scaled).expect("should emit");
+    let mlir = architecture_to_mlir_unchecked(&scaled).expect("should emit");
     assert!(mlir.contains("adl.memory.array \"mem_L1\", ["));
     assert!(mlir.contains("adl.memory.array \"mem_array_L1\", ["));
     assert!(mlir.contains("adl.arch.scale \"arch_mesh\", ["));

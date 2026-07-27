@@ -229,13 +229,21 @@ use mlar_rust::*;
 
 let arch = Processor::new("lane").into_elem();
 let mlir = architecture_to_mlir(&arch)
-    .expect("export requires concrete dimensions and memory sizes");
+    .expect("export and compiler validation should succeed");
 
 assert!(mlir.starts_with("module @arch_lane"));
 ```
 
 The exporter emits `adl.*` operations and appends any referenced functionality
 MLIR modules after rewriting processor and memory names to exported names.
+It first validates an architecture-only module with `adl-opt`, then validates
+the complete module with `loom-opt`. `ADL_OPT` and `LOOM_OPT` override the
+executable paths; otherwise both commands are resolved through `PATH`.
+
+`architecture_to_mlir_unchecked` emits the same complete text without invoking
+either tool. It is intended for debugging and experimental features.
+`adl.resource.quantitative` remains available through this unchecked API, but
+is not yet supported by the ADL/MLIR compiler or checked export.
 
 ## Export Visualization JSON
 

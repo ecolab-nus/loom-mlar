@@ -53,7 +53,8 @@ MLIR-facing import and export code.
   `loom.bind_mem`, `loom.copy`, and `loom.gather`.
 - `parser/native_ops.rs`: lightweight extraction for native MLIR constructs such
   as `linalg.*`, `memref.copy`, and output operands.
-- `export/mod.rs`: `architecture_to_mlir`.
+- `export/mod.rs`: checked/unchecked MLIR export, structured export errors, and
+  external `adl-opt`/`loom-opt` validation.
 - `export/emitter.rs`: SSA-based emitter for `adl.*` operations, resources,
   architecture arrays, graph composition, processors, data movers, and memory.
 - `export/rewrite.rs`: rewrites embedded functionality MLIR names to match
@@ -62,8 +63,9 @@ MLIR-facing import and export code.
 - `tests/parser.rs` and `tests/export.rs`: parser/export tests included through
   module-level `#[path]` test hooks.
 
-MLIR export returns `Option<String>` because symbolic dimensions or memory sizes
-that cannot become constants make `adl.*` emission impossible.
+MLIR export returns `Result<String, MlirExportError>`. Symbolic dimensions,
+processor source reads, missing validators, parser diagnostics, and unsupported
+experimental features are reported separately.
 
 ## `src/math`
 
