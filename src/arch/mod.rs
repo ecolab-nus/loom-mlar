@@ -1,4 +1,5 @@
 pub mod architecture;
+pub mod arch_yaml;
 pub mod memory;
 pub mod network;
 pub mod perf;
@@ -19,6 +20,7 @@ pub use crate::schedule::{
     MlirTensorSymbolBinding,
 };
 pub use architecture::Architecture;
+pub use arch_yaml::{ArchLoadError, SystemYaml};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{
     MeshLink, MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings,

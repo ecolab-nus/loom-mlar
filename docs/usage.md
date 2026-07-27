@@ -1,5 +1,20 @@
 # Usage
 
+## Loading a generated architecture directory
+
+`archs::load_arch(dir)` reads `system.yaml` plus each declared
+`<processor>.mlir`/`<processor>.perf.yaml` pair. If `system.yaml` is absent it
+uses the legacy hardcoded 2D mesh builder. A present but malformed file is an
+error.
+
+```rust
+let arch = mlar_rust::archs::load_arch("archs/generated/2d_mesh/baseline")?;
+```
+
+The `eval_runtime` binary uses this loader through `LOOM_ARCH_DIR`.
+`export_platform <arch-dir> [output.mlir]` emits the platform file consumed by
+the in-tree Loom symbolic compiler.
+
 ## Typical Workflow
 
 1. Define memory regions and dimensions.
