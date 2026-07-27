@@ -152,8 +152,8 @@ let perf_models = module
             FuncPerfModel::builder()
                 .simple_time_cost(
                     Expr::parse("344 + bcst_x + bcst_y").unwrap(),
-                    Expr::parse("M * N * 2").unwrap(),
-                    Expr::parse("28/(bcst_x * bcst_y)").unwrap(),
+                    Expr::parse("M * N * 2 * bcst_x * bcst_y").unwrap(),
+                    Expr::parse("28").unwrap(),
                 )
                 .build()
         } else {
@@ -318,7 +318,8 @@ let evaluated = evaluate(&schedule, &arch)?;
 
 Evaluation fills `scenarios` on the returned schedule. For sequential schedules,
 it builds the cartesian product of child scenarios, sums costs, and ANDs
-constraints.
+constraints. Scenarios remain guarded alternatives: evaluation does not select
+one or filter alternatives whose constraints become false after substitution.
 
 `Schedule::Parallel` currently serializes and deserializes, but evaluating it is
 not implemented.

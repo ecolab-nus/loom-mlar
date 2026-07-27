@@ -94,6 +94,24 @@ fn test_2d_mesh_torus_perf_models() {
             "matrix_lane should expose {name}"
         );
     }
+    let small_matmul = mesh
+        .get_processor("matrix_lane")
+        .expect("matrix_lane should exist")
+        .get_function("matmul_SS_f16")
+        .expect("matrix_lane should expose matmul_SS_f16");
+    let small_cost = small_matmul.perf.scenarios[1]
+        .time_cost
+        .to_expr()
+        .substitute(&[
+            (Sym::new("M"), Expr::Const(32)),
+            (Sym::new("N"), Expr::Const(32)),
+            (Sym::new("K"), Expr::Const(32)),
+        ]);
+    assert_eq!(
+        small_cost.eval_const(),
+        Some(1248),
+        "small-matmul throughput must remain positive before integer division"
+    );
     let matrix_mlir =
         fs::read_to_string(MATRIX_LANE_MLIR).expect("matrix_lane MLIR should be readable");
     for (name, a_is_rram, b_is_rram) in [

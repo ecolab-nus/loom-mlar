@@ -46,7 +46,9 @@ cycles = fixed_latency + volume / throughput
   `block_size_bytes * num_blocks` bytes; each `scale` dimension replicates it.
 - Performance `fixed_latency` is cycles. `volume` is operation-specific work
   (FLOPs, elements, or bytes), and `throughput` must use the matching work units
-  per cycle.
+  per cycle. Expression division is integer division; model authors choose any
+  required rounding or pipelined-dataflow formula and must keep throughput
+  nonzero.
 - Network bandwidth is currently an untyped descriptive expression. The
   examples annotate it as bytes/cycle, but MLAR does not enforce that unit and
   the evaluator does not consume network maps or bandwidth.

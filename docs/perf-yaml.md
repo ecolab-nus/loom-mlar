@@ -19,8 +19,8 @@ PerfYamlSpec
 
 ## Reusable Time Costs
 
-Reusable cost definitions live under `time_costs`. Use YAML anchors and aliases
-to share them with function scenarios:
+Reusable cost definitions live under `time_costs`. Reuse is provided by YAML
+anchors and aliases, not by an MLAR name lookup:
 
 ```yaml
 time_costs:
@@ -39,11 +39,15 @@ functions:
 ```
 
 YAML anchors are document-local. After parsing, an aliased `time_cost` is just
-the same shape as an inline `time_cost` mapping.
+the same shape as an inline `time_cost` mapping. A scalar such as
+`time_cost: matmul_large` does not reference `time_costs.matmul_large`; use
+`&matmul_large` and `*matmul_large` as above.
 
 ## Functions
 
 Each entry under `functions` corresponds to one Rust `FuncPerfModel`.
+Its cost models one invocation of the entire matching MLIR `func.func`, not
+each operation within the function and not each constraint.
 
 ```yaml
 functions:
@@ -92,7 +96,10 @@ library validates symbol declarations, but it does not currently prove that
 scenario constraints do not overlap.
 
 At evaluation time, the evaluator combines the function-level constraints with
-each scenario's local constraints.
+each scenario's local constraints. Scenarios are guarded alternatives, not
+additive cost components. Evaluation preserves every alternative and its guard;
+it does not choose a true scenario or remove a false one after symbol
+substitution.
 
 ## Time Costs
 
@@ -114,7 +121,10 @@ time_cost:
 fixed_latency + volume / throughput
 ```
 
-All three fields are expressions parsed by `Expr::parse`.
+All three fields are integer expressions parsed by `Expr::parse`, so `/`
+truncates toward zero. Whether a model should use truncation, ceiling division,
+or a different pipelined-dataflow formula depends on the model's meaning.
+Constraints must still ensure nonzero throughput.
 
 ## Expressions And Constraints
 
@@ -137,7 +147,7 @@ Common examples:
 ```yaml
 fixed_latency: "M * N / 2"
 volume: "2 * B * M * N * K"
-throughput: "(M * N / 8192) * 716"
+throughput: "M * N * 716 / 8192"
 constraints: "B >= 1 && M >= 32 && N >= 32 && K >= 32"
 ```
 
@@ -159,7 +169,9 @@ time_costs:
     simple:
       fixed_latency: "M * N / 2"
       volume: "2 * M * N * K"
-      throughput: "(M * N / 8192) * 716"
+      # Multiply before integer division so this remains positive in the
+      # M * N < 8192 scenario.
+      throughput: "M * N * 716 / 8192"
 
 functions:
   elementwise_add_f16:

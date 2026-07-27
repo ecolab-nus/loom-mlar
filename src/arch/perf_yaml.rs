@@ -14,6 +14,7 @@ use crate::schedule::{MlirFunc, MlirModule};
 /// definitions may live under `time_costs` and be reused with YAML anchors and
 /// aliases.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PerfYamlSpec {
     #[serde(default)]
     pub time_costs: BTreeMap<String, TimeCostYaml>,
@@ -23,6 +24,7 @@ pub struct PerfYamlSpec {
 
 /// YAML representation for one concrete function performance model.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PerfFunctionYaml {
     pub symbols: Option<Vec<String>>,
     pub constraints: Option<String>,
@@ -32,12 +34,14 @@ pub struct PerfFunctionYaml {
 
 /// YAML representation for a scenario time-cost variant.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TimeCostYaml {
     pub simple: Option<SimpleCostYaml>,
 }
 
 /// YAML representation for the `SimpleTimeCost` time-cost variant.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SimpleCostYaml {
     pub fixed_latency: String,
     pub volume: String,
@@ -46,6 +50,7 @@ pub struct SimpleCostYaml {
 
 /// YAML representation for one constrained scenario.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PerfScenarioYaml {
     pub constraints: Option<String>,
     pub time_cost: Option<TimeCostYaml>,
@@ -346,6 +351,27 @@ functions:
             .model_for_func(&MlirFunc::named("elementwise_add_f16"))
             .expect_err("missing scenarios should fail");
         assert!(matches!(err, PerfYamlError::InvalidSpec(_)));
+    }
+
+    #[test]
+    fn rejects_misspelled_constraint_field() {
+        let err = PerfYamlSpec::from_yaml_str(
+            r#"
+functions:
+  f:
+    constrants: "L > 0"
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "1"
+            volume: "L"
+            throughput: "32"
+"#,
+        )
+        .expect_err("unknown fields must fail");
+
+        assert!(err.to_string().contains("unknown field"));
+        assert!(err.to_string().contains("constrants"));
     }
 
     #[test]

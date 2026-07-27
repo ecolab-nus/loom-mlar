@@ -8,7 +8,9 @@ use crate::schedule::MlirFunc;
 
 /// A simple performance model: fixed startup cost plus volume-over-throughput.
 ///
-/// Total latency = `fixed_latency + volume / throughput`.
+/// Total latency is `fixed_latency + volume / throughput`, using [`Expr`]
+/// integer-division semantics. Any rounding policy is part of the symbolic
+/// model rather than implicit in this type.
 ///
 /// `volume` is a symbolic expression describing the total amount of work
 /// (e.g. number of elements, FLOPs), and `throughput` is the processing rate
@@ -29,19 +31,22 @@ pub struct SimpleTimeCost {
 /// - [`TimeCost::Simple`] appears in performance-model definitions
 ///   ([`FuncPerfModel`]) before evaluation.
 /// - [`TimeCost::Concrete`] appears in evaluation results after the
-///   [`SimpleTimeCost`] has been concretized into a single [`Expr`]
+///   [`SimpleTimeCost`] has been flattened into a single [`Expr`]
 ///   (via `fixed_latency + volume / throughput`), or by combining
 ///   multiple concrete costs.
+///
+/// `Concrete` means "one cost expression", not necessarily "free of symbols".
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TimeCost {
     Simple(SimpleTimeCost),
     Concrete(Expr),
 }
 
-/// A single performance scenario — constraints that select it and an associated time cost.
+/// A guarded performance alternative with an associated time cost.
 ///
 /// When a [`FuncPerfModel`] contains multiple scenarios, authors are expected
-/// to make scenario constraints mutually exclusive.
+/// to make scenario constraints mutually exclusive. Evaluation preserves all
+/// alternatives and their guards; it does not select one scenario.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerfScenario {
     /// Constraints under which this scenario applies.
@@ -104,7 +109,10 @@ impl SimpleTimeCost {
         }
     }
 
-    /// Concretize into a single expression: `fixed_latency + volume / throughput`.
+    /// Flatten into `fixed_latency + volume / throughput`.
+    ///
+    /// Division follows [`Expr`] integer semantics. Model authors choose any
+    /// required rounding behavior and must ensure nonzero throughput.
     pub fn concretize(&self) -> Expr {
         Expr::add(
             self.fixed_latency.clone(),
@@ -246,7 +254,7 @@ impl FuncPerfModel {
 
     /// Total latency expression for a specific scenario.
     ///
-    /// For `Simple` costs this concretizes via `fixed_latency + volume / throughput`;
+    /// For `Simple` costs this flattens via `fixed_latency + volume / throughput`;
     /// for `Concrete` costs it returns the stored expression.
     ///
     /// Returns `None` if `scenario` is out of range.

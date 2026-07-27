@@ -99,6 +99,10 @@ Each `PerfScenario` contains:
 fixed_latency + volume / throughput
 ```
 
+General `Expr` division is integer division. Whether a model needs truncation,
+ceiling division, or a different pipelined-dataflow formula is a property of
+that symbolic model, not an implicit `SimpleTimeCost` policy.
+
 The YAML form mirrors this hierarchy: each function model contains `scenarios`,
 each scenario contains its local `constraints`, and each scenario's cost is
 nested under a variant such as `time_cost.simple`. See
@@ -176,8 +180,9 @@ serialize with Serde and can carry optional evaluated scenarios.
 `evaluate(&schedule, &arch)` currently supports:
 
 - `Func`: finds the matching function in architecture processors or data
-  movers, fuses global and scenario constraints, concretizes simple costs, and
-  applies the function's `sym_map`.
+  movers, fuses global and scenario constraints, flattens simple costs to one
+  expression, and applies the function's `sym_map`. It preserves all guarded
+  alternatives rather than selecting or filtering scenarios.
 - `Sequential`: recursively evaluates children and produces the cartesian
   product of child scenarios, summing costs and AND-ing constraints.
 

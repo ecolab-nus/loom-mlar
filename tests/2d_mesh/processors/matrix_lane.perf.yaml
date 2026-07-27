@@ -28,7 +28,7 @@ time_costs:
     simple:
       fixed_latency: "M * N / 2"
       volume: "2 * M * N * K"
-      throughput: "(M * N / 8192) * 716"
+      throughput: "M * N * 716 / 8192"
   batch_matmul_large: &batch_matmul_large
     simple:
       fixed_latency: "M * N / 2"
@@ -38,7 +38,7 @@ time_costs:
     simple:
       fixed_latency: "M * N / 2"
       volume: "2 * B * M * N * K"
-      throughput: "(M * N / 8192) * 716"
+      throughput: "M * N * 716 / 8192"
   matmul_rram_placeholder: &matmul_rram_placeholder
     simple:
       fixed_latency: "888"

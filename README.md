@@ -121,7 +121,7 @@ let matmul = FuncPerfModel::builder()
             SimpleTimeCost::new(
                 Expr::parse("100").unwrap(),
                 Expr::parse("M * N * K").unwrap(),
-                Expr::parse("(M * N / 8192) * 1024").unwrap(),
+                Expr::parse("M * N * 1024 / 8192").unwrap(),
             ),
         ),
     ])
@@ -139,6 +139,8 @@ model needs declarations that differ from inferred expression usage.
   to constants.
 - Schedule evaluation supports `Schedule::Func` and `Schedule::Sequential`.
   `Schedule::Parallel` is serialized but evaluation is not implemented yet.
+- Evaluation preserves guarded scenario alternatives; it does not choose a
+  scenario or discard alternatives whose constraints become false.
 - Scenario overlap is not checked. Model authors should make scenario
   constraints mutually exclusive when multiple scenarios are present.
 - Resource maps represent contention relationships, but the current schedule

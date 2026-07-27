@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use mlar_rust::{Schedule, architecture_to_mlir, evaluate};
+use mlar_rust::{Expr, Schedule, Sym, architecture_to_mlir, evaluate};
 
 fn example_dir(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -83,4 +83,14 @@ fn single_core_example_evaluates_constrained_scenarios() {
         panic!("evaluation should populate function scenarios");
     };
     assert_eq!(scenarios.len(), 2);
+
+    let at = |scenario: usize, l: i64| {
+        scenarios[scenario]
+            .time_cost
+            .to_expr()
+            .substitute(&[(Sym::new("L"), Expr::Const(l))])
+            .eval_const()
+    };
+    assert_eq!(at(0, 1024), Some(34));
+    assert_eq!(at(1, 1025), Some(34));
 }

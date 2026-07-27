@@ -23,6 +23,10 @@
 //! Overlapping [`PerfScenario`] constraints are not detected or resolved here.
 //! Model authors are expected to provide mutually exclusive scenarios per
 //! [`FuncPerfModel`].
+//!
+//! Evaluation preserves guarded alternatives even when substitution makes a
+//! constraint constant. It does not filter false alternatives or choose a true
+//! one; downstream consumers may do so when all required symbols are bound.
 
 use crate::arch::architecture::Architecture;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
@@ -35,13 +39,14 @@ use crate::schedule::schedule::Schedule;
 ///
 /// Returns a new [`Schedule`] tree with `scenarios` filled on every node:
 ///
-/// - **Func**: scenarios come from the architecture's [`FuncPerfModel`].
+/// - **Func**: guarded scenario alternatives come from the architecture's
+///   [`FuncPerfModel`].
 /// - **Sequential**: scenarios are the cartesian product of all sub-schedule
 ///   scenarios (times summed, constraints AND-ed).
 /// - **Parallel**: not yet supported — panics.
 ///
 /// Overlapping constraints are preserved as-is; evaluation does not check
-/// scenario exclusivity.
+/// scenario exclusivity or filter alternatives by constraint truth.
 ///
 /// # Errors
 ///
@@ -150,8 +155,9 @@ fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfSce
 }
 
 /// Fuse a [`FuncPerfModel`]'s global constraints into each scenario and
-/// concretize [`SimpleTimeCost`] into [`TimeCost::Concrete`], producing the
-/// final per-function scenario vector ready for combination.
+/// flatten [`SimpleTimeCost`] into a single expression in
+/// [`TimeCost::Concrete`], producing the final per-function scenario vector
+/// ready for combination. The expression may still contain symbols.
 fn fuse_model_scenarios(model: &FuncPerfModel) -> Vec<PerfScenario> {
     model
         .scenarios

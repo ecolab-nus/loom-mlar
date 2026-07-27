@@ -7,7 +7,8 @@ time_costs:
       throughput: "32"
   long_vector: &long_vector
     simple:
-      fixed_latency: "8"
+      # Higher setup cost avoids a backwards latency jump at the crossover.
+      fixed_latency: "18"
       volume: "L"
       throughput: "64"
 
