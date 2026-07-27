@@ -37,11 +37,6 @@ scenario constraints are easier to express symbolically outside compute IR.
 - [Performance YAML](docs/perf-yaml.md)
 - [Architecture examples](examples/architectures/README.md)
 
-Self-contained YAML-driven examples under
-[examples/architectures/](examples/architectures/) cover a single core, a
-DRAM/L2/L1 hierarchy, and a 2D torus. The larger integration fixture remains in
-[tests/2d_mesh/](tests/2d_mesh/).
-
 ## Minimal Example
 
 ```rust

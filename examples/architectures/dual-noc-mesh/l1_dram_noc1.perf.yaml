@@ -1,0 +1,8 @@
+functions:
+  l1_to_dram_f16:
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "454"
+            volume: "M * N * 2"
+            throughput: "150"

@@ -5,7 +5,7 @@ use std::process::Command;
 use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
 use mlar_rust::*;
 
-use crate::arch::scaled_mesh_torus;
+use crate::arch::{scaled_mesh_torus, scaled_mesh_torus_rust};
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors/vector_lane.mlir";
 const MATRIX_LANE_MLIR: &str = "tests/2d_mesh/processors/matrix_lane.mlir";
@@ -41,6 +41,21 @@ fn mesh_node(arch: &Architecture) -> &Architecture {
         .iter()
         .find(|child| child.name() == Some("mesh"))
         .expect("top-level scope should contain mesh child scope")
+}
+
+#[test]
+fn test_yaml_and_rust_2d_mesh_construction_match() {
+    let yaml = scaled_mesh_torus();
+    let rust = scaled_mesh_torus_rust();
+
+    assert_eq!(
+        yaml.total_processing_elements(),
+        rust.total_processing_elements()
+    );
+    assert_eq!(
+        architecture_to_mlir(&yaml).expect("YAML architecture should export"),
+        architecture_to_mlir(&rust).expect("Rust architecture should export")
+    );
 }
 
 #[test]

@@ -14,12 +14,11 @@ The `eval_runtime` binary uses this loader through `LOOM_ARCH_DIR`.
 `export_platform <arch-dir> [output.mlir]` emits the platform file consumed by
 the in-tree Loom symbolic compiler.
 
-Runnable architecture packages under
-[`examples/architectures/`](../examples/architectures/) demonstrate every
-current `system.yaml` field. Inspect one without writing output files:
+The [`examples/architectures/`](../examples/architectures/) packages cover the
+YAML loader. `dual-noc-mesh` matches Loom's direct DRAM/L1 flow:
 
 ```bash
-cargo run --example inspect_arch -- examples/architectures/cache-hierarchy
+cargo run --example inspect_arch -- examples/architectures/dual-noc-mesh
 ```
 
 ## Typical Workflow

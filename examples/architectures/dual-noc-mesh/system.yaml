@@ -1,0 +1,54 @@
+version: 1
+
+# Illustrative TT-like shape. Counts and capacities are concrete because the
+# ADL exporter and Loom hardware discovery require concrete structure.
+dimensions:
+  dram_channel: 8
+  x: 8
+  y: 8
+  l1_bank: 16
+
+architecture:
+  name: dual_noc_system
+  memories:
+    - name: DRAM
+      bank_name: DRAM_channel
+      block_size_bytes: 8192
+      num_blocks: 196608
+      scale: [dram_channel]
+  processors:
+    # Loom currently generates direct DRAM/L1 transfers. NoC0 carries loads
+    # and inter-core gathers; NoC1 carries stores.
+    - name: dram_l1_noc0
+      kind: data_mover
+      from: DRAM
+      to: L1
+      resources: [noc0]
+    - name: l1_l1_noc0
+      kind: data_mover
+      from: L1
+      to: L1
+      resources: [noc0]
+    - name: l1_dram_noc1
+      kind: data_mover
+      from: L1
+      to: DRAM
+      resources: [noc1]
+  children:
+    - name: mesh
+      scale: [x, y]
+      memories:
+        - name: L1
+          bank_name: L1_bank
+          block_size_bytes: 16
+          num_blocks: 5464
+          scale: [l1_bank]
+      processors:
+        - name: matrix_lane
+          kind: compute
+          from: L1
+          to: L1
+        - name: vector_lane
+          kind: compute
+          from: L1
+          to: L1
