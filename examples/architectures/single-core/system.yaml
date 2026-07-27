@@ -1,0 +1,20 @@
+version: 1
+
+# Dimension values are instance counts.
+dimensions:
+  l1_bank: 4
+
+architecture:
+  name: single_core
+  memories:
+    - name: L1
+      bank_name: L1_bank
+      block_size_bytes: 64  # bytes/block
+      num_blocks: 1024      # blocks/bank: 64 KiB per bank
+      scale: [l1_bank]      # 256 KiB total L1
+  processors:
+    - name: vector_lane
+      kind: compute
+      from: L1
+      to: L1
+      resources: [vector_pipeline]

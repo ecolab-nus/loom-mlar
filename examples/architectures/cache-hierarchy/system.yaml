@@ -1,0 +1,53 @@
+version: 1
+
+# All values are replication counts.
+dimensions:
+  dram_channel: 2
+  l2_bank: 4
+  core: 4
+  l1_bank: 8
+
+architecture:
+  name: cache_system
+  memories:
+    - name: DRAM
+      bank_name: DRAM_channel
+      block_size_bytes: 4096
+      num_blocks: 32768       # 128 MiB/channel, 256 MiB total
+      scale: [dram_channel]
+    - name: L2
+      bank_name: L2_bank
+      block_size_bytes: 64
+      num_blocks: 8192        # 512 KiB/bank, 2 MiB shared L2
+      scale: [l2_bank]
+  processors:
+    - name: dram_l2_dma
+      kind: data_mover
+      from: DRAM
+      to: L2
+      resources: [memory_fabric]
+    - name: l2_l1_dma
+      kind: data_mover
+      from: L2
+      to: L1
+      resources: [memory_fabric, l2_fabric]
+    - name: l1_l2_dma
+      kind: data_mover
+      from: L1
+      to: L2
+      resources: [memory_fabric, l2_fabric]
+  children:
+    - name: cores
+      scale: [core]
+      memories:
+        - name: L1
+          bank_name: L1_bank
+          block_size_bytes: 64
+          num_blocks: 512     # 32 KiB/bank, 256 KiB/core
+          scale: [l1_bank]
+      processors:
+        - name: core_lane
+          kind: compute
+          from: L1
+          to: L1
+          resources: [core_pipeline]

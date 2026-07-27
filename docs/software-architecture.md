@@ -124,12 +124,16 @@ which writes raw MLIR to stdout.
 
 ## Tests And Examples
 
-The most complete example is `tests/2d_mesh/arch.rs`.
+Runnable architecture packages under `examples/architectures/` demonstrate the
+YAML interface. The larger `tests/2d_mesh/` integration fixture loads its full
+system from `processors/system.yaml`; `arch.rs` retains a small Rust-built core
+for builder-API coverage.
 
-It demonstrates:
+Together they demonstrate:
 
 - parsing processor functionality from MLIR files,
-- building compute processors and data movers,
+- loading compute processors and data movers from YAML,
+- building a small scope directly through the Rust API,
 - attaching one source and one destination memory region per processor,
 - deriving memory resources,
 - composing scoped architectures,

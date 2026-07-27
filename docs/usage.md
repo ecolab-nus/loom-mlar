@@ -3,9 +3,8 @@
 ## Loading a generated architecture directory
 
 `archs::load_arch(dir)` reads `system.yaml` plus each declared
-`<processor>.mlir`/`<processor>.perf.yaml` pair. If `system.yaml` is absent it
-uses the legacy hardcoded 2D mesh builder. A present but malformed file is an
-error.
+`<processor>.mlir`/`<processor>.perf.yaml` pair. Missing or malformed files are
+errors; there is no implicit architecture fallback.
 
 ```rust
 let arch = mlar_rust::archs::load_arch("archs/generated/2d_mesh/baseline")?;
@@ -14,6 +13,14 @@ let arch = mlar_rust::archs::load_arch("archs/generated/2d_mesh/baseline")?;
 The `eval_runtime` binary uses this loader through `LOOM_ARCH_DIR`.
 `export_platform <arch-dir> [output.mlir]` emits the platform file consumed by
 the in-tree Loom symbolic compiler.
+
+Runnable architecture packages under
+[`examples/architectures/`](../examples/architectures/) demonstrate every
+current `system.yaml` field. Inspect one without writing output files:
+
+```bash
+cargo run --example inspect_arch -- examples/architectures/cache-hierarchy
+```
 
 ## Typical Workflow
 
@@ -28,8 +35,11 @@ the in-tree Loom symbolic compiler.
 7. Evaluate schedules in-process or through generated evaluator binaries.
 8. Query architecture MLIR in-process or through generated query binaries.
 
-The full example in [tests/2d_mesh/arch.rs](../tests/2d_mesh/arch.rs) follows
-this workflow end to end.
+The full integration fixture loads
+[tests/2d_mesh/processors/system.yaml](../tests/2d_mesh/processors/system.yaml).
+The smaller `single_core` helper in
+[tests/2d_mesh/arch.rs](../tests/2d_mesh/arch.rs) keeps direct Rust builder-API
+coverage.
 
 ## Build A Small Scope
 

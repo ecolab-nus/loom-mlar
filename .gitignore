@@ -22,6 +22,9 @@ target
 
 *.png
 
+# Concise local working context for coding agents.
+REFERENCE.md
+
 # Generated evaluator/query binaries (keep the folder via .gitkeep)
 tests/2d_mesh/bin/*
 !tests/2d_mesh/bin/.gitkeep

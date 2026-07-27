@@ -3,9 +3,10 @@
 Rust implementation of MLAR, the Multi-Level Architecture Representation used
 to describe hardware to compiler flows.
 
-This crate is a library. It provides Rust data structures, MLIR import/export,
-symbolic performance models, schedule evaluation helpers, and visualization JSON
-export. There is no top-level CLI binary in this repository.
+This crate primarily provides a library for Rust data structures, MLIR
+import/export, symbolic performance models, schedule evaluation, and
+visualization JSON export. It also includes small runtime evaluator and platform
+export utilities.
 
 ## What It Models
 
@@ -34,12 +35,12 @@ scenario constraints are easier to express symbolically outside compute IR.
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md)
 - [Performance YAML](docs/perf-yaml.md)
+- [Architecture examples](examples/architectures/README.md)
 
-The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs),
-with processor MLIR and performance models under [tests/2d_mesh/processors/](tests/2d_mesh/processors/).
-It builds a scoped system containing an 8x8 mesh of cores, DRAM, route-specific
-data movers, NoC resources, MLIR export, schedule evaluation, and viewer JSON
-export.
+Self-contained YAML-driven examples under
+[examples/architectures/](examples/architectures/) cover a single core, a
+DRAM/L2/L1 hierarchy, and a 2D torus. The larger integration fixture remains in
+[tests/2d_mesh/](tests/2d_mesh/).
 
 ## Minimal Example
 

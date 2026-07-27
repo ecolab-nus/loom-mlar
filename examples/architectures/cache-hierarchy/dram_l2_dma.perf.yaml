@@ -1,0 +1,8 @@
+functions:
+  load_l2:
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "80"  # cycles
+            volume: "L * 2"      # bytes for fp16
+            throughput: "16"     # bytes/cycle

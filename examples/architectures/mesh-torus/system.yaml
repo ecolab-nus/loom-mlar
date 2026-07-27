@@ -1,0 +1,57 @@
+version: 1
+
+dimensions:
+  dram_channel: 4
+  x: 4
+  y: 4
+  l1_bank: 8
+
+architecture:
+  name: torus_system
+  memories:
+    - name: DRAM
+      bank_name: DRAM_channel
+      block_size_bytes: 4096
+      num_blocks: 65536       # 256 MiB/channel, 1 GiB total
+      scale: [dram_channel]
+  processors:
+    - name: dram_l1_dma
+      kind: data_mover
+      from: DRAM
+      to: L1
+      resources: [noc_ingress]
+    - name: l1_dram_dma
+      kind: data_mover
+      from: L1
+      to: DRAM
+      resources: [noc_egress]
+  networks:
+    - name: l1_torus
+      dimensions: [x, y]
+      region: L1
+      links:
+        - name: x
+          map: "[x, y] -> [x, y]: ((x + 1) mod 4, y)"
+        - name: y
+          map: "[x, y] -> [x, y]: (x, (y + 1) mod 4)"
+      # Descriptive bytes/cycle/link; not consumed by schedule evaluation.
+      link_bandwidth: "64"
+      io:
+        # Intended as endpoint-to-router coordinate attachment; currently inert.
+        map: "[x, y] -> [x, y]: (x, y)"
+        link_bandwidth: "32"
+  children:
+    - name: mesh
+      scale: [x, y]
+      memories:
+        - name: L1
+          bank_name: L1_bank
+          block_size_bytes: 64
+          num_blocks: 512     # 32 KiB/bank, 256 KiB/core
+          scale: [l1_bank]
+      processors:
+        - name: matrix_lane
+          kind: compute
+          from: L1
+          to: L1
+          resources: [matrix_pipeline]

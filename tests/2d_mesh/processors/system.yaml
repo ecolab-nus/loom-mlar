@@ -1,0 +1,49 @@
+version: 1
+
+dimensions:
+  nbank: 16
+  x: 8
+  y: 8
+  dram_channel: 8
+
+architecture:
+  name: system
+  memories:
+    - name: DRAM
+      bank_name: DRAM_bank
+      block_size_bytes: 8192
+      num_blocks: 196608
+      scale: [dram_channel]
+  processors:
+    - name: dram_l1_noc0
+      kind: data_mover
+      from: DRAM
+      to: L1
+      resources: [noc0]
+    - name: l1_l1_noc0
+      kind: data_mover
+      from: L1
+      to: L1
+      resources: [noc0]
+    - name: l1_dram_noc1
+      kind: data_mover
+      from: L1
+      to: DRAM
+      resources: [noc1]
+  children:
+    - name: mesh
+      scale: [x, y]
+      memories:
+        - name: L1
+          block_size_bytes: 16
+          num_blocks: 5464
+          scale: [nbank]
+      processors:
+        - name: matrix_lane
+          kind: compute
+          from: L1
+          to: L1
+        - name: vector_lane
+          kind: compute
+          from: L1
+          to: L1
