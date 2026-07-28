@@ -10,13 +10,12 @@ pub use abi::{arch_query, evaluator};
 
 // Re-export commonly used architecture types
 pub use arch::{
-    ArchLoadError, Architecture, ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover,
-    DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
+    ArchLoadError, Architecture, ChipYaml, ComputeProcessor, ComputeProcessorBuilder, DataEffect,
+    DataMover, DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
     FunctionProcessor, MemoryBank, MemoryRegion, MemoryRegionRef, MeshLink, MeshNetwork,
-    MeshNetworkInterface, PerfFunctionYaml, PerfScenario, PerfScenarioYaml, PerfYamlError,
-    PerfYamlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
-    ScaleOutNetworkBindings, SimpleCostYaml, SimpleTimeCost, SizeExpr, Sym, SystemYaml, TimeCost,
-    TimeCostYaml, TimeExpr, architecture_to_mlir,
+    MeshNetworkInterface, PerfScenario, PerfYamlError, PerfYamlSpec, Processor, ProcessorModule,
+    Resource, ResourceId, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
+    TimeCost, TimeExpr, architecture_to_mlir,
 };
 
 // Re-export commonly used math types

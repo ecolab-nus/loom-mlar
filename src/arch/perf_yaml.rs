@@ -16,44 +16,44 @@ use crate::schedule::{MlirFunc, MlirModule};
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PerfYamlSpec {
+    #[serde(default, rename = "time_costs")]
+    _time_costs: BTreeMap<String, TimeCostYaml>,
     #[serde(default)]
-    pub time_costs: BTreeMap<String, TimeCostYaml>,
-    #[serde(default)]
-    pub functions: BTreeMap<String, PerfFunctionYaml>,
+    functions: BTreeMap<String, PerfFunctionYaml>,
 }
 
 /// YAML representation for one concrete function performance model.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PerfFunctionYaml {
-    pub symbols: Option<Vec<String>>,
-    pub constraints: Option<String>,
+struct PerfFunctionYaml {
+    symbols: Option<Vec<String>>,
+    constraints: Option<String>,
     #[serde(default)]
-    pub scenarios: Vec<PerfScenarioYaml>,
+    scenarios: Vec<PerfScenarioYaml>,
 }
 
 /// YAML representation for a scenario time-cost variant.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TimeCostYaml {
-    pub simple: Option<SimpleCostYaml>,
+struct TimeCostYaml {
+    simple: Option<SimpleCostYaml>,
 }
 
 /// YAML representation for the `SimpleTimeCost` time-cost variant.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SimpleCostYaml {
-    pub fixed_latency: String,
-    pub volume: String,
-    pub throughput: String,
+struct SimpleCostYaml {
+    fixed_latency: String,
+    volume: String,
+    throughput: String,
 }
 
 /// YAML representation for one constrained scenario.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PerfScenarioYaml {
-    pub constraints: Option<String>,
-    pub time_cost: Option<TimeCostYaml>,
+struct PerfScenarioYaml {
+    constraints: Option<String>,
+    time_cost: Option<TimeCostYaml>,
 }
 
 #[derive(Debug)]
@@ -115,6 +115,10 @@ impl PerfYamlSpec {
             .iter()
             .map(|func| self.model_for_func(func))
             .collect()
+    }
+
+    pub(crate) fn function_names(&self) -> impl Iterator<Item = &str> {
+        self.functions.keys().map(String::as_str)
     }
 }
 

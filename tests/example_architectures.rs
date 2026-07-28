@@ -48,17 +48,21 @@ fn examples_cover_hierarchy_l2_and_networks() {
         Some(256 * 1024)
     );
     assert_eq!(hierarchy.children.len(), 1);
+    assert_eq!(hierarchy.children[0].name, "clusters");
+    assert_eq!(hierarchy.children[0].children.len(), 1);
+    assert_eq!(hierarchy.children[0].children[0].name, "cores");
     assert_eq!(hierarchy.processors_recursive().len(), 4);
+    let hierarchy_mlir = architecture_to_mlir(&hierarchy).expect("cache hierarchy should export");
+    assert!(hierarchy_mlir.contains("adl.memory.array \"mem_array_L2\""));
+    assert!(hierarchy_mlir.contains("adl.memory.array \"mem_array_array_L1\""));
+    assert!(hierarchy_mlir.contains("dst_mem_space @mem_array_L2"));
+    assert!(hierarchy_mlir.contains("dst_mem_space @mem_array_L1"));
 
-    let mesh =
-        mlar_rust::archs::load_arch(example_dir("mesh-torus")).expect("mesh should load");
+    let mesh = mlar_rust::archs::load_arch(example_dir("mesh-torus")).expect("mesh should load");
     assert_eq!(mesh.networks.len(), 1);
     assert_eq!(mesh.networks[0].mesh_links().len(), 2);
     assert_eq!(mesh.networks[0].bandwidth().eval_const(), Some(64));
-    assert_eq!(
-        mesh.networks[0].io().link_bandwidth.eval_const(),
-        Some(32)
-    );
+    assert_eq!(mesh.networks[0].io().link_bandwidth.eval_const(), Some(32));
     assert_eq!(mesh.networks[0].io().map.apply(&[2, 3]), vec![2, 3]);
     assert_eq!(mesh.children[0].dims().len(), 2);
 }

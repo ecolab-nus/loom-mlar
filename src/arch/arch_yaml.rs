@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer};
 
 use super::{
     Architecture, ComputeProcessor, DataMover, Dimension, MemoryRegion, MeshLink, MeshNetwork,
@@ -13,7 +14,10 @@ use crate::schedule::MlirModule;
 
 #[derive(Debug)]
 pub enum ArchLoadError {
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     Yaml(serde_yaml::Error),
     Invalid(String),
 }
@@ -24,8 +28,8 @@ impl fmt::Display for ArchLoadError {
             Self::Io { path, source } => {
                 write!(f, "failed to read '{}': {source}", path.display())
             }
-            Self::Yaml(source) => write!(f, "failed to parse system YAML: {source}"),
-            Self::Invalid(message) => write!(f, "invalid system YAML: {message}"),
+            Self::Yaml(source) => write!(f, "failed to parse chip YAML: {source}"),
+            Self::Invalid(message) => write!(f, "invalid chip YAML: {message}"),
         }
     }
 }
@@ -42,84 +46,211 @@ impl std::error::Error for ArchLoadError {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SystemYaml {
-    pub version: u32,
-    pub dimensions: BTreeMap<String, i64>,
-    pub architecture: ScopeYaml,
+pub struct ChipYaml {
+    #[serde(default)]
+    dimensions: BTreeMap<String, i64>,
+    architecture: ArchitectureYaml,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ScopeYaml {
-    pub name: String,
+struct ArchitectureYaml {
+    name: String,
     #[serde(default)]
-    pub scale: Vec<String>,
+    groups: Vec<GroupYaml>,
     #[serde(default)]
-    pub memories: Vec<MemoryYaml>,
+    memories: Vec<MemoryYaml>,
     #[serde(default)]
-    pub processors: Vec<ProcessorYaml>,
+    processors: Vec<ProcessorYaml>,
     #[serde(default)]
-    pub networks: Vec<MeshNetworkYaml>,
-    #[serde(default)]
-    pub children: Vec<ScopeYaml>,
+    networks: Vec<MeshNetworkYaml>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MemoryYaml {
-    pub name: String,
+struct GroupYaml {
+    name: String,
+    #[serde(default, rename = "in")]
+    parent: Option<String>,
     #[serde(default)]
-    pub bank_name: Option<String>,
-    pub block_size_bytes: i64,
-    pub num_blocks: i64,
+    scale: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AggregateShorthandYaml {
+    name: String,
+}
+
+#[derive(Clone, Debug)]
+enum MemoryYaml {
+    Physical(PhysicalMemoryYaml),
+    Aggregate(AggregateMemoryYaml),
+}
+
+#[derive(Clone, Debug)]
+struct PhysicalMemoryYaml {
+    name: String,
+    placement: Option<String>,
+    bank_name: Option<String>,
+    block_size_bytes: i64,
+    num_blocks: i64,
+    scale: Vec<String>,
+    aggregate: Option<AggregateShorthandYaml>,
+}
+
+#[derive(Clone, Debug)]
+struct AggregateMemoryYaml {
+    name: String,
+    base: String,
+    across: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMemoryYaml {
+    name: String,
+    #[serde(default, rename = "in")]
+    placement: Option<String>,
     #[serde(default)]
-    pub scale: Vec<String>,
+    bank_name: Option<String>,
+    #[serde(default)]
+    block_size_bytes: Option<i64>,
+    #[serde(default)]
+    num_blocks: Option<i64>,
+    #[serde(default)]
+    scale: Option<Vec<String>>,
+    #[serde(default)]
+    aggregate: Option<AggregateShorthandYaml>,
+    #[serde(default)]
+    of: Option<String>,
+    #[serde(default)]
+    across: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for MemoryYaml {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawMemoryYaml::deserialize(deserializer)?;
+        if raw.of.is_some() || raw.across.is_some() {
+            let (Some(base), Some(across)) = (raw.of, raw.across) else {
+                return Err(D::Error::custom(format!(
+                    "aggregate memory '{}' must specify both 'of' and 'across'",
+                    raw.name
+                )));
+            };
+            if raw.placement.is_some()
+                || raw.bank_name.is_some()
+                || raw.block_size_bytes.is_some()
+                || raw.num_blocks.is_some()
+                || raw.scale.is_some()
+                || raw.aggregate.is_some()
+            {
+                return Err(D::Error::custom(format!(
+                    "aggregate memory '{}' cannot define placement, storage, scale, or another aggregate",
+                    raw.name
+                )));
+            }
+            return Ok(Self::Aggregate(AggregateMemoryYaml {
+                name: raw.name,
+                base,
+                across,
+            }));
+        }
+
+        let (Some(block_size_bytes), Some(num_blocks)) = (raw.block_size_bytes, raw.num_blocks)
+        else {
+            return Err(D::Error::custom(format!(
+                "physical memory '{}' must specify block_size_bytes and num_blocks",
+                raw.name
+            )));
+        };
+        Ok(Self::Physical(PhysicalMemoryYaml {
+            name: raw.name,
+            placement: raw.placement,
+            bank_name: raw.bank_name,
+            block_size_bytes,
+            num_blocks,
+            scale: raw.scale.unwrap_or_default(),
+            aggregate: raw.aggregate,
+        }))
+    }
+}
+
+impl MemoryYaml {
+    fn name(&self) -> &str {
+        match self {
+            Self::Physical(memory) => &memory.name,
+            Self::Aggregate(memory) => &memory.name,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ProcessorKindYaml {
+enum ProcessorKindYaml {
     Compute,
     DataMover,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProcessorYaml {
-    pub name: String,
-    pub kind: ProcessorKindYaml,
-    pub from: String,
-    pub to: String,
+struct ProcessorYaml {
+    name: String,
+    #[serde(default, rename = "in")]
+    placement: Option<String>,
+    kind: ProcessorKindYaml,
+    from: String,
+    to: String,
     #[serde(default)]
-    pub resources: Vec<String>,
+    resources: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeshNetworkYaml {
-    pub name: String,
-    pub dimensions: Vec<String>,
-    pub region: String,
-    pub links: Vec<MeshLinkYaml>,
-    pub link_bandwidth: String,
-    pub io: MeshIoYaml,
+struct MeshNetworkYaml {
+    name: String,
+    #[serde(default, rename = "in")]
+    placement: Option<String>,
+    dimensions: Vec<String>,
+    region: String,
+    links: Vec<MeshLinkYaml>,
+    link_bandwidth: String,
+    io: MeshIoYaml,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeshLinkYaml {
-    pub name: String,
-    pub map: String,
+struct MeshLinkYaml {
+    name: String,
+    map: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeshIoYaml {
-    pub map: String,
-    pub link_bandwidth: String,
+struct MeshIoYaml {
+    map: String,
+    link_bandwidth: String,
 }
 
-impl SystemYaml {
+#[derive(Clone, Debug)]
+struct AggregateMemory {
+    name: String,
+    base: String,
+    across: String,
+    target: String,
+    visible_in: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct MemoryCatalog {
+    physical_placements: BTreeMap<String, Option<String>>,
+    aggregates: BTreeMap<String, AggregateMemory>,
+}
+
+impl ChipYaml {
     pub fn from_yaml_str(input: &str) -> Result<Self, ArchLoadError> {
         let spec: Self = serde_yaml::from_str(input).map_err(ArchLoadError::Yaml)?;
         spec.validate()?;
@@ -141,25 +272,19 @@ impl SystemYaml {
             .iter()
             .map(|(name, size)| (name.clone(), Dimension::new_int(name, *size)))
             .collect::<BTreeMap<_, _>>();
+        let catalog = self.memory_catalog()?;
         let mut function_names = HashSet::new();
         build_scope(
             &self.architecture,
+            None,
             artifact_dir.as_ref(),
             &dims,
+            &catalog,
             &mut function_names,
         )
     }
 
     fn validate(&self) -> Result<(), ArchLoadError> {
-        if self.version != 1 {
-            return Err(invalid(format!(
-                "unsupported version {}; expected 1",
-                self.version
-            )));
-        }
-        if self.dimensions.is_empty() {
-            return Err(invalid("dimensions must not be empty"));
-        }
         for (name, size) in &self.dimensions {
             if name.is_empty() || *size <= 0 {
                 return Err(invalid(format!(
@@ -168,31 +293,153 @@ impl SystemYaml {
             }
         }
 
-        let mut scope_names = HashSet::new();
-        let mut memory_names = HashSet::new();
+        if self.architecture.name.is_empty() {
+            return Err(invalid("architecture name must not be empty"));
+        }
+
+        let mut group_names = HashSet::new();
+        for group in &self.architecture.groups {
+            require_unique(&mut group_names, "group", &group.name)?;
+            validate_dimensions(
+                &group.scale,
+                &self.dimensions,
+                &format!("group '{}'", group.name),
+            )?;
+        }
+        for group in &self.architecture.groups {
+            if let Some(parent) = &group.parent {
+                if parent == &group.name {
+                    return Err(invalid(format!(
+                        "group '{}' cannot be inside itself",
+                        group.name
+                    )));
+                }
+                if !group_names.contains(parent) {
+                    return Err(invalid(format!(
+                        "group '{}' uses unknown parent group '{parent}'",
+                        group.name
+                    )));
+                }
+            }
+            ensure_group_acyclic(&group.name, &self.architecture.groups)?;
+        }
+
+        let catalog = self.memory_catalog()?;
         let mut processor_names = HashSet::new();
-        validate_scope(
-            &self.architecture,
-            &self.dimensions,
-            &mut scope_names,
-            &mut memory_names,
-            &mut processor_names,
-        )
+        for processor in &self.architecture.processors {
+            require_unique(&mut processor_names, "processor", &processor.name)?;
+            validate_placement(
+                processor.placement.as_deref(),
+                &group_names,
+                &format!("processor '{}'", processor.name),
+            )?;
+            if processor.from.is_empty() || processor.to.is_empty() {
+                return Err(invalid(format!(
+                    "processor '{}' must name both route endpoints",
+                    processor.name
+                )));
+            }
+            validate_memory_reference(
+                &processor.from,
+                processor.placement.as_deref(),
+                &catalog,
+                &format!("processor '{}'", processor.name),
+            )?;
+            validate_memory_reference(
+                &processor.to,
+                processor.placement.as_deref(),
+                &catalog,
+                &format!("processor '{}'", processor.name),
+            )?;
+        }
+
+        let mut network_names = HashSet::new();
+        for network in &self.architecture.networks {
+            require_unique(&mut network_names, "network", &network.name)?;
+            validate_placement(
+                network.placement.as_deref(),
+                &group_names,
+                &format!("network '{}'", network.name),
+            )?;
+            if network.links.is_empty() {
+                return Err(invalid(format!(
+                    "network '{}' must contain at least one link",
+                    network.name
+                )));
+            }
+            validate_dimensions(
+                &network.dimensions,
+                &self.dimensions,
+                &format!("network '{}'", network.name),
+            )?;
+            validate_memory_reference(
+                &network.region,
+                network.placement.as_deref(),
+                &catalog,
+                &format!("network '{}'", network.name),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn memory_catalog(&self) -> Result<MemoryCatalog, ArchLoadError> {
+        build_memory_catalog(&self.architecture, &self.dimensions)
     }
 }
 
-fn validate_scope(
-    scope: &ScopeYaml,
-    dimensions: &BTreeMap<String, i64>,
-    scope_names: &mut HashSet<String>,
-    memory_names: &mut HashSet<String>,
-    processor_names: &mut HashSet<String>,
-) -> Result<(), ArchLoadError> {
-    require_unique(scope_names, "scope", &scope.name)?;
-    validate_dimensions(&scope.scale, dimensions, &format!("scope '{}'", scope.name))?;
+fn ensure_group_acyclic(name: &str, groups: &[GroupYaml]) -> Result<(), ArchLoadError> {
+    let mut seen = HashSet::new();
+    let mut current = Some(name);
+    while let Some(group_name) = current {
+        if !seen.insert(group_name) {
+            return Err(invalid(format!(
+                "group hierarchy contains a cycle through '{group_name}'"
+            )));
+        }
+        current = groups
+            .iter()
+            .find(|group| group.name == group_name)
+            .and_then(|group| group.parent.as_deref());
+    }
+    Ok(())
+}
 
-    for memory in &scope.memories {
-        require_unique(memory_names, "memory", &memory.name)?;
+fn validate_placement(
+    placement: Option<&str>,
+    group_names: &HashSet<String>,
+    owner: &str,
+) -> Result<(), ArchLoadError> {
+    if let Some(group) = placement {
+        if !group_names.contains(group) {
+            return Err(invalid(format!("{owner} uses unknown group '{group}'")));
+        }
+    }
+    Ok(())
+}
+
+fn build_memory_catalog(
+    architecture: &ArchitectureYaml,
+    dimensions: &BTreeMap<String, i64>,
+) -> Result<MemoryCatalog, ArchLoadError> {
+    let group_names = architecture
+        .groups
+        .iter()
+        .map(|group| group.name.clone())
+        .collect::<HashSet<_>>();
+    let mut all_names = HashSet::new();
+    let mut physical_placements = BTreeMap::new();
+
+    for memory in &architecture.memories {
+        require_unique(&mut all_names, "memory", memory.name())?;
+        let MemoryYaml::Physical(memory) = memory else {
+            continue;
+        };
+
+        validate_placement(
+            memory.placement.as_deref(),
+            &group_names,
+            &format!("memory '{}'", memory.name),
+        )?;
         if memory.block_size_bytes <= 0 || memory.num_blocks <= 0 {
             return Err(invalid(format!(
                 "memory '{}' sizes must be positive",
@@ -204,42 +451,137 @@ fn validate_scope(
             dimensions,
             &format!("memory '{}'", memory.name),
         )?;
+        physical_placements.insert(memory.name.clone(), memory.placement.clone());
     }
 
-    for processor in &scope.processors {
-        require_unique(processor_names, "processor", &processor.name)?;
-        if processor.from.is_empty() || processor.to.is_empty() {
-            return Err(invalid(format!(
-                "processor '{}' must name both route endpoints",
-                processor.name
-            )));
+    let mut aggregates = BTreeMap::new();
+    for memory in &architecture.memories {
+        let MemoryYaml::Physical(memory) = memory else {
+            continue;
+        };
+        if let Some(shorthand) = &memory.aggregate {
+            require_unique(&mut all_names, "memory", &shorthand.name)?;
+            let Some(across) = memory.placement.as_ref() else {
+                return Err(invalid(format!(
+                    "memory '{}' cannot define an aggregate without belonging to a group",
+                    memory.name
+                )));
+            };
+            aggregates.insert(
+                shorthand.name.clone(),
+                make_aggregate(
+                    &shorthand.name,
+                    &memory.name,
+                    across,
+                    architecture,
+                    &physical_placements,
+                )?,
+            );
         }
     }
+    for memory in &architecture.memories {
+        let MemoryYaml::Aggregate(memory) = memory else {
+            continue;
+        };
+        aggregates.insert(
+            memory.name.clone(),
+            make_aggregate(
+                &memory.name,
+                &memory.base,
+                &memory.across,
+                architecture,
+                &physical_placements,
+            )?,
+        );
+    }
 
-    for network in &scope.networks {
-        if network.links.is_empty() {
+    Ok(MemoryCatalog {
+        physical_placements,
+        aggregates,
+    })
+}
+
+fn make_aggregate(
+    name: &str,
+    base: &str,
+    across: &str,
+    architecture: &ArchitectureYaml,
+    physical_placements: &BTreeMap<String, Option<String>>,
+) -> Result<AggregateMemory, ArchLoadError> {
+    let Some(Some(base_group)) = physical_placements.get(base) else {
+        return Err(invalid(format!(
+            "aggregate memory '{name}' refers to unknown or non-group memory '{base}'"
+        )));
+    };
+    if !is_group_ancestor(across, base_group, &architecture.groups) {
+        return Err(invalid(format!(
+            "aggregate memory '{name}' cannot aggregate '{base}' across unrelated group '{across}'"
+        )));
+    }
+    let visible_in = architecture
+        .groups
+        .iter()
+        .find(|group| group.name == across)
+        .and_then(|group| group.parent.clone());
+    let levels = group_distance(base_group, across, &architecture.groups)
+        .ok_or_else(|| invalid(format!("cannot resolve aggregate memory '{name}'")))?;
+    let mut target = base.to_string();
+    for _ in 0..=levels {
+        target = format!("array_{target}");
+    }
+    Ok(AggregateMemory {
+        name: name.to_string(),
+        base: base.to_string(),
+        across: across.to_string(),
+        target,
+        visible_in,
+    })
+}
+
+fn is_group_ancestor(ancestor: &str, group: &str, groups: &[GroupYaml]) -> bool {
+    group_distance(group, ancestor, groups).is_some()
+}
+
+fn group_distance(group: &str, ancestor: &str, groups: &[GroupYaml]) -> Option<usize> {
+    let mut current = group;
+    let mut distance = 0;
+    loop {
+        if current == ancestor {
+            return Some(distance);
+        }
+        current = groups
+            .iter()
+            .find(|candidate| candidate.name == current)?
+            .parent
+            .as_deref()?;
+        distance += 1;
+    }
+}
+
+fn validate_memory_reference(
+    name: &str,
+    placement: Option<&str>,
+    catalog: &MemoryCatalog,
+    owner: &str,
+) -> Result<(), ArchLoadError> {
+    if let Some(memory_placement) = catalog.physical_placements.get(name) {
+        if memory_placement.as_deref() != placement {
             return Err(invalid(format!(
-                "network '{}' must contain at least one link",
-                network.name
+                "{owner} cannot use local memory '{name}' outside its placement group; use a declared aggregate"
             )));
         }
-        validate_dimensions(
-            &network.dimensions,
-            dimensions,
-            &format!("network '{}'", network.name),
-        )?;
+        return Ok(());
     }
-
-    for child in &scope.children {
-        validate_scope(
-            child,
-            dimensions,
-            scope_names,
-            memory_names,
-            processor_names,
-        )?;
+    if let Some(aggregate) = catalog.aggregates.get(name) {
+        if aggregate.visible_in.as_deref() != placement {
+            return Err(invalid(format!(
+                "{owner} cannot use aggregate memory '{}' outside the parent of group '{}'",
+                aggregate.name, aggregate.across
+            )));
+        }
+        return Ok(());
     }
-    Ok(())
+    Err(invalid(format!("{owner} uses unknown memory '{name}'")))
 }
 
 fn validate_dimensions(
@@ -274,15 +616,34 @@ fn require_unique(
 }
 
 fn build_scope(
-    spec: &ScopeYaml,
+    spec: &ArchitectureYaml,
+    placement: Option<&str>,
     artifact_dir: &Path,
     dims: &BTreeMap<String, Dimension>,
+    catalog: &MemoryCatalog,
     function_names: &mut HashSet<String>,
 ) -> Result<Architecture, ArchLoadError> {
-    let scope_dims = resolve_dims(&spec.scale, dims)?;
-    let mut arch = Architecture::scope(&spec.name);
+    let (scope_name, scope_scale) = match placement {
+        None => (spec.name.as_str(), &[][..]),
+        Some(group_name) => {
+            let group = spec
+                .groups
+                .iter()
+                .find(|group| group.name == group_name)
+                .ok_or_else(|| invalid(format!("unknown group '{group_name}'")))?;
+            (group.name.as_str(), group.scale.as_slice())
+        }
+    };
+    let scope_dims = resolve_dims(scope_scale, dims)?;
+    let mut arch = Architecture::scope(scope_name);
 
     for memory in &spec.memories {
+        let MemoryYaml::Physical(memory) = memory else {
+            continue;
+        };
+        if memory.placement.as_deref() != placement {
+            continue;
+        }
         let memory_dims = resolve_dims(&memory.scale, dims)?;
         let mut region = MemoryRegion::bank(
             SizeExpr::Const(memory.block_size_bytes),
@@ -297,29 +658,41 @@ fn build_scope(
         arch.add_memory(region.with_name(&memory.name));
     }
 
-    for child in &spec.children {
-        arch.add_child(build_scope(child, artifact_dir, dims, function_names)?);
+    for group in spec
+        .groups
+        .iter()
+        .filter(|group| group.parent.as_deref() == placement)
+    {
+        arch.add_child(build_scope(
+            spec,
+            Some(&group.name),
+            artifact_dir,
+            dims,
+            catalog,
+            function_names,
+        )?);
     }
 
-    for processor in &spec.processors {
-        let source = arch
-            .get_scaled_memory_region(&processor.from)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "processor '{}' cannot resolve source memory '{}' from scope '{}'",
-                    processor.name, processor.from, spec.name
-                ))
-            })?;
-        let destination = arch
-            .get_scaled_memory_region(&processor.to)
-            .ok_or_else(|| {
+    for processor in spec
+        .processors
+        .iter()
+        .filter(|processor| processor.placement.as_deref() == placement)
+    {
+        let source = resolve_memory_region(&arch, &processor.from, catalog).ok_or_else(|| {
+            invalid(format!(
+                "processor '{}' cannot resolve source memory '{}' from scope '{}'",
+                processor.name, processor.from, scope_name
+            ))
+        })?;
+        let destination =
+            resolve_memory_region(&arch, &processor.to, catalog).ok_or_else(|| {
                 invalid(format!(
                     "processor '{}' cannot resolve destination memory '{}' from scope '{}'",
-                    processor.name, processor.to, spec.name
+                    processor.name, processor.to, scope_name
                 ))
             })?;
         let (functionality, perf) =
-            load_functionality_and_perf(artifact_dir, &processor.name, function_names)?;
+            load_functionality_and_perf(artifact_dir, &processor.name, catalog, function_names)?;
         let resources = processor
             .resources
             .iter()
@@ -355,18 +728,18 @@ fn build_scope(
         arch.add_processor(built);
     }
 
-    arch = arch.with_dims(&scope_dims);
-
-    for network in &spec.networks {
+    for network in spec
+        .networks
+        .iter()
+        .filter(|network| network.placement.as_deref() == placement)
+    {
         let network_dims = resolve_dims(&network.dimensions, dims)?;
-        let region = arch
-            .get_scaled_memory_region(&network.region)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "network '{}' cannot resolve memory '{}' from scope '{}'",
-                    network.name, network.region, spec.name
-                ))
-            })?;
+        let region = resolve_memory_region(&arch, &network.region, catalog).ok_or_else(|| {
+            invalid(format!(
+                "network '{}' cannot resolve memory '{}' from scope '{}'",
+                network.name, network.region, scope_name
+            ))
+        })?;
         if region.dims() != network_dims {
             return Err(invalid(format!(
                 "network '{}' dimensions do not match the outer dimensions of region '{}'",
@@ -405,12 +778,28 @@ fn build_scope(
         };
         let network = ScaleOutNetwork::Mesh(mesh);
         network.validate_map_domains().map_err(|message| {
-            invalid(format!("network '{}' is invalid: {message}", network.name()))
+            invalid(format!(
+                "network '{}' is invalid: {message}",
+                network.name()
+            ))
         })?;
         arch.add_network(network);
     }
 
-    Ok(arch)
+    Ok(arch.with_dims(&scope_dims))
+}
+
+fn resolve_memory_region(
+    arch: &Architecture,
+    source_name: &str,
+    catalog: &MemoryCatalog,
+) -> Option<MemoryRegion> {
+    let base = catalog
+        .aggregates
+        .get(source_name)
+        .map(|aggregate| aggregate.base.as_str())
+        .unwrap_or(source_name);
+    arch.get_scaled_memory_region(base)
 }
 
 fn resolve_dims(
@@ -441,12 +830,30 @@ fn parse_affine_map(
 fn load_functionality_and_perf(
     dir: &Path,
     processor_name: &str,
+    catalog: &MemoryCatalog,
     global_names: &mut HashSet<String>,
 ) -> Result<(MlirModule, Vec<super::FuncPerfModel>), ArchLoadError> {
     let mlir_path = dir.join(format!("{processor_name}.mlir"));
     let perf_path = dir.join(format!("{processor_name}.perf.yaml"));
-    let functionality = MlirModule::from_mlir(mlir_path.to_string_lossy().into_owned())
+    let mut functionality = MlirModule::from_mlir(mlir_path.to_string_lossy().into_owned())
         .map_err(|message| invalid(message))?;
+    functionality.memory_aliases = catalog
+        .aggregates
+        .values()
+        .map(|aggregate| (aggregate.name.clone(), aggregate.target.clone()))
+        .collect();
+    for function in &mut functionality.functions {
+        let Some(details) = function.mlir_details.as_mut() else {
+            continue;
+        };
+        for binding in &mut details.mem_region_bindings {
+            canonicalize_memory_name(&mut binding.region, catalog);
+        }
+        for copy in &mut details.copy_ops {
+            canonicalize_memory_name(&mut copy.src_region, catalog);
+            canonicalize_memory_name(&mut copy.dst_region, catalog);
+        }
+    }
     let perf_spec = PerfYamlSpec::from_file(&perf_path)
         .map_err(|error| invalid(format!("{}: {error}", perf_path.display())))?;
 
@@ -455,10 +862,19 @@ fn load_functionality_and_perf(
         .iter()
         .map(|function| function.name.clone())
         .collect::<HashSet<_>>();
-    let perf_names = perf_spec.functions.keys().cloned().collect::<HashSet<_>>();
+    let perf_names = perf_spec
+        .function_names()
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
     if mlir_names != perf_names {
-        let mut only_mlir = mlir_names.difference(&perf_names).cloned().collect::<Vec<_>>();
-        let mut only_perf = perf_names.difference(&mlir_names).cloned().collect::<Vec<_>>();
+        let mut only_mlir = mlir_names
+            .difference(&perf_names)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut only_perf = perf_names
+            .difference(&mlir_names)
+            .cloned()
+            .collect::<Vec<_>>();
         only_mlir.sort();
         only_perf.sort();
         return Err(invalid(format!(
@@ -479,19 +895,24 @@ fn load_functionality_and_perf(
     Ok((functionality, perf))
 }
 
+fn canonicalize_memory_name(name: &mut String, catalog: &MemoryCatalog) {
+    if let Some(aggregate) = catalog.aggregates.get(name) {
+        *name = aggregate.target.clone();
+    }
+}
+
 fn invalid(message: impl Into<String>) -> ArchLoadError {
     ArchLoadError::Invalid(message.into())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SystemYaml;
+    use super::{ChipYaml, MemoryYaml};
 
     #[test]
     fn rejects_unknown_fields() {
-        let error = SystemYaml::from_yaml_str(
+        let error = ChipYaml::from_yaml_str(
             r#"
-version: 1
 dimensions: {x: 2}
 architecture:
   name: system
@@ -504,18 +925,16 @@ architecture:
 
     #[test]
     fn rejects_duplicate_memory_names() {
-        let error = SystemYaml::from_yaml_str(
+        let error = ChipYaml::from_yaml_str(
             r#"
-version: 1
 dimensions: {x: 2}
 architecture:
   name: system
+  groups:
+    - {name: core, scale: [x]}
   memories:
     - {name: L1, block_size_bytes: 16, num_blocks: 4}
-  children:
-    - name: core
-      memories:
-        - {name: L1, block_size_bytes: 16, num_blocks: 4}
+    - {name: L1, in: core, block_size_bytes: 16, num_blocks: 4}
 "#,
         )
         .expect_err("ambiguous memory names must fail");
@@ -523,20 +942,88 @@ architecture:
     }
 
     #[test]
-    fn lowers_affine_mesh_networks() {
-        let spec = SystemYaml::from_yaml_str(
+    fn deserializes_memories_into_distinct_variants() {
+        let spec = ChipYaml::from_yaml_str(
             r#"
-version: 1
+dimensions: {x: 2}
+architecture:
+  name: system
+  groups:
+    - {name: cores, scale: [x]}
+  memories:
+    - {name: L1, in: cores, block_size_bytes: 16, num_blocks: 4}
+    - {name: L1_all, of: L1, across: cores}
+"#,
+        )
+        .expect("physical and aggregate memories should parse");
+
+        assert!(matches!(
+            spec.architecture.memories[0],
+            MemoryYaml::Physical(_)
+        ));
+        assert!(matches!(
+            spec.architecture.memories[1],
+            MemoryYaml::Aggregate(_)
+        ));
+    }
+
+    #[test]
+    fn physical_memory_requires_complete_storage() {
+        let error = ChipYaml::from_yaml_str(
+            r#"
+architecture:
+  name: system
+  memories:
+    - {name: DRAM, block_size_bytes: 64}
+"#,
+        )
+        .expect_err("an incomplete physical memory must fail during deserialization");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must specify block_size_bytes and num_blocks")
+        );
+    }
+
+    #[test]
+    fn aggregate_memory_requires_complete_relation() {
+        let error = ChipYaml::from_yaml_str(
+            r#"
+architecture:
+  name: system
+  memories:
+    - {name: L1_all, of: L1}
+"#,
+        )
+        .expect_err("an incomplete aggregate must fail during deserialization");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must specify both 'of' and 'across'")
+        );
+    }
+
+    #[test]
+    fn lowers_affine_mesh_networks() {
+        let spec = ChipYaml::from_yaml_str(
+            r#"
 dimensions: {x: 4, y: 2}
 architecture:
-  name: mesh
-  scale: [x, y]
+  name: system
+  groups:
+    - {name: mesh, scale: [x, y]}
   memories:
-    - {name: L1, block_size_bytes: 16, num_blocks: 4}
+    - name: L1
+      in: mesh
+      block_size_bytes: 16
+      num_blocks: 4
+      aggregate: {name: L1_mesh}
   networks:
     - name: torus
       dimensions: [x, y]
-      region: L1
+      region: L1_mesh
       links:
         - {name: x, map: "[x, y] -> [x, y]: ((x + 1) mod 4, y)"}
         - {name: y, map: "[x, y] -> [x, y]: (x, (y + 1) mod 2)"}
@@ -551,7 +1038,129 @@ architecture:
 
         assert_eq!(architecture.networks.len(), 1);
         assert_eq!(architecture.networks[0].mesh_links().len(), 2);
-        assert_eq!(architecture.networks[0].dimensions(), architecture.dims());
+        assert_eq!(
+            architecture.networks[0].dimensions(),
+            architecture.children[0].dims()
+        );
     }
 
+    #[test]
+    fn standalone_and_nested_aggregates_normalize_equally() {
+        let nested = ChipYaml::from_yaml_str(
+            r#"
+dimensions: {x: 4}
+architecture:
+  name: system
+  groups:
+    - {name: cores, scale: [x]}
+  memories:
+    - name: L1
+      in: cores
+      block_size_bytes: 16
+      num_blocks: 4
+      aggregate: {name: L1_all}
+"#,
+        )
+        .expect("nested aggregate should parse");
+        let standalone = ChipYaml::from_yaml_str(
+            r#"
+dimensions: {x: 4}
+architecture:
+  name: system
+  groups:
+    - {name: cores, scale: [x]}
+  memories:
+    - {name: L1, in: cores, block_size_bytes: 16, num_blocks: 4}
+    - {name: L1_all, of: L1, across: cores}
+"#,
+        )
+        .expect("standalone aggregate should parse");
+
+        let nested = nested.memory_catalog().expect("nested catalog");
+        let standalone = standalone.memory_catalog().expect("standalone catalog");
+        assert_eq!(
+            nested.aggregates["L1_all"].target,
+            standalone.aggregates["L1_all"].target
+        );
+        assert_eq!(nested.aggregates["L1_all"].target, "array_L1");
+    }
+
+    #[test]
+    fn nested_group_aggregate_names_each_scaled_level() {
+        let spec = ChipYaml::from_yaml_str(
+            r#"
+dimensions: {c: 2, x: 4}
+architecture:
+  name: system
+  groups:
+    - {name: clusters, scale: [c]}
+    - {name: cores, in: clusters, scale: [x]}
+  memories:
+    - {name: L1, in: cores, block_size_bytes: 16, num_blocks: 4}
+    - {name: L1_cluster, of: L1, across: cores}
+    - {name: L1_system, of: L1, across: clusters}
+"#,
+        )
+        .expect("nested groups should parse");
+        let catalog = spec.memory_catalog().expect("catalog should build");
+        assert_eq!(catalog.aggregates["L1_cluster"].target, "array_L1");
+        assert_eq!(catalog.aggregates["L1_system"].target, "array_array_L1");
+    }
+
+    #[test]
+    fn version_is_not_part_of_the_schema() {
+        let error = ChipYaml::from_yaml_str(
+            r#"
+version: 1
+architecture: {name: system}
+"#,
+        )
+        .expect_err("version should be rejected as an obsolete field");
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn local_memory_requires_an_aggregate_outside_its_group() {
+        let error = ChipYaml::from_yaml_str(
+            r#"
+dimensions: {x: 4}
+architecture:
+  name: system
+  groups:
+    - {name: cores, scale: [x]}
+  memories:
+    - {name: L1, in: cores, block_size_bytes: 16, num_blocks: 4}
+  processors:
+    - {name: dma, kind: data_mover, from: L1, to: L1}
+"#,
+        )
+        .expect_err("root processor must use an aggregate name");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot use local memory 'L1' outside its placement group")
+        );
+    }
+
+    #[test]
+    fn aggregate_cannot_define_physical_storage() {
+        let error = ChipYaml::from_yaml_str(
+            r#"
+dimensions: {x: 4}
+architecture:
+  name: system
+  groups:
+    - {name: cores, scale: [x]}
+  memories:
+    - {name: L1, in: cores, block_size_bytes: 16, num_blocks: 4}
+    - {name: L1_all, of: L1, across: cores, num_blocks: 4}
+"#,
+        )
+        .expect_err("aggregate storage fields must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot define placement, storage, scale, or another aggregate")
+        );
+    }
 }

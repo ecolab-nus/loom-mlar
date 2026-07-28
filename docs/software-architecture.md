@@ -1,152 +1,176 @@
-# Software Architecture And File Contents
+# Lowering and Implementation
 
-## Top-Level Layout
+## Project Layout
 
 ```text
 src/
-+-- lib.rs                # Public API and re-exports
-+-- arch/                 # Hardware model primitives and architecture graphs
-+-- mlir/                 # MLIR parser and adl.* exporter
-+-- math/                 # Symbolic expressions, constraints, affine maps
-+-- schedule/             # Schedule IR and evaluation
-+-- visualization/        # JSON export for the web viewer
-`-- abi/                  # Standalone evaluator/query binary helpers
+├── lib.rs                 public re-exports
+├── arch/                  architecture model, YAML loading, validation
+├── mlir/                  structural parser and ADL exporter
+├── math/                  expressions, constraints, affine maps
+├── schedule/              schedule representation and evaluation
+├── visualization/         graph, hierarchy, and viewer JSON
+└── abi/                   evaluator/query binary support
 
-tests/
-+-- 2d_mesh/              # Full architecture example and export/evaluation tests
-`-- math_expr_constraint_test.rs
-
-web-visualization/        # React/Vite viewer for exported JSON payloads
-docs/                     # Documentation pages
+tests/2d_mesh/             main integration architecture
+examples/architectures/    runnable architecture packages
+web-visualization/         React/Vite architecture viewer
 ```
 
-`src/lib.rs` re-exports the commonly used public API so downstream users can
-usually import `mlar_rust::*`.
+## Data Flow
 
-## `src/arch`
+```text
+chip.yaml ──parse/validate/link──────────────┐
+<processor>.mlir ──structural parse─────────┼─> Architecture
+<processor>.perf.yaml ──parse/link──────────┘       │
+                                                    ├─> ADL MLIR
+Schedule Rust/JSON ─────────────────────────────────┼─> evaluated Schedule
+                                                    └─> visualization JSON
+```
 
-Hardware modeling types.
+for YAML or MLIR: Serde handles YAML syntax, custom Rust code validates and
+lowers it, and the MLIR frontend is a lightweight structural parser.
 
-- `size_dim.rs`: symbolic names and dimensions: `Sym`, `SizeExpr`,
-  `Dimension`.
-- `memory.rs`: `MemoryBank` and recursive `MemoryRegion`.
-- `perf.rs`: `SimpleTimeCost`, `TimeCost`, `PerfScenario`, `FuncPerfModel`,
-  and `FuncPerfModelBuilder`.
-- `processor.rs`: executable `Processor`s, typed convenience builders,
-  memory-access/effect metadata, resources, and validation of compute/data-mover
-  MLIR interfaces.
-- `architecture.rs`: scoped `Architecture` composition, lookup helpers,
-  homogeneous scaling, resource registration, and instance-count utilities.
-- `network.rs`: `ScaleOutNetwork`, `MeshNetwork`, `MeshLink`,
-  `MeshNetworkInterface`, mesh builder, topology helpers, and network resource
-  bindings.
-- `resource.rs`: `ResourceId` and exclusive/quantitative `Resource`.
+## Type Boundaries
 
-## `src/mlir`
+The architecture YAML boundary exposes:
 
-MLIR-facing import and export code.
+- `ChipYaml`: opaque parsed document;
+- `ArchLoadError`: I/O, syntax, and semantic errors.
 
-- `parser/mod.rs`: shared parser utilities and public parser re-exports.
-- `parser/structural.rs`: `MlirModule`, `MlirFunc`, `MlirFuncDetails`, module
-  file parsing, function block extraction, and structural metadata collection.
-- `parser/loom_ops.rs`: parser for `loom.sym`, `loom.bind_shape`,
-  `loom.bind_mem`, `loom.copy`, and `loom.gather`.
-- `parser/native_ops.rs`: lightweight extraction for native MLIR constructs such
-  as `linalg.*`, `memref.copy`, and output operands.
-- `export/mod.rs`: `architecture_to_mlir`.
-- `export/emitter.rs`: SSA-based emitter for `adl.*` operations, resources,
-  architecture arrays, graph composition, processors, data movers, and memory.
-- `export/rewrite.rs`: rewrites embedded functionality MLIR names to match
-  exported architecture/memory prefixes.
-- `export/names.rs`: name prefixing and structural keys used during export.
-- `tests/parser.rs` and `tests/export.rs`: parser/export tests included through
-  module-level `#[path]` test hooks.
+Private types (`ArchitectureYaml`, `GroupYaml`, `MemoryYaml`,
+`ProcessorYaml`, and network structs) mirror authored syntax. `MemoryYaml` is a
+semantic enum with physical and aggregate variants. A deserialize-only
+`RawMemoryYaml` distinguishes those variants and rejects hybrid forms.
 
-MLIR export returns `Option<String>` because symbolic dimensions or memory sizes
-that cannot become constants make `adl.*` emission impossible.
+The performance YAML boundary similarly exposes only:
 
-## `src/math`
+- `PerfYamlSpec`: opaque parsed document;
+- `PerfYamlError`: syntax, expression, constraint, and linking errors.
 
-Symbolic math support used by performance models and connectivity.
+Its function/scenario/time-cost Serde structs are private. Programmatic users
+construct runtime `FuncPerfModel`, `PerfScenario`, and `TimeCost` values.
 
-- `expr.rs`: arithmetic expression AST, parsing, substitution, simplification,
-  constant evaluation, display, and free-symbol collection.
-- `constraint.rs`: boolean/comparison constraint AST, parsing, substitution,
-  constant evaluation, and symbol collection.
-- `parse.rs`: parser helpers for expressions and constraints.
-- `affine.rs`: affine expressions/maps used by mesh topology and IO maps.
-- `mod.rs`: public math exports.
+The runtime boundary consists primarily of `Architecture`, `MemoryRegion`,
+`Processor`, `MlirModule`, `FuncPerfModel`, `Resource`, and
+`ScaleOutNetwork`. Exporters and evaluators consume runtime types, never YAML
+schema types.
 
-## `src/schedule`
+## Architecture Loading
 
-Schedule representation and in-process performance evaluation.
+`archs::load_arch(dir)` performs:
 
-- `schedule.rs`: `Schedule` enum and `SymbolicMapping`.
-- `evaluate.rs`: `evaluate(&Schedule, &Architecture)`, function lookup,
-  scenario fusion, sequential scenario cartesian products, and symbolic mapping
-  substitution.
-- `mod.rs`: public schedule and parser re-exports.
+1. Parse `chip.yaml` with unknown-field rejection.
+2. Validate dimensions, unique names, group ancestry, placements, memory
+   visibility, aggregate relations, and network dimensions.
+3. Build a memory catalog:
+   - physical memory name → owning group;
+   - aggregate name → base memory, span, concrete scaled target, visible scope.
+4. Recursively lower the flat group relation into `Architecture.children`.
+5. Lower physical memories into `MemoryRegion::Bank` and nested
+   `MemoryRegion::Array` values.
+6. Resolve processor routes against local or aggregate memory names.
+7. Load and link each processor's MLIR and performance YAML.
+8. Construct and validate compute/data-mover runtime processors.
+9. Bind affine network maps and add generated network resources/processors.
 
-Current evaluation supports `Func` and `Sequential`. `Parallel` is represented
-and serialized, but evaluation is not implemented.
+The catalog is linker state, not part of the runtime model. Aggregate names are
+recorded on `MlirModule` only so source-level bindings can be canonicalized and
+later rewritten.
 
-## `src/visualization`
+### Placement and Visibility
 
-JSON payload builders for the web viewer.
+Authored groups form a flat named relation through `in`. Lowering converts that
+relation to recursive runtime scopes.
 
-- `graph_json.rs`: derived graph payload (`mlar.arch-graph.v1`) with scope
-  nodes, memory/processor route edges, resources, bandwidths, affine maps, and
-  derived topology classifications.
-- `hierarchy_json.rs`: hierarchy payload (`mlar.arch-hierarchy.v1`).
-- `viewer_json.rs`: combined payload (`mlar.arch-viewer.v1`) containing a
-  hierarchy plus a map of per-path graphs.
-- `mod.rs`: public visualization exports.
+Physical memory is visible only at its exact placement. An aggregate is visible
+at the parent of its `across` group.
 
-The viewer implementation is separate from the Rust crate under
-`web-visualization/`.
+## Processor Linking
 
-## `src/abi`
+`MlirModule::from_mlir` reads one source file and extracts function blocks and
+the MLAR-relevant structure. It does not own generated source text; it retains
+the source path.
 
-Helpers for external compiler/runtime tools that want to call generated
-executables.
+For each processor:
 
-- `evaluator.rs`: `run_evaluator`, `run_evaluator_from_json`,
-  `generate_evaluator_binary`, and `mlar_evaluator!`.
-- `arch_query.rs`: `ArchitectureQuery`, `ArchitectureQueryResult`,
-  `query_architecture`, `run_arch_query`, `run_arch_query_from_json`,
-  `generate_arch_query_binary`, and `mlar_arch_query!`.
+1. Parse `<name>.mlir`.
+2. Canonicalize aggregate names in parsed memory bindings and transfer ops.
+3. Parse `<name>.perf.yaml`.
+4. Require identical MLIR/performance function-name sets.
+5. Require function names to be globally unique across the architecture.
+6. Build performance models in MLIR function order.
+7. Pair functions and models into `FunctionProcessor`s.
+8. Run kind-specific processor validation.
 
-Generated binaries embed a serialized architecture JSON at compile time. At
-runtime, evaluator binaries read a `Schedule` JSON from stdin and write an
-evaluated `Schedule` JSON to stdout. Architecture-query binaries read an
-`ArchitectureQuery` JSON from stdin; the only current query is `{"query":"mlir"}`,
-which writes raw MLIR to stdout.
+Schedule evaluation currently dispatches by function name rather than
+`(processor, function)`, so linking requires global function-name uniqueness.
 
-## Tests And Examples
+## ADL MLIR Export
 
-Runnable architecture packages under `examples/architectures/` demonstrate the
-YAML interface. The larger `tests/2d_mesh/` integration fixture loads its full
-system from `processors/system.yaml`; `arch.rs` retains a small Rust-built core
-for builder-API coverage.
+`architecture_to_mlir` walks the runtime tree and emits SSA-producing
+operations:
 
-Together they demonstrate:
+- `adl.spatial_dim`;
+- `adl.memory.bank` and `adl.memory.array`;
+- `adl.resource.exclusive` and `adl.resource.quantitative`;
+- `adl.processor.compute` and `adl.processor.dmover`;
+- `adl.arch.compose` and `adl.arch.scale`.
 
-- parsing processor functionality from MLIR files,
-- loading compute processors and data movers from YAML,
-- building a small scope directly through the Rust API,
-- attaching one source and one destination memory region per processor,
-- deriving memory resources,
-- composing scoped architectures,
-- scaling a core scope into a 2D mesh,
-- exporting architecture MLIR,
-- exporting graph, hierarchy, and viewer JSON,
-- evaluating schedules with `SymbolicMapping`,
-- generating standalone evaluator and architecture-query binaries.
+The emitter deduplicates named dimensions, structural memory regions, and
+resource IDs. Scope replication also synthesizes the scaled memory arrays used
+by parent-level routes.
 
-Several export tests intentionally write generated artifacts:
+After structural emission, the exporter rereads referenced processor MLIR
+files, rewrites module and memory symbols using emitter name maps, and appends
+the modules inside `module @arch_<name>`.
 
-- `tests/2d_mesh/2d_mesh_torus.mlir`,
-- `tests/2d_mesh/2d_mesh_torus.json`,
-- `tests/2d_mesh/2d_mesh_torus_hierarchy.json`,
-- `web-visualization/public/sample-viewer.json`,
-- binaries under `tests/2d_mesh/bin/`.
+Export returns `None` if a dimension or memory size cannot simplify to a
+constant. File-read failure while appending processor source is currently
+silently skipped; this is a limitation of the `Option<String>` export API.
+
+## Performance and Schedule Evaluation
+
+Performance expressions and constraints are parsed into custom ASTs in
+`src/math`. `PerfYamlSpec::models_for_module` validates model symbols against
+the linked `MlirFunc`.
+
+`evaluate(schedule, arch)`:
+
+- recursively finds a `FunctionProcessor` by function name;
+- fuses model-wide and scenario constraints;
+- converts `SimpleTimeCost` to one symbolic expression;
+- applies `MlirFunc.sym_map` substitutions;
+- combines sequential alternatives with Cartesian product, conjunction, and
+  addition.
+
+The evaluator preserves alternatives even when substitutions make a guard
+constant. It does not filter, select, or prove scenario overlap.
+`Schedule::Parallel` and resource-aware timing are not implemented.
+
+## Outputs and ABI
+
+Visualization derives graph and hierarchy payloads from `Architecture`.
+
+Generated evaluator/query binaries embed serialized architecture JSON at
+compile time:
+
+- evaluator: schedule JSON on stdin → evaluated schedule JSON on stdout;
+- query: query JSON on stdin → architecture MLIR on stdout.
+
+The only current architecture query is `{"query":"mlir"}`.
+
+## Source Map
+
+| Area | Responsibility |
+|---|---|
+| `src/arch/` | Runtime hardware model, YAML loaders, processor validation |
+| `src/mlir/parser/` | Structural MLIR extraction |
+| `src/mlir/export/` | ADL emission and source rewriting |
+| `src/math/` | Symbolic expressions, constraints, affine maps |
+| `src/schedule/` | Schedule IR and evaluation |
+| `src/visualization/` | Graph, hierarchy, and viewer payloads |
+| `src/abi/` | Standalone evaluator/query generation and runtime |
+
+`tests/2d_mesh/` is the integration reference. Several tests intentionally
+regenerate MLIR, JSON, viewer samples, and binaries under that directory.

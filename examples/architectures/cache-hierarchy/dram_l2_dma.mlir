@@ -4,8 +4,8 @@ module @dram_l2_dma {
     loom.bind_shape %src, [%L] : memref<?xf16>
     loom.bind_mem %src, @DRAM : memref<?xf16>
     loom.bind_shape %dst, [%L] : memref<?xf16>
-    loom.bind_mem %dst, @L2 : memref<?xf16>
-    loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @L2, area: [1] : memref<?xf16> to memref<?xf16>
+    loom.bind_mem %dst, @L2_clusters : memref<?xf16>
+    loom.copy %src, %dst src_mem_space @DRAM dst_mem_space @L2_clusters, area: [1] : memref<?xf16> to memref<?xf16>
     return
   }
 }

@@ -3,7 +3,7 @@ use super::hierarchy_json::{HierarchyNode, architecture_to_hierarchy_json};
 use crate::arch::Architecture;
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const VIEWER_SCHEMA_VERSION: &str = "mlar.arch-viewer.v1";
 
@@ -12,7 +12,7 @@ const VIEWER_SCHEMA_VERSION: &str = "mlar.arch-viewer.v1";
 pub struct ArchitectureViewerJson {
     pub schema_version: &'static str,
     pub hierarchy: HierarchyNode,
-    pub graphs: HashMap<String, ArchitectureGraphJson>,
+    pub graphs: BTreeMap<String, ArchitectureGraphJson>,
 }
 
 /// Build the combined viewer payload for an architecture.
@@ -22,7 +22,7 @@ pub struct ArchitectureViewerJson {
 /// Each value is a self-contained graph JSON suitable for React Flow rendering.
 pub fn architecture_to_viewer_json(arch: &Architecture) -> ArchitectureViewerJson {
     let hierarchy = architecture_to_hierarchy_json(arch);
-    let mut graphs = HashMap::new();
+    let mut graphs = BTreeMap::new();
     collect_sub_graphs(arch, "", &mut graphs);
 
     ArchitectureViewerJson {
@@ -46,7 +46,7 @@ pub fn architecture_to_viewer_json_string_pretty(
 fn collect_sub_graphs(
     arch: &Architecture,
     path: &str,
-    graphs: &mut HashMap<String, ArchitectureGraphJson>,
+    graphs: &mut BTreeMap<String, ArchitectureGraphJson>,
 ) {
     graphs.insert(path.to_string(), architecture_to_graph_json(arch));
 

@@ -95,6 +95,13 @@ pub struct MlirModule {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub module_name: Option<String>,
     pub functions: Vec<MlirFunc>,
+    /// Source-level memory aliases resolved while linking an architecture.
+    ///
+    /// Each pair maps an authored alias to the concrete memory-region name
+    /// used by the architecture. The exporter uses these mappings when it
+    /// rewrites the original MLIR source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory_aliases: Vec<(String, String)>,
 }
 
 impl MlirModule {
@@ -104,6 +111,7 @@ impl MlirModule {
             path: None,
             module_name: None,
             functions,
+            memory_aliases: Vec::new(),
         }
     }
 
@@ -113,6 +121,7 @@ impl MlirModule {
             path: None,
             module_name: Some(name.into()),
             functions,
+            memory_aliases: Vec::new(),
         }
     }
 
@@ -122,6 +131,7 @@ impl MlirModule {
             path: Some(path.into()),
             module_name: None,
             functions: Vec::new(),
+            memory_aliases: Vec::new(),
         }
     }
 
@@ -134,6 +144,7 @@ impl MlirModule {
                 .iter()
                 .map(|f| MlirFunc::named(f.as_ref()))
                 .collect(),
+            memory_aliases: Vec::new(),
         }
     }
 
@@ -156,6 +167,7 @@ impl MlirModule {
             path: Some(path),
             module_name,
             functions,
+            memory_aliases: Vec::new(),
         })
     }
 

@@ -1,204 +1,159 @@
-# Basic Architectural Concepts
+# Architecture Semantics
 
-This project models hardware as structured, queryable compiler input. The
-representation is recursive, symbolic where useful, and designed to round-trip
-through JSON and an `adl.*` MLIR export.
+MLAR separates authored schema, linked runtime semantics, and emitted compiler
+artifacts. The runtime `Architecture` is the semantic center; YAML and Rust
+builders are two ways to construct it.
 
-## Memory Regions
+## Scopes and Replication
 
-`MemoryRegion` is the memory-side abstraction used by architectures and data
-movers.
+`Architecture` is a recursive scope containing:
 
-- `MemoryRegion::Bank` wraps one `MemoryBank`.
-- `MemoryRegion::Array` scales a sub-region over one or more `Dimension`s.
-- `MemoryRegion::scale(&dim)` scales by one dimension; collections such as
-  `&[x.clone(), y.clone()]` or `[&x, &y]` scale by multiple dimensions.
-- `MemoryBank` stores `capacity_bytes`, optional `block_size`, optional name,
-  and optional performance model.
-- `MemoryRegion::total_size_bytes()` returns `None` if any size or dimension is
-  symbolic.
-- `MemoryRegion::generate_resource()` works for named concrete banks. Processor
-  source/destination regions can also derive quantitative resources for concrete
-  arrays using their total size.
+- local `MemoryRegion`s;
+- executable `Processor`s;
+- contention `Resource`s;
+- child `Architecture`s;
+- replication `Dimension`s;
+- `ScaleOutNetwork`s.
 
-MLIR functionality binds memrefs to memory regions with `loom.bind_mem`.
-Architecture MLIR export prefixes memory names in the generated output, for
-example `L1` becomes `mem_L1` in emitted `loom.bind_mem` annotations.
+A scope with dimensions represents a homogeneous array of that scope. Nested
+groups therefore become nested `Architecture.children`, with each group's
+`scale` stored in the corresponding child's `dims`.
 
-## Processors And Data Movers
+Names are logical identities, not address spaces. A component can directly
+refer only to a memory visible in its scope.
 
-The core runtime structure is `Processor`, but the public construction API
-distinguishes compute from movement:
+## Memory
 
-- `ComputeProcessor` is for pure compute functions.
-- `DataMover` is for transfer functions.
-- Both wrappers contain the same underlying `Processor` data and can be
-  converted back with `.into_processor()` or into an architecture leaf with
-  `.into_elem()`.
+`MemoryRegion` is recursive:
 
-A processor can be structural-only with `Processor::new("name")`, or built with
-`ComputeProcessor::builder()` / `DataMover::builder()`. Builders stage
-functionality and performance independently with `.functionality(...)` and
-`.perf(...)`, then validate and construct the processor with `.finish()`.
+```text
+Bank
+Array(dims, sub-region)
+```
 
-When linked from MLIR, one performance model is required for each parsed
-`func.func`, in module order. The processor name is checked against the MLIR
-module symbol when the module was loaded from a file.
+A bank has capacity, optional block size, optional access performance, and a
+name. An array represents homogeneous banking or spatial replication.
 
-Every linked processor has exactly one source memory region and one destination
-memory region, specified with `.from_region(source)` and
-`.to_region(destination)`. In-place compute or movement uses the same region for
-both. Different routes should be modeled as different processors. If they
-contend for the same physical hardware, attach the same `Resource` to those
-processors.
+Physical YAML memories create regions. Aggregate YAML memories do not.
+An aggregate such as `L1_mesh` is an alias for the array produced by scaling
+local `L1` across a group. It expresses indexed reachability to many L1
+instances; it does not imply coherence or one shared address space.
 
-## MLIR Functionality
+Transfers still determine selection semantics such as unicast, broadcast, or
+gather.
 
-`MlirModule::from_mlir(path)` parses one MLIR file. The file must contain exactly
-one `module` declaration, named or unnamed. Each `func.func` is parsed into
-`MlirFunc` plus `MlirFuncDetails`.
+## Processors
 
-The parser extracts:
+Compute processors and data movers are typed construction APIs over one runtime
+`Processor` shape:
 
-- function name and `loom.sym` symbols,
-- tensor and memref arguments,
-- memref argument types,
-- `loom.bind_shape` tensor/memref symbol bindings,
-- `loom.bind_mem` memory-region bindings,
-- `loom.copy` and `loom.gather` data-movement operations,
-- `memref.copy` source/target pairs,
-- `linalg.*` operation names,
-- output tensor operands from `outs(...)`.
+```text
+Processor
+  functionality: MlirModule
+  functions: [FunctionProcessor]
+  source: MemoryRegionRef
+  destination: MemoryRegionRef
+  effect: DataEffect
+  resources: [Resource]
+```
 
-Compute validation requires memref-based functions with shape bindings,
-memory-region bindings, and at least one `linalg.*` operation. Pure compute
-functions must not contain `loom.copy` or `loom.gather`.
+`FunctionProcessor` pairs one `MlirFunc` with one `FuncPerfModel`.
 
-Data-mover validation requires at least two memrefs, source/target bindings,
-exactly one `loom.copy` or `loom.gather`, no `linalg.*` operations, and region
-names that match the data mover's source or destination region.
+The one-source/one-destination route is a property of the processor, not each
+function. Alternative routes are separate processors. Compute normally uses
+the same region for both endpoints but is not required to do so.
 
-## Performance Models
+`kind: compute` selects transforming semantics and compute-interface
+validation. `kind: data_mover` selects preserving semantics and transfer
+validation. The distinction also selects `adl.processor.compute` versus
+`adl.processor.dmover` during export.
 
-Each linked function has a `FuncPerfModel`.
+## Functionality
 
-`FuncPerfModel` contains:
+`MlirModule` stores:
 
-- declared `symbols`,
-- global `constraints`,
-- one or more `PerfScenario`s.
+- the original source path and module name;
+- parsed `MlirFunc` interfaces;
+- symbolic shape and memory bindings;
+- extracted copy/gather and `linalg.*` metadata;
+- aggregate-memory aliases established while linking.
 
-Each `PerfScenario` contains:
+Parsing extracts function identity, shapes, memory placement, and operation
+class. It does not implement the complete MLIR grammar or verifier.
 
-- scenario-local `constraints`,
-- a `TimeCost`, either `Simple(SimpleTimeCost)` or `Concrete(Expr)`.
+The exporter rereads the original source so operation bodies are preserved,
+then rewrites processor and memory symbols to exported architecture names.
 
-`SimpleTimeCost` represents:
+## Performance
+
+`FuncPerfModel` contains global constraints and guarded `PerfScenario`s. A
+scenario contains local constraints and a `TimeCost`.
+
+`SimpleTimeCost` means:
 
 ```text
 fixed_latency + volume / throughput
 ```
 
-General `Expr` division is integer division. Whether a model needs truncation,
-ceiling division, or a different pipelined-dataflow formula is a property of
-that symbolic model, not an implicit `SimpleTimeCost` policy.
+Expressions use integer arithmetic. Symbols are inferred from costs and
+constraints unless explicitly declared. Linking validates them against symbols
+required by the parsed MLIR function.
 
-The YAML form mirrors this hierarchy: each function model contains `scenarios`,
-each scenario contains its local `constraints`, and each scenario's cost is
-nested under a variant such as `time_cost.simple`. See
-[Performance YAML](perf-yaml.md) for the full hand-authored YAML schema.
-
-The builder infers symbols from constraints and time-cost expressions unless
-symbols are declared explicitly. Validation checks that all symbols used by the
-model and by the linked function shape metadata are declared. It does not check
-that multiple scenarios are mutually exclusive.
-
-## Architecture Scopes
-
-`Architecture` is a named scope/level. A scope contains:
-
-- `memories`: `MemoryRegion`s visible in that scope.
-- `processors`: executable actors that read/write named memory regions.
-- `resources`: explicit contention/capacity limits.
-- `children`: nested architecture scopes.
-- `dims`: homogeneous replication of the scope.
-- `networks`: scale-out network descriptions that can contribute resources and
-  IO processors.
-
-Important helpers:
-
-- `Architecture::scope(...)` creates a named scope.
-- `.with_memory(...)`, `.with_processor(...)`, `.with_child(...)`, and
-  `.with_network(...)` compose the scope.
-- `.scale(...)` adds homogeneous dimensions to the current scope.
-- `.with_name(...)` sets the current architecture level's name.
-- `.with_connectivity(...)` attaches scale-out networks.
-- `.total_instances()` and `.total_processing_elements()` count concrete
-  processor instances.
-- `.get_processor(...)`, `.get_data_mover(...)`, `.get_memory_region(...)`, and
-  `.get_scaled_memory_region(...)` search nested architectures.
+Scenarios are alternatives, not additive terms. MLAR preserves their guards
+and does not prove exclusivity or choose an active scenario.
 
 ## Resources
 
-Resources model contention relationships:
+Resources identify contention:
 
-- `Resource::Exclusive { id }` models a single exclusive resource.
-- `Resource::Quantitative { id, capacity }` models a finite-capacity resource.
+- `Exclusive`: one logical user at a time;
+- `Quantitative`: finite numeric capacity.
 
-Processors can declare resources with `.with_resources(...)`. Compute builders
-also add an exclusive self resource when the processor is named. Memory
-resources are derived from source/destination regions where possible and are
-registered with the containing architecture scope. Shared resources, such as
-`noc0`, express contention among otherwise separate processors.
+Equal resource IDs denote the same hardware constraint. Processor route
+memories contribute derived resources; named compute processors also receive a
+self resource. Architecture scopes deduplicate compatible definitions.
 
-The current schedule evaluator does not yet use these resource declarations for
-parallel scheduling.
+Resources are exported and included in visualization payloads. The current
+in-process schedule evaluator does not enforce them.
 
-## Scale-Out Networks
+## Networks
 
-`ScaleOutNetwork` currently has a mesh variant.
+The current `ScaleOutNetwork` variant is an affine mesh:
 
-A mesh network includes:
+- ordered spatial dimensions;
+- an array memory region;
+- affine link maps;
+- link and I/O bandwidth expressions;
+- an endpoint I/O map.
 
-- canonical `Dimension`s,
-- a concrete array `MemoryRegion`,
-- one or more `MeshLink`s, each with an `AffineMap`,
-- an IO interface (`MeshNetworkInterface`),
-- per-link bandwidth expression,
-- optional IO data movers.
+Adding a network registers its generated resources and processors in the
+architecture. JSON exports retain topology and maps. ADL MLIR export currently
+sees the materialized processors/resources, not a dedicated topology
+operation.
 
-Mesh builders validate consistent dimensions across the explicit dimensions,
-memory region, and link source domains. Mesh links also expose generated
-exclusive resources, and IO data movers are auto-registered when an architecture
-array with connectivity is added to a graph.
+## Schedules
 
-## Schedules And Evaluation
+`Schedule` is a separate workload tree, not part of architecture YAML:
 
-`Schedule` has `Func`, `Sequential`, and `Parallel` variants. Schedules
-serialize with Serde and can carry optional evaluated scenarios.
+- `Func`: one linked function invocation;
+- `Sequential`: ordered child schedules;
+- `Parallel`: represented but not evaluated.
 
-`evaluate(&schedule, &arch)` currently supports:
+Function evaluation substitutes the schedule's symbol map into all performance
+scenarios. Sequential evaluation takes the Cartesian product of child
+alternatives, ANDs their constraints, and adds their costs.
 
-- `Func`: finds the matching function in architecture processors or data
-  movers, fuses global and scenario constraints, flattens simple costs to one
-  expression, and applies the function's `sym_map`. It preserves all guarded
-  alternatives rather than selecting or filtering scenarios.
-- `Sequential`: recursively evaluates children and produces the cartesian
-  product of child scenarios, summing costs and AND-ing constraints.
+Function lookup currently uses globally unique function names. The optional
+processor field is preserved but not used for dispatch.
 
-`Parallel` evaluation is not implemented and currently panics if encountered.
+## Exported Representations
 
-## Export And Visualization
+Architecture MLIR is structural compiler input: dimensions, memories,
+resources, processors, composition, and replication. It requires concrete
+sizes.
 
-`architecture_to_mlir(&arch)` emits a top-level `module @arch_<name>` containing
-`adl.*` architecture operations and rewritten processor functionality MLIR
-sources. Export succeeds only when dimensions and memory sizes simplify to
-constants.
+JSON exports serve different views of the same runtime model:
 
-Visualization exports include:
-
-- `architecture_to_graph_json*`: single graph payload,
-- `architecture_to_hierarchy_json*`: hierarchy tree payload,
-- `architecture_to_viewer_json*`: combined payload for the React viewer.
-
-The web viewer lives under [web-visualization](../web-visualization).
+- graph: nodes, routes, resources, and topology;
+- hierarchy: recursive architecture scopes;
+- viewer: hierarchy plus one graph per scope path.

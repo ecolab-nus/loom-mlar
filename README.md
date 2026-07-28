@@ -1,146 +1,118 @@
 # MLAR Rust Front-End
 
-Rust implementation of MLAR, the Multi-Level Architecture Representation used
-to describe hardware to compiler flows.
+MLAR represents hardware architecture, processor functionality, symbolic
+performance, and schedules for compiler tooling.
 
-This crate primarily provides a library for Rust data structures, MLIR
-import/export, symbolic performance models, schedule evaluation, and
-visualization JSON export. It also includes small runtime evaluator and platform
-export utilities.
+An architecture package contains:
 
-## What It Models
+```text
+chip.yaml
+<processor>.mlir
+<processor>.perf.yaml
+```
 
-MLAR describes hardware as:
+`chip.yaml` describes hierarchy, memories, processors, routes, resources, and
+networks. Processor MLIR describes executable operations and memory bindings.
+Performance YAML assigns symbolic cost scenarios to each MLIR function.
 
-- Memory regions: banks and homogeneous arrays of banks.
-- Compute processors: MLIR functionality plus per-function performance models.
-- Data movers: MLIR transfer functions plus one source and one destination
-  memory region.
-- Architecture hierarchy: scoped composition plus homogeneous dimensions.
-- Resources: shared contention/capacity limits used by processors.
-- Scale-out networks: currently mesh networks with affine-map links.
-- Symbolic costs and constraints: `Expr`, `ConstraintExpr`, `SimpleTimeCost`,
-  `PerfScenario`, and `FuncPerfModel`.
+The Rust library lowers these inputs into a recursive `Architecture`. That
+runtime representation supports:
 
-Functionality lives in MLIR modules that use ordinary `func.func`/`linalg.*`
-operations plus Loom annotations such as `loom.sym`, `loom.bind_shape`,
-`loom.bind_mem`, `loom.copy`, and `loom.gather`. Performance models are
-represented in Rust and can be loaded from YAML because timing, throughput, and
-scenario constraints are easier to express symbolically outside compute IR.
+- `adl.*` architecture MLIR export;
+- schedule cost evaluation;
+- graph, hierarchy, and viewer JSON export;
+- generation of standalone evaluator and architecture-query binaries.
+
+## Minimal Configuration
+
+Architecture knobs control replication and memory capacity:
+
+```yaml
+dimensions:
+  cores: 4
+  l1_banks: 8
+
+architecture:
+  name: example
+  groups:
+    - name: core
+      scale: [cores]
+  memories:
+    - name: L1
+      in: core
+      block_size_bytes: 64
+      num_blocks: 1024
+      scale: [l1_banks]
+```
+
+Here, `dimensions` controls the number of cores and banks, while each bank's
+capacity is `block_size_bytes * num_blocks`.
+
+Performance knobs in `<processor>.perf.yaml` define the cost of each matching
+MLIR function:
+
+```yaml
+functions:
+  vector_add:
+    constraints: "L > 0"
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "2"
+            volume: "L"
+            throughput: "32"
+```
+
+This model estimates `vector_add` in cycles as `2 + L / 32`. See the user
+reference and complete architecture examples for processors, routes, networks,
+and guarded performance alternatives.
 
 ## Documentation
 
-- [Basic Architectural Concepts](docs/architecture-concepts.md)
-- [Software Architecture and File Contents](docs/software-architecture.md)
-- [Installation](docs/installation.md)
-- [Usage](docs/usage.md)
-- [Performance YAML](docs/perf-yaml.md)
-- [Architecture examples](examples/architectures/README.md)
+- [User reference](docs/usage.md): architecture-package layout and available
+  schema knobs.
+- [Performance YAML](docs/perf-yaml.md): performance schema and cost semantics.
+- [Architecture semantics](docs/architecture-concepts.md): meaning of runtime
+  objects and their invariants.
+- [Lowering and implementation](docs/software-architecture.md): type
+  boundaries, linking, MLIR export, and schedule evaluation.
+- [Build and installation](docs/installation.md).
+- [Architecture examples](examples/architectures/README.md).
 
-## Minimal Example
+## Commands
 
-```rust
-use mlar_rust::*;
-
-let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-    .with_name("L1");
-
-let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")?;
-let perf = module
-    .functions
-    .iter()
-    .map(|_| {
-        FuncPerfModel::builder()
-            .simple_time_cost(
-                Expr::parse("1").unwrap(),
-                Expr::parse("L").unwrap(),
-                Expr::parse("1024").unwrap(),
-            )
-            .build()
-    })
-    .collect();
-
-let lane = ComputeProcessor::builder()
-    .named("vector_lane")
-    .from_region(l1.clone())
-    .to_region(l1.clone())
-    .functionality(module)
-    .perf(perf)
-    .finish()?
-    .into_processor();
-
-let arch = Architecture::scope("core")
-    .with_memory(l1)
-    .with_processor(lane);
-
-let mlir = architecture_to_mlir(&arch)
-    .expect("MLIR export requires concrete dimensions and memory sizes");
-let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
+```bash
+cargo test
+cargo run --example inspect_arch -- examples/architectures/dual-noc-mesh
+cargo run --bin export_platform -- examples/architectures/dual-noc-mesh
 ```
 
-## Performance Model Builder
-
-Use `FuncPerfModel::builder()` for new performance models. If global or
-scenario constraints are omitted, they default to `true`; if symbols are
-omitted, they are inferred from the constraints and time-cost expressions.
-For hand-authored descriptive models,
-`PerfYamlSpec::from_file(...).models_for_module(...)` loads YAML files that use
-the same expression and constraint syntax.
+Load an architecture from Rust with:
 
 ```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost};
-
-let model = FuncPerfModel::builder()
-    .simple_time_cost(
-        Expr::parse("1").unwrap(),
-        Expr::parse("L").unwrap(),
-        Expr::parse("1024").unwrap(),
-    )
-    .build();
-
-assert_eq!(model.symbols, mlar_rust::Sym::from_names(["L"]));
-
-let matmul = FuncPerfModel::builder()
-    .constraints(ConstraintExpr::parse("M >= 32 && N >= 32 && K >= 32").unwrap())
-    .scenarios([
-        PerfScenario::with_constraints(
-            ConstraintExpr::parse("M * N >= 8192").unwrap(),
-            SimpleTimeCost::new(
-                Expr::parse("100").unwrap(),
-                Expr::parse("M * N * K").unwrap(),
-                Expr::parse("1024").unwrap(),
-            ),
-        ),
-        PerfScenario::with_constraints(
-            ConstraintExpr::parse("M * N < 8192").unwrap(),
-            SimpleTimeCost::new(
-                Expr::parse("100").unwrap(),
-                Expr::parse("M * N * K").unwrap(),
-                Expr::parse("M * N * 1024 / 8192").unwrap(),
-            ),
-        ),
-    ])
-    .build();
-
-assert_eq!(matmul.symbols, mlar_rust::Sym::from_names(["K", "M", "N"]));
+let arch = mlar_rust::archs::load_arch("examples/architectures/dual-noc-mesh")?;
 ```
 
-You can still call `.symbols([...])` or `.constraints(...)` explicitly when a
-model needs declarations that differ from inferred expression usage.
+The common runtime types are re-exported from `mlar_rust`. `ChipYaml` and
+`PerfYamlSpec` are loader objects; programmatic construction uses
+`Architecture`, `MemoryRegion`, `ComputeProcessor`, `DataMover`, and
+`FuncPerfModel`.
 
-## Current Limitations
+## Current Boundaries
 
-- MLIR export returns `None` if dimensions or memory sizes cannot be simplified
-  to constants.
-- Schedule evaluation supports `Schedule::Func` and `Schedule::Sequential`.
-  `Schedule::Parallel` is serialized but evaluation is not implemented yet.
-- Evaluation preserves guarded scenario alternatives; it does not choose a
-  scenario or discard alternatives whose constraints become false.
-- Scenario overlap is not checked. Model authors should make scenario
-  constraints mutually exclusive when multiple scenarios are present.
-- Resource maps represent contention relationships, but the current schedule
-  evaluator does not perform resource-aware parallel scheduling.
+- Architecture MLIR export requires concrete dimensions and memory sizes.
+- Processor MLIR parsing is structural; it is not an official MLIR
+  parser/verifier.
+- Schedule evaluation supports function and sequential nodes, not parallel
+  nodes.
+- Evaluation preserves guarded alternatives and does not prove scenario
+  exclusivity.
+- Resources describe contention but are not consumed by the current schedule
+  evaluator.
+- Mesh topology is represented in the runtime model and JSON exports; ADL MLIR
+  export currently materializes its generated processors/resources, not the
+  affine topology itself.
 
 ## License
 
-No license file is currently present in this repository.
+No license file is currently present.

@@ -198,37 +198,41 @@ impl Architecture {
     }
 
     pub fn get_scaled_memory_region(&self, name: &str) -> Option<MemoryRegion> {
-        self.get_scaled_memory_region_impl(name, &[])
+        self.get_scaled_memory_region_impl(name)
     }
 
-    fn get_scaled_memory_region_impl(
-        &self,
-        name: &str,
-        inherited_dims: &[Dimension],
-    ) -> Option<MemoryRegion> {
-        let mut dims = inherited_dims.to_vec();
-        dims.extend(self.dims.iter().cloned());
-
+    fn get_scaled_memory_region_impl(&self, name: &str) -> Option<MemoryRegion> {
         if let Some(memory) = self
             .memories
             .iter()
             .find(|memory| memory.name() == Some(name))
         {
-            return if dims.is_empty() {
+            return if self.dims.is_empty() {
                 Some(memory.clone())
             } else {
                 Some(
                     memory
                         .clone()
-                        .scale(&dims)
+                        .scale(&self.dims)
                         .with_name(format!("array_{name}")),
                 )
             };
         }
 
-        self.children
+        let child_region = self
+            .children
             .iter()
-            .find_map(|child| child.get_scaled_memory_region_impl(name, &dims))
+            .find_map(|child| child.get_scaled_memory_region_impl(name))?;
+        if self.dims.is_empty() {
+            Some(child_region)
+        } else {
+            let child_name = child_region.name()?.to_string();
+            Some(
+                child_region
+                    .scale(&self.dims)
+                    .with_name(format!("array_{child_name}")),
+            )
+        }
     }
 
     pub fn get_processor(&self, name: &str) -> Option<&Processor> {

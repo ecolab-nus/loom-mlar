@@ -1,9 +1,9 @@
+mod arch_yaml;
 pub mod architecture;
-pub mod arch_yaml;
 pub mod memory;
 pub mod network;
 pub mod perf;
-pub mod perf_yaml;
+mod perf_yaml;
 pub mod processor;
 pub mod resource;
 pub mod size_dim;
@@ -19,8 +19,8 @@ pub use crate::schedule::{
     MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
     MlirTensorSymbolBinding,
 };
+pub use arch_yaml::{ArchLoadError, ChipYaml};
 pub use architecture::Architecture;
-pub use arch_yaml::{ArchLoadError, SystemYaml};
 pub use memory::{MemoryBank, MemoryRegion};
 pub use network::{
     MeshLink, MeshNetwork, MeshNetworkInterface, ScaleOutNetwork, ScaleOutNetworkBindings,
@@ -28,9 +28,7 @@ pub use network::{
 pub use perf::{
     FuncPerfModel, FuncPerfModelBuilder, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr,
 };
-pub use perf_yaml::{
-    PerfFunctionYaml, PerfScenarioYaml, PerfYamlError, PerfYamlSpec, SimpleCostYaml, TimeCostYaml,
-};
+pub use perf_yaml::{PerfYamlError, PerfYamlSpec};
 pub use processor::{
     ComputeProcessor, ComputeProcessorBuilder, DataEffect, DataMover, DataMoverBuilder,
     FunctionDataMover, FunctionProcessor, MemoryRegionRef, Module as ProcessorModule, Processor,

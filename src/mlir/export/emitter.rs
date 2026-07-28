@@ -178,6 +178,11 @@ impl MlirEmitter {
             DataEffect::Preserve => "dmover",
             DataEffect::Transform | DataEffect::Reduce | DataEffect::Accumulate => "compute",
         };
+        for (alias, target) in &proc.functionality.memory_aliases {
+            if let Some(prefixed) = self.memory_name_map.get(target).cloned() {
+                self.memory_name_map.insert(alias.clone(), prefixed);
+            }
+        }
         self.emit_processor_like(kind, proc)
     }
 
@@ -331,21 +336,29 @@ fn collect_array_scaled_memory_regions(
     dims: &[Dimension],
     elem: &Architecture,
 ) -> Vec<MemoryRegion> {
-    collect_arch_memory_regions_with_base_names(elem)
+    collect_arch_memory_regions(elem)
         .into_iter()
-        .map(|(base_name, region)| region.scale(dims).with_name(format!("array_{base_name}")))
+        .filter_map(|region| {
+            let name = region.name()?.to_string();
+            Some(region.scale(dims).with_name(format!("array_{name}")))
+        })
         .collect()
 }
 
-fn collect_arch_memory_regions_with_base_names(arch: &Architecture) -> Vec<(String, MemoryRegion)> {
-    let mut regions = Vec::new();
-    for region in &arch.memories {
-        if let Some(name) = region.name() {
-            regions.push((name.to_string(), region.clone()));
-        }
-    }
+fn collect_arch_memory_regions(arch: &Architecture) -> Vec<MemoryRegion> {
+    let mut regions = arch.memories.clone();
     for child in &arch.children {
-        regions.extend(collect_arch_memory_regions_with_base_names(child));
+        regions.extend(
+            collect_arch_memory_regions(child)
+                .into_iter()
+                .filter_map(|region| {
+                    if child.dims.is_empty() {
+                        return Some(region);
+                    }
+                    let name = region.name()?.to_string();
+                    Some(region.scale(&child.dims).with_name(format!("array_{name}")))
+                }),
+        );
     }
     regions
 }

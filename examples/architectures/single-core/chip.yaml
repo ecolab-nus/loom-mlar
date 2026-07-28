@@ -1,5 +1,3 @@
-version: 1
-
 # Dimension values are instance counts.
 dimensions:
   l1_bank: 4
