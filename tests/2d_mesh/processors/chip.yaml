@@ -1,50 +1,35 @@
+name: system
+memory: memory.yaml
+
 dimensions:
-  nbank: 16
+  dram_channel: 8
   x: 8
   y: 8
-  dram_channel: 8
 
-architecture:
-  name: system
-  groups:
-    - name: mesh
-      scale: [x, y]
-  memories:
-    - name: DRAM
-      bank_name: DRAM_bank
-      block_size_bytes: 8192
-      num_blocks: 196608
-      scale: [dram_channel]
-    - name: L1
-      in: mesh
-      block_size_bytes: 16
-      num_blocks: 5464
-      scale: [nbank]
-      aggregate:
-        name: L1_mesh
-  processors:
-    - name: dram_l1_noc0
-      kind: data_mover
-      from: DRAM
-      to: L1_mesh
+memories:
+  DRAM: [dram_channel]
+  L1: [x, y]
+
+resources:
+  - name: noc0
+  - name: noc1
+
+processor:
+  matrix_lane.yaml:
+    - inputs: ["L1[x, y]"]
+      outputs: ["L1[x, y]"]
+  vector_lane.yaml:
+    - inputs: ["L1[x, y]"]
+      outputs: ["L1[x, y]"]
+  dram_l1_noc0.yaml:
+    - inputs: ["DRAM[:]"]
+      outputs: ["all_l1"]
       resources: [noc0]
-    - name: l1_l1_noc0
-      kind: data_mover
-      from: L1_mesh
-      to: L1_mesh
+  l1_l1_noc0.yaml:
+    - inputs: ["all_l1"]
+      outputs: ["all_l1"]
       resources: [noc0]
-    - name: l1_dram_noc1
-      kind: data_mover
-      from: L1_mesh
-      to: DRAM
+  l1_dram_noc1.yaml:
+    - inputs: ["all_l1"]
+      outputs: ["DRAM[:]"]
       resources: [noc1]
-    - name: matrix_lane
-      in: mesh
-      kind: compute
-      from: L1
-      to: L1
-    - name: vector_lane
-      in: mesh
-      kind: compute
-      from: L1
-      to: L1

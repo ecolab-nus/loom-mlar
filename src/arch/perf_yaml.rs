@@ -29,6 +29,8 @@ struct PerfFunctionYaml {
     symbols: Option<Vec<String>>,
     constraints: Option<String>,
     #[serde(default)]
+    time_cost: Option<TimeCostYaml>,
+    #[serde(default)]
     scenarios: Vec<PerfScenarioYaml>,
 }
 
@@ -124,9 +126,9 @@ impl PerfYamlSpec {
 
 impl PerfFunctionYaml {
     fn to_model(&self, label: &str) -> Result<FuncPerfModel, PerfYamlError> {
-        if self.scenarios.is_empty() {
+        if self.scenarios.is_empty() && self.time_cost.is_none() {
             return Err(PerfYamlError::InvalidSpec(format!(
-                "{label}: set at least one scenario"
+                "{label}: set `time_cost` or at least one scenario"
             )));
         }
 
@@ -141,12 +143,22 @@ impl PerfFunctionYaml {
             )?);
         }
 
-        let scenarios = self
-            .scenarios
-            .iter()
-            .enumerate()
-            .map(|(idx, scenario)| scenario.to_scenario(&format!("{label}.scenarios[{idx}]")))
-            .collect::<Result<Vec<_>, _>>()?;
+        let scenarios = if let Some(time_cost) = &self.time_cost {
+            if !self.scenarios.is_empty() {
+                return Err(PerfYamlError::InvalidSpec(format!(
+                    "{label}: `time_cost` and `scenarios` are mutually exclusive"
+                )));
+            }
+            vec![PerfScenario::new(
+                time_cost.to_time_cost(&format!("{label}.time_cost"))?,
+            )]
+        } else {
+            self.scenarios
+                .iter()
+                .enumerate()
+                .map(|(idx, scenario)| scenario.to_scenario(&format!("{label}.scenarios[{idx}]")))
+                .collect::<Result<Vec<_>, _>>()?
+        };
 
         Ok(builder.scenarios(scenarios).build())
     }

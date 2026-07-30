@@ -1,57 +1,25 @@
+name: torus_system
 dimensions:
   dram_channel: 4
   x: 4
   y: 4
-  l1_bank: 8
-
-architecture:
-  name: torus_system
-  groups:
-    - name: mesh
-      scale: [x, y]
-  memories:
-    - name: DRAM
-      bank_name: DRAM_channel
-      block_size_bytes: 4096
-      num_blocks: 65536       # 256 MiB/channel, 1 GiB total
-      scale: [dram_channel]
-    - name: L1
-      in: mesh
-      bank_name: L1_bank
-      block_size_bytes: 64
-      num_blocks: 512         # 32 KiB/bank, 256 KiB/core
-      scale: [l1_bank]
-      aggregate:
-        name: L1_mesh
-  processors:
-    - name: dram_l1_dma
-      kind: data_mover
-      from: DRAM
-      to: L1_mesh
+memories:
+  DRAM: [dram_channel]
+  L1: [x, y]
+resources:
+  - name: noc_ingress
+  - name: noc_egress
+  - name: l1_torus_x
+  - name: l1_torus_y
+processor:
+  matrix_lane.yaml:
+    - inputs: ["L1[x, y]"]
+      outputs: ["L1[x, y]"]
+  dram_l1_dma.yaml:
+    - inputs: ["DRAM[:]"]
+      outputs: ["mesh_l1"]
       resources: [noc_ingress]
-    - name: l1_dram_dma
-      kind: data_mover
-      from: L1_mesh
-      to: DRAM
+  l1_dram_dma.yaml:
+    - inputs: ["mesh_l1"]
+      outputs: ["DRAM[:]"]
       resources: [noc_egress]
-    - name: matrix_lane
-      in: mesh
-      kind: compute
-      from: L1
-      to: L1
-      resources: [matrix_pipeline]
-  networks:
-    - name: l1_torus
-      dimensions: [x, y]
-      region: L1_mesh
-      links:
-        - name: x
-          map: "[x, y] -> [x, y]: ((x + 1) mod 4, y)"
-        - name: y
-          map: "[x, y] -> [x, y]: (x, (y + 1) mod 4)"
-      # Descriptive bytes/cycle/link; not consumed by schedule evaluation.
-      link_bandwidth: "64"
-      io:
-        # Intended as endpoint-to-router coordinate attachment; currently inert.
-        map: "[x, y] -> [x, y]: (x, y)"
-        link_bandwidth: "32"

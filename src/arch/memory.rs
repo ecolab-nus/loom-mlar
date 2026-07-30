@@ -1,355 +1,329 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
-use super::perf::FuncPerfModel;
-use super::resource::Resource;
-use super::size_dim::{Dimension, SizeExpr};
+use super::index::{AffineExpression, EndpointParseError, IndexDomain};
 
-/// Atomic unit of memory — a single bank with capacity and optional perf model.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MemoryBank {
-    pub name: Option<String>,
-    /// Total capacity in bytes (can be a symbolic expression, e.g. Mul(block_size, num_blocks))
-    pub capacity_bytes: SizeExpr,
-    /// Optional access granularity (block size) for cost analysis
-    pub block_size: Option<SizeExpr>,
-    /// Optional performance model (access cost characteristics)
-    pub perf: Option<FuncPerfModel>,
+/// Optional physical banks within one logical memory instance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Banking {
+    pub banks: u64,
 }
 
-/// Recursive memory region — Bank or Array.
+impl Banking {
+    pub fn new(banks: u64) -> Self {
+        Self { banks }
+    }
+}
+
+/// Reusable memory kind from `memory.yaml`.
 ///
-/// * `Bank` is the atomic leaf unit.
-/// * `Array` represents homogeneous scaling along dimensions.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MemoryRegion {
-    /// Leaf: a single memory bank
-    Bank(MemoryBank),
-    /// Homogeneous scaling along one or more dimensions
-    Array {
-        name: Option<String>,
-        dims: Vec<Dimension>,
-        sub_regions: Box<MemoryRegion>,
-    },
+/// `capacity` is bytes per logical instance, not per bank.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryDefinition {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub indices: Vec<String>,
+    pub capacity: u64,
+    pub word_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub banking: Option<Banking>,
 }
 
-/// Inputs accepted by [`MemoryRegion::scale`].
-pub trait IntoMemoryDimensions {
-    fn into_memory_dimensions(self) -> Vec<Dimension>;
-}
-
-impl IntoMemoryDimensions for &Dimension {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        vec![self.clone()]
-    }
-}
-
-impl IntoMemoryDimensions for &[Dimension] {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.to_vec()
-    }
-}
-
-impl<const N: usize> IntoMemoryDimensions for &[Dimension; N] {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.to_vec()
-    }
-}
-
-impl<const N: usize> IntoMemoryDimensions for [Dimension; N] {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.into_iter().collect()
-    }
-}
-
-impl<const N: usize> IntoMemoryDimensions for [&Dimension; N] {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.into_iter().cloned().collect()
-    }
-}
-
-impl IntoMemoryDimensions for &[&Dimension] {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.iter().copied().cloned().collect()
-    }
-}
-
-impl IntoMemoryDimensions for Vec<Dimension> {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self
-    }
-}
-
-impl IntoMemoryDimensions for &Vec<Dimension> {
-    fn into_memory_dimensions(self) -> Vec<Dimension> {
-        self.clone()
-    }
-}
-
-impl MemoryBank {
-    /// Create a bank from block_size and num_blocks.
-    /// capacity_bytes = Mul(block_size, num_blocks), access_granularity = block_size
-    pub fn from_blocks(block_size: SizeExpr, num_blocks: SizeExpr) -> Self {
-        let capacity_bytes = SizeExpr::Mul(Box::new(block_size.clone()), Box::new(num_blocks));
+impl MemoryDefinition {
+    pub fn new(
+        name: impl Into<String>,
+        indices: impl IntoIterator<Item = impl Into<String>>,
+        capacity: u64,
+        word_size: u64,
+    ) -> Self {
         Self {
-            name: None,
-            capacity_bytes,
-            block_size: Some(block_size),
-            perf: None,
+            name: name.into(),
+            indices: indices.into_iter().map(Into::into).collect(),
+            capacity,
+            word_size,
+            banking: None,
         }
     }
 
-    /// Create a bank with just a total capacity.
-    pub fn new(capacity_bytes: SizeExpr) -> Self {
-        Self {
-            name: None,
-            capacity_bytes,
-            block_size: None,
-            perf: None,
+    pub fn with_banking(mut self, banks: u64) -> Self {
+        self.banking = Some(Banking::new(banks));
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("memory name cannot be empty".into());
         }
-    }
-
-    /// Builder-style: set the name.
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Builder-style: set the perf model.
-    pub fn with_perf(mut self, perf: FuncPerfModel) -> Self {
-        self.perf = Some(perf);
-        self
+        if self.capacity == 0 {
+            return Err(format!("memory '{}' capacity must be positive", self.name));
+        }
+        if self.word_size == 0 {
+            return Err(format!("memory '{}' word_size must be positive", self.name));
+        }
+        if self.capacity % self.word_size != 0 {
+            return Err(format!(
+                "memory '{}' capacity {} is not divisible by word_size {}",
+                self.name, self.capacity, self.word_size
+            ));
+        }
+        let unique = self.indices.iter().collect::<BTreeSet<_>>();
+        if unique.len() != self.indices.len() {
+            return Err(format!("memory '{}' has duplicate index names", self.name));
+        }
+        if let Some(banking) = &self.banking {
+            if banking.banks == 0 {
+                return Err(format!(
+                    "memory '{}' bank count must be positive",
+                    self.name
+                ));
+            }
+            let bank_span = self
+                .word_size
+                .checked_mul(banking.banks)
+                .ok_or_else(|| format!("memory '{}' bank geometry overflows", self.name))?;
+            if self.capacity % bank_span != 0 {
+                return Err(format!(
+                    "memory '{}' capacity {} is not divisible by word_size {} × banks {}",
+                    self.name, self.capacity, self.word_size, banking.banks
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
-impl MemoryRegion {
-    /// Create a bank memory region from block_size and num_blocks.
-    pub fn bank(block_size: SizeExpr, num_blocks: SizeExpr) -> Self {
-        MemoryRegion::Bank(MemoryBank::from_blocks(block_size, num_blocks))
+/// A placed, concretely-sized array of a memory definition.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryArray {
+    pub name: String,
+    pub definition: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub indices: Vec<IndexDomain>,
+}
+
+impl MemoryArray {
+    pub fn new(
+        name: impl Into<String>,
+        definition: impl Into<String>,
+        indices: Vec<IndexDomain>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            definition: definition.into(),
+            indices,
+        }
     }
 
-    /// Wrap an existing memory bank as a memory region.
-    pub fn from_bank(bank: MemoryBank) -> Self {
-        MemoryRegion::Bank(bank)
+    pub fn instances(&self) -> u64 {
+        self.indices
+            .iter()
+            .fold(1, |count, index| count.saturating_mul(index.size))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EndpointIndex {
+    All,
+    Expression(AffineExpression),
+}
+
+/// A symbolic selection of a logical memory instance and optional bank.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MemoryEndpoint {
+    pub memory: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub indices: Vec<EndpointIndex>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank: Option<AffineExpression>,
+}
+
+impl MemoryEndpoint {
+    pub fn parse(input: &str) -> Result<Self, EndpointParseError> {
+        parse_endpoint(input)
     }
 
-    /// Create a convenience leaf with concrete block sizes.
-    pub fn leaf_concrete(block_size: u64, num_blocks: u64) -> Self {
-        MemoryRegion::bank(SizeExpr::from(block_size), SizeExpr::from(num_blocks))
+    pub fn variables(&self) -> BTreeSet<String> {
+        let mut variables = BTreeSet::new();
+        for index in &self.indices {
+            if let EndpointIndex::Expression(expression) = index {
+                variables.extend(expression.variables());
+            }
+        }
+        if let Some(bank) = &self.bank {
+            variables.extend(bank.variables());
+        }
+        variables
+    }
+}
+
+/// A zero-capacity alias for a memory selection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamedMemoryRegion {
+    pub name: String,
+    pub endpoint: MemoryEndpoint,
+}
+
+impl NamedMemoryRegion {
+    pub fn new(name: impl Into<String>, endpoint: MemoryEndpoint) -> Self {
+        Self {
+            name: name.into(),
+            endpoint,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryCatalog {
+    #[serde(default)]
+    pub definitions: Vec<MemoryDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regions: Vec<NamedMemoryRegion>,
+}
+
+impl MemoryCatalog {
+    pub fn definition(&self, name: &str) -> Option<&MemoryDefinition> {
+        self.definitions
+            .iter()
+            .find(|definition| definition.name == name)
     }
 
-    /// Wrap this region in an Array with the given dimension or dimensions.
-    pub fn scale<D>(self, dims: D) -> Self
-    where
-        D: IntoMemoryDimensions,
+    pub fn region(&self, name: &str) -> Option<&NamedMemoryRegion> {
+        self.regions.iter().find(|region| region.name == name)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        let mut names = BTreeSet::new();
+        for definition in &self.definitions {
+            definition.validate()?;
+            if !names.insert(definition.name.as_str()) {
+                return Err(format!("duplicate memory definition '{}'", definition.name));
+            }
+        }
+        let mut region_names = BTreeSet::new();
+        for region in &self.regions {
+            if !region_names.insert(region.name.as_str()) {
+                return Err(format!("duplicate named memory region '{}'", region.name));
+            }
+            let Some(definition) = self.definition(&region.endpoint.memory) else {
+                return Err(format!(
+                    "named region '{}' refers to unknown memory '{}'",
+                    region.name, region.endpoint.memory
+                ));
+            };
+            if region.endpoint.indices.len() != definition.indices.len() {
+                return Err(format!(
+                    "named region '{}' has {} indices; memory '{}' expects {}",
+                    region.name,
+                    region.endpoint.indices.len(),
+                    definition.name,
+                    definition.indices.len()
+                ));
+            }
+            validate_static_bank(&region.endpoint, definition)?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_static_bank(
+    endpoint: &MemoryEndpoint,
+    definition: &MemoryDefinition,
+) -> Result<(), String> {
+    let Some(bank) = &endpoint.bank else {
+        return Ok(());
+    };
+    let Some(banking) = &definition.banking else {
+        return Err(format!(
+            "memory '{}' has no banks, but endpoint selects one",
+            definition.name
+        ));
+    };
+    if let AffineExpression::Constant(bank) = bank {
+        if *bank < 0 || *bank >= banking.banks as i64 {
+            return Err(format!(
+                "bank {} is out of bounds for memory '{}' with {} banks",
+                bank, definition.name, banking.banks
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_endpoint(input: &str) -> Result<MemoryEndpoint, EndpointParseError> {
+    let input = input.trim();
+    let (base, bank_text) = match input.rsplit_once(".bank[") {
+        Some((base, suffix)) if suffix.ends_with(']') => (base, Some(&suffix[..suffix.len() - 1])),
+        Some(_) => {
+            return Err(EndpointParseError {
+                message: "bank selection must end with ']'".into(),
+                position: input.len(),
+            });
+        }
+        None => (input, None),
+    };
+
+    let (memory, index_text) = if let Some(open) = base.find('[') {
+        if !base.ends_with(']') {
+            return Err(EndpointParseError {
+                message: "memory indices must end with ']'".into(),
+                position: open,
+            });
+        }
+        (&base[..open], Some(&base[open + 1..base.len() - 1]))
+    } else {
+        (base, None)
+    };
+    let memory = memory.trim();
+    if memory.is_empty()
+        || !memory
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
-        MemoryRegion::Array {
-            name: None,
-            dims: dims.into_memory_dimensions(),
-            sub_regions: Box::new(self),
-        }
+        return Err(EndpointParseError {
+            message: "invalid memory name".into(),
+            position: 0,
+        });
     }
 
-    /// Get the name of this region.
-    /// For Array, returns its own name if set, otherwise recurses into the sub-region.
-    pub fn name(&self) -> Option<&str> {
-        match self {
-            MemoryRegion::Bank(b) => b.name.as_deref(),
-            MemoryRegion::Array {
-                name,
-                sub_regions: sub_region,
-                ..
-            } => name.as_deref().or_else(|| sub_region.name()),
-        }
-    }
-
-    /// Set the name at the current level (builder-style, consumes self).
-    pub fn with_name(self, n: impl Into<String>) -> Self {
-        match self {
-            MemoryRegion::Bank(mut b) => {
-                b.name = Some(n.into());
-                MemoryRegion::Bank(b)
-            }
-            MemoryRegion::Array {
-                dims,
-                sub_regions: sub_region,
-                ..
-            } => MemoryRegion::Array {
-                name: Some(n.into()),
-                dims,
-                sub_regions: sub_region,
-            },
-        }
-    }
-
-    /// Get the outermost dimensions of this region (empty for Bank).
-    pub fn dims(&self) -> &[Dimension] {
-        match self {
-            MemoryRegion::Array { dims, .. } => dims,
-            _ => &[],
-        }
-    }
-
-    /// Generate a single resource for this memory region.
-    ///
-    /// Only `MemoryRegion::Bank` is supported. Array regions return an error.
-    /// The resource ID is the bank name and the capacity is the bank capacity
-    /// in bytes.
-    pub fn generate_resource(&self) -> Result<Resource, String> {
-        match self {
-            MemoryRegion::Bank(bank) => {
-                let name = bank.name.as_deref().ok_or_else(|| {
-                    "cannot generate resource for unnamed memory bank".to_string()
-                })?;
-                let capacity_bytes = bank.capacity_bytes.as_const().ok_or_else(|| {
-                    format!(
-                        "cannot generate resource for memory bank '{}' with symbolic capacity '{}'",
-                        name, bank.capacity_bytes
-                    )
-                })?;
-                let capacity = i64::try_from(capacity_bytes).map_err(|_| {
-                    format!(
-                        "memory bank '{}' capacity {} does not fit in i64",
-                        name, capacity_bytes
-                    )
-                })?;
-                Ok(Resource::quantitative(name.to_string(), capacity))
-            }
-            MemoryRegion::Array { name, .. } => Err(format!(
-                "cannot generate resource for memory array '{}'; only MemoryRegion::Bank is supported",
-                name.as_deref().unwrap_or("unnamed")
-            )),
-        }
-    }
-
-    /// Generate resources for this memory region.
-    ///
-    /// Returns one resource for `Bank`, and an error for `Array`.
-    pub fn generate_resources(&self) -> Result<Vec<Resource>, String> {
-        Ok(vec![self.generate_resource()?])
-    }
-
-    /// Compute the total size in bytes of this region, recursing through all sub-regions.
-    ///
-    /// Returns `None` if any leaf capacity or array dimension is symbolic.
-    pub fn total_size_bytes(&self) -> Option<u64> {
-        match self {
-            MemoryRegion::Bank(bank) => bank.capacity_bytes.as_const(),
-            MemoryRegion::Array {
-                dims,
-                sub_regions: sub_region,
-                ..
-            } => {
-                let sub_region_size = sub_region.total_size_bytes()?;
-                let multiplier: u64 = dims
-                    .iter()
-                    .map(|d| d.size.as_const())
-                    .try_fold(1u64, |acc, s| s.map(|v| acc * v))?;
-                Some(sub_region_size * multiplier)
-            }
-        }
-    }
+    let indices = match index_text {
+        None | Some("") => Vec::new(),
+        Some(text) => split_commas(text)
+            .into_iter()
+            .map(|part| {
+                let part = part.trim();
+                if part == ":" {
+                    Ok(EndpointIndex::All)
+                } else {
+                    AffineExpression::parse(part).map(EndpointIndex::Expression)
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    };
+    let bank = bank_text.map(AffineExpression::parse).transpose()?;
+    Ok(MemoryEndpoint {
+        memory: memory.to_string(),
+        indices,
+        bank,
+    })
 }
 
-impl From<&MemoryRegion> for MemoryRegion {
-    fn from(region: &MemoryRegion) -> Self {
-        region.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bank_from_blocks() {
-        let bank = MemoryBank::from_blocks(SizeExpr::Const(1024), SizeExpr::Const(4));
-
-        // capacity_bytes should be Mul(1024, 4)
-        assert_eq!(bank.capacity_bytes.as_const(), Some(4096));
-        assert_eq!(
-            bank.block_size.as_ref().and_then(|g| g.as_const()),
-            Some(1024)
-        );
-    }
-
-    #[test]
-    fn test_bank_symbolic() {
-        let bank = MemoryBank::from_blocks(
-            SizeExpr::Const(256),
-            SizeExpr::Sym(crate::arch::size_dim::Sym::new("DRAM_SIZE")),
-        );
-
-        // capacity_bytes is symbolic, can't evaluate to concrete
-        assert!(bank.capacity_bytes.as_const().is_none());
-        // access_granularity is concrete
-        assert_eq!(
-            bank.block_size.as_ref().and_then(|g| g.as_const()),
-            Some(256)
-        );
-    }
-
-    #[test]
-    fn test_total_size_bytes() {
-        let dim = Dimension::new_int("nbank", 16);
-        let region = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-            .scale(&dim)
-            .with_name("L1");
-
-        // 16 banks × 128 bytes/block × 1024 blocks = 2 MB
-        assert_eq!(region.total_size_bytes(), Some(16 * 128 * 1024));
-
-        // Single bank
-        let bank = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(4096)));
-        assert_eq!(bank.total_size_bytes(), Some(4096));
-
-        // Symbolic → None
-        let sym_bank = MemoryRegion::from_bank(MemoryBank::new(SizeExpr::sym("SIZE")));
-        assert_eq!(sym_bank.total_size_bytes(), None);
-    }
-
-    #[test]
-    fn test_scale() {
-        let dim = Dimension::new_int("nbank", 16);
-        let region = MemoryRegion::leaf_concrete(128, 1024)
-            .scale(&dim)
-            .with_name("test_mem");
-
-        assert_eq!(region.name(), Some("test_mem"));
-        match &region {
-            MemoryRegion::Array {
-                dims,
-                sub_regions: sub_region,
-                ..
-            } => {
-                assert_eq!(dims.len(), 1);
-                assert_eq!(dims[0].name.0, "nbank");
-                assert!(matches!(sub_region.as_ref(), MemoryRegion::Bank(_)));
+fn split_commas(input: &str) -> Vec<&str> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let mut parts = Vec::new();
+    for (offset, character) in input.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&input[start..offset]);
+                start = offset + 1;
             }
-            _ => panic!("expected Array"),
+            _ => {}
         }
     }
-
-    #[test]
-    fn test_generate_resource_for_bank() {
-        let region =
-            MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(4096)).with_name("L1"));
-        let resource = region
-            .generate_resource()
-            .expect("bank should generate a resource");
-        assert_eq!(resource.id().as_str(), "L1");
-        assert_eq!(resource.capacity(), Some(4096));
-    }
-
-    #[test]
-    fn test_generate_resource_for_array_errors() {
-        let dim = Dimension::new_int("n", 4);
-        let array =
-            MemoryRegion::from_bank(MemoryBank::new(SizeExpr::Const(1024)).with_name("bank"))
-                .scale(&dim)
-                .with_name("L1");
-        let err = array
-            .generate_resource()
-            .expect_err("array should not generate resources");
-        assert!(err.contains("only MemoryRegion::Bank is supported"));
-    }
+    parts.push(&input[start..]);
+    parts
 }

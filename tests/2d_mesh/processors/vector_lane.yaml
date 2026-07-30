@@ -1,0 +1,77 @@
+name: vector_lane
+type: compute
+source: vector_lane.loom
+resources:
+  - name: vector_lane
+performance:
+  time_costs:
+    vector_1024: &vector_1024
+      simple:
+        fixed_latency: "1"
+        volume: "L"
+        throughput: "1024"
+    vector_7: &vector_7
+      simple:
+        fixed_latency: "1"
+        volume: "L"
+        throughput: "7"
+    vector_6: &vector_6
+      simple:
+        fixed_latency: "1"
+        volume: "L"
+        throughput: "6"
+    vector_4: &vector_4
+      simple:
+        fixed_latency: "1"
+        volume: "L"
+        throughput: "4"
+    vector_8: &vector_8
+      simple:
+        fixed_latency: "1"
+        volume: "L"
+        throughput: "8"
+
+  functions:
+    vec_max_f16:
+      scenarios:
+        - time_cost: *vector_1024
+
+    vec_exp_f16:
+      scenarios:
+        - time_cost: *vector_7
+
+    vec_sum_f16:
+      scenarios:
+        - time_cost: *vector_1024
+
+    vec_add_f16:
+      scenarios:
+        - time_cost: *vector_1024
+
+    vec_mul_f16:
+      scenarios:
+        - time_cost: *vector_1024
+
+    vec_div_f16:
+      scenarios:
+        - time_cost: *vector_6
+
+    vec_sub_f16:
+      scenarios:
+        - time_cost: *vector_4
+
+    vec_powf_f16:
+      scenarios:
+        - time_cost: *vector_7
+
+    vec_cmpf_ogt_f16:
+      scenarios:
+        - time_cost: *vector_8
+
+    vec_select_f16:
+      scenarios:
+        - time_cost: *vector_8
+
+    vec_log_f16:
+      scenarios:
+        - time_cost: *vector_7

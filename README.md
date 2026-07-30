@@ -1,118 +1,75 @@
 # MLAR Rust Front-End
 
-MLAR represents hardware architecture, processor functionality, symbolic
-performance, and schedules for compiler tooling.
+`mlar-rust` models machine architectures for compiler tooling. The canonical
+model is flat and indexed: logical memory arrays, zero-capacity named regions,
+unified processor arrays, intrinsic resource arrays, and affine memory
+connections.
 
 An architecture package contains:
 
 ```text
 chip.yaml
-<processor>.mlir
-<processor>.perf.yaml
+memory.yaml
+<processor>.yaml
+<processor>.loom
 ```
 
-`chip.yaml` describes hierarchy, memories, processors, routes, resources, and
-networks. Processor MLIR describes executable operations and memory bindings.
-Performance YAML assigns symbolic cost scenarios to each MLIR function.
+`memory.yaml` owns reusable memory definitions and named selections.
+`chip.yaml` owns concrete dimensions, memory-array instantiation, and processor
+connections.
+Processor YAML owns optional compatibility type metadata, inline resources, and
+performance models. Compact Loom source owns symbolic interfaces and operation
+bodies.
 
-The Rust library lowers these inputs into a recursive `Architecture`. That
-runtime representation supports:
+See [TEMPLATE.md](TEMPLATE.md) for the complete schema, selection semantics,
+imperative Rust construction, and type inventory.
 
-- `adl.*` architecture MLIR export;
-- schedule cost evaluation;
-- graph, hierarchy, and viewer JSON export;
-- generation of standalone evaluator and architecture-query binaries.
-
-## Minimal Configuration
-
-Architecture knobs control replication and memory capacity:
-
-```yaml
-dimensions:
-  cores: 4
-  l1_banks: 8
-
-architecture:
-  name: example
-  groups:
-    - name: core
-      scale: [cores]
-  memories:
-    - name: L1
-      in: core
-      block_size_bytes: 64
-      num_blocks: 1024
-      scale: [l1_banks]
-```
-
-Here, `dimensions` controls the number of cores and banks, while each bank's
-capacity is `block_size_bytes * num_blocks`.
-
-Performance knobs in `<processor>.perf.yaml` define the cost of each matching
-MLIR function:
-
-```yaml
-functions:
-  vector_add:
-    constraints: "L > 0"
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "2"
-            volume: "L"
-            throughput: "32"
-```
-
-This model estimates `vector_add` in cycles as `2 + L / 32`. See the user
-reference and complete architecture examples for processors, routes, networks,
-and guarded performance alternatives.
-
-## Documentation
-
-- [User reference](docs/usage.md): architecture-package layout and available
-  schema knobs.
-- [Performance YAML](docs/perf-yaml.md): performance schema and cost semantics.
-- [Architecture semantics](docs/architecture-concepts.md): meaning of runtime
-  objects and their invariants.
-- [Lowering and implementation](docs/software-architecture.md): type
-  boundaries, linking, MLIR export, and schedule evaluation.
-- [Build and installation](docs/installation.md).
-- [Architecture examples](examples/architectures/README.md).
-
-## Commands
+## Use
 
 ```bash
 cargo test
 cargo run --example inspect_arch -- examples/architectures/dual-noc-mesh
+cargo run --example imperative_dual_noc_mesh
+cargo run --example imperative_cache_hierarchy
 cargo run --bin export_platform -- examples/architectures/dual-noc-mesh
 ```
 
-Load an architecture from Rust with:
-
 ```rust
-let arch = mlar_rust::archs::load_arch("examples/architectures/dual-noc-mesh")?;
+let architecture =
+    mlar_rust::archs::load_arch("examples/architectures/dual-noc-mesh")?;
+let adl = mlar_rust::architecture_to_mlir(&architecture)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The common runtime types are re-exported from `mlar_rust`. `ChipYaml` and
-`PerfYamlSpec` are loader objects; programmatic construction uses
-`Architecture`, `MemoryRegion`, `ComputeProcessor`, `DataMover`, and
-`FuncPerfModel`.
+The runtime supports schedule evaluation and graph, hierarchy, viewer, ABI, and
+dataflow-ADL outputs. Schedule lookup remains coarse function-name matching.
 
-## Current Boundaries
+## Compatibility export
 
-- Architecture MLIR export requires concrete dimensions and memory sizes.
-- Processor MLIR parsing is structural; it is not an official MLIR
-  parser/verifier.
-- Schedule evaluation supports function and sequential nodes, not parallel
-  nodes.
-- Evaluation preserves guarded alternatives and does not prove scenario
-  exclusivity.
-- Resources describe contention but are not consumed by the current schedule
-  evaluator.
-- Mesh topology is represented in the runtime model and JSON exports; ADL MLIR
-  export currently materializes its generated processors/resources, not the
-  affine topology itself.
+The existing `loom-dataflow` dialect is unchanged. Compatibility export
+requires every emitted processor definition to have an explicit homogeneous
+`type: compute` or `type: data_mover`; it never infers this metadata. Export is
+all-or-nothing and returns a specific `AdlExportError`.
 
-## License
+Indexed coordinates and affine relations remain present in runtime and viewer
+JSON. Prefix regions lower to nested memory-array handles; pointwise affine
+relations and explicit bank selectors are projected away while memory geometry
+lowers to the existing `adl.memory.bank` and `adl.memory.array` operations.
 
-No license file is currently present.
+## Documentation
+
+- [Complete template](TEMPLATE.md)
+- [Usage](docs/usage.md)
+- [Architecture semantics](docs/architecture-concepts.md)
+- [Implementation](docs/software-architecture.md)
+- [Performance expressions](docs/perf-yaml.md)
+- [Examples](examples/architectures/README.md)
+- [Installation](docs/installation.md)
+
+## Current boundaries
+
+- Affine relations are not yet consumed by multihop planning.
+- Automatic address-to-bank mapping and bank-conflict inference are not
+  implemented; bank selection is explicit.
+- `Schedule::Parallel` evaluation is not implemented.
+- Function names must remain globally unique for schedule evaluation.

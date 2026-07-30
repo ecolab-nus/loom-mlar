@@ -68,12 +68,9 @@ pub fn query_architecture(
     query: &ArchitectureQuery,
 ) -> Result<ArchitectureQueryResult, String> {
     match query {
-        ArchitectureQuery::Mlir => architecture_to_mlir(arch).map(ArchitectureQueryResult::Mlir).ok_or_else(
-            || {
-                "failed to export architecture to MLIR: symbolic dimensions or sizes are not concretizable"
-                    .to_string()
-            },
-        ),
+        ArchitectureQuery::Mlir => architecture_to_mlir(arch)
+            .map(ArchitectureQueryResult::Mlir)
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -199,33 +196,4 @@ macro_rules! mlar_arch_query {
             }
         }
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::arch::processor::Processor;
-
-    fn test_arch() -> Architecture {
-        Processor::new("vec_lane").into_elem()
-    }
-
-    #[test]
-    fn query_json_parses_mlir_variant() {
-        let query: ArchitectureQuery =
-            serde_json::from_str(r#"{"query":"mlir"}"#).expect("query JSON should parse");
-        assert_eq!(query, ArchitectureQuery::Mlir);
-    }
-
-    #[test]
-    fn mlir_query_returns_module() {
-        let result =
-            query_architecture(&test_arch(), &ArchitectureQuery::Mlir).expect("query should work");
-        match result {
-            ArchitectureQueryResult::Mlir(mlir) => {
-                assert!(mlir.starts_with("module @arch_vec_lane {\n"));
-                assert!(mlir.contains("adl.processor.compute @proc_vec_lane, []"));
-            }
-        }
-    }
 }

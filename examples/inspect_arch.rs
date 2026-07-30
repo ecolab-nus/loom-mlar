@@ -16,22 +16,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arch = mlar_rust::archs::load_arch(&dir)?;
     print_scope(&arch, 0);
 
-    let mlir = architecture_to_mlir(&arch)
-        .ok_or("architecture contains symbolic structural sizes and cannot export to MLIR")?;
+    let mlir = architecture_to_mlir(&arch)?;
     println!("exported platform: {} bytes", mlir.len());
     Ok(())
 }
 
-fn print_scope(arch: &Architecture, depth: usize) {
-    let indent = "  ".repeat(depth);
+fn print_scope(arch: &Architecture, _depth: usize) {
     let dims = arch
-        .dims()
+        .dimensions
         .iter()
         .map(|dim| format!("{}={}", dim.name, dim.size))
         .collect::<Vec<_>>()
         .join(", ");
     println!(
-        "{indent}scope {}{}",
+        "architecture {}{}",
         arch.name,
         if dims.is_empty() {
             String::new()
@@ -41,32 +39,26 @@ fn print_scope(arch: &Architecture, depth: usize) {
     );
 
     for memory in &arch.memories {
+        let definition = arch
+            .memory_definition(memory)
+            .expect("loaded architectures have valid memory definitions");
         println!(
-            "{indent}  memory {}: {} bytes in this declared region",
-            memory.name().unwrap_or("<unnamed>"),
-            memory
-                .total_size_bytes()
-                .map_or_else(|| "symbolic".to_string(), |size| size.to_string())
+            "  memory {}: {} instances × {} bytes",
+            memory.name,
+            memory.instances(),
+            definition.capacity
         );
     }
     for processor in &arch.processors {
+        let definition = arch
+            .processor_definition(&processor.definition)
+            .expect("loaded architectures have valid processor definitions");
         println!(
-            "{indent}  processor {}: {} function(s), {} resource(s)",
-            processor.name.as_deref().unwrap_or("<unnamed>"),
-            processor.functions.len(),
+            "  processor {}: {} function(s), {} valid instance(s), {} resource(s)",
+            processor.name,
+            definition.functions.len(),
+            processor.relation.instances.len(),
             processor.resources.len()
         );
-    }
-    for network in &arch.networks {
-        println!(
-            "{indent}  network {}: {} dimension(s), {} link(s), bandwidth {}",
-            network.name(),
-            network.dimensions().len(),
-            network.mesh_links().len(),
-            network.bandwidth()
-        );
-    }
-    for child in &arch.children {
-        print_scope(child, depth + 1);
     }
 }

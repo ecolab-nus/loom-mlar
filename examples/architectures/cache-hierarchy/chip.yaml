@@ -1,63 +1,28 @@
-# All values are replication counts.
+name: cache_system
 dimensions:
   dram_channel: 2
   cluster: 2
-  l2_bank: 4
   core: 4
-  l1_bank: 8
-
-architecture:
-  name: cache_system
-  groups:
-    - name: clusters
-      scale: [cluster]
-    - name: cores
-      in: clusters
-      scale: [core]
-  memories:
-    - name: DRAM
-      bank_name: DRAM_channel
-      block_size_bytes: 4096
-      num_blocks: 32768       # 128 MiB/channel, 256 MiB total
-      scale: [dram_channel]
-    - name: L2
-      in: clusters
-      bank_name: L2_bank
-      block_size_bytes: 64
-      num_blocks: 8192        # 512 KiB/bank, 2 MiB shared L2
-      scale: [l2_bank]
-      aggregate:
-        name: L2_clusters
-    - name: L1
-      in: cores
-      bank_name: L1_bank
-      block_size_bytes: 64
-      num_blocks: 512         # 32 KiB/bank, 256 KiB/core
-      scale: [l1_bank]
-    - name: L1_cluster
-      of: L1
-      across: cores
-  processors:
-    - name: dram_l2_dma
-      kind: data_mover
-      from: DRAM
-      to: L2_clusters
+memories:
+  DRAM: [dram_channel]
+  L2: [cluster]
+  L1: [cluster, core]
+resources:
+  - name: memory_fabric
+  - name: l2_fabric
+processor:
+  core_lane.yaml:
+    - inputs: ["L1[cluster, core]"]
+      outputs: ["L1[cluster, core]"]
+  dram_l2_dma.yaml:
+    - inputs: ["DRAM[:]"]
+      outputs: ["l2_clusters"]
       resources: [memory_fabric]
-    - name: l2_l1_dma
-      in: clusters
-      kind: data_mover
-      from: L2
-      to: L1_cluster
+  l2_l1_dma.yaml:
+    - inputs: ["L2[cluster]"]
+      outputs: ["l1_cluster"]
       resources: [memory_fabric, l2_fabric]
-    - name: l1_l2_dma
-      in: clusters
-      kind: data_mover
-      from: L1_cluster
-      to: L2
+  l1_l2_dma.yaml:
+    - inputs: ["l1_cluster"]
+      outputs: ["L2[cluster]"]
       resources: [memory_fabric, l2_fabric]
-    - name: core_lane
-      in: cores
-      kind: compute
-      from: L1
-      to: L1
-      resources: [core_pipeline]

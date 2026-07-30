@@ -1,8 +1,0 @@
-functions:
-  writeback_l2:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "12"  # cycles
-            volume: "L * 2"      # bytes for fp16
-            throughput: "32"     # bytes/cycle

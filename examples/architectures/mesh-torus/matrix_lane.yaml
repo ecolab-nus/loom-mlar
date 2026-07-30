@@ -1,0 +1,15 @@
+name: matrix_lane
+type: compute
+source: matrix_lane.loom
+resources:
+  - name: matrix_pipeline
+  - name: matrix_lane
+performance:
+  matmul:
+    constraints: "M > 0 && N > 0 && K > 0"
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "16"
+            volume: "2 * M * N * K"
+            throughput: "128"

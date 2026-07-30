@@ -1,0 +1,8 @@
+func @load_l2 {
+  params: [L]
+  ins:
+    src: !loom.buffer<Lxf16>
+  outs:
+    dst: !loom.buffer<Lxf16>
+  loom.copy %src to %dst
+}

@@ -1,0 +1,19 @@
+memories:
+  DRAM:
+    indices: [channel]
+    capacity: 1073741824
+    word_size: 64
+  L2:
+    indices: [row, column]
+    capacity: 1048576
+    word_size: 64
+    banking:
+      banks: 8
+  L1:
+    indices: [row, column]
+    capacity: 65536
+    word_size: 16
+    banking: 8
+
+regions:
+  L1_all: "L1[:, :]"

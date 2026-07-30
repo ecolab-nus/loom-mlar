@@ -1,0 +1,13 @@
+name: dma
+type: data_mover
+source: dma.loom
+resources:
+  - name: link
+performance:
+  functions:
+    copy:
+      time_cost:
+        simple:
+          fixed_latency: "8"
+          volume: "L"
+          throughput: "64"

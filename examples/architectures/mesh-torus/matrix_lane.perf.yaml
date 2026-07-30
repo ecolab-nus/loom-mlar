@@ -1,9 +1,0 @@
-functions:
-  matmul:
-    constraints: "M > 0 && N > 0 && K > 0"
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "16"      # cycles
-            volume: "2 * M * N * K" # FLOPs
-            throughput: "128"        # FLOPs/cycle/core

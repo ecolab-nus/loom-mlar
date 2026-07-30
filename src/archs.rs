@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::arch::{ArchLoadError, Architecture, ChipYaml};
 
-/// Load `chip.yaml` and its sibling `<processor>.{mlir,perf.yaml}` artifacts.
+/// Load `chip.yaml`, `memory.yaml`, and sibling processor YAML/Loom artifacts.
 pub fn load_arch(dir: impl AsRef<Path>) -> Result<Architecture, ArchLoadError> {
     let dir = dir.as_ref();
     ChipYaml::from_file(dir.join("chip.yaml"))?.build(dir)

@@ -10,11 +10,13 @@ pub use abi::{arch_query, evaluator};
 
 // Re-export commonly used architecture types
 pub use arch::{
-    ArchLoadError, Architecture, ChipYaml, ComputeProcessor, ComputeProcessorBuilder, DataEffect,
-    DataMover, DataMoverBuilder, Dimension, FuncPerfModel, FuncPerfModelBuilder, FunctionDataMover,
-    FunctionProcessor, MemoryBank, MemoryRegion, MemoryRegionRef, MeshLink, MeshNetwork,
-    MeshNetworkInterface, PerfScenario, PerfYamlError, PerfYamlSpec, Processor, ProcessorModule,
-    Resource, ResourceId, ScaleOutNetwork, ScaleOutNetworkBindings, SimpleTimeCost, SizeExpr, Sym,
+    AdlExportError, AffineExpression, AffineRelation, ArchLoadError, Architecture,
+    ArchitectureBuilder, ArchitectureError, Banking, ChipYaml, ConnectionSpec, Dimension,
+    EndpointIndex, EndpointParseError, FuncPerfModel, FuncPerfModelBuilder, FunctionProcessor,
+    IndexDomain, MemoryArray, MemoryCatalog, MemoryDefinition, MemoryEndpoint, NamedMemoryRegion,
+    PerfScenario, PerfYamlError, PerfYamlSpec, ProcessorArray, ProcessorDefinition,
+    ProcessorSelection, ProcessorSelectionError, ProcessorSelector, ProcessorType, ProcessorYaml,
+    ResolvedConnection, ResolvedMemoryEndpoint, ResourceArray, SimpleTimeCost, SizeExpr, Sym,
     TimeCost, TimeExpr, architecture_to_mlir,
 };
 
@@ -23,6 +25,7 @@ pub use math::{
     AffineExpr, AffineMap, AffineMapTemplate, ConstraintExpr, Expr, IndexExpr, IndexSelector,
     ParseError,
 };
+pub use mlir::{LoomParseError, parse_loom_source};
 pub use schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,

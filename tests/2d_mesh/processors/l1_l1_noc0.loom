@@ -1,0 +1,8 @@
+func @l1_gather {
+  params: [M, N, B, effective_bandwidth, gather_x, gather_y]
+  ins:
+    l1_src: !loom.buffer<MxNxf16>
+  outs:
+    l1_dst: !loom.buffer<BxMxNxf16>
+  loom.gather %l1_src to %l1_dst extent: [gather_x, gather_y]
+}

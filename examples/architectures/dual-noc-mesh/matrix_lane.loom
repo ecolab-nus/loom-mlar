@@ -1,0 +1,49 @@
+func @matmul_SS_f16 {
+  params: [M, N, K]
+  ins:
+    lhs: !loom.buffer<MxKxf16>
+    rhs: !loom.buffer<KxNxf16>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.matmul ins(%lhs, %rhs) outs(%out)
+}
+
+func @matmul_SR_f16 {
+  params: [M, N, K]
+  ins:
+    lhs: !loom.buffer<MxKxf16>
+    rhs: !loom.buffer<KxNxf16, 1>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.matmul ins(%lhs, %rhs) outs(%out)
+}
+
+func @matmul_RS_f16 {
+  params: [M, N, K]
+  ins:
+    lhs: !loom.buffer<MxKxf16, 1>
+    rhs: !loom.buffer<KxNxf16>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.matmul ins(%lhs, %rhs) outs(%out)
+}
+
+func @matmul_RR_f16 {
+  params: [M, N, K]
+  ins:
+    lhs: !loom.buffer<MxKxf16, 1>
+    rhs: !loom.buffer<KxNxf16, 1>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.matmul ins(%lhs, %rhs) outs(%out)
+}
+
+func @elementwise_add_f16 {
+  params: [M, N]
+  ins:
+    lhs: !loom.buffer<MxNxf16>
+    rhs: !loom.buffer<MxNxf16>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.add ins(%lhs, %rhs) outs(%out)
+}

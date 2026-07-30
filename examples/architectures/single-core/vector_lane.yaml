@@ -1,0 +1,26 @@
+name: vector_lane
+type: compute
+source: vector_lane.loom
+resources:
+  - name: vector_pipeline
+  - name: vector_lane
+performance:
+  time_costs:
+    short_vector: &short_vector
+      simple:
+        fixed_latency: "2"
+        volume: "L"
+        throughput: "32"
+    long_vector: &long_vector
+      simple:
+        fixed_latency: "18"
+        volume: "L"
+        throughput: "64"
+  functions:
+    vector_add:
+      constraints: "L > 0"
+      scenarios:
+        - constraints: "L <= 1024"
+          time_cost: *short_vector
+        - constraints: "L > 1024"
+          time_cost: *long_vector

@@ -1,0 +1,11 @@
+name: l1_dram_dma
+type: data_mover
+source: l1_dram_dma.loom
+performance:
+  writeback_dram:
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "100"
+            volume: "L * 2"
+            throughput: "32"

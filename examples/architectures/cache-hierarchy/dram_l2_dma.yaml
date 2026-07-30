@@ -1,0 +1,11 @@
+name: dram_l2_dma
+type: data_mover
+source: dram_l2_dma.loom
+performance:
+  load_l2:
+    scenarios:
+      - time_cost:
+          simple:
+            fixed_latency: "80"
+            volume: "L * 2"
+            throughput: "16"

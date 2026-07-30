@@ -1,0 +1,15 @@
+name: l1_l1_noc0
+type: data_mover
+source: l1_l1_noc0.loom
+performance:
+  time_costs:
+    l1_gather: &l1_gather
+      simple:
+        fixed_latency: "344"
+        volume: "B * M * N * 2 * effective_bandwidth"
+        throughput: "28"
+
+  functions:
+    l1_gather:
+      scenarios:
+        - time_cost: *l1_gather

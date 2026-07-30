@@ -1,0 +1,18 @@
+memories:
+  DRAM:
+    indices: [dram_channel]
+    capacity: 134217728
+    word_size: 4096
+  L2:
+    indices: [cluster]
+    capacity: 2097152
+    word_size: 64
+    banking: 4
+  L1:
+    indices: [cluster, core]
+    capacity: 262144
+    word_size: 64
+    banking: 8
+regions:
+  l2_clusters: "L2[:]"
+  l1_cluster: "L1[cluster, :]"

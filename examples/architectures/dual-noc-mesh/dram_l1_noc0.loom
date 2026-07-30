@@ -1,0 +1,35 @@
+func @dram_to_l1_S_f16 {
+  params: [M, N, effective_bandwidth]
+  ins:
+    src: !loom.buffer<MxNxf16>
+  outs:
+    dst: !loom.buffer<MxNxf16>
+  loom.copy %src to %dst
+}
+
+func @dram_to_l1_S_bcst {
+  params: [M, N, effective_bandwidth, bcst_x, bcst_y]
+  ins:
+    src: !loom.buffer<MxNxf16>
+  outs:
+    dst: !loom.buffer<MxNxf16>
+  loom.broadcast %src to %dst extent: [bcst_x, bcst_y]
+}
+
+func @dram_to_l1_R_f16 {
+  params: [M, N, effective_bandwidth]
+  ins:
+    src: !loom.buffer<MxNxf16>
+  outs:
+    dst: !loom.buffer<MxNxf16>
+  loom.copy %src to %dst dst_space: 1
+}
+
+func @dram_to_l1_R_bcst {
+  params: [M, N, effective_bandwidth, bcst_x, bcst_y]
+  ins:
+    src: !loom.buffer<MxNxf16>
+  outs:
+    dst: !loom.buffer<MxNxf16>
+  loom.broadcast %src to %dst dst_space: 1 extent: [bcst_x, bcst_y]
+}

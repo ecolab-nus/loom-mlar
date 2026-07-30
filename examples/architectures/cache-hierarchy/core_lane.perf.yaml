@@ -1,9 +1,0 @@
-functions:
-  elementwise_add:
-    # L is inferred from the cost and checked against the MLIR shape symbol.
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "2"  # cycles
-            volume: "L"         # elements
-            throughput: "32"    # elements/cycle/core

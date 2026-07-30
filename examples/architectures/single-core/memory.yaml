@@ -1,0 +1,5 @@
+memories:
+  L1:
+    capacity: 262144
+    word_size: 64
+    banking: 4

@@ -1,369 +1,549 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 
-use super::memory::MemoryRegion;
-use super::network::{ScaleOutNetwork, ScaleOutNetworkBindings};
-use super::processor::{DataEffect, Processor};
-use super::resource::{Resource, ResourceId};
-use super::size_dim::Dimension;
-use crate::schedule::MlirModule;
+use super::index::IndexDomain;
+use super::memory::{
+    MemoryArray, MemoryCatalog, MemoryDefinition, MemoryEndpoint, NamedMemoryRegion,
+    validate_static_bank,
+};
+use super::processor::{
+    AffineRelation, ConnectionSpec, ProcessorArray, ProcessorDefinition, ResolvedConnection,
+    ResolvedMemoryEndpoint, endpoint_has_region_selector,
+};
+use super::resource::ResourceArray;
 
-/// A scoped architecture level.
-///
-/// An architecture groups related memories, executable processors, resources,
-/// networks, and child scopes. Homogeneous composition is represented by
-/// `dims`: a scoped architecture with dimensions describes an array of that
-/// scope.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArchitectureError(pub String);
+
+impl std::fmt::Display for ArchitectureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ArchitectureError {}
+
+/// Canonical, flat, indexed architecture representation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Architecture {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dims: Vec<Dimension>,
+    pub dimensions: Vec<IndexDomain>,
+    pub memory_catalog: MemoryCatalog,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub memories: Vec<MemoryRegion>,
+    pub memories: Vec<MemoryArray>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub processors: Vec<Processor>,
+    pub processor_definitions: Vec<ProcessorDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub resources: Vec<Resource>,
+    pub processors: Vec<ProcessorArray>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub children: Vec<Architecture>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub networks: Vec<ScaleOutNetwork>,
+    pub resources: Vec<ResourceArray>,
 }
 
 impl Architecture {
+    pub fn builder(name: impl Into<String>) -> ArchitectureBuilder {
+        ArchitectureBuilder::new(name)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn dimension(&self, name: &str) -> Option<&IndexDomain> {
+        self.dimensions
+            .iter()
+            .find(|dimension| dimension.name == name)
+    }
+
+    pub fn memory(&self, name: &str) -> Option<&MemoryArray> {
+        self.memories.iter().find(|memory| memory.name == name)
+    }
+
+    pub fn memory_definition(&self, memory: &MemoryArray) -> Option<&MemoryDefinition> {
+        self.memory_catalog.definition(&memory.definition)
+    }
+
+    pub fn processor_definition(&self, name: &str) -> Option<&ProcessorDefinition> {
+        self.processor_definitions
+            .iter()
+            .find(|definition| definition.name == name)
+    }
+
+    pub fn processor_array(&self, name: &str) -> Option<&ProcessorArray> {
+        self.processors
+            .iter()
+            .find(|processor| processor.name == name)
+    }
+
+    pub fn get_function(&self, name: &str) -> Option<&super::processor::FunctionProcessor> {
+        self.processor_definitions
+            .iter()
+            .find_map(|definition| definition.get_function(name))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ArchitectureBuilder {
+    name: String,
+    dimensions: Vec<IndexDomain>,
+    catalog: MemoryCatalog,
+    placements: Vec<(String, String, Vec<String>)>,
+    processor_definitions: Vec<ProcessorDefinition>,
+    connections: Vec<(String, ConnectionSpec)>,
+    resources: Vec<ResourceArray>,
+}
+
+impl ArchitectureBuilder {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            dims: Vec::new(),
-            memories: Vec::new(),
-            processors: Vec::new(),
+            dimensions: Vec::new(),
+            catalog: MemoryCatalog::default(),
+            placements: Vec::new(),
+            processor_definitions: Vec::new(),
+            connections: Vec::new(),
             resources: Vec::new(),
-            children: Vec::new(),
-            networks: Vec::new(),
         }
     }
 
-    pub fn scope(name: impl Into<String>) -> Self {
-        Self::new(name)
-    }
-
-    pub fn from_processor(processor: Processor) -> Self {
-        let name = processor
-            .name
-            .clone()
-            .unwrap_or_else(|| "processor".to_string());
-        Self::new(name).with_processor(processor)
-    }
-
-    pub fn name(&self) -> Option<&str> {
-        Some(self.name.as_str())
-    }
-
-    pub fn functionality(&self) -> Option<&MlirModule> {
-        self.processors
-            .first()
-            .map(|processor| &processor.functionality)
-            .or_else(|| self.children.iter().find_map(|child| child.functionality()))
-    }
-
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
+    pub fn dimension(mut self, name: impl Into<String>, size: u64) -> Self {
+        self.dimensions.push(IndexDomain::new(name, size));
         self
     }
 
-    pub fn with_dims(mut self, dims: &[Dimension]) -> Self {
-        self.dims = dims.to_vec();
+    pub fn memory_definition(mut self, definition: MemoryDefinition) -> Self {
+        self.catalog.definitions.push(definition);
         self
     }
 
-    pub fn with_memory(mut self, memory: MemoryRegion) -> Self {
-        self.add_memory(memory);
+    pub fn named_region(mut self, region: NamedMemoryRegion) -> Self {
+        self.catalog.regions.push(region);
         self
     }
 
-    pub fn with_processor(mut self, processor: Processor) -> Self {
-        self.add_processor(processor);
+    pub fn memory_catalog(mut self, catalog: MemoryCatalog) -> Self {
+        self.catalog = catalog;
         self
     }
 
-    pub fn with_child(mut self, child: Architecture) -> Self {
-        self.add_child(child);
+    pub fn place_memory(
+        mut self,
+        definition: impl Into<String>,
+        dimensions: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let definition = definition.into();
+        self.placements.push((
+            definition.clone(),
+            definition,
+            dimensions.into_iter().map(Into::into).collect(),
+        ));
         self
     }
 
-    pub fn with_resource(mut self, resource: Resource) -> Self {
-        self.register_resource(resource);
+    pub fn place_memory_as(
+        mut self,
+        name: impl Into<String>,
+        definition: impl Into<String>,
+        dimensions: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.placements.push((
+            name.into(),
+            definition.into(),
+            dimensions.into_iter().map(Into::into).collect(),
+        ));
         self
     }
 
-    pub fn with_resources<I>(mut self, resources: I) -> Self
-    where
-        I: IntoIterator<Item = Resource>,
-    {
-        for resource in resources {
-            self.register_resource(resource);
+    pub fn processor_definition(mut self, definition: ProcessorDefinition) -> Self {
+        self.processor_definitions.push(definition);
+        self
+    }
+
+    pub fn connect(
+        mut self,
+        processor_definition: impl Into<String>,
+        connection: ConnectionSpec,
+    ) -> Self {
+        self.connections
+            .push((processor_definition.into(), connection));
+        self
+    }
+
+    pub fn resource(mut self, resource: ResourceArray) -> Self {
+        self.resources.push(resource);
+        self
+    }
+
+    pub fn build(self) -> Result<Architecture, ArchitectureError> {
+        if self.name.is_empty() {
+            return Err(ArchitectureError(
+                "architecture name cannot be empty".into(),
+            ));
         }
-        self
-    }
+        validate_unique(
+            self.dimensions
+                .iter()
+                .map(|dimension| dimension.name.as_str()),
+            "dimension",
+        )?;
+        self.catalog.validate().map_err(ArchitectureError)?;
+        validate_unique(
+            self.processor_definitions
+                .iter()
+                .map(|definition| definition.name.as_str()),
+            "processor definition",
+        )?;
+        validate_unique(
+            self.placements.iter().map(|(name, _, _)| name.as_str()),
+            "memory placement",
+        )?;
 
-    pub fn with_network(mut self, network: ScaleOutNetwork) -> Self {
-        self.add_network(network);
-        self
-    }
-
-    pub fn with_connectivity(self, connectivity: Vec<ScaleOutNetwork>) -> Self {
-        self.with_networks(connectivity)
-    }
-
-    pub fn with_networks<I>(mut self, networks: I) -> Self
-    where
-        I: IntoIterator<Item = ScaleOutNetwork>,
-    {
-        for network in networks {
-            self.add_network(network);
+        let dimension_map = self
+            .dimensions
+            .iter()
+            .map(|dimension| (dimension.name.as_str(), dimension.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let mut memories = Vec::new();
+        for (name, definition_name, placement) in &self.placements {
+            let definition = self.catalog.definition(definition_name).ok_or_else(|| {
+                ArchitectureError(format!(
+                    "placement '{}' refers to unknown memory definition '{}'",
+                    name, definition_name
+                ))
+            })?;
+            if placement.len() != definition.indices.len() {
+                return Err(ArchitectureError(format!(
+                    "placement '{}' binds {} dimensions; memory definition '{}' expects {}",
+                    name,
+                    placement.len(),
+                    definition_name,
+                    definition.indices.len()
+                )));
+            }
+            let indices = placement
+                .iter()
+                .map(|dimension| {
+                    dimension_map
+                        .get(dimension.as_str())
+                        .cloned()
+                        .ok_or_else(|| {
+                            ArchitectureError(format!(
+                                "placement '{}' uses unknown dimension '{}'",
+                                name, dimension
+                            ))
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            memories.push(MemoryArray::new(name, definition_name, indices));
         }
-        self
-    }
 
-    pub fn add_memory(&mut self, memory: MemoryRegion) {
-        if let Ok(resource) = memory.generate_resource() {
-            self.register_resource(resource);
+        for definition in &self.processor_definitions {
+            if definition.name.is_empty() {
+                return Err(ArchitectureError(
+                    "processor definition name cannot be empty".into(),
+                ));
+            }
+            for function in &definition.functions {
+                function.validate().map_err(ArchitectureError)?;
+            }
         }
-        self.memories.push(memory);
-    }
+        let mut function_names = BTreeSet::new();
+        for function in self
+            .processor_definitions
+            .iter()
+            .flat_map(|definition| &definition.functions)
+        {
+            if !function_names.insert(function.func.name.as_str()) {
+                return Err(ArchitectureError(format!(
+                    "function '{}' is defined by more than one processor",
+                    function.func.name
+                )));
+            }
+        }
 
-    pub fn add_processor(&mut self, processor: Processor) {
-        for resource in &processor.resources {
-            self.register_resource(resource.clone());
-        }
-        self.processors.push(processor);
-    }
-
-    pub fn add_child(&mut self, child: Architecture) {
-        for resource in &child.resources {
-            self.register_resource(resource.clone());
-        }
-        self.children.push(child);
-    }
-
-    pub fn add_network(&mut self, network: ScaleOutNetwork) {
-        for resource in network.resources() {
-            self.register_resource(resource);
-        }
-        for processor in network.processors() {
-            self.add_processor(processor);
-        }
-        self.networks.push(network);
-    }
-
-    pub fn register_resource(&mut self, resource: Resource) {
-        if let Some(existing) = self
+        validate_unique(
+            self.resources.iter().map(|resource| resource.name.as_str()),
+            "resource",
+        )?;
+        let shared_resources = self
             .resources
             .iter()
-            .find(|existing| existing.id() == resource.id())
-        {
-            assert!(
-                existing.is_definition_compatible(&resource),
-                "resource '{}' registered with conflicting definitions ({} vs {}) in architecture '{}'",
-                resource.id(),
-                existing.definition_summary(),
-                resource.definition_summary(),
-                self.name
-            );
-            return;
-        }
-        self.resources.push(resource);
-    }
-
-    pub fn get_resource(&self, id: &ResourceId) -> Option<&Resource> {
-        self.resources
-            .iter()
-            .find(|resource| resource.id() == id)
-            .or_else(|| {
-                self.children
-                    .iter()
-                    .find_map(|child| child.get_resource(id))
-            })
-    }
-
-    pub fn get_memory_region(&self, name: &str) -> Option<&MemoryRegion> {
-        self.memories
-            .iter()
-            .find(|memory| memory.name() == Some(name))
-            .or_else(|| {
-                self.children
-                    .iter()
-                    .find_map(|child| child.get_memory_region(name))
-            })
-    }
-
-    pub fn get_scaled_memory_region(&self, name: &str) -> Option<MemoryRegion> {
-        self.get_scaled_memory_region_impl(name)
-    }
-
-    fn get_scaled_memory_region_impl(&self, name: &str) -> Option<MemoryRegion> {
-        if let Some(memory) = self
-            .memories
-            .iter()
-            .find(|memory| memory.name() == Some(name))
-        {
-            return if self.dims.is_empty() {
-                Some(memory.clone())
+            .cloned()
+            .map(|resource| (resource.name.clone(), resource))
+            .collect::<BTreeMap<_, _>>();
+        let mut processors = Vec::new();
+        let mut resources = self.resources;
+        let mut counts = BTreeMap::<String, usize>::new();
+        for (definition_name, connection) in self.connections {
+            let definition = self
+                .processor_definitions
+                .iter()
+                .find(|definition| definition.name == definition_name)
+                .ok_or_else(|| {
+                    ArchitectureError(format!(
+                        "connection refers to unknown processor definition '{}'",
+                        definition_name
+                    ))
+                })?;
+            let mut resolved_connection = connection.clone();
+            resolve_named_regions(&mut resolved_connection, &self.catalog)?;
+            validate_connection(&resolved_connection, &memories, &self.catalog)?;
+            let domain = infer_domain(&resolved_connection, &dimension_map)?;
+            let instances = resolve_connection_instances(
+                &resolved_connection,
+                &domain,
+                &memories,
+                &self.catalog,
+            )?;
+            let index = counts.entry(definition_name.clone()).or_default();
+            let name = if *index == 0 {
+                definition_name.clone()
             } else {
-                Some(
-                    memory
-                        .clone()
-                        .scale(&self.dims)
-                        .with_name(format!("array_{name}")),
-                )
+                format!("{}__{}", definition_name, index)
             };
-        }
-
-        let child_region = self
-            .children
-            .iter()
-            .find_map(|child| child.get_scaled_memory_region_impl(name))?;
-        if self.dims.is_empty() {
-            Some(child_region)
-        } else {
-            let child_name = child_region.name()?.to_string();
-            Some(
-                child_region
-                    .scale(&self.dims)
-                    .with_name(format!("array_{child_name}")),
-            )
-        }
-    }
-
-    pub fn get_processor(&self, name: &str) -> Option<&Processor> {
-        self.processors
-            .iter()
-            .find(|processor| processor.name.as_deref() == Some(name))
-            .or_else(|| {
-                self.children
+            *index += 1;
+            let mut processor_resources = definition
+                .resources
+                .iter()
+                .cloned()
+                .map(|mut resource| {
+                    resource.name = format!("{}.{}", name, resource.name);
+                    resource.indexed(domain.clone())
+                })
+                .collect::<Vec<_>>();
+            resources.extend(processor_resources.iter().cloned());
+            for resource_name in &connection.resources {
+                let resource = shared_resources.get(resource_name).ok_or_else(|| {
+                    ArchitectureError(format!(
+                        "processor '{}' refers to unknown shared resource '{}'",
+                        name, resource_name
+                    ))
+                })?;
+                processor_resources.push(resource.clone());
+            }
+            validate_unique(
+                processor_resources
                     .iter()
-                    .find_map(|child| child.get_processor(name))
-            })
-    }
-
-    pub fn get_data_mover(&self, name: &str) -> Option<&Processor> {
-        self.processors
-            .iter()
-            .find(|processor| {
-                processor.name.as_deref() == Some(name) && processor.effect == DataEffect::Preserve
-            })
-            .or_else(|| {
-                self.children
-                    .iter()
-                    .find_map(|child| child.get_data_mover(name))
-            })
-    }
-
-    pub fn processors_recursive(&self) -> Vec<&Processor> {
-        let mut processors: Vec<&Processor> = self.processors.iter().collect();
-        for child in &self.children {
-            processors.extend(child.processors_recursive());
+                    .map(|resource| resource.name.as_str()),
+                "processor resource",
+            )?;
+            processors.push(ProcessorArray {
+                name,
+                definition: definition_name,
+                connection,
+                relation: AffineRelation { domain, instances },
+                resources: processor_resources,
+            });
         }
-        processors
-    }
+        validate_unique(
+            resources.iter().map(|resource| resource.name.as_str()),
+            "resource",
+        )?;
 
-    pub fn memories_recursive(&self) -> Vec<&MemoryRegion> {
-        let mut memories: Vec<&MemoryRegion> = self.memories.iter().collect();
-        for child in &self.children {
-            memories.extend(child.memories_recursive());
-        }
-        memories
-    }
-
-    pub fn scale<'a, I>(mut self, dims: I) -> Architecture
-    where
-        I: IntoIterator<Item = &'a Dimension>,
-    {
-        let new_dims: Vec<Dimension> = dims.into_iter().cloned().collect();
-        let mut combined = new_dims;
-        combined.extend(self.dims);
-        self.dims = combined;
-        self
-    }
-
-    pub fn dims(&self) -> &[Dimension] {
-        &self.dims
-    }
-
-    pub fn total_instances(&self) -> Option<u64> {
-        let own: u64 = self
-            .dims
-            .iter()
-            .map(|dim| dim.size.as_const())
-            .collect::<Option<Vec<_>>>()?
-            .into_iter()
-            .product();
-        let local = self.processors.len() as u64;
-        let child_total = self
-            .children
-            .iter()
-            .map(|child| child.total_instances())
-            .collect::<Option<Vec<_>>>()?
-            .into_iter()
-            .sum::<u64>();
-        Some(own * (local + child_total))
-    }
-
-    pub fn total_processing_elements(&self) -> Option<u64> {
-        let own: u64 = self
-            .dims
-            .iter()
-            .map(|dim| dim.size.as_const())
-            .collect::<Option<Vec<_>>>()?
-            .into_iter()
-            .product();
-        let local = self
-            .processors
-            .iter()
-            .filter(|processor| processor.effect != DataEffect::Preserve)
-            .count() as u64;
-        let child_total = self
-            .children
-            .iter()
-            .map(|child| child.total_processing_elements())
-            .collect::<Option<Vec<_>>>()?
-            .into_iter()
-            .sum::<u64>();
-        Some(own * (local + child_total))
-    }
-
-    pub fn all_dims(&self) -> Vec<&Dimension> {
-        let mut dims: Vec<&Dimension> = self.dims.iter().collect();
-        for memory in &self.memories {
-            collect_memory_dims(memory, &mut dims);
-        }
-        for child in &self.children {
-            dims.extend(child.all_dims());
-        }
-        dims
+        Ok(Architecture {
+            name: self.name,
+            dimensions: self.dimensions,
+            memory_catalog: self.catalog,
+            memories,
+            processor_definitions: self.processor_definitions,
+            processors,
+            resources,
+        })
     }
 }
 
-fn collect_memory_dims<'a>(region: &'a MemoryRegion, out: &mut Vec<&'a Dimension>) {
-    match region {
-        MemoryRegion::Bank(_) => {}
-        MemoryRegion::Array {
-            dims, sub_regions, ..
-        } => {
-            out.extend(dims.iter());
-            collect_memory_dims(sub_regions, out);
+fn validate_unique<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+    kind: &str,
+) -> Result<(), ArchitectureError> {
+    let mut unique = BTreeSet::new();
+    for name in names {
+        if !unique.insert(name) {
+            return Err(ArchitectureError(format!("duplicate {kind} '{name}'")));
         }
     }
+    Ok(())
 }
 
-impl From<Processor> for Architecture {
-    fn from(processor: Processor) -> Self {
-        Self::from_processor(processor)
+fn resolve_named_regions(
+    connection: &mut ConnectionSpec,
+    catalog: &MemoryCatalog,
+) -> Result<(), ArchitectureError> {
+    for endpoint in connection.inputs.iter_mut().chain(&mut connection.outputs) {
+        if let Some(region) = catalog.region(&endpoint.memory) {
+            if !endpoint.indices.is_empty() || endpoint.bank.is_some() {
+                return Err(ArchitectureError(format!(
+                    "named region '{}' cannot be further indexed",
+                    region.name
+                )));
+            }
+            *endpoint = region.endpoint.clone();
+        }
     }
+    Ok(())
 }
 
-impl From<&Architecture> for Architecture {
-    fn from(architecture: &Architecture) -> Self {
-        architecture.clone()
+fn validate_connection(
+    connection: &ConnectionSpec,
+    memories: &[MemoryArray],
+    catalog: &MemoryCatalog,
+) -> Result<(), ArchitectureError> {
+    for endpoint in connection.inputs.iter().chain(&connection.outputs) {
+        let memory = memories
+            .iter()
+            .find(|memory| memory.name == endpoint.memory)
+            .ok_or_else(|| {
+                ArchitectureError(format!(
+                    "connection refers to unknown placed memory '{}'",
+                    endpoint.memory
+                ))
+            })?;
+        if endpoint.indices.len() != memory.indices.len() {
+            return Err(ArchitectureError(format!(
+                "endpoint '{}' has {} indices; placed memory expects {}",
+                endpoint.memory,
+                endpoint.indices.len(),
+                memory.indices.len()
+            )));
+        }
+        let definition = catalog.definition(&memory.definition).ok_or_else(|| {
+            ArchitectureError(format!(
+                "placed memory '{}' has unknown definition '{}'",
+                memory.name, memory.definition
+            ))
+        })?;
+        validate_static_bank(endpoint, definition).map_err(ArchitectureError)?;
     }
+    Ok(())
+}
+
+fn infer_domain(
+    connection: &ConnectionSpec,
+    dimensions: &BTreeMap<&str, IndexDomain>,
+) -> Result<Vec<IndexDomain>, ArchitectureError> {
+    connection
+        .variables()
+        .into_iter()
+        .map(|variable| {
+            dimensions.get(variable.as_str()).cloned().ok_or_else(|| {
+                ArchitectureError(format!(
+                    "connection uses unknown free index variable '{}'",
+                    variable
+                ))
+            })
+        })
+        .collect()
+}
+
+fn resolve_connection_instances(
+    connection: &ConnectionSpec,
+    domain: &[IndexDomain],
+    memories: &[MemoryArray],
+    catalog: &MemoryCatalog,
+) -> Result<Vec<ResolvedConnection>, ArchitectureError> {
+    let mut points = vec![BTreeMap::<String, i64>::new()];
+    for dimension in domain {
+        let mut expanded = Vec::new();
+        for point in points {
+            for value in 0..dimension.size {
+                let mut point = point.clone();
+                point.insert(dimension.name.clone(), value as i64);
+                expanded.push(point);
+            }
+        }
+        points = expanded;
+    }
+
+    let mut resolved = Vec::new();
+    'point: for point in points {
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        for symbolic in &connection.inputs {
+            let Some(endpoint) = resolve_endpoint(symbolic, &point, memories, catalog)? else {
+                continue 'point;
+            };
+            inputs.push(endpoint);
+        }
+        for symbolic in &connection.outputs {
+            let Some(endpoint) = resolve_endpoint(symbolic, &point, memories, catalog)? else {
+                continue 'point;
+            };
+            outputs.push(endpoint);
+        }
+        resolved.push(ResolvedConnection {
+            variables: point
+                .iter()
+                .map(|(name, value)| (name.clone(), *value as u64))
+                .collect(),
+            inputs,
+            outputs,
+        });
+    }
+    Ok(resolved)
+}
+
+fn resolve_endpoint(
+    endpoint: &MemoryEndpoint,
+    values: &BTreeMap<String, i64>,
+    memories: &[MemoryArray],
+    catalog: &MemoryCatalog,
+) -> Result<Option<ResolvedMemoryEndpoint>, ArchitectureError> {
+    let memory = memories
+        .iter()
+        .find(|memory| memory.name == endpoint.memory)
+        .expect("connection was validated");
+    if endpoint_has_region_selector(endpoint) {
+        return Ok(Some(ResolvedMemoryEndpoint {
+            memory: endpoint.memory.clone(),
+            indices: Vec::new(),
+            bank: None,
+        }));
+    }
+    let mut indices = Vec::new();
+    for (selector, domain) in endpoint.indices.iter().zip(&memory.indices) {
+        let super::memory::EndpointIndex::Expression(expression) = selector else {
+            unreachable!()
+        };
+        let value = expression.evaluate(values).ok_or_else(|| {
+            ArchitectureError(format!(
+                "could not evaluate index for memory '{}'",
+                endpoint.memory
+            ))
+        })?;
+        if value < 0 || value >= domain.size as i64 {
+            return Ok(None);
+        }
+        indices.push(value as u64);
+    }
+    let definition = catalog
+        .definition(&memory.definition)
+        .expect("placement was validated");
+    let bank = endpoint
+        .bank
+        .as_ref()
+        .map(|expression| {
+            expression.evaluate(values).ok_or_else(|| {
+                ArchitectureError(format!(
+                    "could not evaluate bank for memory '{}'",
+                    endpoint.memory
+                ))
+            })
+        })
+        .transpose()?;
+    if let Some(bank) = bank {
+        let bank_count = definition
+            .banking
+            .as_ref()
+            .expect("bank selection was validated")
+            .banks;
+        if bank < 0 || bank >= bank_count as i64 {
+            return Ok(None);
+        }
+    }
+    Ok(Some(ResolvedMemoryEndpoint {
+        memory: endpoint.memory.clone(),
+        indices,
+        bank: bank.map(|bank| bank as u64),
+    }))
 }

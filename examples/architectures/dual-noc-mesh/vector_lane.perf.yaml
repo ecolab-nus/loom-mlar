@@ -1,8 +1,0 @@
-functions:
-  vec_exp_f16:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "1"
-            volume: "L"
-            throughput: "7"

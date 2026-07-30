@@ -1,0 +1,31 @@
+use std::error::Error;
+use std::path::{Path, PathBuf};
+
+use mlar_rust::{ConnectionSpec, MemoryEndpoint, ProcessorDefinition, ProcessorYaml};
+
+pub type ExampleResult<T> = Result<T, Box<dyn Error>>;
+
+pub fn architecture_dir(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/architectures")
+        .join(name)
+}
+
+pub fn processor_definition(directory: &Path, name: &str) -> ExampleResult<ProcessorDefinition> {
+    let path = directory.join(format!("{name}.yaml"));
+    let yaml = ProcessorYaml::from_file(&path)?;
+    Ok(yaml.build_definition(&path)?)
+}
+
+pub fn connection(inputs: &[&str], outputs: &[&str]) -> ExampleResult<ConnectionSpec> {
+    Ok(ConnectionSpec::new(
+        inputs
+            .iter()
+            .map(|endpoint| MemoryEndpoint::parse(endpoint))
+            .collect::<Result<Vec<_>, _>>()?,
+        outputs
+            .iter()
+            .map(|endpoint| MemoryEndpoint::parse(endpoint))
+            .collect::<Result<Vec<_>, _>>()?,
+    ))
+}
