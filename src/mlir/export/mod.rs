@@ -2,8 +2,7 @@ mod emitter;
 mod names;
 mod rewrite;
 
-use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -16,6 +15,8 @@ use names::prefixed_arch_name;
 use rewrite::rewrite_mlir_source;
 
 const QUANTITATIVE_RESOURCE_OP: &str = "adl.resource.quantitative";
+const ADL_OPT: &str = env!("MLAR_BUILD_ADL_OPT");
+const LOOM_OPT: &str = env!("MLAR_BUILD_LOOM_OPT");
 
 /// Errors produced while exporting or validating architecture MLIR.
 #[derive(Debug)]
@@ -112,12 +113,11 @@ struct GeneratedMlir {
 /// frontends. `adl-opt` validates the architecture-only module first, then
 /// `loom-opt` validates the complete module including processor functionality.
 ///
-/// Validator lookup prefers `ADL_OPT` and `LOOM_OPT`; an empty variable is
-/// ignored. Otherwise the executable name is resolved through `PATH`.
+/// Both validator paths are discovered and verified by loom-mlar's Cargo build
+/// script, so callers do not need to configure environment variables or
+/// modify `PATH`.
 pub fn architecture_to_mlir(arch: &Architecture) -> Result<String, MlirExportError> {
-    let adl_opt = validator_program("ADL_OPT", "adl-opt");
-    let loom_opt = validator_program("LOOM_OPT", "loom-opt");
-    architecture_to_mlir_with_tools(arch, &adl_opt, &loom_opt)
+    architecture_to_mlir_with_tools(arch, OsStr::new(ADL_OPT), OsStr::new(LOOM_OPT))
 }
 
 /// Serialize an [`Architecture`] without invoking external validators.
@@ -127,12 +127,6 @@ pub fn architecture_to_mlir(arch: &Architecture) -> Result<String, MlirExportErr
 /// support.
 pub fn architecture_to_mlir_unchecked(arch: &Architecture) -> Result<String, MlirExportError> {
     Ok(generate_mlir(arch)?.complete)
-}
-
-fn validator_program(variable: &str, fallback: &str) -> OsString {
-    env::var_os(variable)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| OsString::from(fallback))
 }
 
 fn architecture_to_mlir_with_tools(

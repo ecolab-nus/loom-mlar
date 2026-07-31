@@ -83,10 +83,13 @@ let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
 ```
 
 MLIR export invokes `adl-opt` for the architecture-only module and then
-`loom-opt` for the complete module. Set `ADL_OPT` and `LOOM_OPT` to explicit
-executable paths, or make both tools available on `PATH`. For debugging or
-experimental output without compiler validation, use
-`architecture_to_mlir_unchecked`.
+`loom-opt` for the complete module. The Cargo build script discovers both
+validators from their standard sibling build directories in the Loom
+monorepo, verifies that they are executable, and compiles their paths into
+loom-mlar. Build ADL and loom-dataflow before running `cargo build` or
+`cargo test`; no validator environment variables or `PATH` changes are
+required. For debugging or experimental output without compiler validation,
+use `architecture_to_mlir_unchecked`.
 
 `adl.resource.quantitative` is experimental. The unchecked exporter preserves
 it, but the current ADL/MLIR compiler and checked export path do not support it.

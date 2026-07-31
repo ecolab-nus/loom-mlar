@@ -23,12 +23,10 @@ cargo test
 ```
 
 Checked MLIR export requires compatible `adl-opt` and `loom-opt` executables.
-Install both tools and either add them to `PATH` or configure explicit paths:
-
-```bash
-export ADL_OPT=/path/to/adl-opt
-export LOOM_OPT=/path/to/loom-opt
-```
+Build the sibling ADL and loom-dataflow projects first. The loom-mlar Cargo
+build script discovers the validators in their standard monorepo build
+directories, checks that they are executable, and compiles their paths into
+the crate. No validator environment variables or `PATH` changes are required.
 
 The first tool validates the generated architecture-only ADL module. The second
 validates the complete module after processor functionality using the Loom
