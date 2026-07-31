@@ -12,7 +12,9 @@ pub use loom_ops::{
     MlirBroadcastDim, MlirCopyOp, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
     MlirTensorSymbolBinding,
 };
-pub use structural::{MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule};
+pub use structural::{
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MemoryAccess, MlirFunc, MlirFuncDetails, MlirModule,
+};
 
 /// MLIR identifier: one or more alphanumeric / underscore characters.
 pub(super) fn mlir_ident(input: &str) -> IResult<&str, &str> {

@@ -501,6 +501,7 @@ mod tests {
                 linalg_ops: vec![],
             }),
             op_label: None,
+            memory_accesses: vec![],
             sym_map: None,
         };
 

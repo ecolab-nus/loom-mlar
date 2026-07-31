@@ -3,7 +3,7 @@ pub mod parser;
 
 pub use export::{MlirExportError, architecture_to_mlir, architecture_to_mlir_unchecked};
 pub use parser::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
-    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MemoryAccess, MlirBroadcastDim, MlirCopyOp, MlirFunc,
+    MlirFuncDetails, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
     MlirTensorSymbolBinding,
 };
