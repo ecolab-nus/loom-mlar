@@ -501,7 +501,7 @@ mod tests {
                 linalg_ops: vec![],
             }),
             op_label: None,
-            memory_accesses: vec![],
+            extra_metadata: Default::default(),
             sym_map: None,
         };
 

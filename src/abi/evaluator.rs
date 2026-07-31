@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn evaluator_preserves_func_op_label() {
         let arch = test_arch();
-        let json = r#"{"Func":{"func":{"name":"vec_add_f32","symbols":["L"],"op_label":"linalg.map(%arg0, %arg1)"}}}"#;
+        let json = r#"{"Func":{"func":{"name":"vec_add_f32","symbols":["L"],"op_label":"linalg.map(%arg0, %arg1)","read":"%arg0: 0","write":"%arg1: 1"}}}"#;
         let input: Schedule = serde_json::from_str(json).expect("labeled schedule should parse");
 
         let result = evaluate(&input, &arch).expect("labeled schedule should evaluate");
@@ -224,6 +224,8 @@ mod tests {
             value["Func"]["func"]["op_label"],
             serde_json::json!("linalg.map(%arg0, %arg1)")
         );
+        assert_eq!(value["Func"]["func"]["read"], "%arg0: 0");
+        assert_eq!(value["Func"]["func"]["write"], "%arg1: 1");
     }
 
     #[test]

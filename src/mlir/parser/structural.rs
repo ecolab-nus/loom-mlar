@@ -3,8 +3,8 @@ use std::fs;
 
 use crate::arch::Sym;
 use crate::schedule::schedule::SymbolicMapping;
-use crate::Expr;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use super::loom_ops::{
     MlirCopyOp, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
@@ -64,18 +64,6 @@ pub struct MlirFuncDetails {
 
 /// Reference to one MLIR function and its shape-related interface metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryAccess {
-    pub access: String,
-    pub memory_space: String,
-    #[serde(default)]
-    pub mem_kind: i64,
-    pub operand_index: usize,
-    pub shape: Vec<Expr>,
-    pub element_type: String,
-}
-
-/// Reference to one MLIR function and its shape-related interface metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlirFunc {
     /// Function symbol name (e.g. `matmul_f16`).
     pub name: String,
@@ -87,9 +75,9 @@ pub struct MlirFunc {
     /// Optional source MLIR operation label for a scheduled call site.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op_label: Option<String>,
-    /// Logical memory accesses performed by this scheduled call site.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub memory_accesses: Vec<MemoryAccess>,
+    /// Call-site metadata that MLAR preserves without interpreting.
+    #[serde(default, flatten)]
+    pub extra_metadata: BTreeMap<String, serde_json::Value>,
     /// Optional symbolic mapping for this function invocation.
     ///
     /// When a function is scheduled, each call site may bind its symbols to
@@ -188,7 +176,7 @@ impl MlirFunc {
             symbols: vec![],
             mlir_details: None,
             op_label: None,
-            memory_accesses: vec![],
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
     }
@@ -201,7 +189,7 @@ impl MlirFunc {
             symbols,
             mlir_details: None,
             op_label: None,
-            memory_accesses: vec![],
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
     }
@@ -384,7 +372,7 @@ impl MlirFunc {
                 linalg_ops,
             }),
             op_label: None,
-            memory_accesses: vec![],
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         })
     }
@@ -407,34 +395,25 @@ pub type MLIRFunc = MlirFuncDetails;
 #[cfg(test)]
 mod tests {
     use super::MlirFunc;
-    use crate::Expr;
 
     #[test]
-    fn memory_access_metadata_survives_serde_round_trip() {
+    fn extra_func_metadata_survives_serde_round_trip() {
         let input = serde_json::json!({
             "name": "dram_to_l1_R_bcst",
             "symbols": [],
             "op_label": "loom.copy(%0, %1: 1)",
-            "memory_accesses": [{
-                "access": "write",
-                "memory_space": "mem_L1",
-                "mem_kind": 1,
-                "operand_index": 1,
-                "shape": [
-                    {"Const": 1},
-                    {"Sym": "tile_n"},
-                    {"Const": 512}
-                ],
-                "element_type": "f16"
-            }]
+            "read": "%0: 0",
+            "write": "%1: 1",
+            "future_metadata": {"preserve": true}
         });
 
         let func: MlirFunc = serde_json::from_value(input).unwrap();
-        assert_eq!(func.memory_accesses[0].mem_kind, 1);
-        assert_eq!(func.memory_accesses[0].shape[1], Expr::sym("tile_n"));
+        assert_eq!(func.extra_metadata["read"], "%0: 0");
+        assert_eq!(func.extra_metadata["write"], "%1: 1");
 
         let output = serde_json::to_value(func).unwrap();
-        assert_eq!(output["memory_accesses"][0]["access"], "write");
-        assert_eq!(output["memory_accesses"][0]["operand_index"], 1);
+        assert_eq!(output["read"], "%0: 0");
+        assert_eq!(output["write"], "%1: 1");
+        assert_eq!(output["future_metadata"]["preserve"], true);
     }
 }

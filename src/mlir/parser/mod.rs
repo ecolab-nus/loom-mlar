@@ -13,7 +13,7 @@ pub use loom_ops::{
     MlirTensorSymbolBinding,
 };
 pub use structural::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MemoryAccess, MlirFunc, MlirFuncDetails, MlirModule,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirFunc, MlirFuncDetails, MlirModule,
 };
 
 /// MLIR identifier: one or more alphanumeric / underscore characters.

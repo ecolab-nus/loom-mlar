@@ -3,14 +3,14 @@ pub mod schedule;
 
 pub mod mlir {
     pub use crate::mlir::{
-        MLIRFunc, MLIRFuncRef, MLIRModuleRef, MemoryAccess, MlirBroadcastDim, MlirCopyOp,
+        MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp,
         MlirFunc, MlirFuncDetails, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
         MlirModule, MlirTensorSymbolBinding,
     };
 }
 
 pub use crate::mlir::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MemoryAccess, MlirBroadcastDim, MlirCopyOp, MlirFunc,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc,
     MlirFuncDetails, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
     MlirTensorSymbolBinding,
 };
