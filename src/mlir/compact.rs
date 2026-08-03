@@ -141,7 +141,7 @@ fn lower_body_line(
     output_scope_extents: &[Vec<u64>],
 ) -> Result<String, LoomParseError> {
     if line.starts_with("linalg.") {
-        return Ok(line.to_string());
+        return annotate_linalg_operands(line, function);
     }
     let input = function
         .inputs
@@ -225,6 +225,64 @@ fn lower_body_line(
     Err(LoomParseError(format!(
         "operation cannot be lowered to current dataflow MLIR: {line}"
     )))
+}
+
+/// Add operand types to short-form `ins(...)`/`outs(...)` clauses.
+///
+/// Compact sources write `linalg.matmul ins(%lhs, %rhs) outs(%out)`; MLIR
+/// requires the operand types, which the buffer declarations already fix.
+/// A clause that already carries a `:` is emitted unchanged, so fully spelled
+/// out bodies such as `linalg.generic` pass through.
+fn annotate_linalg_operands(
+    line: &str,
+    function: &CompactFunction,
+) -> Result<String, LoomParseError> {
+    let mut output = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(start) = rest.find("ins(").or_else(|| rest.find("outs(")) {
+        let open = start + rest[start..].find('(').expect("clause has a paren");
+        let Some(length) = rest[open..].find(')') else {
+            return Err(LoomParseError(format!(
+                "function '{}': unterminated operand list in '{line}'",
+                function.name
+            )));
+        };
+        let close = open + length;
+        let operands = &rest[open + 1..close];
+        output.push_str(&rest[..=open]);
+        if operands.contains(':') || operands.trim().is_empty() {
+            output.push_str(operands);
+        } else {
+            let types = operands
+                .split(',')
+                .map(|operand| {
+                    let name = operand.trim().trim_start_matches('%');
+                    buffer_type(function, name).ok_or_else(|| {
+                        LoomParseError(format!(
+                            "function '{}' references undeclared operand '%{name}' in '{line}'",
+                            function.name
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            output.push_str(operands.trim_end());
+            output.push_str(" : ");
+            output.push_str(&types.join(", "));
+        }
+        output.push(')');
+        rest = &rest[close + 1..];
+    }
+    output.push_str(rest);
+    Ok(output)
+}
+
+fn buffer_type(function: &CompactFunction, name: &str) -> Option<String> {
+    function
+        .inputs
+        .iter()
+        .chain(&function.outputs)
+        .find(|buffer| buffer.name == name)
+        .map(Buffer::memref_type)
 }
 
 fn lower_extent(line: &str) -> Result<Option<String>, LoomParseError> {
@@ -669,6 +727,69 @@ fn function_blocks(source: &str) -> Result<Vec<&str>, LoomParseError> {
 #[cfg(test)]
 mod tests {
     use super::{lower_loom_source, parse_loom_source};
+
+    #[test]
+    fn short_form_linalg_operands_gain_their_declared_types() {
+        let source = r#"
+func @matmul {
+  params: [M, N, K]
+  ins:
+    lhs: !loom.buffer<MxKxf16>
+    rhs: !loom.buffer<KxNxf16, 1>
+  outs:
+    out: !loom.buffer<MxNxf16>
+  linalg.matmul ins(%lhs, %rhs) outs(%out)
+}
+"#;
+        let lowered = lower_loom_source(
+            source,
+            "matmul",
+            &["mem_L1".into()],
+            &["mem_L1".into()],
+            &[vec![]],
+            &[vec![]],
+        )
+        .expect("short-form linalg should lower");
+
+        // Untyped `ins`/`outs` are invalid MLIR; the buffer declarations
+        // already fix the types, including the memory space on `rhs`.
+        assert!(lowered.contains(
+            "linalg.matmul ins(%lhs, %rhs : memref<?x?xf16>, memref<?x?xf16, 1>) \
+             outs(%out : memref<?x?xf16>)"
+        ));
+    }
+
+    #[test]
+    fn already_typed_linalg_operands_are_left_alone() {
+        let source = r#"
+func @generic {
+  params: [L]
+  ins:
+    src: !loom.buffer<Lxf16>
+  outs:
+    dst: !loom.buffer<Lxf16>
+  linalg.generic {
+    iterator_types = ["parallel"]
+  }
+  ins(%src : memref<?xf16>)
+  outs(%dst : memref<?xf16>) {
+    linalg.yield %src : f16
+  }
+}
+"#;
+        let lowered = lower_loom_source(
+            source,
+            "generic",
+            &["mem_L1".into()],
+            &["mem_L1".into()],
+            &[vec![]],
+            &[vec![]],
+        )
+        .expect("typed linalg should lower");
+
+        assert!(lowered.contains("ins(%src : memref<?xf16>)"));
+        assert!(!lowered.contains("memref<?xf16>, memref<?xf16>"));
+    }
 
     #[test]
     fn preserves_memory_spaces_multiline_linalg_and_movement_extents() {

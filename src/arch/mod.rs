@@ -8,7 +8,7 @@ pub mod processor;
 pub mod resource;
 pub mod size_dim;
 
-pub use crate::mlir::{AdlExportError, architecture_to_mlir};
+pub use crate::mlir::{AdlExportError, architecture_to_mlir, architecture_to_mlir_unchecked};
 pub use crate::schedule::{
     MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
     MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,

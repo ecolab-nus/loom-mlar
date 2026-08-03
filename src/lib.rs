@@ -17,7 +17,7 @@ pub use arch::{
     PerfScenario, PerfYamlError, PerfYamlSpec, ProcessorArray, ProcessorDefinition,
     ProcessorSelection, ProcessorSelectionError, ProcessorSelector, ProcessorType, ProcessorYaml,
     ResolvedConnection, ResolvedMemoryEndpoint, ResourceArray, SimpleTimeCost, SizeExpr, Sym,
-    TimeCost, TimeExpr, architecture_to_mlir,
+    TimeCost, TimeExpr, architecture_to_mlir, architecture_to_mlir_unchecked,
 };
 
 // Re-export commonly used math types

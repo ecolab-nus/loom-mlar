@@ -1,11 +1,18 @@
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::fmt::Write;
+use std::io::{self, Write as _};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use crate::arch::{
     Architecture, EndpointIndex, IndexDomain, MemoryDefinition, MemoryEndpoint, ProcessorType,
     ResourceArray,
 };
 use crate::mlir::compact::lower_loom_source;
+
+/// ADL validator discovered and checked by `build.rs`.
+const ADL_PARSE: &str = env!("MLAR_ADL_PARSE");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AdlExportError {
@@ -34,6 +41,16 @@ pub enum AdlExportError {
     },
     SourceLowering {
         processor: String,
+        reason: String,
+    },
+    /// The emitted module was rejected by the ADL validator.
+    InvalidAdl {
+        program: PathBuf,
+        stderr: String,
+    },
+    /// The validator could not be run at all.
+    ValidatorUnavailable {
+        program: PathBuf,
         reason: String,
     },
 }
@@ -77,18 +94,89 @@ impl std::fmt::Display for AdlExportError {
             Self::SourceLowering { processor, reason } => {
                 write!(f, "failed to lower processor '{processor}': {reason}")
             }
+            Self::InvalidAdl { program, stderr } => write!(
+                f,
+                "exported MLIR was rejected by '{}':\n{stderr}",
+                program.display()
+            ),
+            Self::ValidatorUnavailable { program, reason } => write!(
+                f,
+                "could not run the ADL validator '{}': {reason}",
+                program.display()
+            ),
         }
     }
 }
 
 impl std::error::Error for AdlExportError {}
 
-/// Lower the canonical indexed model to the current dataflow `adl.*` dialect.
+/// Lower the canonical indexed model to the current dataflow `adl.*` dialect
+/// and validate the result with `adl_parse`.
 ///
 /// Prefix regions lower to compatible nested memory-array handles. Pointwise
 /// affine relations and explicit bank selections are projected away because
 /// the compatibility dialect cannot represent them.
+///
+/// The validator path is discovered and checked by the Cargo build script, so
+/// callers need no environment variables or `PATH` changes.
 pub fn architecture_to_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
+    let mlir = emit_architecture_mlir(architecture)?;
+    validate_adl(OsStr::new(ADL_PARSE), &mlir)?;
+    Ok(mlir)
+}
+
+/// Lower to `adl.*` MLIR without invoking the validator.
+///
+/// Intended for debugging and for emitting constructs the current MLIR
+/// compiler does not yet accept.
+pub fn architecture_to_mlir_unchecked(
+    architecture: &Architecture,
+) -> Result<String, AdlExportError> {
+    emit_architecture_mlir(architecture)
+}
+
+/// Run `program` over `mlir` and map a non-zero exit to [`AdlExportError`].
+///
+/// stdin is written from a worker thread so a validator that fills its stderr
+/// pipe before draining stdin cannot deadlock the caller.
+fn validate_adl(program: &OsStr, mlir: &str) -> Result<(), AdlExportError> {
+    let path = PathBuf::from(program);
+    let unavailable = |reason: String| AdlExportError::ValidatorUnavailable {
+        program: path.clone(),
+        reason,
+    };
+
+    let mut child = Command::new(program)
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| unavailable(error.to_string()))?;
+
+    let mut stdin = child.stdin.take().expect("stdin was piped");
+    let source = mlir.to_string();
+    let writer = std::thread::spawn(move || stdin.write_all(source.as_bytes()));
+
+    let output = child
+        .wait_with_output()
+        .map_err(|error| unavailable(error.to_string()))?;
+    let write_result = writer
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("validator stdin writer panicked")));
+
+    if !output.status.success() {
+        // A validator that rejects early closes stdin, so a broken pipe here is
+        // a symptom of the rejection rather than a separate failure.
+        return Err(AdlExportError::InvalidAdl {
+            program: path,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+    write_result.map_err(|error| unavailable(error.to_string()))
+}
+
+fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
     validate_processors(architecture)?;
     let mut emitter = Emitter::default();
     for dimension in &architecture.dimensions {
@@ -476,10 +564,10 @@ fn emit_architecture_hierarchy(
                 })
             })
             .collect::<Vec<_>>();
-        let memory_clause = match region_memories.as_slice() {
-            [] => String::new(),
-            [memory] => format!(", mem_region {memory}"),
-            memories => format!(", mem_region [{}]", memories.join(", ")),
+        let memory_clause = if region_memories.is_empty() {
+            String::new()
+        } else {
+            format!(", mem_region [{}]", region_memories.join(", "))
         };
         let scaled = emitter.next_ssa();
         writeln!(
@@ -754,4 +842,39 @@ fn indent(text: &str, spaces: usize) -> String {
     text.lines()
         .map(|line| format!("{prefix}{line}\n"))
         .collect()
+}
+
+#[cfg(test)]
+mod validator_tests {
+    use super::{ADL_PARSE, AdlExportError, validate_adl};
+    use std::ffi::OsStr;
+
+    #[test]
+    fn validator_accepts_a_well_formed_module() {
+        let mlir = "module @arch_x {\n  %0 = adl.spatial_dim \"dim_x\", 4\n}\n";
+        validate_adl(OsStr::new(ADL_PARSE), mlir).expect("well-formed ADL should validate");
+    }
+
+    #[test]
+    fn validator_rejects_a_malformed_module() {
+        let error = validate_adl(
+            OsStr::new(ADL_PARSE),
+            "module @arch_x {\n  %0 = adl.nope\n}\n",
+        )
+        .expect_err("an unknown operation must be rejected");
+        assert!(
+            matches!(error, AdlExportError::InvalidAdl { .. }),
+            "expected InvalidAdl, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn missing_validator_reports_unavailable_rather_than_passing() {
+        let error = validate_adl(OsStr::new("/nonexistent/adl_parse"), "module @a {}\n")
+            .expect_err("a missing validator must not silently succeed");
+        assert!(
+            matches!(error, AdlExportError::ValidatorUnavailable { .. }),
+            "expected ValidatorUnavailable, got {error:?}"
+        );
+    }
 }
