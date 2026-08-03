@@ -509,6 +509,7 @@ mod tests {
                 linalg_ops: vec![],
             }),
             op_label: None,
+            extra_metadata: Default::default(),
             sym_map: None,
         };
 

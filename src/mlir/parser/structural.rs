@@ -4,6 +4,7 @@ use std::fs;
 use crate::arch::Sym;
 use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use super::loom_ops::{
     MlirCopyOp, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding,
@@ -74,6 +75,9 @@ pub struct MlirFunc {
     /// Optional source MLIR operation label for a scheduled call site.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op_label: Option<String>,
+    /// Call-site metadata that MLAR preserves without interpreting.
+    #[serde(default, flatten)]
+    pub extra_metadata: BTreeMap<String, serde_json::Value>,
     /// Optional symbolic mapping for this function invocation.
     ///
     /// When a function is scheduled, each call site may bind its symbols to
@@ -184,6 +188,7 @@ impl MlirFunc {
             symbols: vec![],
             mlir_details: None,
             op_label: None,
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
     }
@@ -196,6 +201,7 @@ impl MlirFunc {
             symbols,
             mlir_details: None,
             op_label: None,
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
     }
@@ -378,6 +384,7 @@ impl MlirFunc {
                 linalg_ops,
             }),
             op_label: None,
+            extra_metadata: BTreeMap::new(),
             sym_map: None,
         })
     }
@@ -396,3 +403,29 @@ impl MlirFuncDetails {
 pub type MLIRModuleRef = MlirModule;
 pub type MLIRFuncRef = MlirFunc;
 pub type MLIRFunc = MlirFuncDetails;
+
+#[cfg(test)]
+mod tests {
+    use super::MlirFunc;
+
+    #[test]
+    fn extra_func_metadata_survives_serde_round_trip() {
+        let input = serde_json::json!({
+            "name": "dram_to_l1_R_bcst",
+            "symbols": [],
+            "op_label": "loom.copy(%0, %1: 1)",
+            "read": "%0: 0",
+            "write": "%1: 1",
+            "future_metadata": {"preserve": true}
+        });
+
+        let func: MlirFunc = serde_json::from_value(input).unwrap();
+        assert_eq!(func.extra_metadata["read"], "%0: 0");
+        assert_eq!(func.extra_metadata["write"], "%1: 1");
+
+        let output = serde_json::to_value(func).unwrap();
+        assert_eq!(output["read"], "%0: 0");
+        assert_eq!(output["write"], "%1: 1");
+        assert_eq!(output["future_metadata"]["preserve"], true);
+    }
+}

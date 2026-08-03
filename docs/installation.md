@@ -3,7 +3,27 @@
 ## Requirements
 
 - Rust toolchain supporting edition 2024;
+- a built `adl_parse` from the sibling `loom-dataflow` checkout;
 - Node.js 18+ and npm only for the web viewer.
+
+## ADL validator
+
+Checked export shells out to `adl_parse`, which loads both the ADL and Loom
+dialects and therefore validates a complete exported module in one pass. Build
+it before building this crate:
+
+```bash
+cd ../loom-dataflow/build && cmake --build . --target adl_parse
+```
+
+`build.rs` looks for it at
+`../loom-dataflow/build/tool/adl-dialect/adl_parse`, checks that it is
+executable, and compiles the resolved path into the crate, so no environment
+variables or `PATH` changes are needed. The build fails with instructions if the
+validator is missing.
+
+`architecture_to_mlir` always validates. Use `architecture_to_mlir_unchecked`
+to inspect output the current dialect does not yet accept.
 
 ## Rust
 
