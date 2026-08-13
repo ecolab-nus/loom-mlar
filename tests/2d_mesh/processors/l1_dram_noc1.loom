@@ -1,8 +1,6 @@
-func @l1_to_dram_f16 {
-  params: [M, N]
-  ins:
-    l1_src: !loom.buffer<MxNxf16>
-  outs:
-    dram_dst: !loom.buffer<MxNxf16>
+func @l1_to_dram_f16(
+  in l1_src: f16[M, N],
+  out dram_dst: f16[M, N]
+) {
   loom.copy %l1_src to %dram_dst
 }

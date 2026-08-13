@@ -2,7 +2,29 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::index::{AffineExpression, EndpointParseError, IndexDomain};
+use super::axis::{Axis, EndpointParseError};
+use crate::math::AffineExpr;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MemoryTechnology {
+    pub name: String,
+    pub kind: u64,
+}
+
+impl MemoryTechnology {
+    pub fn new(name: impl Into<String>, kind: u64) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+        }
+    }
+}
+
+impl std::fmt::Display for MemoryTechnology {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.name)
+    }
+}
 
 /// Optional physical banks within one logical memory instance.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +49,8 @@ pub struct MemoryDefinition {
     pub capacity: u64,
     pub word_size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technology: Option<MemoryTechnology>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banking: Option<Banking>,
 }
 
@@ -42,12 +66,18 @@ impl MemoryDefinition {
             indices: indices.into_iter().map(Into::into).collect(),
             capacity,
             word_size,
+            technology: None,
             banking: None,
         }
     }
 
     pub fn with_banking(mut self, banks: u64) -> Self {
         self.banking = Some(Banking::new(banks));
+        self
+    }
+
+    pub fn with_technology(mut self, technology: MemoryTechnology) -> Self {
+        self.technology = Some(technology);
         self
     }
 
@@ -70,6 +100,18 @@ impl MemoryDefinition {
         let unique = self.indices.iter().collect::<BTreeSet<_>>();
         if unique.len() != self.indices.len() {
             return Err(format!("memory '{}' has duplicate index names", self.name));
+        }
+        if let Some(technology) = &self.technology
+            && (technology.name.is_empty()
+                || !technology
+                    .name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_'))
+        {
+            return Err(format!(
+                "memory '{}' has invalid technology name '{}'",
+                self.name, technology.name
+            ));
         }
         if let Some(banking) = &self.banking {
             if banking.banks == 0 {
@@ -96,18 +138,14 @@ impl MemoryDefinition {
 /// A placed, concretely-sized array of a memory definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryArray {
-    pub name: String,
-    pub definition: String,
+    pub(crate) name: String,
+    pub(crate) definition: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub indices: Vec<IndexDomain>,
+    pub(crate) indices: Vec<Axis>,
 }
 
 impl MemoryArray {
-    pub fn new(
-        name: impl Into<String>,
-        definition: impl Into<String>,
-        indices: Vec<IndexDomain>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, definition: impl Into<String>, indices: Vec<Axis>) -> Self {
         Self {
             name: name.into(),
             definition: definition.into(),
@@ -118,7 +156,19 @@ impl MemoryArray {
     pub fn instances(&self) -> u64 {
         self.indices
             .iter()
-            .fold(1, |count, index| count.saturating_mul(index.size))
+            .fold(1, |count, index| count.saturating_mul(index.extent))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn definition_name(&self) -> &str {
+        &self.definition
+    }
+
+    pub fn axes(&self) -> &[Axis] {
+        &self.indices
     }
 }
 
@@ -126,7 +176,7 @@ impl MemoryArray {
 #[serde(rename_all = "snake_case")]
 pub enum EndpointIndex {
     All,
-    Expression(AffineExpression),
+    Expression(AffineExpr),
 }
 
 /// A symbolic selection of a logical memory instance and optional bank.
@@ -136,7 +186,7 @@ pub struct MemoryEndpoint {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub indices: Vec<EndpointIndex>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bank: Option<AffineExpression>,
+    pub bank: Option<AffineExpr>,
 }
 
 impl MemoryEndpoint {
@@ -160,70 +210,17 @@ impl MemoryEndpoint {
 
 /// A zero-capacity alias for a memory selection.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NamedMemoryRegion {
+pub struct MemoryAlias {
     pub name: String,
     pub endpoint: MemoryEndpoint,
 }
 
-impl NamedMemoryRegion {
+impl MemoryAlias {
     pub fn new(name: impl Into<String>, endpoint: MemoryEndpoint) -> Self {
         Self {
             name: name.into(),
             endpoint,
         }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryCatalog {
-    #[serde(default)]
-    pub definitions: Vec<MemoryDefinition>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub regions: Vec<NamedMemoryRegion>,
-}
-
-impl MemoryCatalog {
-    pub fn definition(&self, name: &str) -> Option<&MemoryDefinition> {
-        self.definitions
-            .iter()
-            .find(|definition| definition.name == name)
-    }
-
-    pub fn region(&self, name: &str) -> Option<&NamedMemoryRegion> {
-        self.regions.iter().find(|region| region.name == name)
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        let mut names = BTreeSet::new();
-        for definition in &self.definitions {
-            definition.validate()?;
-            if !names.insert(definition.name.as_str()) {
-                return Err(format!("duplicate memory definition '{}'", definition.name));
-            }
-        }
-        let mut region_names = BTreeSet::new();
-        for region in &self.regions {
-            if !region_names.insert(region.name.as_str()) {
-                return Err(format!("duplicate named memory region '{}'", region.name));
-            }
-            let Some(definition) = self.definition(&region.endpoint.memory) else {
-                return Err(format!(
-                    "named region '{}' refers to unknown memory '{}'",
-                    region.name, region.endpoint.memory
-                ));
-            };
-            if region.endpoint.indices.len() != definition.indices.len() {
-                return Err(format!(
-                    "named region '{}' has {} indices; memory '{}' expects {}",
-                    region.name,
-                    region.endpoint.indices.len(),
-                    definition.name,
-                    definition.indices.len()
-                ));
-            }
-            validate_static_bank(&region.endpoint, definition)?;
-        }
-        Ok(())
     }
 }
 
@@ -240,13 +237,37 @@ pub(crate) fn validate_static_bank(
             definition.name
         ));
     };
-    if let AffineExpression::Constant(bank) = bank {
+    if let AffineExpr::Constant(bank) = bank {
         if *bank < 0 || *bank >= banking.banks as i64 {
             return Err(format!(
                 "bank {} is out of bounds for memory '{}' with {} banks",
                 bank, definition.name, banking.banks
             ));
         }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_region_selector(endpoint: &MemoryEndpoint) -> Result<(), String> {
+    let first_all = endpoint
+        .indices
+        .iter()
+        .position(|index| matches!(index, EndpointIndex::All));
+    if first_all.is_some_and(|prefix| {
+        endpoint.indices[prefix..]
+            .iter()
+            .any(|index| !matches!(index, EndpointIndex::All))
+    }) {
+        return Err(format!(
+            "memory region '{}' is not an affine prefix followed by whole-axis selectors",
+            endpoint.memory
+        ));
+    }
+    if first_all.is_some() && endpoint.bank.is_some() {
+        return Err(format!(
+            "memory region '{}' cannot select one bank",
+            endpoint.memory
+        ));
     }
     Ok(())
 }
@@ -296,12 +317,12 @@ fn parse_endpoint(input: &str) -> Result<MemoryEndpoint, EndpointParseError> {
                 if part == ":" {
                     Ok(EndpointIndex::All)
                 } else {
-                    AffineExpression::parse(part).map(EndpointIndex::Expression)
+                    AffineExpr::parse(part).map(EndpointIndex::Expression)
                 }
             })
             .collect::<Result<Vec<_>, _>>()?,
     };
-    let bank = bank_text.map(AffineExpression::parse).transpose()?;
+    let bank = bank_text.map(AffineExpr::parse).transpose()?;
     Ok(MemoryEndpoint {
         memory: memory.to_string(),
         indices,

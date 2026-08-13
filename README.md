@@ -1,9 +1,10 @@
 # MLAR Rust Front-End
 
 `mlar-rust` models machine architectures for compiler tooling. The canonical
-model is flat and indexed: logical memory arrays, zero-capacity named regions,
+model is flat and indexed: logical memory arrays, zero-capacity memory aliases,
 unified processor arrays, intrinsic resource arrays, and affine memory
-connections.
+connections. Parameterized hardware geometry instantiates into this concrete
+model; explicit scope ownership and affine network topology remain first-class.
 
 An architecture package contains:
 
@@ -14,12 +15,14 @@ memory.yaml
 <processor>.loom
 ```
 
-`memory.yaml` owns reusable memory definitions and named selections.
+`memory.yaml` owns reusable memory definitions, optional user-named memory
+technologies, and named selections.
 `chip.yaml` owns concrete dimensions, memory-array instantiation, and processor
 connections.
 Processor YAML owns optional compatibility type metadata, inline resources, and
 performance models. Compact Loom source owns symbolic interfaces and operation
-bodies.
+bodies, including `@memory(name)` requirements resolved against each placement's
+connected memories.
 
 See [TEMPLATE.md](TEMPLATE.md) for the complete schema, selection semantics,
 imperative Rust construction, and type inventory.
@@ -43,13 +46,17 @@ let adl = mlar_rust::architecture_to_mlir(&architecture)?;
 
 The runtime supports schedule evaluation and graph, hierarchy, viewer, ABI, and
 dataflow-ADL outputs. Schedule lookup remains coarse function-name matching.
+Ambiguous function names require a `Schedule::PlacedFunc` processor target.
 
 ## Compatibility export
 
 The existing `loom-dataflow` dialect is unchanged. Compatibility export
 requires every emitted processor definition to have an explicit homogeneous
 `type: compute` or `type: data_mover`; it never infers this metadata. Export is
-all-or-nothing and returns a specific `AdlExportError`.
+all-or-nothing and returns a specific `AdlExportError`. The exported top-level
+module is always `@arch_system`, the symbol required by loom-dataflow's
+exploration drivers; the architecture's own name remains unchanged in the
+runtime model.
 
 Indexed coordinates and affine relations remain present in runtime and viewer
 JSON. Prefix regions lower to nested memory-array handles; pointwise affine
@@ -68,8 +75,10 @@ lowers to the existing `adl.memory.bank` and `adl.memory.array` operations.
 
 ## Current boundaries
 
-- Affine relations are not yet consumed by multihop planning.
+- MLAR can enumerate network edges and shortest-hop routes, but the current ADL
+  and loom-dataflow exploration passes do not consume them.
 - Automatic address-to-bank mapping and bank-conflict inference are not
   implemented; bank selection is explicit.
 - `Schedule::Parallel` evaluation is not implemented.
-- Function names must remain globally unique for schedule evaluation.
+- Unplaced schedules require a unique function implementation; alternatives
+  must use `Schedule::PlacedFunc`.

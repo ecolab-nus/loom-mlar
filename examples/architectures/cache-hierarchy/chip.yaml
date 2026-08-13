@@ -4,25 +4,54 @@ dimensions:
   cluster: 2
   core: 4
 memories:
-  DRAM: [dram_channel]
-  L2: [cluster]
-  L1: [cluster, core]
+  DRAM:
+  - dram_channel
+  L2:
+  - cluster
+  L1:
+  - cluster
+  - core
 resources:
-  - name: memory_fabric
-  - name: l2_fabric
-processor:
-  core_lane.yaml:
-    - inputs: ["L1[cluster, core]"]
-      outputs: ["L1[cluster, core]"]
-  dram_l2_dma.yaml:
-    - inputs: ["DRAM[:]"]
-      outputs: ["l2_clusters"]
-      resources: [memory_fabric]
-  l2_l1_dma.yaml:
-    - inputs: ["L2[cluster]"]
-      outputs: ["l1_cluster"]
-      resources: [memory_fabric, l2_fabric]
-  l1_l2_dma.yaml:
-    - inputs: ["l1_cluster"]
-      outputs: ["L2[cluster]"]
-      resources: [memory_fabric, l2_fabric]
+- name: memory_fabric
+- name: l2_fabric
+processors:
+  core_lane:
+    definition: core_lane.yaml
+    domain:
+    - cluster
+    - core
+    inputs:
+    - L1[cluster, core]
+    outputs:
+    - L1[cluster, core]
+  dram_l2_dma:
+    definition: dram_l2_dma.yaml
+    domain: []
+    inputs:
+    - DRAM[:]
+    outputs:
+    - l2_clusters
+    resources:
+    - memory_fabric
+  l2_l1_dma:
+    definition: l2_l1_dma.yaml
+    domain:
+    - cluster
+    inputs:
+    - L2[cluster]
+    outputs:
+    - l1_cluster
+    resources:
+    - memory_fabric
+    - l2_fabric
+  l1_l2_dma:
+    definition: l1_l2_dma.yaml
+    domain:
+    - cluster
+    inputs:
+    - l1_cluster
+    outputs:
+    - L2[cluster]
+    resources:
+    - memory_fabric
+    - l2_fabric

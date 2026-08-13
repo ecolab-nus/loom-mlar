@@ -2,13 +2,10 @@ name: core_lane
 type: compute
 source: core_lane.loom
 resources:
-  - name: core_pipeline
-  - name: core_lane
+- name: core_pipeline
+- name: core_lane
 performance:
   elementwise_add:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "2"
-            volume: "L"
-            throughput: "32"
+  - latency: '2'
+    volume: L
+    throughput: '32'

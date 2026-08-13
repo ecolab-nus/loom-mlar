@@ -2,41 +2,19 @@ name: dram_l1_noc0
 type: data_mover
 source: dram_l1_noc0.loom
 performance:
-  time_costs:
-    dram_to_l1_S_f16: &dram_to_l1_S_f16
-      simple:
-        fixed_latency: "454"
-        volume: "M * N * 2 * effective_bandwidth"
-        throughput: "150"
-    dram_to_l1_S_bcst: &dram_to_l1_S_bcst
-      simple:
-        fixed_latency: "344"
-        volume: "M * N * 2 * effective_bandwidth"
-        throughput: "150"
-    dram_to_l1_R_f16: &dram_to_l1_R_f16
-      simple:
-        fixed_latency: "888"
-        volume: "M * N * 2 * effective_bandwidth"
-        throughput: "888"
-    dram_to_l1_R_bcst: &dram_to_l1_R_bcst
-      simple:
-        fixed_latency: "888"
-        volume: "M * N * 2 * effective_bandwidth"
-        throughput: "888"
-
-  functions:
-    dram_to_l1_S_f16:
-      scenarios:
-        - time_cost: *dram_to_l1_S_f16
-
-    dram_to_l1_S_bcst:
-      scenarios:
-        - time_cost: *dram_to_l1_S_bcst
-
-    dram_to_l1_R_f16:
-      scenarios:
-        - time_cost: *dram_to_l1_R_f16
-
-    dram_to_l1_R_bcst:
-      scenarios:
-        - time_cost: *dram_to_l1_R_bcst
+  dram_to_l1_S_f16:
+  - latency: '454'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: '150'
+  dram_to_l1_S_bcst:
+  - latency: '344'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: '150'
+  dram_to_l1_R_f16:
+  - latency: '888'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: '888'
+  dram_to_l1_R_bcst:
+  - latency: '888'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: '888'

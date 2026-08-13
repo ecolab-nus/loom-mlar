@@ -1,9 +1,7 @@
-func @matmul_f16 {
-  params: [M, N, K]
-  ins:
-    lhs: !loom.buffer<MxKxf16>
-    rhs: !loom.buffer<KxNxf16>
-  outs:
-    out: !loom.buffer<MxNxf16>
+func @matmul_f16(
+  in lhs: f16[M, K],
+  in rhs: f16[K, N],
+  out out: f16[M, N]
+) {
   linalg.matmul ins(%lhs, %rhs) outs(%out)
 }

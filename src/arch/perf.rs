@@ -2,44 +2,20 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::size_dim::Sym;
+use crate::math::Sym;
 use crate::math::{ConstraintExpr, Expr};
-use crate::schedule::MlirFunc;
-
-/// A simple performance model: fixed startup cost plus volume-over-throughput.
-///
-/// Total latency is `fixed_latency + volume / throughput`, using [`Expr`]
-/// integer-division semantics. Any rounding policy is part of the symbolic
-/// model rather than implicit in this type.
-///
-/// `volume` is a symbolic expression describing the total amount of work
-/// (e.g. number of elements, FLOPs), and `throughput` is the processing rate
-/// (e.g. elements/cycle).  Both may reference symbols declared in the
-/// enclosing [`FuncPerfModel`].
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SimpleTimeCost {
-    /// Fixed startup latency (cycles), independent of data volume.
-    pub fixed_latency: Expr,
-    /// Total work volume, expressed symbolically in terms of model symbols.
-    pub volume: Expr,
-    /// Processing rate (work units per cycle).
-    pub throughput: Expr,
-}
+use crate::mlir::MlirFunc;
 
 /// Time cost associated with a [`PerfScenario`].
-///
-/// - [`TimeCost::Simple`] appears in performance-model definitions
-///   ([`FuncPerfModel`]) before evaluation.
-/// - [`TimeCost::Concrete`] appears in evaluation results after the
-///   [`SimpleTimeCost`] has been flattened into a single [`Expr`]
-///   (via `fixed_latency + volume / throughput`), or by combining
-///   multiple concrete costs.
-///
-/// `Concrete` means "one cost expression", not necessarily "free of symbols".
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TimeCost {
-    Simple(SimpleTimeCost),
-    Concrete(Expr),
+    Throughput {
+        fixed_latency: Expr,
+        volume: Expr,
+        throughput: Expr,
+    },
+    /// One latency expression, which may still contain symbols.
+    Expression(Expr),
 }
 
 /// A guarded performance alternative with an associated time cost.
@@ -54,8 +30,8 @@ pub struct PerfScenario {
     /// For models with multiple scenarios, these constraints should be
     /// pairwise mutually exclusive across the model.
     pub constraints: ConstraintExpr,
-    /// Time cost for this scenario — [`TimeCost::Simple`] in model definitions,
-    /// [`TimeCost::Concrete`] after evaluation.
+    /// Time cost for this scenario — [`TimeCost::Throughput`] in model definitions,
+    /// [`TimeCost::Expression`] after evaluation.
     pub time_cost: TimeCost,
 }
 
@@ -99,95 +75,74 @@ pub struct FuncPerfModelBuilder {
     scenarios: Vec<PerfScenario>,
 }
 
-impl SimpleTimeCost {
-    /// Construct a simple time cost: `fixed_latency + volume / throughput`.
-    pub fn new(fixed_latency: Expr, volume: Expr, throughput: Expr) -> Self {
-        SimpleTimeCost {
+impl TimeCost {
+    pub fn throughput(fixed_latency: Expr, volume: Expr, throughput: Expr) -> Self {
+        Self::Throughput {
             fixed_latency,
             volume,
             throughput,
         }
     }
 
-    /// Flatten into `fixed_latency + volume / throughput`.
-    ///
-    /// Division follows [`Expr`] integer semantics. Model authors choose any
-    /// required rounding behavior and must ensure nonzero throughput.
-    pub fn concretize(&self) -> Expr {
-        Expr::add(
-            self.fixed_latency.clone(),
-            Expr::div(self.volume.clone(), self.throughput.clone()),
-        )
-    }
-
-    /// Collect all symbols referenced in this cost's expressions.
-    pub fn collect_symbols(&self, out: &mut HashSet<Sym>) {
-        self.fixed_latency.collect_symbols(out);
-        self.volume.collect_symbols(out);
-        self.throughput.collect_symbols(out);
-    }
-
-    /// Return a new `SimpleTimeCost` with every symbol replaced according to `mappings`.
-    pub fn substitute(&self, mappings: &[(Sym, Expr)]) -> Self {
-        SimpleTimeCost {
-            fixed_latency: self.fixed_latency.substitute(mappings),
-            volume: self.volume.substitute(mappings),
-            throughput: self.throughput.substitute(mappings),
-        }
-    }
-}
-
-impl From<SimpleTimeCost> for TimeCost {
-    fn from(value: SimpleTimeCost) -> Self {
-        TimeCost::Simple(value)
-    }
-}
-
-impl From<Expr> for TimeCost {
-    fn from(value: Expr) -> Self {
-        TimeCost::Concrete(value)
-    }
-}
-
-impl TimeCost {
-    /// Access the inner [`SimpleTimeCost`], if this is the `Simple` variant.
-    pub fn as_simple(&self) -> Option<&SimpleTimeCost> {
+    /// Access the inner [`Expr`], if this is the `Expression` variant.
+    pub fn as_expression(&self) -> Option<&Expr> {
         match self {
-            TimeCost::Simple(s) => Some(s),
+            TimeCost::Expression(e) => Some(e),
             _ => None,
         }
     }
 
-    /// Access the inner [`Expr`], if this is the `Concrete` variant.
-    pub fn as_concrete(&self) -> Option<&Expr> {
-        match self {
-            TimeCost::Concrete(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    /// Convert to a single [`Expr`]: concretize if `Simple`, unwrap if `Concrete`.
+    /// Convert either representation to one latency expression.
     pub fn to_expr(&self) -> Expr {
         match self {
-            TimeCost::Simple(s) => s.concretize(),
-            TimeCost::Concrete(e) => e.clone(),
+            TimeCost::Throughput {
+                fixed_latency,
+                volume,
+                throughput,
+            } => Expr::add(
+                fixed_latency.clone(),
+                Expr::div(volume.clone(), throughput.clone()),
+            ),
+            TimeCost::Expression(e) => e.clone(),
         }
     }
 
     /// Collect all symbols referenced in this time cost.
     pub fn collect_symbols(&self, out: &mut HashSet<Sym>) {
         match self {
-            TimeCost::Simple(s) => s.collect_symbols(out),
-            TimeCost::Concrete(e) => e.collect_symbols(out),
+            TimeCost::Throughput {
+                fixed_latency,
+                volume,
+                throughput,
+            } => {
+                fixed_latency.collect_symbols(out);
+                volume.collect_symbols(out);
+                throughput.collect_symbols(out);
+            }
+            TimeCost::Expression(e) => e.collect_symbols(out),
         }
     }
 
     /// Return a new `TimeCost` with every symbol replaced according to `mappings`.
     pub fn substitute(&self, mappings: &[(Sym, Expr)]) -> Self {
         match self {
-            TimeCost::Simple(s) => TimeCost::Simple(s.substitute(mappings)),
-            TimeCost::Concrete(e) => TimeCost::Concrete(e.substitute(mappings)),
+            TimeCost::Throughput {
+                fixed_latency,
+                volume,
+                throughput,
+            } => TimeCost::throughput(
+                fixed_latency.substitute(mappings),
+                volume.substitute(mappings),
+                throughput.substitute(mappings),
+            ),
+            TimeCost::Expression(e) => TimeCost::Expression(e.substitute(mappings)),
         }
+    }
+}
+
+impl From<Expr> for TimeCost {
+    fn from(value: Expr) -> Self {
+        TimeCost::Expression(value)
     }
 }
 
@@ -214,9 +169,6 @@ impl PerfScenario {
         self.time_cost.collect_symbols(out);
     }
 }
-
-/// Symbolic schedule time expression.
-pub type TimeExpr = Expr;
 
 impl FuncPerfModel {
     /// Create a performance model builder.
@@ -255,7 +207,7 @@ impl FuncPerfModel {
     /// Total latency expression for a specific scenario.
     ///
     /// For `Simple` costs this flattens via `fixed_latency + volume / throughput`;
-    /// for `Concrete` costs it returns the stored expression.
+    /// for `Expression` costs it returns the stored expression.
     ///
     /// Returns `None` if `scenario` is out of range.
     pub fn total_latency_for(&self, scenario: usize) -> Option<Expr> {
@@ -331,14 +283,14 @@ impl FuncPerfModelBuilder {
     }
 
     /// Add an unconstrained simple-cost scenario.
-    pub fn simple_scenario(mut self, time_cost: SimpleTimeCost) -> Self {
+    pub fn throughput_scenario(mut self, time_cost: TimeCost) -> Self {
         self.scenarios.push(PerfScenario::new(time_cost));
         self
     }
 
     /// Add an unconstrained simple-cost scenario from its component expressions.
     pub fn simple_time_cost(self, fixed_latency: Expr, volume: Expr, throughput: Expr) -> Self {
-        self.simple_scenario(SimpleTimeCost::new(fixed_latency, volume, throughput))
+        self.throughput_scenario(TimeCost::throughput(fixed_latency, volume, throughput))
     }
 
     /// Add a constrained scenario from a time cost.
@@ -371,8 +323,8 @@ impl FuncPerfModelBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schedule::MlirFunc;
-    use crate::schedule::{MlirFuncDetails, MlirTensorSymbolBinding};
+    use crate::mlir::MlirFunc;
+    use crate::mlir::{MlirFuncDetails, MlirTensorSymbolBinding};
 
     #[test]
     fn test_trivial_func_model() {
@@ -394,11 +346,11 @@ mod tests {
                     ConstraintExpr::Ge(Expr::sym("N"), Expr::Const(128)),
                     ConstraintExpr::Ge(Expr::sym("K"), Expr::Const(128)),
                 ]),
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(8),
-                    volume: Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
-                    throughput: Expr::Const(1024),
-                }),
+                time_cost: TimeCost::throughput(
+                    Expr::Const(8),
+                    Expr::mul(Expr::mul(Expr::sym("M"), Expr::sym("N")), Expr::sym("K")),
+                    Expr::Const(1024),
+                ),
             }],
         };
         assert!(model.validate().is_ok());
@@ -411,11 +363,11 @@ mod tests {
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(0),
-                    volume: Expr::mul(Expr::sym("M"), Expr::mul(Expr::sym("N"), Expr::sym("K"))),
-                    throughput: Expr::Const(1),
-                }),
+                time_cost: TimeCost::throughput(
+                    Expr::Const(0),
+                    Expr::mul(Expr::sym("M"), Expr::mul(Expr::sym("N"), Expr::sym("K"))),
+                    Expr::Const(1),
+                ),
             }],
         };
         let err = model.validate().unwrap_err();
@@ -426,7 +378,7 @@ mod tests {
     #[test]
     fn test_builder_infers_symbols_and_defaults_true_constraints() {
         let model = FuncPerfModel::builder()
-            .simple_scenario(SimpleTimeCost::new(
+            .throughput_scenario(TimeCost::throughput(
                 Expr::Const(1),
                 Expr::mul(Expr::sym("M"), Expr::sym("N")),
                 Expr::sym("T"),
@@ -448,7 +400,7 @@ mod tests {
                     x: Expr::sym("N"),
                     by: Expr::Const(16),
                 },
-                SimpleTimeCost::new(Expr::Const(10), Expr::sym("K"), Expr::sym("TP")),
+                TimeCost::throughput(Expr::Const(10), Expr::sym("K"), Expr::sym("TP")),
             )
             .build();
 
@@ -463,11 +415,7 @@ mod tests {
             constraints: ConstraintExpr::True,
             scenarios: vec![PerfScenario {
                 constraints: ConstraintExpr::True,
-                time_cost: TimeCost::Simple(SimpleTimeCost {
-                    fixed_latency: Expr::Const(8),
-                    volume: Expr::sym("N"),
-                    throughput: Expr::Const(1),
-                }),
+                time_cost: TimeCost::throughput(Expr::Const(8), Expr::sym("N"), Expr::Const(1)),
             }],
         };
         let total = model.total_latency_for(0).unwrap();
@@ -489,6 +437,7 @@ mod tests {
                 tensor_args: vec!["a".into(), "out".into()],
                 memref_args: vec![],
                 memref_arg_types: vec![],
+                memref_memory_requirements: vec![],
                 output_tensors: vec!["out".into()],
                 source_memrefs: vec![],
                 target_memrefs: vec![],
@@ -507,6 +456,7 @@ mod tests {
                 copy_ops: vec![],
                 gather_ops: vec![],
                 linalg_ops: vec![],
+                operations: vec![],
             }),
             op_label: None,
             extra_metadata: Default::default(),

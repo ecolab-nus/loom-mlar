@@ -14,9 +14,9 @@ pub struct GraphDimension {
 #[serde(rename_all = "snake_case")]
 pub enum GraphNodeKind {
     MemoryArray,
-    NamedRegion,
+    MemoryAlias,
     ProcessorArray,
-    ResourceArray,
+    Resource,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,16 +74,17 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
             }),
         });
     }
-    for region in &architecture.memory_catalog.regions {
+    for alias in &architecture.memory_aliases {
         nodes.push(ArchitectureGraphNode {
-            id: format!("region:{}", region.name),
-            kind: GraphNodeKind::NamedRegion,
-            name: region.name.clone(),
+            id: format!("memory_alias:{}", alias.name),
+            kind: GraphNodeKind::MemoryAlias,
+            name: alias.name.clone(),
             dimensions: Vec::new(),
-            details: json!({"endpoint": region.endpoint}),
+            details: json!({"endpoint": alias.endpoint}),
         });
     }
     for processor in &architecture.processors {
+        let valid_instances = processor.instances(architecture).len();
         let definition = architecture
             .processor_definition(&processor.definition)
             .expect("canonical processor definition");
@@ -91,20 +92,20 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
             id: format!("processor:{}", processor.name),
             kind: GraphNodeKind::ProcessorArray,
             name: processor.name.clone(),
-            dimensions: dimensions(&processor.relation.domain),
+            dimensions: dimensions(&processor.axes),
             details: json!({
                 "definition": processor.definition,
                 "type": definition.processor_type,
                 "functions": definition.functions.iter().map(|function| &function.func.name).collect::<Vec<_>>(),
                 "connection": processor.connection,
-                "valid_instances": processor.relation.instances.len(),
+                "valid_instances": valid_instances,
             }),
         });
     }
     for resource in &architecture.resources {
         nodes.push(ArchitectureGraphNode {
             id: format!("resource:{}", resource.name),
-            kind: GraphNodeKind::ResourceArray,
+            kind: GraphNodeKind::Resource,
             name: resource.name.clone(),
             dimensions: dimensions(&resource.indices),
             details: json!({"capacity": resource.capacity}),
@@ -113,6 +114,7 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
 
     let mut edges = Vec::new();
     for processor in &architecture.processors {
+        let valid_instances = processor.instances(architecture).len();
         for (index, endpoint) in processor.connection.inputs.iter().enumerate() {
             edges.push(ArchitectureGraphEdge {
                 id: format!("{}:input:{index}", processor.name),
@@ -121,7 +123,7 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
                 target: format!("processor:{}", processor.name),
                 processor: processor.name.clone(),
                 endpoint: endpoint.clone(),
-                valid_instances: processor.relation.instances.len(),
+                valid_instances,
             });
         }
         for (index, endpoint) in processor.connection.outputs.iter().enumerate() {
@@ -132,7 +134,7 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
                 target: endpoint_node_id(architecture, endpoint),
                 processor: processor.name.clone(),
                 endpoint: endpoint.clone(),
-                valid_instances: processor.relation.instances.len(),
+                valid_instances,
             });
         }
     }
@@ -141,7 +143,7 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
         schema_version: GRAPH_SCHEMA_VERSION,
         architecture: GraphArchitecture {
             name: architecture.name.clone(),
-            dimensions: dimensions(&architecture.dimensions),
+            dimensions: dimensions(&architecture.axes),
         },
         nodes,
         edges,
@@ -149,12 +151,8 @@ pub fn architecture_to_graph_json(architecture: &Architecture) -> ArchitectureGr
 }
 
 fn endpoint_node_id(architecture: &Architecture, endpoint: &MemoryEndpoint) -> String {
-    if architecture
-        .memory_catalog
-        .region(&endpoint.memory)
-        .is_some()
-    {
-        format!("region:{}", endpoint.memory)
+    if architecture.memory_alias(&endpoint.memory).is_some() {
+        format!("memory_alias:{}", endpoint.memory)
     } else {
         format!("memory:{}", endpoint.memory)
     }
@@ -177,12 +175,12 @@ pub fn architecture_to_graph_json_string_pretty(
     serde_json::to_string_pretty(&architecture_to_graph_json(architecture))
 }
 
-fn dimensions(indices: &[crate::arch::IndexDomain]) -> Vec<GraphDimension> {
+fn dimensions(indices: &[crate::arch::Axis]) -> Vec<GraphDimension> {
     indices
         .iter()
         .map(|index| GraphDimension {
             name: index.name.clone(),
-            size: index.size,
+            size: index.extent,
         })
         .collect()
 }

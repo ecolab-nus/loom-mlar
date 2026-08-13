@@ -3,9 +3,6 @@ type: data_mover
 source: l1_l1_noc0.loom
 performance:
   l1_gather:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "344"
-            volume: "B * M * N * 2 * effective_bandwidth"
-            throughput: "28"
+  - latency: '344'
+    volume: B * M * N * 2 * effective_bandwidth
+    throughput: '28'

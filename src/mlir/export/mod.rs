@@ -6,13 +6,15 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::arch::{
-    Architecture, EndpointIndex, IndexDomain, MemoryDefinition, MemoryEndpoint, ProcessorType,
-    ResourceArray,
+    Architecture, Axis, EndpointIndex, MemoryDefinition, MemoryEndpoint, ProcessorDefinition,
+    ProcessorSourceFormat, ProcessorType, Resource,
 };
-use crate::mlir::compact::lower_loom_source;
+use crate::mlir::compact::{LoomMemoryBinding, lower_loom_source};
 
 /// ADL validator discovered and checked by `build.rs`.
 const ADL_PARSE: &str = env!("MLAR_ADL_PARSE");
+/// Module symbol required by loom-dataflow's exploration drivers.
+const DATAFLOW_ROOT_MODULE: &str = "arch_system";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AdlExportError {
@@ -42,6 +44,11 @@ pub enum AdlExportError {
     SourceLowering {
         processor: String,
         reason: String,
+    },
+    /// A scope owns more memory regions than `adl.arch.scale` can carry.
+    MultipleMemoryRegions {
+        scope: String,
+        count: usize,
     },
     /// The emitted module was rejected by the ADL validator.
     InvalidAdl {
@@ -94,6 +101,11 @@ impl std::fmt::Display for AdlExportError {
             Self::SourceLowering { processor, reason } => {
                 write!(f, "failed to lower processor '{processor}': {reason}")
             }
+            Self::MultipleMemoryRegions { scope, count } => write!(
+                f,
+                "scope '{scope}' owns {count} memory regions, but `adl.arch.scale` \
+                 carries at most one"
+            ),
             Self::InvalidAdl { program, stderr } => write!(
                 f,
                 "exported MLIR was rejected by '{}':\n{stderr}",
@@ -179,8 +191,8 @@ fn validate_adl(program: &OsStr, mlir: &str) -> Result<(), AdlExportError> {
 fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
     validate_processors(architecture)?;
     let mut emitter = Emitter::default();
-    for dimension in &architecture.dimensions {
-        emitter.emit_dimension(&dimension.name, dimension.size);
+    for dimension in &architecture.axes {
+        emitter.emit_dimension(&dimension.name, dimension.extent);
     }
     let scope_domains = export_scope_domains(architecture);
     for memory in &architecture.memories {
@@ -204,7 +216,7 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
     let mut emitted_processors = Vec::new();
     let mut modules = Vec::new();
     let mut processor_order = architecture.processors.iter().collect::<Vec<_>>();
-    processor_order.sort_by_key(|processor| std::cmp::Reverse(processor.relation.domain.len()));
+    processor_order.sort_by_key(|processor| std::cmp::Reverse(processor.axes.len()));
     for processor in processor_order {
         let definition = architecture
             .processor_definition(&processor.definition)
@@ -214,39 +226,21 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
             .connection
             .inputs
             .iter()
-            .map(|endpoint| endpoint_memory_symbol(&emitter, architecture, endpoint))
+            .map(|endpoint| endpoint_loom_binding(&emitter, architecture, endpoint))
             .collect::<Result<Vec<_>, _>>()?;
         let outputs = processor
             .connection
             .outputs
             .iter()
-            .map(|endpoint| endpoint_memory_symbol(&emitter, architecture, endpoint))
-            .collect::<Result<Vec<_>, _>>()?;
-        let input_scope_extents = processor
-            .connection
-            .inputs
-            .iter()
-            .map(|endpoint| endpoint_scope_extent(architecture, endpoint))
-            .collect::<Result<Vec<_>, _>>()?;
-        let output_scope_extents = processor
-            .connection
-            .outputs
-            .iter()
-            .map(|endpoint| endpoint_scope_extent(architecture, endpoint))
+            .map(|endpoint| endpoint_loom_binding(&emitter, architecture, endpoint))
             .collect::<Result<Vec<_>, _>>()?;
         let module_name = prefixed("proc", &processor.name);
-        let module = lower_loom_source(
-            &definition.source,
-            &module_name,
-            &inputs,
-            &outputs,
-            &input_scope_extents,
-            &output_scope_extents,
-        )
-        .map_err(|error| AdlExportError::SourceLowering {
-            processor: processor.name.clone(),
-            reason: error.to_string(),
-        })?;
+        let module = lower_processor_source(definition, &module_name, &inputs, &outputs).map_err(
+            |reason| AdlExportError::SourceLowering {
+                processor: processor.name.clone(),
+                reason,
+            },
+        )?;
         modules.push(module);
 
         let route = match (
@@ -289,8 +283,9 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
         )
         .unwrap();
         emitted_processors.push(EmittedProcessor {
+            name: processor.name.clone(),
             ssa,
-            domain: processor.relation.domain.clone(),
+            domain: processor.axes.clone(),
         });
     }
 
@@ -299,9 +294,9 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
         architecture,
         &scope_domains,
         &emitted_processors,
-    );
+    )?;
 
-    let mut result = format!("module @{} {{\n", prefixed("arch", &architecture.name));
+    let mut result = format!("module @{DATAFLOW_ROOT_MODULE} {{\n");
     result.push_str(&indent(&emitter.body, 2));
     for module in modules {
         result.push('\n');
@@ -311,9 +306,189 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
     Ok(result)
 }
 
+fn lower_processor_source(
+    definition: &ProcessorDefinition,
+    module_name: &str,
+    inputs: &[LoomMemoryBinding],
+    outputs: &[LoomMemoryBinding],
+) -> Result<String, String> {
+    match definition.source_format {
+        ProcessorSourceFormat::CompactLoom => lower_loom_source(
+            &definition.source,
+            module_name,
+            &definition
+                .functions
+                .iter()
+                .map(|operation| (operation.func.name.clone(), operation.func.symbols.clone()))
+                .collect(),
+            inputs,
+            outputs,
+        )
+        .map_err(|error| error.to_string()),
+        ProcessorSourceFormat::Mlir => {
+            let input_symbols = inputs
+                .iter()
+                .map(|binding| binding.symbol.clone())
+                .collect::<Vec<_>>();
+            let output_symbols = outputs
+                .iter()
+                .map(|binding| binding.symbol.clone())
+                .collect::<Vec<_>>();
+            let memory_symbols =
+                raw_mlir_memory_symbols(definition, &input_symbols, &output_symbols)?;
+            Ok(rewrite_raw_mlir_module(
+                &definition.source,
+                module_name,
+                &memory_symbols,
+            ))
+        }
+    }
+}
+
+fn raw_mlir_memory_symbols(
+    definition: &ProcessorDefinition,
+    inputs: &[String],
+    outputs: &[String],
+) -> Result<BTreeMap<String, String>, String> {
+    let mut mappings = BTreeMap::new();
+    for function in &definition.functions {
+        let details = function.func.mlir_details.as_ref().ok_or_else(|| {
+            format!(
+                "MLIR function '{}' has no parsed interface",
+                function.func.name
+            )
+        })?;
+        bind_raw_mlir_side(
+            &function.func.name,
+            "input",
+            &details.source_memrefs,
+            &details.mem_region_bindings,
+            inputs,
+            &mut mappings,
+        )?;
+        bind_raw_mlir_side(
+            &function.func.name,
+            "output",
+            &details.target_memrefs,
+            &details.mem_region_bindings,
+            outputs,
+            &mut mappings,
+        )?;
+    }
+    Ok(mappings)
+}
+
+fn bind_raw_mlir_side(
+    function: &str,
+    side: &str,
+    memrefs: &[String],
+    bindings: &[crate::mlir::MlirMemRegionBinding],
+    handles: &[String],
+    mappings: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    let mut regions = Vec::new();
+    for memref in memrefs {
+        let region = bindings
+            .iter()
+            .find(|binding| &binding.memref == memref)
+            .ok_or_else(|| {
+                format!("MLIR function '{function}' {side} '%{memref}' has no loom.bind_mem")
+            })?
+            .region
+            .clone();
+        if !regions.contains(&region) {
+            regions.push(region);
+        }
+    }
+    if regions.is_empty() && handles.is_empty() {
+        return Ok(());
+    }
+    let assignments = if handles.len() == 1 {
+        regions
+            .into_iter()
+            .map(|region| (region, handles[0].clone()))
+            .collect::<Vec<_>>()
+    } else if handles.len() == regions.len() {
+        regions.into_iter().zip(handles.iter().cloned()).collect()
+    } else {
+        return Err(format!(
+            "MLIR function '{function}' has {} distinct {side} memory bindings but the architecture supplies {} handles",
+            regions.len(),
+            handles.len()
+        ));
+    };
+    for (region, handle) in assignments {
+        if let Some(previous) = mappings.insert(region.clone(), handle.clone())
+            && previous != handle
+        {
+            return Err(format!(
+                "MLIR memory region '@{region}' maps to both '@{previous}' and '@{handle}'"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn rewrite_raw_mlir_module(
+    source: &str,
+    module_name: &str,
+    memory_symbols: &BTreeMap<String, String>,
+) -> String {
+    let mut output = String::with_capacity(source.len());
+    let mut module_rewritten = false;
+    for line in source.lines() {
+        let mut line = line.to_string();
+        if !module_rewritten {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("module @") {
+                let end = rest
+                    .find(|character: char| character.is_whitespace() || character == '{')
+                    .unwrap_or(rest.len());
+                let old = &rest[..end];
+                line = line.replacen(&format!("@{old}"), &format!("@{module_name}"), 1);
+                module_rewritten = true;
+            }
+        }
+        for (authored, exported) in memory_symbols {
+            line = replace_symbol(&line, authored, exported);
+        }
+        output.push_str(&line);
+        output.push('\n');
+    }
+    if !source.ends_with('\n') {
+        output.pop();
+    }
+    output
+}
+
+fn replace_symbol(line: &str, authored: &str, exported: &str) -> String {
+    let needle = format!("@{authored}");
+    let mut output = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(offset) = rest.find(&needle) {
+        let end = offset + needle.len();
+        let boundary = rest[end..]
+            .chars()
+            .next()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+        output.push_str(&rest[..offset]);
+        if boundary {
+            output.push('@');
+            output.push_str(exported);
+            rest = &rest[end..];
+        } else {
+            output.push_str(&rest[offset..end]);
+            rest = &rest[end..];
+        }
+    }
+    output.push_str(rest);
+    output
+}
+
 struct EmittedProcessor {
+    name: String,
     ssa: String,
-    domain: Vec<IndexDomain>,
+    domain: Vec<Axis>,
 }
 
 fn endpoint_base_memory<'a>(
@@ -321,8 +496,7 @@ fn endpoint_base_memory<'a>(
     endpoint: &'a crate::arch::MemoryEndpoint,
 ) -> &'a str {
     architecture
-        .memory_catalog
-        .region(&endpoint.memory)
+        .memory_alias(&endpoint.memory)
         .map_or(endpoint.memory.as_str(), |region| {
             region.endpoint.memory.as_str()
         })
@@ -333,8 +507,7 @@ fn endpoint_selection_prefix(
     endpoint: &MemoryEndpoint,
 ) -> Result<usize, AdlExportError> {
     let endpoint = architecture
-        .memory_catalog
-        .region(&endpoint.memory)
+        .memory_alias(&endpoint.memory)
         .map_or(endpoint, |region| &region.endpoint);
     let memory =
         architecture
@@ -400,13 +573,31 @@ fn endpoint_memory_symbol(
         })
 }
 
+fn endpoint_loom_binding(
+    emitter: &Emitter,
+    architecture: &Architecture,
+    endpoint: &MemoryEndpoint,
+) -> Result<LoomMemoryBinding, AdlExportError> {
+    let memory_name = endpoint_base_memory(architecture, endpoint);
+    let memory = architecture
+        .memory(memory_name)
+        .expect("canonical architecture has valid endpoint memories");
+    let definition = architecture
+        .memory_definition(memory)
+        .expect("canonical architecture has valid memory definitions");
+    Ok(LoomMemoryBinding {
+        symbol: endpoint_memory_symbol(emitter, architecture, endpoint)?,
+        technology: definition.technology.clone(),
+        scope_extent: endpoint_scope_extent(architecture, endpoint)?,
+    })
+}
+
 fn endpoint_scope_extent(
     architecture: &Architecture,
     endpoint: &MemoryEndpoint,
 ) -> Result<Vec<u64>, AdlExportError> {
     let endpoint = architecture
-        .memory_catalog
-        .region(&endpoint.memory)
+        .memory_alias(&endpoint.memory)
         .map_or(endpoint, |region| &region.endpoint);
     let memory =
         architecture
@@ -418,17 +609,37 @@ fn endpoint_scope_extent(
     let prefix = endpoint_selection_prefix(architecture, endpoint)?;
     Ok(memory.indices[prefix..]
         .iter()
-        .map(|dimension| dimension.size)
+        .map(|dimension| dimension.extent)
         .collect())
 }
 
-fn export_scope_domains(architecture: &Architecture) -> Vec<Vec<IndexDomain>> {
-    let mut domains = architecture
-        .processors
-        .iter()
-        .map(|processor| processor.relation.domain.clone())
-        .filter(|domain| !domain.is_empty())
-        .collect::<Vec<_>>();
+fn export_scope_domains(architecture: &Architecture) -> Vec<Vec<Axis>> {
+    let mut domains = if architecture.scopes.is_empty() {
+        architecture
+            .processors
+            .iter()
+            .map(|processor| processor.axes.clone())
+            .filter(|domain| !domain.is_empty())
+            .collect::<Vec<_>>()
+    } else {
+        architecture
+            .scopes
+            .iter()
+            .map(|scope| {
+                scope
+                    .axes
+                    .iter()
+                    .map(|name| {
+                        architecture
+                            .axis(name)
+                            .expect("scope axis was validated")
+                            .clone()
+                    })
+                    .collect::<Vec<Axis>>()
+            })
+            .filter(|domain| !domain.is_empty())
+            .collect::<Vec<_>>()
+    };
     domains.sort_by(|lhs, rhs| {
         lhs.len().cmp(&rhs.len()).then_with(|| {
             lhs.iter()
@@ -440,12 +651,13 @@ fn export_scope_domains(architecture: &Architecture) -> Vec<Vec<IndexDomain>> {
     domains
 }
 
-fn is_domain_prefix(prefix: &[IndexDomain], domain: &[IndexDomain]) -> bool {
+fn is_domain_prefix(prefix: &[Axis], domain: &[Axis]) -> bool {
     prefix.len() <= domain.len() && prefix.iter().zip(domain).all(|(lhs, rhs)| lhs == rhs)
 }
 
 struct ExportScope {
-    domain: Vec<IndexDomain>,
+    name: String,
+    domain: Vec<Axis>,
     parent: Option<usize>,
     children: Vec<usize>,
     processors: Vec<String>,
@@ -455,47 +667,110 @@ struct ExportScope {
 fn emit_architecture_hierarchy(
     emitter: &mut Emitter,
     architecture: &Architecture,
-    domains: &[Vec<IndexDomain>],
+    domains: &[Vec<Axis>],
     processors: &[EmittedProcessor],
-) {
-    let mut scopes = domains
-        .iter()
-        .cloned()
-        .map(|domain| ExportScope {
-            domain,
-            parent: None,
-            children: Vec::new(),
-            processors: Vec::new(),
-            memories: Vec::new(),
-        })
-        .collect::<Vec<_>>();
-    for index in 0..scopes.len() {
-        scopes[index].parent = (0..scopes.len())
-            .filter(|candidate| {
-                scopes[*candidate].domain.len() < scopes[index].domain.len()
-                    && is_domain_prefix(&scopes[*candidate].domain, &scopes[index].domain)
+) -> Result<(), AdlExportError> {
+    let explicit = !architecture.scopes.is_empty();
+    let mut scopes = if explicit {
+        architecture
+            .scopes
+            .iter()
+            .map(|scope| ExportScope {
+                name: scope.name.clone(),
+                domain: scope
+                    .axes
+                    .iter()
+                    .map(|name| {
+                        architecture
+                            .axis(name)
+                            .expect("scope axis was validated")
+                            .clone()
+                    })
+                    .collect(),
+                parent: None,
+                children: Vec::new(),
+                processors: scope
+                    .processors
+                    .iter()
+                    .map(|name| {
+                        processors
+                            .iter()
+                            .find(|processor| &processor.name == name)
+                            .expect("scope processor was validated")
+                            .ssa
+                            .clone()
+                    })
+                    .collect(),
+                memories: scope.memories.clone(),
             })
-            .max_by_key(|candidate| scopes[*candidate].domain.len());
+            .collect::<Vec<_>>()
+    } else {
+        domains
+            .iter()
+            .cloned()
+            .map(|domain| ExportScope {
+                name: domain
+                    .iter()
+                    .map(|dimension| dimension.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("_"),
+                domain,
+                parent: None,
+                children: Vec::new(),
+                processors: Vec::new(),
+                memories: Vec::new(),
+            })
+            .collect::<Vec<_>>()
+    };
+    if explicit {
+        for (index, scope) in architecture.scopes.iter().enumerate() {
+            scopes[index].parent = scope.parent.as_ref().map(|parent| {
+                architecture
+                    .scopes
+                    .iter()
+                    .position(|candidate| &candidate.name == parent)
+                    .expect("scope parent was validated")
+            });
+        }
+    } else {
+        for index in 0..scopes.len() {
+            scopes[index].parent = (0..scopes.len())
+                .filter(|candidate| {
+                    scopes[*candidate].domain.len() < scopes[index].domain.len()
+                        && is_domain_prefix(&scopes[*candidate].domain, &scopes[index].domain)
+                })
+                .max_by_key(|candidate| scopes[*candidate].domain.len());
+        }
     }
     for index in 0..scopes.len() {
         if let Some(parent) = scopes[index].parent {
             scopes[parent].children.push(index);
         }
     }
-    for processor in processors {
-        if let Some(scope) = scopes
-            .iter_mut()
-            .find(|scope| scope.domain == processor.domain)
-        {
-            scope.processors.push(processor.ssa.clone());
+    if !explicit {
+        for processor in processors {
+            if let Some(scope) = scopes
+                .iter_mut()
+                .find(|scope| scope.domain == processor.domain)
+            {
+                scope.processors.push(processor.ssa.clone());
+            }
         }
     }
     let mut memory_owners = Vec::new();
     for memory in &architecture.memories {
-        let owner = scopes
-            .iter()
-            .position(|scope| scope.domain == memory.indices);
-        if let Some(owner) = owner {
+        let owner = if explicit {
+            scopes
+                .iter()
+                .position(|scope| scope.memories.contains(&memory.name))
+        } else {
+            scopes
+                .iter()
+                .position(|scope| scope.domain == memory.indices)
+        };
+        if let Some(owner) = owner
+            && !explicit
+        {
             scopes[owner].memories.push(memory.name.clone());
         }
         memory_owners.push(owner);
@@ -527,12 +802,7 @@ fn emit_architecture_hierarchy(
                     .clone()
             })
             .collect::<Vec<_>>();
-        let scope_name = scopes[index]
-            .domain
-            .iter()
-            .map(|dimension| dimension.name.as_str())
-            .collect::<Vec<_>>()
-            .join("_");
+        let scope_name = scopes[index].name.clone();
         let element = emitter.next_ssa();
         writeln!(
             emitter.body,
@@ -547,7 +817,7 @@ fn emit_architecture_hierarchy(
             .map_or(0, |parent| scopes[parent].domain.len());
         let dimensions = scopes[index].domain[parent_len..]
             .iter()
-            .map(|dimension| emitter.emit_dimension(&dimension.name, dimension.size))
+            .map(|dimension| emitter.emit_dimension(&dimension.name, dimension.extent))
             .collect::<Vec<_>>();
         let region_memories = architecture
             .memories
@@ -564,10 +834,18 @@ fn emit_architecture_hierarchy(
                 })
             })
             .collect::<Vec<_>>();
-        let memory_clause = if region_memories.is_empty() {
-            String::new()
-        } else {
-            format!(", mem_region [{}]", region_memories.join(", "))
+        // `adl.arch.scale` carries at most one region out to its parent level, so a
+        // scope owning several (an L1 and an L2 array on the same cluster) has no
+        // faithful encoding in the dialect.
+        let memory_clause = match region_memories.as_slice() {
+            [] => String::new(),
+            [region] => format!(", mem_region {region}"),
+            regions => {
+                return Err(AdlExportError::MultipleMemoryRegions {
+                    scope: scope_name,
+                    count: regions.len(),
+                });
+            }
         };
         let scaled = emitter.next_ssa();
         writeln!(
@@ -589,7 +867,11 @@ fn emit_architecture_hierarchy(
     root_values.extend(
         processors
             .iter()
-            .filter(|processor| processor.domain.is_empty())
+            .filter(|processor| {
+                !scopes
+                    .iter()
+                    .any(|scope| scope.processors.contains(&processor.ssa))
+            })
             .map(|processor| processor.ssa.clone()),
     );
     let root_memories = architecture
@@ -614,9 +896,12 @@ fn emit_architecture_hierarchy(
         root_memories.join(", ")
     )
     .unwrap();
+    Ok(())
 }
 
 fn validate_processors(architecture: &Architecture) -> Result<(), AdlExportError> {
+    use crate::mlir::MlirOperationKind;
+
     for processor in &architecture.processors {
         let definition = architecture
             .processor_definition(&processor.definition)
@@ -626,49 +911,34 @@ fn validate_processors(architecture: &Architecture) -> Result<(), AdlExportError
                 processor: processor.name.clone(),
             });
         };
-        let movement = definition.source.lines().find_map(|line| {
-            line.split_whitespace()
-                .find(|token| token.starts_with("loom."))
-                .map(str::to_string)
-        });
-        let compute = definition.source.contains("linalg.");
-        match (processor_type, movement.as_deref(), compute) {
-            (ProcessorType::Compute, Some(_), _) => {
-                return Err(AdlExportError::ComputeContainsMovement {
-                    processor: processor.name.clone(),
-                    function: definition
-                        .functions
-                        .first()
-                        .map(|function| function.func.name.clone())
-                        .unwrap_or_default(),
-                });
-            }
-            (ProcessorType::DataMover, _, true) => {
-                return Err(AdlExportError::DataMoverContainsCompute {
-                    processor: processor.name.clone(),
-                    function: definition
-                        .functions
-                        .first()
-                        .map(|function| function.func.name.clone())
-                        .unwrap_or_default(),
-                });
-            }
-            _ => {}
-        }
-        for operation in definition
-            .source
-            .lines()
-            .flat_map(|line| line.split_whitespace())
-            .filter(|token| token.starts_with("loom."))
-        {
-            let operation = operation.trim_end_matches(|character: char| {
-                !character.is_ascii_alphanumeric() && character != '.'
-            });
-            if !matches!(operation, "loom.copy" | "loom.broadcast" | "loom.gather") {
-                return Err(AdlExportError::UnsupportedOperation {
-                    processor: processor.name.clone(),
-                    operation: operation.into(),
-                });
+        for function in &definition.functions {
+            let Some(details) = &function.func.mlir_details else {
+                continue;
+            };
+            for operation in &details.operations {
+                match (processor_type, operation) {
+                    (ProcessorType::Compute, MlirOperationKind::Copy)
+                    | (ProcessorType::Compute, MlirOperationKind::Broadcast)
+                    | (ProcessorType::Compute, MlirOperationKind::Gather) => {
+                        return Err(AdlExportError::ComputeContainsMovement {
+                            processor: processor.name.clone(),
+                            function: function.func.name.clone(),
+                        });
+                    }
+                    (ProcessorType::DataMover, MlirOperationKind::Linalg(_)) => {
+                        return Err(AdlExportError::DataMoverContainsCompute {
+                            processor: processor.name.clone(),
+                            function: function.func.name.clone(),
+                        });
+                    }
+                    (_, MlirOperationKind::UnsupportedLoom(operation)) => {
+                        return Err(AdlExportError::UnsupportedOperation {
+                            processor: processor.name.clone(),
+                            operation: operation.clone(),
+                        });
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -711,7 +981,7 @@ impl Emitter {
         &mut self,
         name: &str,
         definition: &MemoryDefinition,
-        indices: &[crate::arch::IndexDomain],
+        indices: &[crate::arch::Axis],
         prefix_lengths: &[usize],
     ) -> Result<String, AdlExportError> {
         definition
@@ -766,7 +1036,7 @@ impl Emitter {
             }
             let dimensions = indices[target_prefix..current_prefix]
                 .iter()
-                .map(|index| self.emit_dimension(&index.name, index.size))
+                .map(|index| self.emit_dimension(&index.name, index.extent))
                 .collect::<Vec<_>>();
             let array = self.next_ssa();
             array_depth += 1;
@@ -793,7 +1063,7 @@ impl Emitter {
         Ok(current)
     }
 
-    fn emit_resource(&mut self, resource: &ResourceArray) -> String {
+    fn emit_resource(&mut self, resource: &Resource) -> String {
         if let Some(value) = self.resource_ssa.get(&resource.name) {
             return value.clone();
         }

@@ -1,7 +1,11 @@
 name: single_core
 memories:
   L1: []
-processor:
-  vector_lane.yaml:
-    - inputs: ["L1"]
-      outputs: ["L1"]
+processors:
+  vector_lane:
+    definition: vector_lane.yaml
+    domain: []
+    inputs:
+    - L1
+    outputs:
+    - L1

@@ -2,12 +2,49 @@ name: vector_lane
 type: compute
 source: vector_lane.loom
 resources:
-  - name: vector_lane
+- name: vector_lane
 performance:
+  vec_max_f16:
+  - latency: '1'
+    volume: L
+    throughput: '1024'
   vec_exp_f16:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "1"
-            volume: "L"
-            throughput: "7"
+  - latency: '1'
+    volume: L
+    throughput: '7'
+  vec_sum_f16:
+  - latency: '1'
+    volume: L
+    throughput: '1024'
+  vec_add_f16:
+  - latency: '1'
+    volume: L
+    throughput: '1024'
+  vec_mul_f16:
+  - latency: '1'
+    volume: L
+    throughput: '1024'
+  vec_div_f16:
+  - latency: '1'
+    volume: L
+    throughput: '6'
+  vec_sub_f16:
+  - latency: '1'
+    volume: L
+    throughput: '4'
+  vec_powf_f16:
+  - latency: '1'
+    volume: L
+    throughput: '7'
+  vec_cmpf_ogt_f16:
+  - latency: '1'
+    volume: L
+    throughput: '8'
+  vec_select_f16:
+  - latency: '1'
+    volume: L
+    throughput: '8'
+  vec_log_f16:
+  - latency: '1'
+    volume: L
+    throughput: '7'

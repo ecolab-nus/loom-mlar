@@ -1,0 +1,9 @@
+memories:
+  L1_gcram:
+    technology: gcram
+    capacity: 65536
+    word_size: 16
+  L1_rram:
+    technology: rram
+    capacity: 262144
+    word_size: 16

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::MlirFunc;
-use crate::arch::{FunctionProcessor, PerfScenario, Sym};
-use crate::math::Expr;
+use crate::arch::{PerfScenario, ProcessorSelector};
+use crate::math::{Expr, Sym};
+use crate::mlir::MlirFunc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Schedule {
@@ -19,10 +19,43 @@ pub enum Schedule {
     Func {
         func: MlirFunc,
         #[serde(skip_serializing_if = "Option::is_none")]
-        processor: Option<FunctionProcessor>,
+        scenarios: Option<Vec<PerfScenario>>,
+    },
+    /// A function explicitly assigned to one connected processor array.
+    PlacedFunc {
+        func: MlirFunc,
+        target: ProcessorTarget,
         #[serde(skip_serializing_if = "Option::is_none")]
         scenarios: Option<Vec<PerfScenario>>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessorTarget {
+    pub array: String,
+    /// Empty selects the array as a whole. Otherwise selector rank must match
+    /// the processor array's inferred domain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selectors: Vec<ProcessorSelector>,
+}
+
+impl ProcessorTarget {
+    pub fn array(name: impl Into<String>) -> Self {
+        Self {
+            array: name.into(),
+            selectors: Vec::new(),
+        }
+    }
+
+    pub fn select(
+        name: impl Into<String>,
+        selectors: impl IntoIterator<Item = ProcessorSelector>,
+    ) -> Self {
+        Self {
+            array: name.into(),
+            selectors: selectors.into_iter().collect(),
+        }
+    }
 }
 
 /// Maps MLIR symbols to symbolic expressions.

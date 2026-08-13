@@ -1,19 +1,31 @@
 use serde::{Deserialize, Serialize};
 
-use super::index::IndexDomain;
+use super::axis::Axis;
 
 /// An intrinsic or shared resource, optionally indexed like its processor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResourceArray {
-    pub name: String,
+pub struct Resource {
+    pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub indices: Vec<IndexDomain>,
+    pub(crate) indices: Vec<Axis>,
     /// `None` models an exclusive resource; `Some(n)` models capacity `n`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub capacity: Option<u64>,
+    pub(crate) capacity: Option<u64>,
 }
 
-impl ResourceArray {
+impl Resource {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn axes(&self) -> &[Axis] {
+        &self.indices
+    }
+
+    pub fn capacity(&self) -> Option<u64> {
+        self.capacity
+    }
+
     pub fn exclusive(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -30,8 +42,21 @@ impl ResourceArray {
         }
     }
 
-    pub fn indexed(mut self, indices: Vec<IndexDomain>) -> Self {
+    pub fn indexed(mut self, indices: Vec<Axis>) -> Self {
         self.indices = indices;
         self
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("resource name cannot be empty".into());
+        }
+        if self.capacity == Some(0) {
+            return Err(format!(
+                "resource '{}' capacity must be positive",
+                self.name
+            ));
+        }
+        Ok(())
     }
 }

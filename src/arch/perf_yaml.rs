@@ -3,66 +3,33 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::perf::{FuncPerfModel, PerfScenario, SimpleTimeCost, TimeCost};
-use super::size_dim::Sym;
+use super::perf::{FuncPerfModel, PerfScenario, TimeCost};
+use crate::math::Sym;
 use crate::math::{ConstraintExpr, Expr, ParseError};
-use crate::schedule::{MlirFunc, MlirModule};
+use crate::mlir::{MlirFunc, MlirModule};
 
-/// Declarative performance model specification loaded from YAML.
-///
-/// Exact function models live under `functions.<func_name>`. Reusable time-cost
-/// definitions may live under `time_costs` and be reused with YAML anchors and
-/// aliases.
+/// Flat declarative performance alternatives keyed by operation name.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PerfYamlSpec {
-    #[serde(default, rename = "time_costs")]
-    _time_costs: BTreeMap<String, TimeCostYaml>,
-    #[serde(default)]
-    functions: BTreeMap<String, PerfFunctionYaml>,
+pub struct PerformanceYaml {
+    #[serde(flatten)]
+    functions: BTreeMap<String, Vec<PerfAlternativeYaml>>,
 }
 
-/// YAML representation for one concrete function performance model.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PerfFunctionYaml {
-    symbols: Option<Vec<String>>,
-    constraints: Option<String>,
+struct PerfAlternativeYaml {
     #[serde(default)]
-    time_cost: Option<TimeCostYaml>,
-    #[serde(default)]
-    scenarios: Vec<PerfScenarioYaml>,
-}
-
-/// YAML representation for a scenario time-cost variant.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TimeCostYaml {
-    simple: Option<SimpleCostYaml>,
-}
-
-/// YAML representation for the `SimpleTimeCost` time-cost variant.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SimpleCostYaml {
-    fixed_latency: String,
+    constraint: Option<String>,
+    latency: String,
     volume: String,
     throughput: String,
-}
-
-/// YAML representation for one constrained scenario.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PerfScenarioYaml {
-    constraints: Option<String>,
-    time_cost: Option<TimeCostYaml>,
 }
 
 #[derive(Debug)]
 pub enum PerfYamlError {
     Io(std::io::Error),
     Yaml(serde_yaml::Error),
-    InvalidSpec(String),
+    InvalidModel(String),
     Expr {
         field: String,
         source: ParseError,
@@ -78,7 +45,7 @@ pub enum PerfYamlError {
     },
 }
 
-impl PerfYamlSpec {
+impl PerformanceYaml {
     /// Parse a performance model specification from YAML text.
     pub fn from_yaml_str(input: &str) -> Result<Self, PerfYamlError> {
         serde_yaml::from_str(input).map_err(PerfYamlError::Yaml)
@@ -92,11 +59,29 @@ impl PerfYamlSpec {
 
     /// Build the performance model for one MLIR function.
     pub fn model_for_func(&self, func: &MlirFunc) -> Result<FuncPerfModel, PerfYamlError> {
-        let model = self
+        let alternatives = self
             .functions
             .get(&func.name)
             .ok_or_else(|| PerfYamlError::UnknownFunction(func.name.clone()))?
-            .to_model(&format!("functions.{}", func.name))?;
+            .as_slice();
+        if alternatives.is_empty() {
+            return Err(PerfYamlError::InvalidModel(format!(
+                "{} must define at least one performance alternative",
+                func.name
+            )));
+        }
+        let scenarios = alternatives
+            .iter()
+            .enumerate()
+            .map(|(index, alternative)| alternative.to_scenario(&format!("{}[{index}]", func.name)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut model = FuncPerfModel::builder().scenarios(scenarios).build();
+        for symbol in &func.symbols {
+            if !model.symbols.contains(symbol) {
+                model.symbols.push(symbol.clone());
+            }
+        }
+        model.symbols.sort();
 
         model
             .validate_for_func(func)
@@ -124,82 +109,20 @@ impl PerfYamlSpec {
     }
 }
 
-impl PerfFunctionYaml {
-    fn to_model(&self, label: &str) -> Result<FuncPerfModel, PerfYamlError> {
-        if self.scenarios.is_empty() && self.time_cost.is_none() {
-            return Err(PerfYamlError::InvalidSpec(format!(
-                "{label}: set `time_cost` or at least one scenario"
-            )));
-        }
-
-        let mut builder = FuncPerfModel::builder();
-        if let Some(symbols) = &self.symbols {
-            builder = builder.symbols(symbols.iter().cloned());
-        }
-        if let Some(constraints) = self.constraints.as_deref() {
-            builder = builder.constraints(parse_constraint(
-                &format!("{label}.constraints"),
-                constraints,
-            )?);
-        }
-
-        let scenarios = if let Some(time_cost) = &self.time_cost {
-            if !self.scenarios.is_empty() {
-                return Err(PerfYamlError::InvalidSpec(format!(
-                    "{label}: `time_cost` and `scenarios` are mutually exclusive"
-                )));
-            }
-            vec![PerfScenario::new(
-                time_cost.to_time_cost(&format!("{label}.time_cost"))?,
-            )]
-        } else {
-            self.scenarios
-                .iter()
-                .enumerate()
-                .map(|(idx, scenario)| scenario.to_scenario(&format!("{label}.scenarios[{idx}]")))
-                .collect::<Result<Vec<_>, _>>()?
-        };
-
-        Ok(builder.scenarios(scenarios).build())
-    }
-}
-
-impl SimpleCostYaml {
-    fn to_cost(&self, label: &str) -> Result<SimpleTimeCost, PerfYamlError> {
-        Ok(SimpleTimeCost::new(
-            parse_expr(&format!("{label}.fixed_latency"), &self.fixed_latency)?,
-            parse_expr(&format!("{label}.volume"), &self.volume)?,
-            parse_expr(&format!("{label}.throughput"), &self.throughput)?,
-        ))
-    }
-}
-
-impl TimeCostYaml {
-    fn to_time_cost(&self, label: &str) -> Result<TimeCost, PerfYamlError> {
-        match &self.simple {
-            Some(simple) => Ok(TimeCost::Simple(
-                simple.to_cost(&format!("{label}.simple"))?,
-            )),
-            None => Err(PerfYamlError::InvalidSpec(format!(
-                "{label}: set exactly one time_cost kind; supported kind is simple"
-            ))),
-        }
-    }
-}
-
-impl PerfScenarioYaml {
+impl PerfAlternativeYaml {
     fn to_scenario(&self, label: &str) -> Result<PerfScenario, PerfYamlError> {
-        let constraints = match self.constraints.as_deref() {
-            Some(constraints) => parse_constraint(&format!("{label}.constraints"), constraints)?,
+        let constraint = match self.constraint.as_deref() {
+            Some(constraint) => parse_constraint(&format!("{label}.constraint"), constraint)?,
             None => ConstraintExpr::True,
         };
-        let time_cost = self
-            .time_cost
-            .as_ref()
-            .ok_or_else(|| PerfYamlError::InvalidSpec(format!("{label}: set time_cost.simple")))?
-            .to_time_cost(&format!("{label}.time_cost"))?;
-
-        Ok(PerfScenario::with_constraints(constraints, time_cost))
+        Ok(PerfScenario::with_constraints(
+            constraint,
+            TimeCost::throughput(
+                parse_expr(&format!("{label}.latency"), &self.latency)?,
+                parse_expr(&format!("{label}.volume"), &self.volume)?,
+                parse_expr(&format!("{label}.throughput"), &self.throughput)?,
+            ),
+        ))
     }
 }
 
@@ -222,7 +145,7 @@ impl std::fmt::Display for PerfYamlError {
         match self {
             PerfYamlError::Io(err) => write!(f, "failed to read perf YAML: {err}"),
             PerfYamlError::Yaml(err) => write!(f, "failed to parse perf YAML: {err}"),
-            PerfYamlError::InvalidSpec(msg) => write!(f, "invalid perf YAML: {msg}"),
+            PerfYamlError::InvalidModel(msg) => write!(f, "invalid perf YAML: {msg}"),
             PerfYamlError::Expr { field, source } => {
                 write!(f, "invalid expression in {field}: {source}")
             }
@@ -251,7 +174,7 @@ impl std::error::Error for PerfYamlError {
             PerfYamlError::Yaml(err) => Some(err),
             PerfYamlError::Expr { source, .. } => Some(source),
             PerfYamlError::Constraint { source, .. } => Some(source),
-            PerfYamlError::InvalidSpec(_)
+            PerfYamlError::InvalidModel(_)
             | PerfYamlError::UnknownFunction(_)
             | PerfYamlError::Validation { .. } => None,
         }
@@ -263,69 +186,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_exact_function_model() {
-        let spec = PerfYamlSpec::from_yaml_str(
+    fn parses_flat_performance_alternatives() {
+        let spec = PerformanceYaml::from_yaml_str(
             r#"
-functions:
-  elementwise_add_f16:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "10"
-            volume: "M * N"
-            throughput: "43"
+matmul:
+  - constraint: "M * N >= 8192"
+    latency: "8"
+    volume: "2 * M * N * K"
+    throughput: "716"
+  - constraint: "M * N < 8192"
+    latency: "4"
+    volume: "2 * M * N * K"
+    throughput: "256"
 "#,
         )
         .expect("YAML should parse");
 
-        let add = spec
-            .model_for_func(&MlirFunc::named("elementwise_add_f16"))
+        let model = spec
+            .model_for_func(&MlirFunc::with_symbols(
+                "matmul",
+                Sym::from_names(["M", "N", "K"]),
+            ))
             .expect("exact function model should load");
-        assert_eq!(add.num_scenarios(), 1);
-        assert!(add.validate().is_ok());
+        assert_eq!(model.num_scenarios(), 2);
+        assert!(model.validate().is_ok());
     }
 
     #[test]
-    fn parses_anchor_reused_time_costs() {
-        let spec = PerfYamlSpec::from_yaml_str(
+    fn parses_unconditional_alternative() {
+        let spec = PerformanceYaml::from_yaml_str(
             r#"
-time_costs:
-  matmul_large: &matmul_large
-    simple:
-      fixed_latency: "M * N / 2"
-      volume: "2 * M * N * K"
-      throughput: "716"
-
-functions:
-  matmul_f16:
-    constraints: "M >= 32 && N >= 32 && K >= 32"
-    scenarios:
-      - constraints: "M * N >= 8192"
-        time_cost: *matmul_large
+add:
+  - latency: "2"
+    volume: "L"
+    throughput: "32"
 "#,
         )
-        .expect("YAML anchors should parse");
+        .expect("flat YAML should parse");
 
-        let matmul = spec
-            .model_for_func(&MlirFunc::named("matmul_f16"))
+        let add = spec
+            .model_for_func(&MlirFunc::with_symbols("add", Sym::from_names(["L"])))
             .expect("function model should load");
-        assert_eq!(matmul.num_scenarios(), 1);
-        assert!(matmul.validate().is_ok());
+        assert_eq!(add.num_scenarios(), 1);
+        assert_eq!(add.scenarios[0].constraints, ConstraintExpr::True);
     }
 
     #[test]
     fn rejects_unknown_function() {
-        let spec = PerfYamlSpec::from_yaml_str(
-            r#"
-functions:
-  elementwise_add_f16:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "10"
-            volume: "M * N"
-            throughput: "43"
-"#,
+        let spec = PerformanceYaml::from_yaml_str(
+            "f:\n  - latency: '1'\n    volume: '1'\n    throughput: '1'\n",
         )
         .expect("YAML should parse");
 
@@ -336,80 +245,15 @@ functions:
     }
 
     #[test]
-    fn rejects_missing_simple_time_cost() {
-        let spec = PerfYamlSpec::from_yaml_str(
-            r#"
-functions:
-  elementwise_add_f16:
-    scenarios:
-      - time_cost: {}
-"#,
-        )
-        .expect("YAML should parse");
-
-        let err = spec
-            .model_for_func(&MlirFunc::named("elementwise_add_f16"))
-            .expect_err("missing simple time cost should fail");
-        assert!(matches!(err, PerfYamlError::InvalidSpec(_)));
-    }
-
-    #[test]
-    fn rejects_function_without_scenarios() {
-        let spec = PerfYamlSpec::from_yaml_str(
-            r#"
-functions:
-  elementwise_add_f16: {}
-"#,
-        )
-        .expect("YAML should parse");
-
-        let err = spec
-            .model_for_func(&MlirFunc::named("elementwise_add_f16"))
-            .expect_err("missing scenarios should fail");
-        assert!(matches!(err, PerfYamlError::InvalidSpec(_)));
-    }
-
-    #[test]
-    fn rejects_misspelled_constraint_field() {
-        let err = PerfYamlSpec::from_yaml_str(
+    fn rejects_the_nested_legacy_shape() {
+        let error = PerformanceYaml::from_yaml_str(
             r#"
 functions:
   f:
-    constrants: "L > 0"
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "1"
-            volume: "L"
-            throughput: "32"
+    scenarios: []
 "#,
         )
-        .expect_err("unknown fields must fail");
-
-        assert!(err.to_string().contains("unknown field"));
-        assert!(err.to_string().contains("constrants"));
-    }
-
-    #[test]
-    fn validates_undeclared_symbols() {
-        let spec = PerfYamlSpec::from_yaml_str(
-            r#"
-functions:
-  f:
-    symbols: ["M"]
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "1"
-            volume: "M * N"
-            throughput: "1"
-"#,
-        )
-        .expect("YAML should parse");
-
-        let err = spec
-            .model_for_func(&MlirFunc::named("f"))
-            .expect_err("undeclared symbol should fail");
-        assert!(matches!(err, PerfYamlError::Validation { .. }));
+        .expect_err("legacy nesting must fail");
+        assert!(error.to_string().contains("sequence"));
     }
 }

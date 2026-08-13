@@ -1,300 +1,285 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 
-use super::expr::Sym;
-use super::parse::ParseError;
-use crate::arch::size_dim::Dimension;
-use std::collections::HashMap;
+use crate::arch::{Axis, EndpointParseError};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AffineExpr {
-    Var(Dimension),
-    Sym(Sym),
-    Const(i64),
-    Add(Box<AffineExpr>, Box<AffineExpr>),
-    MulConst(i64, Box<AffineExpr>),
-    Mod(Box<AffineExpr>, Box<AffineExpr>),
-    CeilDiv(Box<AffineExpr>, Box<AffineExpr>),
+pub use crate::arch::axis::AffineExpr;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AffineError {
+    Parse(EndpointParseError),
+    InvalidMap(String),
+    UnknownAxis(String),
+    UnknownVariable(String),
+    Arity { expected: usize, actual: usize },
+    Evaluation(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AffineMap {
-    pub src_dims: Vec<Dimension>,
-    pub dst_dims: Vec<Dimension>,
-    pub exprs: Vec<AffineExpr>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum AffineExprSimple {
-    Const(i64),
-    Var(Dimension),
-    Add(Box<AffineExprSimple>, Box<AffineExprSimple>),
-    MulConst(i64, Box<AffineExprSimple>),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IndexExpr(pub Vec<AffineExprSimple>);
-
-#[derive(Clone, Debug)]
-pub struct IndexSelector {
-    pub assigns: Vec<(Dimension, AffineExpr)>,
-}
-
-#[derive(Debug, Clone)]
-pub enum AffineExprTemplate {
-    Dim(String),
-    Sym(String),
-    Const(i64),
-    Add(Box<AffineExprTemplate>, Box<AffineExprTemplate>),
-    MulConst(i64, Box<AffineExprTemplate>),
-    Mod(Box<AffineExprTemplate>, Box<AffineExprTemplate>),
-    CeilDiv(Box<AffineExprTemplate>, Box<AffineExprTemplate>),
-}
-
-#[derive(Debug, Clone)]
-pub struct AffineMapTemplate {
-    pub source_dim_names: Vec<String>,
-    pub target_dim_names: Vec<String>,
-    pub map: Vec<AffineExprTemplate>,
-}
-
-impl AffineExpr {
-    pub fn eval(&self, vals: &[i64], src_dims: &[Dimension]) -> i64 {
-        self.eval_with_symbols(vals, src_dims, &HashMap::new())
-    }
-
-    pub fn eval_with_symbols(
-        &self,
-        vals: &[i64],
-        src_dims: &[Dimension],
-        sym_vals: &HashMap<Sym, i64>,
-    ) -> i64 {
+impl std::fmt::Display for AffineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AffineExpr::Var(dim) => src_dims
-                .iter()
-                .position(|d| d.name == dim.name)
-                .and_then(|idx| vals.get(idx).copied())
-                .unwrap_or(0),
-            AffineExpr::Sym(sym) => *sym_vals
-                .get(sym)
-                .unwrap_or_else(|| panic!("unbound symbol in eval")),
-            AffineExpr::Const(c) => *c,
-            AffineExpr::Add(a, b) => {
-                a.eval_with_symbols(vals, src_dims, sym_vals)
-                    + b.eval_with_symbols(vals, src_dims, sym_vals)
+            Self::Parse(error) => error.fmt(f),
+            Self::InvalidMap(message) => f.write_str(message),
+            Self::UnknownAxis(name) => write!(f, "unknown affine-map axis '{name}'"),
+            Self::UnknownVariable(name) => write!(f, "unknown affine variable '{name}'"),
+            Self::Arity { expected, actual } => {
+                write!(f, "affine map expects {expected} coordinates, got {actual}")
             }
-            AffineExpr::MulConst(c, expr) => c * expr.eval_with_symbols(vals, src_dims, sym_vals),
-            AffineExpr::Mod(a, b) => {
-                let d = b.eval_with_symbols(vals, src_dims, sym_vals);
-                if d == 0 {
-                    0
-                } else {
-                    a.eval_with_symbols(vals, src_dims, sym_vals).rem_euclid(d)
-                }
-            }
-            AffineExpr::CeilDiv(a, b) => {
-                let d = b.eval_with_symbols(vals, src_dims, sym_vals);
-                if d == 0 {
-                    0
-                } else {
-                    let n = a.eval_with_symbols(vals, src_dims, sym_vals);
-                    (n + d - 1) / d
-                }
-            }
+            Self::Evaluation(message) => f.write_str(message),
         }
     }
+}
 
-    pub fn var(dim: impl Into<Dimension>) -> Self {
-        AffineExpr::Var(dim.into())
-    }
+impl std::error::Error for AffineError {}
 
-    pub fn sym(name: impl Into<String>) -> Self {
-        AffineExpr::Sym(Sym::new(name))
+impl From<EndpointParseError> for AffineError {
+    fn from(error: EndpointParseError) -> Self {
+        Self::Parse(error)
     }
+}
 
-    pub fn constant(value: i64) -> Self {
-        AffineExpr::Const(value)
-    }
-
-    pub fn add(a: AffineExpr, b: AffineExpr) -> Self {
-        AffineExpr::Add(Box::new(a), Box::new(b))
-    }
-
-    pub fn mul_const(c: i64, expr: AffineExpr) -> Self {
-        AffineExpr::MulConst(c, Box::new(expr))
-    }
-
-    pub fn modulo(a: AffineExpr, b: AffineExpr) -> Self {
-        AffineExpr::Mod(Box::new(a), Box::new(b))
-    }
-
-    pub fn ceildiv(a: AffineExpr, b: AffineExpr) -> Self {
-        AffineExpr::CeilDiv(Box::new(a), Box::new(b))
-    }
-
-    pub fn parse(input: &str, dims: &[Dimension]) -> Result<Self, ParseError> {
-        super::parse::parse_affine_expr(input, dims)
-    }
+/// A checked coordinate map over named architecture axes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffineMap {
+    source_axes: Vec<Axis>,
+    target_axes: Vec<Axis>,
+    expressions: Vec<AffineExpr>,
 }
 
 impl AffineMap {
-    pub fn new(src_dims: &[Dimension], dst_dims: &[Dimension], exprs: Vec<AffineExpr>) -> Self {
-        assert!(
-            exprs.len() == dst_dims.len(),
-            "expression count must match dst dimension count"
-        );
+    pub fn new(
+        source_axes: &[Axis],
+        target_axes: &[Axis],
+        expressions: Vec<AffineExpr>,
+    ) -> Result<Self, AffineError> {
+        if expressions.len() != target_axes.len() {
+            return Err(AffineError::Arity {
+                expected: target_axes.len(),
+                actual: expressions.len(),
+            });
+        }
+        let source_names = source_axes.iter().map(Axis::name).collect::<BTreeSet<_>>();
+        for variable in expressions.iter().flat_map(AffineExpr::variables) {
+            if !source_names.contains(variable.as_str()) {
+                return Err(AffineError::UnknownVariable(variable));
+            }
+        }
+        Ok(Self {
+            source_axes: source_axes.to_vec(),
+            target_axes: target_axes.to_vec(),
+            expressions,
+        })
+    }
+
+    pub fn identity(axes: &[Axis]) -> Self {
         Self {
-            src_dims: src_dims.to_vec(),
-            dst_dims: dst_dims.to_vec(),
-            exprs,
+            source_axes: axes.to_vec(),
+            target_axes: axes.to_vec(),
+            expressions: axes
+                .iter()
+                .map(|axis| AffineExpr::variable(axis.name()))
+                .collect(),
         }
     }
 
-    pub fn apply(&self, vals: &[i64]) -> Vec<i64> {
-        self.exprs
-            .iter()
-            .map(|e| e.eval(vals, &self.src_dims))
-            .collect()
+    pub fn parse(input: &str, axes: &[Axis]) -> Result<Self, AffineError> {
+        Self::parse_with_bindings(input, axes, &BTreeMap::new())
     }
 
-    pub fn apply_with_symbols(&self, vals: &[i64], sym_vals: &HashMap<Sym, i64>) -> Vec<i64> {
-        self.exprs
-            .iter()
-            .map(|e| e.eval_with_symbols(vals, &self.src_dims, sym_vals))
-            .collect()
-    }
-
-    pub fn src_dim_names(&self) -> Vec<String> {
-        self.src_dims.iter().map(|d| d.name.0.clone()).collect()
-    }
-
-    pub fn dst_dim_names(&self) -> Vec<String> {
-        self.dst_dims.iter().map(|d| d.name.0.clone()).collect()
-    }
-
-    pub fn identity(dims: &[Dimension]) -> Self {
-        let exprs = dims.iter().map(|d| AffineExpr::var(d.clone())).collect();
-        Self::new(dims, dims, exprs)
-    }
-
-    pub fn parse(input: &str, dims: &[Dimension]) -> Result<Self, ParseError> {
-        super::parse::parse_affine_map(input, dims)
-    }
-}
-
-impl AffineExprTemplate {
-    pub(crate) fn dim(name: impl Into<String>) -> Self {
-        AffineExprTemplate::Dim(name.into())
-    }
-
-    pub(crate) fn constant(value: i64) -> Self {
-        AffineExprTemplate::Const(value)
-    }
-
-    pub(crate) fn add(a: AffineExprTemplate, b: AffineExprTemplate) -> Self {
-        AffineExprTemplate::Add(Box::new(a), Box::new(b))
-    }
-
-    pub(crate) fn mul_const(c: i64, e: AffineExprTemplate) -> Self {
-        AffineExprTemplate::MulConst(c, Box::new(e))
-    }
-
-    pub(crate) fn modulo(a: AffineExprTemplate, b: AffineExprTemplate) -> Self {
-        AffineExprTemplate::Mod(Box::new(a), Box::new(b))
-    }
-
-    pub(crate) fn ceildiv(a: AffineExprTemplate, b: AffineExprTemplate) -> Self {
-        AffineExprTemplate::CeilDiv(Box::new(a), Box::new(b))
-    }
-
-    fn bind(&self, dims: &HashMap<String, Dimension>) -> Result<AffineExpr, String> {
-        match self {
-            AffineExprTemplate::Dim(n) => {
-                if let Some(d) = dims.get(n) {
-                    Ok(AffineExpr::var(d.clone()))
-                } else {
-                    Ok(AffineExpr::sym(n.clone()))
-                }
-            }
-            AffineExprTemplate::Sym(n) => Ok(AffineExpr::sym(n.clone())),
-            AffineExprTemplate::Const(v) => Ok(AffineExpr::constant(*v)),
-            AffineExprTemplate::Add(a, b) => Ok(AffineExpr::add(a.bind(dims)?, b.bind(dims)?)),
-            AffineExprTemplate::MulConst(c, e) => Ok(AffineExpr::mul_const(*c, e.bind(dims)?)),
-            AffineExprTemplate::Mod(a, b) => Ok(AffineExpr::modulo(a.bind(dims)?, b.bind(dims)?)),
-            AffineExprTemplate::CeilDiv(a, b) => {
-                Ok(AffineExpr::ceildiv(a.bind(dims)?, b.bind(dims)?))
-            }
-        }
-    }
-}
-
-impl AffineMapTemplate {
-    pub fn parse(input: &str) -> Result<Self, ParseError> {
-        super::parse::parse_affine_map_template(input)
-    }
-
-    pub fn bind<I>(&self, dims: I) -> Result<AffineMap, String>
-    where
-        I: IntoIterator,
-        I::Item: Into<Dimension>,
-    {
-        let dm: HashMap<String, Dimension> = dims
+    pub fn parse_with_bindings(
+        input: &str,
+        axes: &[Axis],
+        bindings: &BTreeMap<String, i64>,
+    ) -> Result<Self, AffineError> {
+        let (source, rest) = input
+            .split_once("->")
+            .ok_or_else(|| AffineError::InvalidMap("affine map is missing '->'".into()))?;
+        let (target, expressions) = rest
+            .split_once(':')
+            .ok_or_else(|| AffineError::InvalidMap("affine map is missing ':'".into()))?;
+        let source_names = parse_axis_list(source)?;
+        let target_names = parse_axis_list(target)?;
+        let source_axes = resolve_axes(&source_names, axes)?;
+        let target_axes = resolve_axes(&target_names, axes)?;
+        let expressions = expressions.trim();
+        let expressions = expressions
+            .strip_prefix('(')
+            .and_then(|value| value.strip_suffix(')'))
+            .ok_or_else(|| {
+                AffineError::InvalidMap("affine map results must be parenthesized".into())
+            })?;
+        let expressions = split_top_level(expressions)
             .into_iter()
-            .map(|d| {
-                let dim: Dimension = d.into();
-                (dim.name.0.clone(), dim)
-            })
-            .collect();
-        let src = self
-            .source_dim_names
-            .iter()
-            .map(|n| {
-                dm.get(n)
-                    .cloned()
-                    .ok_or_else(|| format!("unknown source dimension"))
+            .map(|expression| {
+                AffineExpr::parse(&substitute_identifiers(expression, bindings))
+                    .map_err(AffineError::from)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let dst = self
-            .target_dim_names
-            .iter()
-            .map(|n| {
-                dm.get(n)
-                    .cloned()
-                    .ok_or_else(|| format!("unknown target dimension"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let exprs = self
-            .map
-            .iter()
-            .map(|e| e.bind(&dm))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(AffineMap::new(&src, &dst, exprs))
+        Self::new(&source_axes, &target_axes, expressions)
     }
+
+    pub fn source_axes(&self) -> &[Axis] {
+        &self.source_axes
+    }
+
+    pub fn target_axes(&self) -> &[Axis] {
+        &self.target_axes
+    }
+
+    pub fn expressions(&self) -> &[AffineExpr] {
+        &self.expressions
+    }
+
+    pub fn apply(&self, coordinates: &[i64]) -> Result<Vec<i64>, AffineError> {
+        if coordinates.len() != self.source_axes.len() {
+            return Err(AffineError::Arity {
+                expected: self.source_axes.len(),
+                actual: coordinates.len(),
+            });
+        }
+        let values = self
+            .source_axes
+            .iter()
+            .zip(coordinates)
+            .map(|(axis, value)| (axis.name().to_string(), *value))
+            .collect::<BTreeMap<_, _>>();
+        self.expressions
+            .iter()
+            .map(|expression| {
+                expression.evaluate(&values).ok_or_else(|| {
+                    AffineError::Evaluation(format!(
+                        "could not evaluate affine expression {expression:?}"
+                    ))
+                })
+            })
+            .collect()
+    }
+}
+
+fn parse_axis_list(input: &str) -> Result<Vec<String>, AffineError> {
+    let input = input.trim();
+    let input = input
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .ok_or_else(|| AffineError::InvalidMap("affine-map axes must use '[...]'".into()))?;
+    if input.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    input
+        .split(',')
+        .map(|name| {
+            let name = name.trim();
+            if name.is_empty()
+                || !name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            {
+                Err(AffineError::InvalidMap(format!(
+                    "invalid affine-map axis '{name}'"
+                )))
+            } else {
+                Ok(name.to_string())
+            }
+        })
+        .collect()
+}
+
+fn resolve_axes(names: &[String], axes: &[Axis]) -> Result<Vec<Axis>, AffineError> {
+    names
+        .iter()
+        .map(|name| {
+            axes.iter()
+                .find(|axis| axis.name() == name)
+                .cloned()
+                .ok_or_else(|| AffineError::UnknownAxis(name.clone()))
+        })
+        .collect()
+}
+
+fn split_top_level(input: &str) -> Vec<&str> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let mut items = Vec::new();
+    for (offset, character) in input.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                items.push(input[start..offset].trim());
+                start = offset + 1;
+            }
+            _ => {}
+        }
+    }
+    items.push(input[start..].trim());
+    items
+}
+
+fn substitute_identifiers(input: &str, bindings: &BTreeMap<String, i64>) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) =
+        rest.find(|character: char| character.is_ascii_alphabetic() || character == '_')
+    {
+        output.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest
+            .find(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+            .unwrap_or(rest.len());
+        let identifier = &rest[..end];
+        if let Some(value) = bindings.get(identifier) {
+            output.push_str(&value.to_string());
+        } else {
+            output.push_str(identifier);
+        }
+        rest = &rest[end..];
+    }
+    output.push_str(rest);
+    output
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AffineExpr, Dimension};
+    use std::collections::BTreeMap;
+
+    use super::{AffineExpr, AffineMap};
+    use crate::arch::Axis;
 
     #[test]
-    fn parses_modulo_with_parentheses() {
-        let dim = Dimension::new_int("x", 1);
-        let expr = AffineExpr::parse("(x + 1) mod 8", &[dim.clone()]).expect("parse failed");
-        assert_eq!(expr.eval(&[3], &[dim]), 4);
+    fn parses_and_applies_wraparound_map() {
+        let axes = [Axis::new("x", 8), Axis::new("y", 8)];
+        let map = AffineMap::parse("[x, y] -> [x, y]: ((x + 1) mod 8, y)", &axes).unwrap();
+        assert_eq!(map.apply(&[7, 3]).unwrap(), [0, 3]);
     }
 
     #[test]
-    fn parses_ceildiv_and_mul_precedence() {
-        let dx = Dimension::new_int("x", 1);
-        let dy = Dimension::new_int("y", 1);
-        let expr = AffineExpr::parse("x ceildiv 4 + y * 2", &[dx.clone(), dy.clone()])
-            .expect("parse failed");
-        assert_eq!(expr.eval(&[7, 2], &[dx, dy]), 6);
+    fn substitutes_architecture_bindings() {
+        let axes = [Axis::new("x", 8)];
+        let bindings = BTreeMap::from([("X".to_string(), 8)]);
+        let map = AffineMap::parse_with_bindings("[x] -> [x]: ((x + 1) mod X)", &axes, &bindings)
+            .unwrap();
+        assert_eq!(map.apply(&[7]).unwrap(), [0]);
     }
 
     #[test]
-    fn parses_negative_constants() {
-        let dim = Dimension::new_int("x", 1);
-        let expr = AffineExpr::parse("-2 + x", &[dim.clone()]).expect("parse failed");
-        assert_eq!(expr.eval(&[5], &[dim]), 3);
+    fn rejects_non_affine_multiplication() {
+        let axes = [Axis::new("x", 8), Axis::new("y", 8)];
+        assert!(AffineMap::parse("[x, y] -> [x]: (x * y)", &axes).is_err());
+    }
+
+    #[test]
+    fn programmatic_map_uses_the_same_expression_type() {
+        let axes = [Axis::new("x", 4)];
+        let map = AffineMap::new(
+            &axes,
+            &axes,
+            vec![AffineExpr::modulo(
+                AffineExpr::add(AffineExpr::variable("x"), AffineExpr::constant(1)),
+                4,
+            )],
+        )
+        .unwrap();
+        assert_eq!(map.apply(&[3]).unwrap(), [0]);
     }
 }

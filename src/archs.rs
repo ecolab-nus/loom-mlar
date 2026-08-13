@@ -10,6 +10,15 @@ pub fn load_arch(dir: impl AsRef<Path>) -> Result<Architecture, ArchLoadError> {
     ChipYaml::from_file(dir.join("chip.yaml"))?.build(dir)
 }
 
+/// Load and instantiate a package with symbolic architecture parameters.
+pub fn load_arch_with_bindings(
+    dir: impl AsRef<Path>,
+    bindings: impl IntoIterator<Item = (impl Into<String>, u64)>,
+) -> Result<Architecture, ArchLoadError> {
+    let dir = dir.as_ref();
+    ChipYaml::from_file(dir.join("chip.yaml"))?.build_with_bindings(dir, bindings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::load_arch;

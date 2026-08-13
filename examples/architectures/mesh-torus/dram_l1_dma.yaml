@@ -3,9 +3,10 @@ type: data_mover
 source: dram_l1_dma.loom
 performance:
   load_l1:
-    scenarios:
-      - time_cost:
-          simple:
-            fixed_latency: "100"
-            volume: "L * 2"
-            throughput: "32"
+  - latency: '100'
+    volume: L * 2
+    throughput: '32'
+  load_l1_broadcast:
+  - latency: '100'
+    volume: L * 2
+    throughput: '32'

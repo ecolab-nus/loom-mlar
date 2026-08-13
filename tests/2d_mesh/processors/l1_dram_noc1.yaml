@@ -2,14 +2,7 @@ name: l1_dram_noc1
 type: data_mover
 source: l1_dram_noc1.loom
 performance:
-  time_costs:
-    l1_to_dram_f16: &l1_to_dram_f16
-      simple:
-        fixed_latency: "454"
-        volume: "M * N * 2"
-        throughput: "150"
-
-  functions:
-    l1_to_dram_f16:
-      scenarios:
-        - time_cost: *l1_to_dram_f16
+  l1_to_dram_f16:
+  - latency: '454'
+    volume: M * N * 2
+    throughput: '150'

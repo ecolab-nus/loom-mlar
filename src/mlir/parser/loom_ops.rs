@@ -6,7 +6,7 @@ use nom::multi::separated_list0;
 use nom::sequence::delimited;
 use nom::{IResult, Parser};
 
-use crate::arch::Sym;
+use crate::math::Sym;
 use serde::{Deserialize, Serialize};
 
 use super::{comma_sep, ssa_ref, symbol_ref};

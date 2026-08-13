@@ -1,21 +1,16 @@
-//! Unified parser for Expr, ConstraintExpr, AffineExpr, AffineMap,
-//! and AffineMapTemplate using nom.
-
-use std::collections::HashMap;
+//! Parser for general expressions and constraints.
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case, take_while, take_while1};
 use nom::character::complete::{i64 as nom_i64, multispace0};
 use nom::combinator::{all_consuming, map, recognize};
 use nom::error::ErrorKind;
-use nom::multi::{fold_many0, separated_list0, separated_list1};
+use nom::multi::{fold_many0, separated_list1};
 use nom::sequence::delimited;
 use nom::{Finish, IResult, Parser};
 
-use super::affine::{AffineExpr, AffineExprTemplate, AffineMap, AffineMapTemplate};
 use super::constraint::ConstraintExpr;
 use super::expr::{Expr, Sym};
-use crate::arch::size_dim::Dimension;
 
 /// Parse error with position information.
 #[derive(Debug, Clone)]
@@ -63,35 +58,6 @@ pub fn parse_constraint(input: &str) -> Result<ConstraintExpr, ParseError> {
         .map_err(|e| nom_to_parse_error(input, e))
 }
 
-/// Parse a string into an [`AffineExpr`] with known dimensions.
-pub fn parse_affine_expr(input: &str, dims: &[Dimension]) -> Result<AffineExpr, ParseError> {
-    let ds = dims_to_map(dims);
-    all_consuming(ws(|i| affine_expr(i, &ds)))
-        .parse(input)
-        .finish()
-        .map(|(_, v)| v)
-        .map_err(|e| nom_to_parse_error(input, e))
-}
-
-/// Parse a string into an [`AffineMap`] with known dimensions.
-pub fn parse_affine_map(input: &str, dims: &[Dimension]) -> Result<AffineMap, ParseError> {
-    let ds = dims_to_map(dims);
-    all_consuming(ws(|i| affine_map_inner(i, &ds)))
-        .parse(input)
-        .finish()
-        .map(|(_, v)| v)
-        .map_err(|e| nom_to_parse_error(input, e))
-}
-
-/// Parse a string into an [`AffineMapTemplate`] (unbound).
-pub fn parse_affine_map_template(input: &str) -> Result<AffineMapTemplate, ParseError> {
-    all_consuming(ws(template_map_inner))
-        .parse(input)
-        .finish()
-        .map(|(_, v)| v)
-        .map_err(|e| nom_to_parse_error(input, e))
-}
-
 impl std::str::FromStr for Expr {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -119,13 +85,6 @@ fn ident(input: &str) -> IResult<&str, &str> {
         take_while(|c: char| c.is_ascii_alphanumeric() || c == '_'),
     ))
     .parse(input)
-}
-
-fn dims_to_map(dims: &[Dimension]) -> HashMap<String, Dimension> {
-    dims.iter()
-        .cloned()
-        .map(|d| (d.name.0.clone(), d))
-        .collect()
 }
 
 fn expr_top(input: &str) -> IResult<&str, Expr> {
@@ -322,201 +281,6 @@ fn cmp_op(input: &str) -> IResult<&str, &str> {
         tag(">"),
     )))
     .parse(input)
-}
-
-fn affine_expr<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineExpr> {
-    affine_add(input, dims)
-}
-
-fn affine_add<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineExpr> {
-    let (input, first) = affine_mul(input, dims)?;
-    fold_many0(
-        (ws(tag("+")), |i| affine_mul(i, dims)),
-        move || first.clone(),
-        |acc, (_, rhs)| AffineExpr::add(acc, rhs),
-    )
-    .parse(input)
-}
-
-fn affine_mul<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineExpr> {
-    let (input, first) = affine_atom(input, dims)?;
-    fold_many0(
-        (ws(alt((tag("*"), tag("mod"), tag("ceildiv")))), |i| {
-            affine_atom(i, dims)
-        }),
-        move || first.clone(),
-        |acc, (op, rhs)| match op {
-            "*" => match (&acc, &rhs) {
-                (AffineExpr::Const(c), _) => AffineExpr::mul_const(*c, rhs),
-                (_, AffineExpr::Const(c)) => AffineExpr::mul_const(*c, acc),
-                _ => AffineExpr::mul_const(1, acc),
-            },
-            "mod" => AffineExpr::modulo(acc, rhs),
-            "ceildiv" => AffineExpr::ceildiv(acc, rhs),
-            _ => acc,
-        },
-    )
-    .parse(input)
-}
-
-fn affine_atom<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineExpr> {
-    ws(alt((
-        |i| affine_dim_ref(i, dims),
-        affine_const,
-        |i| delimited(ws(tag("(")), |j| affine_expr(j, dims), ws(tag(")"))).parse(i),
-    )))
-    .parse(input)
-}
-
-fn affine_dim_ref<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineExpr> {
-    let (rest, name) = ident(input)?;
-    dims.get(name)
-        .map(|d| (rest, AffineExpr::var(d.clone())))
-        .ok_or_else(|| nom::Err::Error(nom::error::Error::new(input, ErrorKind::Tag)))
-}
-
-fn affine_const(input: &str) -> IResult<&str, AffineExpr> {
-    map(nom_i64, AffineExpr::constant).parse(input)
-}
-
-fn affine_dim_list<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, Vec<Dimension>> {
-    delimited(
-        ws(tag("[")),
-        separated_list0(ws(tag(",")), |i: &'a str| {
-            let (rest, name) = ident(i)?;
-            dims.get(name)
-                .map(|d| (rest, d.clone()))
-                .ok_or_else(|| nom::Err::Error(nom::error::Error::new(i, ErrorKind::Tag)))
-        }),
-        ws(tag("]")),
-    )
-    .parse(input)
-}
-
-fn affine_map_inner<'a>(
-    input: &'a str,
-    dims: &HashMap<String, Dimension>,
-) -> IResult<&'a str, AffineMap> {
-    let (input, (src, _, dst, _, exprs)) = (
-        |i| affine_dim_list(i, dims),
-        ws(tag("->")),
-        |i| affine_dim_list(i, dims),
-        ws(tag(":")),
-        delimited(
-            ws(tag("(")),
-            separated_list1(ws(tag(",")), |i| affine_expr(i, dims)),
-            ws(tag(")")),
-        ),
-    )
-        .parse(input)?;
-    if exprs.len() != dst.len() {
-        return Err(nom::Err::Failure(nom::error::Error::new(
-            input,
-            ErrorKind::Verify,
-        )));
-    }
-    Ok((input, AffineMap::new(&src, &dst, exprs)))
-}
-
-fn template_expr(input: &str) -> IResult<&str, AffineExprTemplate> {
-    template_add(input)
-}
-
-fn template_add(input: &str) -> IResult<&str, AffineExprTemplate> {
-    let (input, first) = template_mul(input)?;
-    fold_many0(
-        (ws(tag("+")), template_mul),
-        move || first.clone(),
-        |acc, (_, rhs)| AffineExprTemplate::add(acc, rhs),
-    )
-    .parse(input)
-}
-
-fn template_mul(input: &str) -> IResult<&str, AffineExprTemplate> {
-    let (input, first) = template_atom(input)?;
-    fold_many0(
-        (
-            ws(alt((tag("*"), tag("mod"), tag("ceildiv")))),
-            template_atom,
-        ),
-        move || first.clone(),
-        |acc, (op, rhs)| match op {
-            "*" => match (&acc, &rhs) {
-                (AffineExprTemplate::Const(c), _) => AffineExprTemplate::mul_const(*c, rhs),
-                (_, AffineExprTemplate::Const(c)) => AffineExprTemplate::mul_const(*c, acc),
-                _ => AffineExprTemplate::mul_const(1, acc),
-            },
-            "mod" => AffineExprTemplate::modulo(acc, rhs),
-            "ceildiv" => AffineExprTemplate::ceildiv(acc, rhs),
-            _ => acc,
-        },
-    )
-    .parse(input)
-}
-
-fn template_atom(input: &str) -> IResult<&str, AffineExprTemplate> {
-    ws(alt((
-        map(ident, |n| AffineExprTemplate::dim(n.to_string())),
-        map(nom_i64, AffineExprTemplate::constant),
-        |i| delimited(ws(tag("(")), template_expr, ws(tag(")"))).parse(i),
-    )))
-    .parse(input)
-}
-
-fn template_dim_list(input: &str) -> IResult<&str, Vec<String>> {
-    delimited(
-        ws(tag("[")),
-        separated_list0(ws(tag(",")), map(ident, |n| n.to_string())),
-        ws(tag("]")),
-    )
-    .parse(input)
-}
-
-fn template_map_inner(input: &str) -> IResult<&str, AffineMapTemplate> {
-    let (input, (src, _, dst, _, res)) = (
-        template_dim_list,
-        ws(tag("->")),
-        template_dim_list,
-        ws(tag(":")),
-        delimited(
-            ws(tag("(")),
-            separated_list1(ws(tag(",")), template_expr),
-            ws(tag(")")),
-        ),
-    )
-        .parse(input)?;
-    if res.len() != dst.len() {
-        return Err(nom::Err::Failure(nom::error::Error::new(
-            input,
-            ErrorKind::Verify,
-        )));
-    }
-    Ok((
-        input,
-        AffineMapTemplate {
-            source_dim_names: src,
-            target_dim_names: dst,
-            map: res,
-        },
-    ))
 }
 
 #[cfg(test)]
@@ -727,46 +491,6 @@ mod tests {
         let c = parse_constraint("1 > 0 && 2 > 0 && 3 > 0").unwrap();
         assert_eq!(c.eval_const(), Some(true));
         assert!(matches!(c, ConstraintExpr::And(p) if p.len() == 3));
-    }
-    #[test]
-    fn aff_mod() {
-        let d = Dimension::new_int("x", 1);
-        assert_eq!(
-            parse_affine_expr("(x + 1) mod 8", &[d.clone()])
-                .unwrap()
-                .eval(&[3], &[d]),
-            4
-        );
-    }
-    #[test]
-    fn aff_ceildiv() {
-        let dx = Dimension::new_int("x", 1);
-        let dy = Dimension::new_int("y", 1);
-        assert_eq!(
-            parse_affine_expr("x ceildiv 4 + y * 2", &[dx.clone(), dy.clone()])
-                .unwrap()
-                .eval(&[7, 2], &[dx, dy]),
-            6
-        );
-    }
-    #[test]
-    fn aff_neg() {
-        let d = Dimension::new_int("x", 1);
-        assert_eq!(
-            parse_affine_expr("-2 + x", &[d.clone()])
-                .unwrap()
-                .eval(&[5], &[d]),
-            3
-        );
-    }
-    #[test]
-    fn aff_template() {
-        let dx = Dimension::new_int("x", 8);
-        let dy = Dimension::new_int("y", 8);
-        let t = parse_affine_map_template("[x, y] -> [x, y]: (x, (y + 1) mod Y)").unwrap();
-        let b = t.bind([&dx, &dy]).unwrap();
-        let s: HashMap<Sym, i64> = [(Sym::new("Y"), 8)].into();
-        assert_eq!(b.apply_with_symbols(&[3, 7], &s), vec![3, 0]);
     }
     #[test]
     fn err_char() {

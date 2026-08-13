@@ -1,0 +1,7 @@
+func @add_mixed(
+  in lhs: f16[L] @memory(gcram),
+  in rhs: f16[L] @memory(rram),
+  out out: f16[L] @memory(gcram)
+) {
+  linalg.add ins(%lhs, %rhs) outs(%out)
+}

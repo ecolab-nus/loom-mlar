@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-use crate::arch::Sym;
+use crate::math::Sym;
 use crate::schedule::schedule::SymbolicMapping;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -35,6 +35,9 @@ pub struct MlirFuncDetails {
     /// Memref argument types from the function signature, normalized and keyed by argument name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_arg_types: Vec<(String, String)>,
+    /// Technology requirements declared by compact Loom operands.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memref_memory_requirements: Vec<(String, String)>,
     /// Tensor operands used as outputs (from `outs(...)`), without `%`.
     pub output_tensors: Vec<String>,
     /// Memref operands inferred as copy sources (e.g. `memref.copy %src, %dst`), without `%`.
@@ -60,6 +63,19 @@ pub struct MlirFuncDetails {
     /// Parsed `linalg.*` operations (e.g. `linalg.matmul`, `linalg.generic`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub linalg_ops: Vec<String>,
+    /// Operation capabilities retained independently of source formatting.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<MlirOperationKind>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlirOperationKind {
+    Linalg(String),
+    Copy,
+    Broadcast,
+    Gather,
+    UnsupportedLoom(String),
 }
 
 /// Reference to one MLIR function and its shape-related interface metadata.
@@ -160,15 +176,22 @@ impl MlirModule {
         let path = path.into();
         let source =
             fs::read_to_string(&path).map_err(|e| format!("failed to read '{}': {}", path, e))?;
-        let module_name = parse_single_module_name(&source)?;
+        let mut module = Self::from_mlir_source(&source)?;
+        module.path = Some(path);
+        Ok(module)
+    }
+
+    /// Parse one complete in-memory MLIR module.
+    pub fn from_mlir_source(source: &str) -> Result<Self, String> {
+        let module_name = parse_single_module_name(source)?;
 
         let mut functions = Vec::new();
-        for func_block in extract_function_blocks(&source)? {
+        for func_block in extract_function_blocks(source)? {
             functions.push(MlirFunc::from_mlir(func_block)?);
         }
 
         Ok(Self {
-            path: Some(path),
+            path: None,
             module_name,
             functions,
             memory_aliases: Vec::new(),
@@ -360,11 +383,32 @@ impl MlirFunc {
         }
 
         let output_tensors = collect_output_tensors(func_mlir, &tensor_args)?;
-        let memref_arg_types = arg_types
+        let memref_arg_types = memref_args
             .iter()
-            .filter(|(arg, _)| memref_args.iter().any(|memref| memref == *arg))
-            .map(|(arg, ty)| (arg.clone(), ty.clone()))
+            .filter_map(|arg| arg_types.get(arg).map(|ty| (arg.clone(), ty.clone())))
             .collect();
+        let mut operations = linalg_ops
+            .iter()
+            .cloned()
+            .map(MlirOperationKind::Linalg)
+            .collect::<Vec<_>>();
+        for token in func_mlir.split_whitespace() {
+            let operation = token.trim_end_matches(|character: char| {
+                !character.is_ascii_alphanumeric() && character != '.'
+            });
+            let kind = match operation {
+                "loom.copy" => Some(MlirOperationKind::Copy),
+                "loom.gather" => Some(MlirOperationKind::Gather),
+                "loom.sym" | "loom.bind_shape" | "loom.bind_mem" => None,
+                operation if operation.starts_with("loom.") => {
+                    Some(MlirOperationKind::UnsupportedLoom(operation.into()))
+                }
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                operations.push(kind);
+            }
+        }
 
         Ok(Self {
             name,
@@ -373,6 +417,7 @@ impl MlirFunc {
                 tensor_args,
                 memref_args,
                 memref_arg_types,
+                memref_memory_requirements: Vec::new(),
                 output_tensors,
                 source_memrefs,
                 target_memrefs,
@@ -382,6 +427,7 @@ impl MlirFunc {
                 copy_ops,
                 gather_ops,
                 linalg_ops,
+                operations,
             }),
             op_label: None,
             extra_metadata: BTreeMap::new(),
@@ -400,9 +446,6 @@ impl MlirFuncDetails {
 }
 
 /// Uppercase aliases for users that prefer MLIR acronym-style naming.
-pub type MLIRModuleRef = MlirModule;
-pub type MLIRFuncRef = MlirFunc;
-pub type MLIRFunc = MlirFuncDetails;
 
 #[cfg(test)]
 mod tests {

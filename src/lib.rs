@@ -8,43 +8,21 @@ pub mod visualization;
 
 pub use abi::{arch_query, evaluator};
 
-// Re-export commonly used architecture types
+// Common architecture authoring surface. Derived/query and loader-specific
+// types remain under `arch`.
 pub use arch::{
-    AdlExportError, AffineExpression, AffineRelation, ArchLoadError, Architecture,
-    ArchitectureBuilder, ArchitectureError, Banking, ChipYaml, ConnectionSpec, Dimension,
-    EndpointIndex, EndpointParseError, FuncPerfModel, FuncPerfModelBuilder, FunctionProcessor,
-    IndexDomain, MemoryArray, MemoryCatalog, MemoryDefinition, MemoryEndpoint, NamedMemoryRegion,
-    PerfScenario, PerfYamlError, PerfYamlSpec, ProcessorArray, ProcessorDefinition,
-    ProcessorSelection, ProcessorSelectionError, ProcessorSelector, ProcessorType, ProcessorYaml,
-    ResolvedConnection, ResolvedMemoryEndpoint, ResourceArray, SimpleTimeCost, SizeExpr, Sym,
-    TimeCost, TimeExpr, architecture_to_mlir, architecture_to_mlir_unchecked,
+    AdlExportError, Architecture, ArchitectureBuilder, ArchitectureError, Axis, Banking,
+    Connection, FuncPerfModel, MemoryAlias, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
+    NetworkInterface, NetworkLink, NetworkTopology, OperationModel, PerfScenario,
+    ProcessorDefinition, ProcessorSelector, ProcessorSourceFormat, ProcessorType,
+    ResolvedEndpointIndex, Resource, Scope, TimeCost, architecture_to_mlir,
+    architecture_to_mlir_unchecked,
 };
 
 // Re-export commonly used math types
-pub use math::{
-    AffineExpr, AffineMap, AffineMapTemplate, ConstraintExpr, Expr, IndexExpr, IndexSelector,
-    ParseError,
-};
-pub use mlir::{LoomParseError, parse_loom_source};
-pub use schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
-    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
-    MlirTensorSymbolBinding, Schedule, SymbolicMapping, evaluate,
-};
-
-// Re-export visualization utilities
-pub use visualization::graph_json::{
-    ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
-    architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
-};
-pub use visualization::hierarchy_json::{
-    ArchitectureHierarchyJson, architecture_to_hierarchy_json,
-    architecture_to_hierarchy_json_string_pretty, architecture_to_hierarchy_json_value,
-};
-pub use visualization::viewer_json::{
-    ArchitectureViewerJson, architecture_to_viewer_json, architecture_to_viewer_json_string_pretty,
-    architecture_to_viewer_json_value,
-};
+pub use math::{AffineError, AffineExpr, AffineMap, ConstraintExpr, Expr, ParseError, Sym};
+pub use mlir::{LoomParseError, MlirFunc, MlirModule, parse_loom_source};
+pub use schedule::{ProcessorTarget, Schedule, SymbolicMapping, evaluate};
 
 // Re-export evaluator utilities
 pub use abi::arch_query::{

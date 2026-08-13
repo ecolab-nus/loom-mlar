@@ -3,26 +3,34 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// One named, zero-based index range.
+/// One named, zero-based architecture axis.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct IndexDomain {
-    pub name: String,
-    pub size: u64,
+pub struct Axis {
+    pub(crate) name: String,
+    pub(crate) extent: u64,
 }
 
-impl IndexDomain {
-    pub fn new(name: impl Into<String>, size: u64) -> Self {
+impl Axis {
+    pub fn new(name: impl Into<String>, extent: u64) -> Self {
         Self {
             name: name.into(),
-            size,
+            extent,
         }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn extent(&self) -> u64 {
+        self.extent
     }
 }
 
-/// Integer affine expression used by memory endpoints.
+/// Integer affine expression used by memory endpoints and network maps.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AffineExpression {
+pub enum AffineExpr {
     Constant(i64),
     Variable(String),
     Add(Box<Self>, Box<Self>),
@@ -33,7 +41,7 @@ pub enum AffineExpression {
     Mod(Box<Self>, i64),
 }
 
-impl AffineExpression {
+impl AffineExpr {
     pub fn parse(input: &str) -> Result<Self, EndpointParseError> {
         ExpressionParser::new(input).parse()
     }
@@ -77,6 +85,69 @@ impl AffineExpression {
         variables
     }
 
+    pub fn constant(value: i64) -> Self {
+        Self::Constant(value)
+    }
+
+    pub fn variable(name: impl Into<String>) -> Self {
+        Self::Variable(name.into())
+    }
+
+    pub fn add(lhs: Self, rhs: Self) -> Self {
+        Self::Add(Box::new(lhs), Box::new(rhs))
+    }
+
+    pub fn sub(lhs: Self, rhs: Self) -> Self {
+        Self::Sub(Box::new(lhs), Box::new(rhs))
+    }
+
+    pub fn mul(factor: i64, expression: Self) -> Self {
+        Self::Mul(factor, Box::new(expression))
+    }
+
+    pub fn floor_div(expression: Self, divisor: i64) -> Self {
+        Self::FloorDiv(Box::new(expression), divisor)
+    }
+
+    pub fn ceil_div(expression: Self, divisor: i64) -> Self {
+        Self::CeilDiv(Box::new(expression), divisor)
+    }
+
+    pub fn modulo(expression: Self, modulus: i64) -> Self {
+        Self::Mod(Box::new(expression), modulus)
+    }
+
+    pub fn substitute_constants(&self, values: &BTreeMap<String, i64>) -> Self {
+        match self {
+            Self::Constant(_) => self.clone(),
+            Self::Variable(name) => values
+                .get(name)
+                .copied()
+                .map(Self::Constant)
+                .unwrap_or_else(|| self.clone()),
+            Self::Add(lhs, rhs) => Self::add(
+                lhs.substitute_constants(values),
+                rhs.substitute_constants(values),
+            ),
+            Self::Sub(lhs, rhs) => Self::sub(
+                lhs.substitute_constants(values),
+                rhs.substitute_constants(values),
+            ),
+            Self::Mul(factor, expression) => {
+                Self::mul(*factor, expression.substitute_constants(values))
+            }
+            Self::FloorDiv(expression, divisor) => {
+                Self::floor_div(expression.substitute_constants(values), *divisor)
+            }
+            Self::CeilDiv(expression, divisor) => {
+                Self::ceil_div(expression.substitute_constants(values), *divisor)
+            }
+            Self::Mod(expression, modulus) => {
+                Self::modulo(expression.substitute_constants(values), *modulus)
+            }
+        }
+    }
+
     fn collect_variables(&self, variables: &mut BTreeSet<String>) {
         match self {
             Self::Variable(name) => {
@@ -114,7 +185,7 @@ impl fmt::Display for EndpointParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "endpoint expression parse error at {}: {}",
+            "architecture expression parse error at {}: {}",
             self.position, self.message
         )
     }
@@ -132,7 +203,7 @@ impl<'a> ExpressionParser<'a> {
         Self { input, rest: input }
     }
 
-    fn parse(mut self) -> Result<AffineExpression, EndpointParseError> {
+    fn parse(mut self) -> Result<AffineExpr, EndpointParseError> {
         let expression = self.parse_add_sub()?;
         self.skip_space();
         if self.rest.is_empty() {
@@ -142,39 +213,39 @@ impl<'a> ExpressionParser<'a> {
         }
     }
 
-    fn parse_add_sub(&mut self) -> Result<AffineExpression, EndpointParseError> {
+    fn parse_add_sub(&mut self) -> Result<AffineExpr, EndpointParseError> {
         let mut lhs = self.parse_mul_div()?;
         loop {
             self.skip_space();
             if self.consume("+") {
-                lhs = AffineExpression::Add(Box::new(lhs), Box::new(self.parse_mul_div()?));
+                lhs = AffineExpr::Add(Box::new(lhs), Box::new(self.parse_mul_div()?));
             } else if self.consume("-") {
-                lhs = AffineExpression::Sub(Box::new(lhs), Box::new(self.parse_mul_div()?));
+                lhs = AffineExpr::Sub(Box::new(lhs), Box::new(self.parse_mul_div()?));
             } else {
                 return Ok(lhs);
             }
         }
     }
 
-    fn parse_mul_div(&mut self) -> Result<AffineExpression, EndpointParseError> {
+    fn parse_mul_div(&mut self) -> Result<AffineExpr, EndpointParseError> {
         let mut lhs = self.parse_atom()?;
         loop {
             self.skip_space();
             if self.consume_keyword("floordiv") {
                 let divisor = self.parse_positive_constant("floordiv")?;
-                lhs = AffineExpression::FloorDiv(Box::new(lhs), divisor);
+                lhs = AffineExpr::FloorDiv(Box::new(lhs), divisor);
             } else if self.consume_keyword("ceildiv") {
                 let divisor = self.parse_positive_constant("ceildiv")?;
-                lhs = AffineExpression::CeilDiv(Box::new(lhs), divisor);
+                lhs = AffineExpr::CeilDiv(Box::new(lhs), divisor);
             } else if self.consume_keyword("mod") || self.consume("%") {
                 let modulus = self.parse_positive_constant("mod")?;
-                lhs = AffineExpression::Mod(Box::new(lhs), modulus);
+                lhs = AffineExpr::Mod(Box::new(lhs), modulus);
             } else if self.consume("*") {
                 let rhs = self.parse_atom()?;
                 lhs = match (lhs, rhs) {
-                    (AffineExpression::Constant(c), expression)
-                    | (expression, AffineExpression::Constant(c)) => {
-                        AffineExpression::Mul(c, Box::new(expression))
+                    (AffineExpr::Constant(c), expression)
+                    | (expression, AffineExpr::Constant(c)) => {
+                        AffineExpr::Mul(c, Box::new(expression))
                     }
                     _ => return Err(self.error("affine multiplication requires one constant")),
                 };
@@ -184,7 +255,7 @@ impl<'a> ExpressionParser<'a> {
         }
     }
 
-    fn parse_atom(&mut self) -> Result<AffineExpression, EndpointParseError> {
+    fn parse_atom(&mut self) -> Result<AffineExpr, EndpointParseError> {
         self.skip_space();
         if self.consume("(") {
             let expression = self.parse_add_sub()?;
@@ -195,12 +266,12 @@ impl<'a> ExpressionParser<'a> {
             return Ok(expression);
         }
         if self.consume("-") {
-            return Ok(AffineExpression::Mul(-1, Box::new(self.parse_atom()?)));
+            return Ok(AffineExpr::Mul(-1, Box::new(self.parse_atom()?)));
         }
         if let Some(number) = self.take_while(|c| c.is_ascii_digit()) {
             return number
                 .parse::<i64>()
-                .map(AffineExpression::Constant)
+                .map(AffineExpr::Constant)
                 .map_err(|_| self.error("integer is out of range"));
         }
         if let Some(identifier) = self.take_while(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -211,7 +282,7 @@ impl<'a> ExpressionParser<'a> {
             {
                 return Err(self.error("identifier cannot start with a digit"));
             }
-            return Ok(AffineExpression::Variable(identifier.to_string()));
+            return Ok(AffineExpr::Variable(identifier.to_string()));
         }
         Err(self.error("expected an integer, variable, or parenthesized expression"))
     }

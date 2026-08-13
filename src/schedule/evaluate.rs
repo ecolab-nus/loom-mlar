@@ -1,7 +1,7 @@
 //! Schedule performance evaluation against an architecture description.
 //!
 //! Evaluates a [`Schedule`] tree by matching each leaf [`MlirFunc`] to its
-//! [`FunctionProcessor`] in the architecture, extracting the [`FuncPerfModel`],
+//! [`OperationModel`] in the architecture, extracting the [`FuncPerfModel`],
 //! and combining scenarios across the sequential composition.
 //!
 //! **Parallel schedules are not supported in this prototype.** Only
@@ -10,7 +10,7 @@
 //!
 //! # Algorithm
 //!
-//! 1. **Leaf (`Func`)**: look up the [`FunctionProcessor`] whose `func.name`
+//! 1. **Leaf (`Func`)**: look up the [`OperationModel`] whose `func.name`
 //!    matches, retrieve its [`FuncPerfModel`], fuse global constraints into
 //!    each [`PerfScenario`] with AND logic, apply the per-func `sym_map`
 //!    substitution if present, and set the `scenarios` field on the `Func`
@@ -30,7 +30,6 @@
 
 use crate::arch::architecture::Architecture;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
-use crate::arch::processor::FunctionProcessor;
 use crate::math::constraint::ConstraintExpr;
 use crate::math::expr::Expr;
 use crate::schedule::schedule::Schedule;
@@ -53,9 +52,7 @@ use crate::schedule::schedule::Schedule;
 /// A `Func` whose name cannot be found in `arch` returns an error.
 pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, String> {
     match schedule {
-        Schedule::Parallel { .. } => {
-            unimplemented!("Parallel schedule evaluation is not yet supported");
-        }
+        Schedule::Parallel { .. } => Err("parallel schedule evaluation is not supported".into()),
 
         Schedule::Sequential { schedules, .. } => {
             let evaluated: Result<Vec<Schedule>, String> =
@@ -72,31 +69,63 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
             })
         }
 
-        Schedule::Func {
-            func, processor, ..
-        } => {
-            let fp = find_function_processor(arch, &func.name).ok_or_else(|| {
-                format!(
-                    "no FunctionProcessor found for '{}' in the architecture",
-                    func.name
-                )
-            })?;
-            let mut scenarios = fuse_model_scenarios(&fp.perf);
-
-            if let Some(ref sym_map) = func.sym_map {
-                let mappings = sym_map.as_slice();
-                scenarios = scenarios
-                    .into_iter()
-                    .map(|s| PerfScenario {
-                        constraints: s.constraints.substitute(mappings),
-                        time_cost: s.time_cost.substitute(mappings),
-                    })
-                    .collect();
-            }
+        Schedule::Func { func, .. } => {
+            let matches = arch.functions_named(&func.name).collect::<Vec<_>>();
+            let fp = match matches.as_slice() {
+                [] => {
+                    return Err(format!(
+                        "no OperationModel found for '{}' in the architecture",
+                        func.name
+                    ));
+                }
+                [(_, function)] => *function,
+                _ => {
+                    return Err(format!(
+                        "function '{}' has {} implementations; use Schedule::PlacedFunc",
+                        func.name,
+                        matches.len()
+                    ));
+                }
+            };
+            let scenarios = evaluate_function(func, &fp.perf);
 
             Ok(Schedule::Func {
                 func: func.clone(),
-                processor: processor.clone(),
+                scenarios: Some(scenarios),
+            })
+        }
+
+        Schedule::PlacedFunc { func, target, .. } => {
+            let array = arch.processor_array(&target.array).ok_or_else(|| {
+                format!(
+                    "no processor array named '{}' in the architecture",
+                    target.array
+                )
+            })?;
+            if !target.selectors.is_empty() {
+                let selected = array
+                    .select(arch, target.selectors.clone())
+                    .map_err(|error| error.to_string())?;
+                if selected.is_empty() {
+                    return Err(format!(
+                        "processor target '{}' selects no valid instances",
+                        target.array
+                    ));
+                }
+            }
+            let definition = arch
+                .processor_definition(&array.definition)
+                .expect("canonical processor definition");
+            let fp = definition.get_function(&func.name).ok_or_else(|| {
+                format!(
+                    "processor array '{}' does not implement '{}'",
+                    target.array, func.name
+                )
+            })?;
+            let scenarios = evaluate_function(func, &fp.perf);
+            Ok(Schedule::PlacedFunc {
+                func: func.clone(),
+                target: target.clone(),
                 scenarios: Some(scenarios),
             })
         }
@@ -117,6 +146,9 @@ fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
         Schedule::Parallel {
             scenarios: Some(s), ..
         } => s,
+        Schedule::PlacedFunc {
+            scenarios: Some(s), ..
+        } => s,
         _ => panic!("expected evaluated schedule with filled scenarios"),
     }
 }
@@ -132,7 +164,7 @@ fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
 fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfScenario> {
     let mut result = vec![PerfScenario {
         constraints: ConstraintExpr::True,
-        time_cost: TimeCost::Concrete(Expr::Const(0)),
+        time_cost: TimeCost::Expression(Expr::Const(0)),
     }];
 
     for scenarios in sub_scenarios {
@@ -141,7 +173,7 @@ fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfSce
             for new in *scenarios {
                 next.push(PerfScenario {
                     constraints: and_constraints(&existing.constraints, &new.constraints),
-                    time_cost: TimeCost::Concrete(Expr::add(
+                    time_cost: TimeCost::Expression(Expr::add(
                         existing.time_cost.to_expr(),
                         new.time_cost.to_expr(),
                     )),
@@ -155,8 +187,8 @@ fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfSce
 }
 
 /// Fuse a [`FuncPerfModel`]'s global constraints into each scenario and
-/// flatten [`SimpleTimeCost`] into a single expression in
-/// [`TimeCost::Concrete`], producing the final per-function scenario vector
+/// flatten throughput costs into a single expression in
+/// [`TimeCost::Expression`], producing the final per-function scenario vector
 /// ready for combination. The expression may still contain symbols.
 fn fuse_model_scenarios(model: &FuncPerfModel) -> Vec<PerfScenario> {
     model
@@ -164,7 +196,7 @@ fn fuse_model_scenarios(model: &FuncPerfModel) -> Vec<PerfScenario> {
         .iter()
         .map(|scenario| PerfScenario {
             constraints: and_constraints(&model.constraints, &scenario.constraints),
-            time_cost: TimeCost::Concrete(scenario.time_cost.to_expr()),
+            time_cost: TimeCost::Expression(scenario.time_cost.to_expr()),
         })
         .collect()
 }
@@ -178,9 +210,17 @@ fn and_constraints(a: &ConstraintExpr, b: &ConstraintExpr) -> ConstraintExpr {
     }
 }
 
-fn find_function_processor<'a>(
-    arch: &'a Architecture,
-    func_name: &str,
-) -> Option<&'a FunctionProcessor> {
-    arch.get_function(func_name)
+fn evaluate_function(func: &crate::mlir::MlirFunc, model: &FuncPerfModel) -> Vec<PerfScenario> {
+    let mut scenarios = fuse_model_scenarios(model);
+    if let Some(ref sym_map) = func.sym_map {
+        let mappings = sym_map.as_slice();
+        scenarios = scenarios
+            .into_iter()
+            .map(|scenario| PerfScenario {
+                constraints: scenario.constraints.substitute(mappings),
+                time_cost: scenario.time_cost.substitute(mappings),
+            })
+            .collect();
+    }
+    scenarios
 }

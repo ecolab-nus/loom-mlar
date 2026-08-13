@@ -11,9 +11,9 @@ const HIERARCHY_SCHEMA_VERSION: &str = "mlar.arch-hierarchy.v2";
 pub enum HierarchyNodeKind {
     Architecture,
     MemoryArray,
-    NamedRegion,
+    MemoryAlias,
     ProcessorArray,
-    ResourceArray,
+    Resource,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,30 +52,31 @@ pub fn architecture_to_hierarchy_json(architecture: &Architecture) -> Architectu
             children: Vec::new(),
         });
     }
-    for region in &architecture.memory_catalog.regions {
+    for alias in &architecture.memory_aliases {
         children.push(HierarchyNode {
-            kind: HierarchyNodeKind::NamedRegion,
-            name: region.name.clone(),
+            kind: HierarchyNodeKind::MemoryAlias,
+            name: alias.name.clone(),
             dimensions: Vec::new(),
-            details: json!({"endpoint": region.endpoint}),
+            details: json!({"endpoint": alias.endpoint}),
             children: Vec::new(),
         });
     }
     for processor in &architecture.processors {
+        let valid_instances = processor.instances(architecture).len();
         children.push(HierarchyNode {
             kind: HierarchyNodeKind::ProcessorArray,
             name: processor.name.clone(),
-            dimensions: dims(&processor.relation.domain),
+            dimensions: dims(&processor.axes),
             details: json!({
                 "definition": processor.definition,
                 "connection": processor.connection,
-                "valid_instances": processor.relation.instances.len(),
+                "valid_instances": valid_instances,
             }),
             children: processor
                 .resources
                 .iter()
                 .map(|resource| HierarchyNode {
-                    kind: HierarchyNodeKind::ResourceArray,
+                    kind: HierarchyNodeKind::Resource,
                     name: resource.name.clone(),
                     dimensions: dims(&resource.indices),
                     details: json!({"capacity": resource.capacity}),
@@ -89,7 +90,7 @@ pub fn architecture_to_hierarchy_json(architecture: &Architecture) -> Architectu
         root: HierarchyNode {
             kind: HierarchyNodeKind::Architecture,
             name: architecture.name.clone(),
-            dimensions: dims(&architecture.dimensions),
+            dimensions: dims(&architecture.axes),
             details: json!({}),
             children,
         },
@@ -107,12 +108,12 @@ pub fn architecture_to_hierarchy_json_string_pretty(
     serde_json::to_string_pretty(&architecture_to_hierarchy_json(architecture))
 }
 
-fn dims(indices: &[crate::arch::IndexDomain]) -> Vec<GraphDimension> {
+fn dims(indices: &[crate::arch::Axis]) -> Vec<GraphDimension> {
     indices
         .iter()
         .map(|index| GraphDimension {
             name: index.name.clone(),
-            size: index.size,
+            size: index.extent,
         })
         .collect()
 }

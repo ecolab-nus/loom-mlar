@@ -1,89 +1,71 @@
-func @matmul_SS_f16 {
-  params: [M, N, K]
-  ins:
-    A: !loom.buffer<MxKxf16>
-    B: !loom.buffer<KxNxf16>
-  outs:
-    C: !loom.buffer<MxNxf16>
+func @matmul_SS_f16(
+  in A: f16[M, K],
+  in B: f16[K, N],
+  out C: f16[M, N]
+) {
   linalg.matmul ins(%A, %B : memref<?x?xf16>, memref<?x?xf16>) outs(%C : memref<?x?xf16>)
 }
 
-func @matmul_SR_f16 {
-  params: [M, N, K]
-  ins:
-    A: !loom.buffer<MxKxf16>
-    B: !loom.buffer<KxNxf16, 1>
-  outs:
-    C: !loom.buffer<MxNxf16>
+func @matmul_SR_f16(
+  in A: f16[M, K],
+  in B: f16[K, N] @space(1),
+  out C: f16[M, N]
+) {
   linalg.matmul ins(%A, %B : memref<?x?xf16>, memref<?x?xf16, 1>) outs(%C : memref<?x?xf16>)
 }
 
-func @matmul_RS_f16 {
-  params: [M, N, K]
-  ins:
-    A: !loom.buffer<MxKxf16, 1>
-    B: !loom.buffer<KxNxf16>
-  outs:
-    C: !loom.buffer<MxNxf16>
+func @matmul_RS_f16(
+  in A: f16[M, K] @space(1),
+  in B: f16[K, N],
+  out C: f16[M, N]
+) {
   linalg.matmul ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16>) outs(%C : memref<?x?xf16>)
 }
 
-func @matmul_RR_f16 {
-  params: [M, N, K]
-  ins:
-    A: !loom.buffer<MxKxf16, 1>
-    B: !loom.buffer<KxNxf16, 1>
-  outs:
-    C: !loom.buffer<MxNxf16>
+func @matmul_RR_f16(
+  in A: f16[M, K] @space(1),
+  in B: f16[K, N] @space(1),
+  out C: f16[M, N]
+) {
   linalg.matmul ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16, 1>) outs(%C : memref<?x?xf16>)
 }
 
-func @batch_matmul_SS_f16 {
-  params: [B, M, N, K]
-  ins:
-    A: !loom.buffer<BxMxKxf16>
-    Bmat: !loom.buffer<BxKxNxf16>
-  outs:
-    C: !loom.buffer<BxMxNxf16>
+func @batch_matmul_SS_f16(
+  in A: f16[B, M, K],
+  in Bmat: f16[B, K, N],
+  out C: f16[B, M, N]
+) {
   linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16>) outs(%C : memref<?x?x?xf16>)
 }
 
-func @batch_matmul_SR_f16 {
-  params: [B, M, N, K]
-  ins:
-    A: !loom.buffer<BxMxKxf16>
-    Bmat: !loom.buffer<BxKxNxf16, 1>
-  outs:
-    C: !loom.buffer<BxMxNxf16>
+func @batch_matmul_SR_f16(
+  in A: f16[B, M, K],
+  in Bmat: f16[B, K, N] @space(1),
+  out C: f16[B, M, N]
+) {
   linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16, 1>) outs(%C : memref<?x?x?xf16>)
 }
 
-func @batch_matmul_RS_f16 {
-  params: [B, M, N, K]
-  ins:
-    A: !loom.buffer<BxMxKxf16, 1>
-    Bmat: !loom.buffer<BxKxNxf16>
-  outs:
-    C: !loom.buffer<BxMxNxf16>
+func @batch_matmul_RS_f16(
+  in A: f16[B, M, K] @space(1),
+  in Bmat: f16[B, K, N],
+  out C: f16[B, M, N]
+) {
   linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16>) outs(%C : memref<?x?x?xf16>)
 }
 
-func @batch_matmul_RR_f16 {
-  params: [B, M, N, K]
-  ins:
-    A: !loom.buffer<BxMxKxf16, 1>
-    Bmat: !loom.buffer<BxKxNxf16, 1>
-  outs:
-    C: !loom.buffer<BxMxNxf16>
+func @batch_matmul_RR_f16(
+  in A: f16[B, M, K] @space(1),
+  in Bmat: f16[B, K, N] @space(1),
+  out C: f16[B, M, N]
+) {
   linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16, 1>) outs(%C : memref<?x?x?xf16>)
 }
 
-func @vec_vsum_f16 {
-  params: [P, R]
-  ins:
-    a: !loom.buffer<PxRxf16>
-  outs:
-    out: !loom.buffer<Pxf16>
+func @vec_vsum_f16(
+  in a: f16[P, R],
+  out out: f16[P]
+) {
   linalg.generic {
       indexing_maps = [
         affine_map<(d0, d1) -> (d0, d1)>,
@@ -99,12 +81,10 @@ func @vec_vsum_f16 {
     }
 }
 
-func @vec_vmax_f16 {
-  params: [P, R]
-  ins:
-    a: !loom.buffer<PxRxf16>
-  outs:
-    out: !loom.buffer<Pxf16>
+func @vec_vmax_f16(
+  in a: f16[P, R],
+  out out: f16[P]
+) {
   linalg.generic {
       indexing_maps = [
         affine_map<(d0, d1) -> (d0, d1)>,
@@ -120,13 +100,11 @@ func @vec_vmax_f16 {
     }
 }
 
-func @vec_max1_f16 {
-  params: [L]
-  ins:
-    a: !loom.buffer<Lxf16>
-    b: !loom.buffer<Lxf16>
-  outs:
-    out: !loom.buffer<Lxf16>
+func @vec_max1_f16(
+  in a: f16[L],
+  in b: f16[L],
+  out out: f16[L]
+) {
   linalg.generic {
       indexing_maps = [
         affine_map<(d0) -> (d0)>,
@@ -144,22 +122,18 @@ func @vec_max1_f16 {
     }
 }
 
-func @elementwise_add_f16 {
-  params: [M, N]
-  ins:
-    a: !loom.buffer<MxNxf16>
-    b: !loom.buffer<MxNxf16>
-  outs:
-    out: !loom.buffer<MxNxf16>
+func @elementwise_add_f16(
+  in a: f16[M, N],
+  in b: f16[M, N],
+  out out: f16[M, N]
+) {
   linalg.add ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) outs(%out : memref<?x?xf16>)
 }
 
-func @elementwise_mul_f16 {
-  params: [M, N]
-  ins:
-    a: !loom.buffer<MxNxf16>
-    b: !loom.buffer<MxNxf16>
-  outs:
-    out: !loom.buffer<MxNxf16>
+func @elementwise_mul_f16(
+  in a: f16[M, N],
+  in b: f16[M, N],
+  out out: f16[M, N]
+) {
   linalg.mul ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) outs(%out : memref<?x?xf16>)
 }

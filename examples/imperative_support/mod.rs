@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use mlar_rust::{ConnectionSpec, MemoryEndpoint, ProcessorDefinition, ProcessorYaml};
+use mlar_rust::arch::ProcessorYaml;
+use mlar_rust::{Connection, MemoryEndpoint, ProcessorDefinition};
 
 pub type ExampleResult<T> = Result<T, Box<dyn Error>>;
 
@@ -17,8 +18,9 @@ pub fn processor_definition(directory: &Path, name: &str) -> ExampleResult<Proce
     Ok(yaml.build_definition(&path)?)
 }
 
-pub fn connection(inputs: &[&str], outputs: &[&str]) -> ExampleResult<ConnectionSpec> {
-    Ok(ConnectionSpec::new(
+pub fn connection(domain: &[&str], inputs: &[&str], outputs: &[&str]) -> ExampleResult<Connection> {
+    Ok(Connection::new(
+        domain.iter().copied(),
         inputs
             .iter()
             .map(|endpoint| MemoryEndpoint::parse(endpoint))

@@ -1,4 +1,4 @@
-use super::{MLIRFuncRef, MlirBroadcastDim, MlirFunc, MlirModule};
+use super::{MlirBroadcastDim, MlirFunc, MlirModule};
 
 #[test]
 fn mlir_module_ref_from_mlir_allows_unnamed_module() {
@@ -45,7 +45,6 @@ func.func @vec_add_f32(
 "#;
 
     let func = MlirFunc::from_mlir(snippet).expect("snippet should parse");
-    let alias_func = MLIRFuncRef::from_mlir(snippet).expect("alias parser should parse");
     assert_eq!(func.name, "vec_add_f32");
     assert_eq!(func.symbols, vec!["L".into()]);
     let details = func
@@ -62,7 +61,6 @@ func.func @vec_add_f32(
     assert_eq!(details.tensor_symbol_bindings.len(), 3);
     assert_eq!(details.tensor_symbol_bindings[0].tensor, "a");
     assert_eq!(details.tensor_symbol_bindings[0].symbols, vec!["L".into()]);
-    assert_eq!(alias_func, func);
 }
 
 #[test]

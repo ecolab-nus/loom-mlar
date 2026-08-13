@@ -1,26 +1,55 @@
 name: mesh_system
 memory: memory.yaml
-
 dimensions:
   channel: 2
   x: 4
   y: 4
   lx: 2
   ly: 2
-
 memories:
-  DRAM: [channel]
-  L1: [x, y]
-  L2: [lx, ly]
-
-processor:
-  matrix_lane.yaml:
-    - inputs: ["L1[x, y]", "L1[x, y]"]
-      outputs: ["L1[x, y]"]
-  dma.yaml:
-    - inputs: ["L1[x, y]"]
-      outputs: ["L2[x floordiv 2, y floordiv 2]"]
-    - inputs: ["L1[x, y]"]
-      outputs: ["L1[(x + 1) mod 4, y]"]
-    - inputs: ["DRAM[x mod 2]"]
-      outputs: ["L1[x, y].bank[(x + y) mod 8]"]
+  DRAM:
+  - channel
+  L1:
+  - x
+  - y
+  L2:
+  - lx
+  - ly
+processors:
+  matrix_lane:
+    definition: matrix_lane.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    - L1[x, y]
+    outputs:
+    - L1[x, y]
+  l1_to_l2:
+    definition: dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L2[x floordiv 2, y floordiv 2]
+  east_dma:
+    definition: dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[(x + 1) mod 4, y]
+  dram_to_l1:
+    definition: dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - DRAM[x mod 2]
+    outputs:
+    - L1[x, y].bank[(x + y) mod 8]

@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use mlar_rust::{Architecture, Schedule, architecture_to_mlir, evaluate};
+use mlar_rust::{AdlExportError, Architecture, Schedule, architecture_to_mlir, evaluate};
+
+/// Examples the current `adl.*` dialect can lower and validate.
+const LOWERABLE: &[&str] = &["single-core", "mesh-torus", "dual-noc-mesh"];
 
 #[allow(dead_code)]
 #[path = "../examples/imperative_cache_hierarchy.rs"]
@@ -25,26 +28,43 @@ fn all_architecture_examples_load_and_export() {
     ] {
         let architecture = mlar_rust::archs::load_arch(example_dir(name))
             .unwrap_or_else(|error| panic!("example '{name}' should load: {error}"));
-        let mlir = architecture_to_mlir(&architecture)
-            .unwrap_or_else(|error| panic!("example '{name}' should export: {error}"));
-        assert!(mlir.starts_with("module @arch_"));
+        if LOWERABLE.contains(&name) {
+            let mlir = architecture_to_mlir(&architecture)
+                .unwrap_or_else(|error| panic!("example '{name}' should export: {error}"));
+            assert!(mlir.starts_with("module @arch_system {"));
+        }
 
         let function = architecture
-            .processor_definitions
+            .processor_definitions()
             .first()
-            .and_then(|definition| definition.functions.first())
+            .and_then(|definition| definition.operations().first())
             .expect("example should contain a function")
             .func
             .clone();
         evaluate(
             &Schedule::Func {
                 func: function,
-                processor: None,
                 scenarios: None,
             },
             &architecture,
         )
         .expect("example function should evaluate");
+    }
+}
+
+/// A cluster owning both an L1 and an L2 array needs two regions on one
+/// `adl.arch.scale`, which the dialect cannot carry. Export must say so rather
+/// than emit a module the dialect rejects.
+#[test]
+fn multi_region_levels_are_reported_as_unlowerable() {
+    let architecture = mlar_rust::archs::load_arch(example_dir("cache-hierarchy"))
+        .expect("cache hierarchy should load");
+    match architecture_to_mlir(&architecture) {
+        Err(AdlExportError::MultipleMemoryRegions { scope, count }) => {
+            assert_eq!(scope, "cluster");
+            assert_eq!(count, 2);
+        }
+        other => panic!("expected a multi-region rejection, got {other:?}"),
     }
 }
 
@@ -68,25 +88,27 @@ fn assert_imperative_matches(name: &str, imperative: Architecture) {
         serde_json::to_value(&imperative).unwrap(),
         "{name} canonical architectures differ"
     );
-    assert_eq!(
-        architecture_to_mlir(&declarative).unwrap(),
-        architecture_to_mlir(&imperative).unwrap(),
-        "{name} exports differ"
-    );
+    if LOWERABLE.contains(&name) {
+        assert_eq!(
+            architecture_to_mlir(&declarative).unwrap(),
+            architecture_to_mlir(&imperative).unwrap(),
+            "{name} exports differ"
+        );
+    }
 }
 
 #[test]
 fn examples_use_the_canonical_model() {
     let architecture = mlar_rust::archs::load_arch(example_dir("dual-noc-mesh"))
         .expect("dual-NoC example should load");
-    assert!(!architecture.memories.is_empty());
-    assert!(!architecture.processor_definitions.is_empty());
-    assert!(!architecture.processors.is_empty());
+    assert!(!architecture.memories().is_empty());
+    assert!(!architecture.processor_definitions().is_empty());
+    assert!(!architecture.processors().is_empty());
     assert!(
         architecture
-            .processors
+            .processors()
             .iter()
-            .all(|processor| !processor.relation.instances.is_empty())
+            .all(|processor| !processor.instances(&architecture).is_empty())
     );
 }
 
@@ -95,11 +117,11 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
     let architecture = mlar_rust::archs::load_arch(example_dir("dual-noc-mesh"))
         .expect("dual-NoC example should load");
     let noc_processors = architecture
-        .processors
+        .processors()
         .iter()
         .filter(|processor| {
             matches!(
-                processor.definition.as_str(),
+                processor.definition_name(),
                 "dram_l1_noc0" | "l1_l1_noc0" | "l1_dram_noc1"
             )
         })
@@ -109,14 +131,14 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
     assert!(
         noc_processors
             .iter()
-            .all(|processor| processor.relation.domain.is_empty())
+            .all(|processor| processor.axes().is_empty())
     );
     assert!(noc_processors.iter().all(|processor| {
         processor
-            .connection
+            .connection()
             .inputs
             .iter()
-            .chain(&processor.connection.outputs)
+            .chain(&processor.connection().outputs)
             .any(|endpoint| endpoint.memory == "all_l1")
     }));
 
@@ -124,6 +146,24 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
     assert!(!mlir.contains("adl.arch.scale \"arch_dram_l1_noc0\""));
     assert!(!mlir.contains("adl.arch.scale \"arch_l1_l1_noc0\""));
     assert!(!mlir.contains("adl.arch.scale \"arch_l1_dram_noc1\""));
+}
+
+#[test]
+fn mesh_torus_retains_queryable_wraparound_links() {
+    let architecture = mlar_rust::archs::load_arch(example_dir("mesh-torus"))
+        .expect("mesh-torus example should load");
+    let torus = architecture
+        .networks()
+        .iter()
+        .find(|network| network.name == "l1_torus")
+        .expect("explicit L1 torus");
+    assert_eq!(torus.edges().len(), 4 * 4 * 4);
+    let route = torus
+        .shortest_route(&[3, 1], &[0, 1])
+        .expect("east wraparound route");
+    assert_eq!(route.len(), 1);
+    assert_eq!(route[0].link, "east");
+    assert_eq!(route[0].resource_indices, [3, 1]);
 }
 
 #[test]
@@ -137,22 +177,12 @@ fn examples_match_pre_redesign_adl_contracts() {
             0,
             1,
         ),
-        (
-            "cache-hierarchy",
-            &[
-                "{bsize = 4096, nblk = 32768}",
-                "{bsize = 64, nblk = 8192}",
-                "{bsize = 64, nblk = 512}",
-            ][..],
-            &["elementwise_add", "load_l1", "writeback_l2", "load_l2"][..],
-            4,
-            2,
-            6,
-        ),
+        // cache-hierarchy has no ADL contract: see
+        // `multi_region_levels_are_reported_as_unlowerable`.
         (
             "mesh-torus",
             &["{bsize = 4096, nblk = 65536}", "{bsize = 64, nblk = 512}"][..],
-            &["matmul", "load_l1", "writeback_dram"][..],
+            &["matmul", "load_l1", "load_l1_broadcast", "writeback_dram"][..],
             3,
             1,
             3,
@@ -165,8 +195,26 @@ fn examples_match_pre_redesign_adl_contracts() {
                 "matmul_SR_f16",
                 "matmul_RS_f16",
                 "matmul_RR_f16",
+                "batch_matmul_SS_f16",
+                "batch_matmul_SR_f16",
+                "batch_matmul_RS_f16",
+                "batch_matmul_RR_f16",
+                "vec_vsum_f16",
+                "vec_vmax_f16",
+                "vec_max1_f16",
                 "elementwise_add_f16",
+                "elementwise_mul_f16",
+                "vec_max_f16",
                 "vec_exp_f16",
+                "vec_sum_f16",
+                "vec_add_f16",
+                "vec_mul_f16",
+                "vec_div_f16",
+                "vec_sub_f16",
+                "vec_powf_f16",
+                "vec_cmpf_ogt_f16",
+                "vec_select_f16",
+                "vec_log_f16",
                 "dram_to_l1_S_f16",
                 "dram_to_l1_S_bcst",
                 "dram_to_l1_R_f16",
@@ -209,6 +257,11 @@ fn examples_match_pre_redesign_adl_contracts() {
     assert!(dual.contains("area: [%bcst_x, %bcst_y]"));
     assert!(dual.contains("dst_mem_space @mem_array_L1 : 1"));
     assert!(dual.contains("loom.gather"));
+
+    let mesh =
+        architecture_to_mlir(&mlar_rust::archs::load_arch(example_dir("mesh-torus")).unwrap())
+            .unwrap();
+    assert!(mesh.contains("area: [%bcst_x, %bcst_y]"));
 }
 
 fn processor_line<'a>(mlir: &'a str, module: &str) -> &'a str {

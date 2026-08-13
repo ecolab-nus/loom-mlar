@@ -23,14 +23,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_scope(arch: &Architecture, _depth: usize) {
     let dims = arch
-        .dimensions
+        .axes()
         .iter()
-        .map(|dim| format!("{}={}", dim.name, dim.size))
+        .map(|axis| format!("{}={}", axis.name(), axis.extent()))
         .collect::<Vec<_>>()
         .join(", ");
     println!(
         "architecture {}{}",
-        arch.name,
+        arch.name(),
         if dims.is_empty() {
             String::new()
         } else {
@@ -38,27 +38,27 @@ fn print_scope(arch: &Architecture, _depth: usize) {
         }
     );
 
-    for memory in &arch.memories {
+    for memory in arch.memories() {
         let definition = arch
             .memory_definition(memory)
             .expect("loaded architectures have valid memory definitions");
         println!(
             "  memory {}: {} instances × {} bytes",
-            memory.name,
+            memory.name(),
             memory.instances(),
             definition.capacity
         );
     }
-    for processor in &arch.processors {
+    for processor in arch.processors() {
         let definition = arch
-            .processor_definition(&processor.definition)
+            .processor_definition(processor.definition_name())
             .expect("loaded architectures have valid processor definitions");
         println!(
             "  processor {}: {} function(s), {} valid instance(s), {} resource(s)",
-            processor.name,
-            definition.functions.len(),
-            processor.relation.instances.len(),
-            processor.resources.len()
+            processor.name(),
+            definition.operations().len(),
+            processor.instances(arch).len(),
+            processor.resources().len()
         );
     }
 }

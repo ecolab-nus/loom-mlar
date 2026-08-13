@@ -1,8 +1,6 @@
-func @load_l1 {
-  params: [L]
-  ins:
-    src: !loom.buffer<Lxf16>
-  outs:
-    dst: !loom.buffer<Lxf16>
+func @load_l1(
+  in src: f16[L],
+  out dst: f16[L]
+) {
   loom.copy %src to %dst
 }

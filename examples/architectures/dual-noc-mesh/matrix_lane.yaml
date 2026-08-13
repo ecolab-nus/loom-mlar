@@ -2,49 +2,73 @@ name: matrix_lane
 type: compute
 source: matrix_lane.loom
 resources:
-  - name: matrix_lane
+- name: matrix_lane
 performance:
-  time_costs:
-    matmul_large: &matmul_large
-      simple:
-        fixed_latency: "M * N / 2"
-        volume: "2 * M * N * K"
-        throughput: "716"
-    matmul_small: &matmul_small
-      simple:
-        fixed_latency: "M * N / 2"
-        volume: "2 * M * N * K"
-        throughput: "M * N * 716 / 8192"
-    remote_matmul: &remote_matmul
-      simple:
-        fixed_latency: "888"
-        volume: "2 * M * N * K"
-        throughput: "888"
-    add: &add
-      simple:
-        fixed_latency: "10"
-        volume: "M * N"
-        throughput: "43"
-  functions:
-    matmul_SS_f16:
-      constraints: "M >= 32 && N >= 32 && K >= 32"
-      scenarios:
-        - constraints: "M * N >= 8192"
-          time_cost: *matmul_large
-        - constraints: "M * N < 8192"
-          time_cost: *matmul_small
-    matmul_SR_f16:
-      constraints: "M >= 32 && N >= 32 && K >= 32"
-      scenarios:
-        - time_cost: *remote_matmul
-    matmul_RS_f16:
-      constraints: "M >= 32 && N >= 32 && K >= 32"
-      scenarios:
-        - time_cost: *remote_matmul
-    matmul_RR_f16:
-      constraints: "M >= 32 && N >= 32 && K >= 32"
-      scenarios:
-        - time_cost: *remote_matmul
-    elementwise_add_f16:
-      scenarios:
-        - time_cost: *add
+  matmul_SS_f16:
+  - constraint: (M >= 32 && N >= 32 && K >= 32) && (M * N >= 8192)
+    latency: M * N / 2
+    volume: 2 * M * N * K
+    throughput: '716'
+  - constraint: (M >= 32 && N >= 32 && K >= 32) && (M * N < 8192)
+    latency: M * N / 2
+    volume: 2 * M * N * K
+    throughput: M * N * 716 / 8192
+  matmul_SR_f16:
+  - constraint: M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * M * N * K
+    throughput: '888'
+  matmul_RS_f16:
+  - constraint: M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * M * N * K
+    throughput: '888'
+  matmul_RR_f16:
+  - constraint: M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * M * N * K
+    throughput: '888'
+  batch_matmul_SS_f16:
+  - constraint: (B >= 1 && M >= 32 && N >= 32 && K >= 32) && (M * N >= 8192)
+    latency: M * N / 2
+    volume: 2 * B * M * N * K
+    throughput: '716'
+  - constraint: (B >= 1 && M >= 32 && N >= 32 && K >= 32) && (M * N < 8192)
+    latency: M * N / 2
+    volume: 2 * B * M * N * K
+    throughput: M * N * 716 / 8192
+  batch_matmul_SR_f16:
+  - constraint: B >= 1 && M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * B * M * N * K
+    throughput: '888'
+  batch_matmul_RS_f16:
+  - constraint: B >= 1 && M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * B * M * N * K
+    throughput: '888'
+  batch_matmul_RR_f16:
+  - constraint: B >= 1 && M >= 32 && N >= 32 && K >= 32
+    latency: '888'
+    volume: 2 * B * M * N * K
+    throughput: '888'
+  vec_vsum_f16:
+  - latency: '1'
+    volume: P * R
+    throughput: '128'
+  vec_vmax_f16:
+  - latency: '1'
+    volume: P * R
+    throughput: '128'
+  vec_max1_f16:
+  - latency: '1'
+    volume: L
+    throughput: '128'
+  elementwise_add_f16:
+  - latency: '10'
+    volume: M * N
+    throughput: '43'
+  elementwise_mul_f16:
+  - latency: '10'
+    volume: M * N
+    throughput: '15'

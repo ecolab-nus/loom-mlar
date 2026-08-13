@@ -1,34 +1,29 @@
 mod arch_yaml;
 pub mod architecture;
-pub mod index;
+pub mod axis;
 pub mod memory;
+pub mod network;
 pub mod perf;
 mod perf_yaml;
 pub mod processor;
 pub mod resource;
-pub mod size_dim;
+pub mod scope;
 
 pub use crate::mlir::{AdlExportError, architecture_to_mlir, architecture_to_mlir_unchecked};
-pub use crate::schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
-    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
-    MlirTensorSymbolBinding,
-};
 pub use arch_yaml::{ArchLoadError, ChipYaml, ProcessorYaml};
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureError};
-pub use index::{AffineExpression, EndpointParseError, IndexDomain};
+pub use axis::{Axis, EndpointParseError};
 pub use memory::{
-    Banking, EndpointIndex, MemoryArray, MemoryCatalog, MemoryDefinition, MemoryEndpoint,
-    NamedMemoryRegion,
+    Banking, EndpointIndex, MemoryAlias, MemoryArray, MemoryDefinition, MemoryEndpoint,
+    MemoryTechnology,
 };
-pub use perf::{
-    FuncPerfModel, FuncPerfModelBuilder, PerfScenario, SimpleTimeCost, TimeCost, TimeExpr,
-};
-pub use perf_yaml::{PerfYamlError, PerfYamlSpec};
+pub use network::{NetworkEdge, NetworkInterface, NetworkLink, NetworkTopology};
+pub use perf::{FuncPerfModel, FuncPerfModelBuilder, PerfScenario, TimeCost};
+pub use perf_yaml::{PerfYamlError, PerformanceYaml};
 pub use processor::{
-    AffineRelation, ConnectionSpec, FunctionProcessor, ProcessorArray, ProcessorDefinition,
-    ProcessorSelection, ProcessorSelectionError, ProcessorSelector, ProcessorType,
-    ResolvedConnection, ResolvedMemoryEndpoint,
+    Connection, ConnectionInstance, MemoryLocation, OperationModel, ProcessorArray,
+    ProcessorDefinition, ProcessorSelection, ProcessorSelectionError, ProcessorSelector,
+    ProcessorSourceFormat, ProcessorType, ResolvedEndpointIndex,
 };
-pub use resource::ResourceArray;
-pub use size_dim::{Dimension, SizeExpr, Sym};
+pub use resource::Resource;
+pub use scope::Scope;

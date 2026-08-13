@@ -1,10 +1,8 @@
-func @elementwise_add {
-  params: [L]
-  ins:
-    lhs: !loom.buffer<Lxf16>
-    rhs: !loom.buffer<Lxf16>
-  outs:
-    out: !loom.buffer<Lxf16>
+func @elementwise_add(
+  in lhs: f16[L],
+  in rhs: f16[L],
+  out out: f16[L]
+) {
   linalg.generic {
     indexing_maps = [
       affine_map<(d0) -> (d0)>,

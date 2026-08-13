@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use mlar_rust::arch::{EndpointIndex, ProcessorYaml};
 use mlar_rust::{
-    AdlExportError, Architecture, ConnectionSpec, EndpointIndex, Expr, MemoryCatalog,
-    MemoryDefinition, MemoryEndpoint, NamedMemoryRegion, ProcessorYaml, ResourceArray, Schedule,
-    Sym, architecture_to_mlir, evaluate,
+    AdlExportError, Architecture, Connection, Expr, MemoryAlias, MemoryDefinition, MemoryEndpoint,
+    Resource, Schedule, Sym, architecture_to_mlir, evaluate,
 };
 
 fn processor_dir() -> std::path::PathBuf {
@@ -22,8 +22,9 @@ fn load_processor_definition(name: &str) -> mlar_rust::ProcessorDefinition {
         .unwrap_or_else(|error| panic!("processor '{name}' should load: {error}"))
 }
 
-fn connection(inputs: &[&str], outputs: &[&str]) -> ConnectionSpec {
-    ConnectionSpec::new(
+fn connection(domain: &[&str], inputs: &[&str], outputs: &[&str]) -> Connection {
+    Connection::new(
+        domain.iter().copied(),
         inputs
             .iter()
             .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
@@ -36,44 +37,54 @@ fn connection(inputs: &[&str], outputs: &[&str]) -> ConnectionSpec {
 }
 
 fn build_imperative() -> Architecture {
-    let catalog = MemoryCatalog {
-        definitions: vec![
-            MemoryDefinition::new("DRAM", ["dram_channel"], 1_610_612_736, 8192),
-            MemoryDefinition::new("L1", ["x", "y"], 1_398_784, 16).with_banking(16),
-        ],
-        regions: vec![NamedMemoryRegion::new(
+    Architecture::builder("system")
+        .axis("dram_channel", 8)
+        .axis("x", 8)
+        .axis("y", 8)
+        .memory_definition(MemoryDefinition::new(
+            "DRAM",
+            ["dram_channel"],
+            1_610_612_736,
+            8192,
+        ))
+        .memory_definition(MemoryDefinition::new("L1", ["x", "y"], 1_398_784, 16).with_banking(16))
+        .memory_alias(MemoryAlias::new(
             "all_l1",
             MemoryEndpoint::parse("L1[:, :]").unwrap(),
-        )],
-    };
-
-    Architecture::builder("system")
-        .dimension("dram_channel", 8)
-        .dimension("x", 8)
-        .dimension("y", 8)
-        .memory_catalog(catalog)
+        ))
         .place_memory("DRAM", ["dram_channel"])
         .place_memory("L1", ["x", "y"])
-        .resource(ResourceArray::exclusive("noc0"))
-        .resource(ResourceArray::exclusive("noc1"))
+        .resource(Resource::exclusive("noc0"))
+        .resource(Resource::exclusive("noc1"))
         .processor_definition(load_processor_definition("matrix_lane"))
         .processor_definition(load_processor_definition("vector_lane"))
         .processor_definition(load_processor_definition("dram_l1_noc0"))
         .processor_definition(load_processor_definition("l1_l1_noc0"))
         .processor_definition(load_processor_definition("l1_dram_noc1"))
-        .connect("matrix_lane", connection(&["L1[x, y]"], &["L1[x, y]"]))
-        .connect("vector_lane", connection(&["L1[x, y]"], &["L1[x, y]"]))
+        .connect(
+            "matrix_lane",
+            "matrix_lane",
+            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"]),
+        )
+        .connect(
+            "vector_lane",
+            "vector_lane",
+            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"]),
+        )
         .connect(
             "dram_l1_noc0",
-            connection(&["DRAM[:]"], &["all_l1"]).with_resources(["noc0"]),
+            "dram_l1_noc0",
+            connection(&[], &["DRAM[:]"], &["all_l1"]).with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            connection(&["all_l1"], &["all_l1"]).with_resources(["noc0"]),
+            "l1_l1_noc0",
+            connection(&[], &["all_l1"], &["all_l1"]).with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            connection(&["all_l1"], &["DRAM[:]"]).with_resources(["noc1"]),
+            "l1_dram_noc1",
+            connection(&[], &["all_l1"], &["DRAM[:]"]).with_resources(["noc1"]),
         )
         .build()
         .expect("imperative 2D mesh should build")
@@ -82,7 +93,7 @@ fn build_imperative() -> Architecture {
 #[test]
 fn recreates_the_pre_redesign_2d_mesh_architecture() {
     let architecture = load();
-    assert_eq!(architecture.name, "system");
+    assert_eq!(architecture.name(), "system");
 
     let dram = architecture.memory("DRAM").expect("DRAM array");
     let l1 = architecture.memory("L1").expect("L1 array");
@@ -98,41 +109,40 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
     assert_eq!(l1_definition.banking.as_ref().unwrap().banks, 16);
 
     let all_l1 = architecture
-        .memory_catalog
-        .region("all_l1")
-        .expect("mesh-wide L1 region");
+        .memory_alias("all_l1")
+        .expect("mesh-wide L1 alias");
     assert_eq!(all_l1.endpoint.memory, "L1");
     assert_eq!(
         all_l1.endpoint.indices,
         [EndpointIndex::All, EndpointIndex::All]
     );
 
-    assert_eq!(architecture.processor_definitions.len(), 5);
-    assert_eq!(architecture.processors.len(), 5);
-    for processor in &architecture.processors {
-        let expected_instances = match processor.definition.as_str() {
+    assert_eq!(architecture.processor_definitions().len(), 5);
+    assert_eq!(architecture.processors().len(), 5);
+    for processor in architecture.processors() {
+        let expected_instances = match processor.definition_name() {
             "matrix_lane" | "vector_lane" => 64,
             "dram_l1_noc0" | "l1_l1_noc0" | "l1_dram_noc1" => 1,
             other => panic!("unexpected processor {other}"),
         };
         assert_eq!(
-            processor.relation.instances.len(),
+            processor.instances(&architecture).len(),
             expected_instances,
             "{}",
-            processor.name
+            processor.name()
         );
     }
 
     let noc0_users = architecture
-        .processors
+        .processors()
         .iter()
         .filter(|processor| {
             processor
-                .resources
+                .resources()
                 .iter()
-                .any(|resource| resource.name == "noc0")
+                .any(|resource| resource.name() == "noc0")
         })
-        .map(|processor| processor.definition.as_str())
+        .map(|processor| processor.definition_name())
         .collect::<Vec<_>>();
     assert_eq!(noc0_users, ["dram_l1_noc0", "l1_l1_noc0"]);
 }
@@ -141,9 +151,9 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
 fn compact_sources_preserve_the_full_golden_processor_catalog() {
     let architecture = load();
     let functions = architecture
-        .processor_definitions
+        .processor_definitions()
         .iter()
-        .flat_map(|definition| &definition.functions)
+        .flat_map(|definition| definition.operations())
         .map(|function| function.func.name.as_str())
         .collect::<Vec<_>>();
     assert_eq!(
@@ -203,7 +213,7 @@ fn declarative_imperative_and_pre_redesign_golden_agree() {
     );
 
     let golden = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.mlir"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/golden/test_golden_ref.mlir"),
     )
     .expect("pre-redesign MLIR golden");
 
@@ -231,7 +241,6 @@ fn schedule_uses_the_restored_processor_performance_models() {
     let evaluated = evaluate(
         &Schedule::Func {
             func: function,
-            processor: None,
             scenarios: None,
         },
         &architecture,
@@ -254,13 +263,7 @@ fn schedule_uses_the_restored_processor_performance_models() {
 
 #[test]
 fn missing_type_is_a_specific_export_error() {
-    let mut architecture = load();
-    architecture
-        .processor_definitions
-        .iter_mut()
-        .find(|definition| definition.name == "matrix_lane")
-        .unwrap()
-        .processor_type = None;
+    let architecture = load().with_processor_type("matrix_lane", None).unwrap();
     let error = architecture_to_mlir(&architecture).expect_err("untyped export must fail");
     assert!(matches!(error, AdlExportError::MissingProcessorType { .. }));
 }
@@ -454,10 +457,12 @@ fn function_contracts(mlir: &str) -> Vec<FunctionContract> {
             .rfind("return")
             .map(|offset| operation_start + offset)
             .expect("function return");
+        let mut symbols = selected_lines(body, "loom.sym");
+        symbols.sort();
         contracts.push(FunctionContract {
             name,
             signature: no_whitespace(header),
-            symbols: selected_lines(body, "loom.sym"),
+            symbols,
             shapes,
             bindings,
             operation: no_whitespace(&body[operation_start..operation_end]),

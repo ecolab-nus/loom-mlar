@@ -1,0 +1,11 @@
+name: typed_memory
+memory: memory.yaml
+memories:
+  L1_gcram: []
+  L1_rram: []
+processors:
+  mixed_lane:
+    definition: mixed_lane.yaml
+    domain: []
+    inputs: [L1_rram, L1_gcram]
+    outputs: [L1_gcram]

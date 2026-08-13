@@ -1,0 +1,7 @@
+type: compute
+source: mixed_lane.loom
+performance:
+  add_mixed:
+    - latency: "1"
+      volume: L
+      throughput: "32"
