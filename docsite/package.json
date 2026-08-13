@@ -6,6 +6,7 @@
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
+    "build:lavish": "docusaurus build --config docusaurus.lavish.config.ts --out-dir ../docs/.lavish/docusaurus",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc"
@@ -29,4 +30,3 @@
     "node": ">=20.0"
   }
 }
-

@@ -29,7 +29,7 @@ const config: Config = {
       'classic',
       {
         docs: {
-          path: '../docs',
+          path: '../docs/text',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
         },
@@ -94,4 +94,3 @@ const config: Config = {
 };
 
 export default config;
-

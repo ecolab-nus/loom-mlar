@@ -17,7 +17,11 @@ tests/
 `-- math_expr_constraint_test.rs
 
 web-visualization/        # React/Vite viewer for exported JSON payloads
-docs/                     # Documentation pages
+docs/
++-- text/                 # Hand-authored Markdown documentation
++-- .archify/             # Archify JSON sources of truth
++-- .lavish/              # Generated HTML artifacts for Lavish review
+`-- README.md             # Documentation index and generation workflow
 ```
 
 `src/lib.rs` re-exports the commonly used public API so downstream users can

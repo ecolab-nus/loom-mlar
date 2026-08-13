@@ -24,9 +24,13 @@ Main areas:
 - `src/abi/`: helpers for generated evaluator/query binaries.
 - `tests/2d_mesh/`: the most complete architecture example and export tests.
 - `web-visualization/`: React/Vite viewer for exported architecture JSON.
-- `docs/`: project documentation.
+- `docs/text/`: hand-authored project documentation.
+- `docs/.archify/`: Archify JSON sources of truth.
+- `docs/.lavish/`: generated HTML review artifacts, including the architecture
+  viewer and the Docusaurus review build. Git tracks only its `.gitkeep`
+  scaffold; never edit or commit generated contents.
 
-Start with `README.md`, `docs/software-architecture.md`, and
+Start with `README.md`, `docs/text/software-architecture.md`, and
 `tests/2d_mesh/arch.rs` when you need a broad understanding of the system.
 
 ## Common Commands
@@ -102,12 +106,39 @@ When changing user-visible behavior, exported schema shape, or typical workflows
 update the relevant docs:
 
 - `README.md`
-- `docs/installation.md`
-- `docs/usage.md`
-- `docs/software-architecture.md`
+- `docs/text/installation.md`
+- `docs/text/usage.md`
+- `docs/text/software-architecture.md`
 - `web-visualization/README.md`
 
 Keep examples aligned with the public API re-exported by `src/lib.rs`.
+
+### Documentation Artifact Workflow
+
+- `docs/text/` and `docsite/` are the editable sources for textual
+  documentation. Never hand-author a separate HTML version of a Markdown page.
+- Generate textual-documentation HTML through Docusaurus first. When an
+  individual documentation page needs Lavish review, take the corresponding
+  HTML page from the Docusaurus build and mirror its Docusaurus output path
+  under `docs/.lavish/docusaurus/`. Preserve the emitted hierarchy; for example,
+  `docsite/build/docs/usage/index.html` maps to
+  `docs/.lavish/docusaurus/docs/usage/index.html`.
+- A copied page is not a complete artifact unless its generated CSS,
+  JavaScript, images, and other required assets are also available at the paths
+  referenced by that page. Prefer regenerating or refreshing the complete
+  Docusaurus artifact tree instead of copying isolated HTML without its assets.
+- Open the generated page in Lavish only as a review surface. Apply textual
+  feedback to `docs/text/`; apply navigation, theme, or rendering feedback to
+  `docsite/`; then rebuild and refresh the mirrored artifact. Never patch the
+  generated HTML under `docs/.lavish/`.
+- Architecture diagrams follow a separate source path: edit
+  `docs/.archify/*.json`, validate and deliver with Archify into
+  `docs/.lavish/architecture/`, and then open the delivered HTML in Lavish.
+- Generated contents under `docs/.lavish/` are disposable and Git-ignored. Git
+  tracks only `docs/.lavish/.gitkeep` so the directory exists in a fresh
+  checkout. Generated contents may be removed and rebuilt at any time, while
+  `docs/text/`, `docs/.archify/`, and `docsite/` must remain sufficient to
+  reproduce them.
 
 ## Working Notes
 
