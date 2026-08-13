@@ -6,7 +6,8 @@
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
-    "build:lavish": "docusaurus build --config docusaurus.lavish.config.ts --out-dir ../docs/.lavish/docusaurus",
+    "postbuild": "node scripts/copy-archify-diagrams.mjs build/diagrams",
+    "build:lavish": "docusaurus build --config docusaurus.lavish.config.ts --out-dir ../docs/.lavish/docusaurus && node scripts/copy-archify-diagrams.mjs ../docs/.lavish/docusaurus/diagrams",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc"

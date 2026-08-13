@@ -1,4 +1,14 @@
+import ArchifyDiagram from '@site/src/components/ArchifyDiagram';
+
 # Software Architecture And File Contents
+
+## High-Level Architecture
+
+<ArchifyDiagram
+  src="/diagrams/mlar-project-architecture.html"
+  title="mlar-rust project architecture"
+  description="Explore the modeling core, evaluation path, interchange layers, and browser viewer."
+/>
 
 ## Top-Level Layout
 
@@ -18,8 +28,8 @@ tests/
 
 web-visualization/        # React/Vite viewer for exported JSON payloads
 docs/
-+-- text/                 # Hand-authored Markdown documentation
-+-- .archify/             # Archify JSON sources of truth
++-- *.md                  # Hand-authored Markdown documentation
++-- *.json                # Archify diagram sources of truth
 +-- .lavish/              # Generated HTML artifacts for Lavish review
 `-- README.md             # Documentation index and generation workflow
 ```

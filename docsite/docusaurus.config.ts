@@ -29,9 +29,10 @@ const config: Config = {
       'classic',
       {
         docs: {
-          path: '../docs/text',
+          path: '../docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
+          exclude: ['README.md'],
         },
         blog: false,
         theme: {

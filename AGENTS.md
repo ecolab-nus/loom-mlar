@@ -24,13 +24,13 @@ Main areas:
 - `src/abi/`: helpers for generated evaluator/query binaries.
 - `tests/2d_mesh/`: the most complete architecture example and export tests.
 - `web-visualization/`: React/Vite viewer for exported architecture JSON.
-- `docs/text/`: hand-authored project documentation.
-- `docs/.archify/`: Archify JSON sources of truth.
+- `docs/*.md`: hand-authored project documentation.
+- `docs/*.json`: Archify diagram sources of truth.
 - `docs/.lavish/`: generated HTML review artifacts, including the architecture
   viewer and the Docusaurus review build. Git tracks only its `.gitkeep`
   scaffold; never edit or commit generated contents.
 
-Start with `README.md`, `docs/text/software-architecture.md`, and
+Start with `README.md`, `docs/software-architecture.md`, and
 `tests/2d_mesh/arch.rs` when you need a broad understanding of the system.
 
 ## Common Commands
@@ -106,17 +106,35 @@ When changing user-visible behavior, exported schema shape, or typical workflows
 update the relevant docs:
 
 - `README.md`
-- `docs/text/installation.md`
-- `docs/text/usage.md`
-- `docs/text/software-architecture.md`
+- `docs/installation.md`
+- `docs/usage.md`
+- `docs/software-architecture.md`
 - `web-visualization/README.md`
 
 Keep examples aligned with the public API re-exported by `src/lib.rs`.
 
 ### Documentation Artifact Workflow
 
-- `docs/text/` and `docsite/` are the editable sources for textual
+- `docs/*.md` and `docsite/` are the editable sources for textual
   documentation. Never hand-author a separate HTML version of a Markdown page.
+- Use the Archify skill for architecture, workflow, sequence, data-flow, and
+  lifecycle/state diagrams in the documentation. Keep the editable diagram
+  specification as a JSON file directly under `docs/`; do not replace it with Mermaid,
+  hand-built boxes and arrows, or an HTML-only diagram unless the user
+  explicitly requests a different format.
+- Treat each Archify JSON file as the diagram source of truth. Validate it with
+  the matching Archify diagram type and `--quality showcase`, require all 9
+  artifact checks with zero composition errors and warnings, then deliver the
+  standalone HTML into `docs/.lavish/architecture/`. Never patch the delivered
+  HTML. Apply review feedback to the JSON and rerun validation and delivery.
+- Embed delivered diagrams in Docusaurus with
+  `docsite/src/components/ArchifyDiagram.tsx`. Pass a site-relative source such
+  as `/diagrams/mlar-project-architecture.html`; do not inline the generated
+  HTML, SVG, scripts, or styles into Markdown.
+- Run the Archify delivery before building Docusaurus. The Docusaurus build
+  copies delivered HTML from `docs/.lavish/architecture/` into its own
+  `diagrams/` output. A documentation build with an embedded diagram is not
+  complete if that generated diagram is missing.
 - Generate textual-documentation HTML through Docusaurus first. When an
   individual documentation page needs Lavish review, take the corresponding
   HTML page from the Docusaurus build and mirror its Docusaurus output path
@@ -128,16 +146,16 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   referenced by that page. Prefer regenerating or refreshing the complete
   Docusaurus artifact tree instead of copying isolated HTML without its assets.
 - Open the generated page in Lavish only as a review surface. Apply textual
-  feedback to `docs/text/`; apply navigation, theme, or rendering feedback to
+  feedback to the corresponding `docs/*.md`; apply navigation, theme, or rendering feedback to
   `docsite/`; then rebuild and refresh the mirrored artifact. Never patch the
   generated HTML under `docs/.lavish/`.
-- Architecture diagrams follow a separate source path: edit
-  `docs/.archify/*.json`, validate and deliver with Archify into
-  `docs/.lavish/architecture/`, and then open the delivered HTML in Lavish.
+- Open a delivered standalone diagram or the Docusaurus page containing it in
+  Lavish only as a review surface. Diagram feedback always returns to the
+  corresponding Archify JSON source.
 - Generated contents under `docs/.lavish/` are disposable and Git-ignored. Git
   tracks only `docs/.lavish/.gitkeep` so the directory exists in a fresh
   checkout. Generated contents may be removed and rebuilt at any time, while
-  `docs/text/`, `docs/.archify/`, and `docsite/` must remain sufficient to
+  `docs/*.md`, Archify `docs/*.json`, and `docsite/` must remain sufficient to
   reproduce them.
 
 ## Working Notes

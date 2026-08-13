@@ -87,7 +87,7 @@ For more viewer details, see the
 
 ## Run The Documentation Site
 
-The Docusaurus site reads the Markdown files in `docs/text/` directly. From the
+The Docusaurus site reads the Markdown files in `docs/` directly. From the
 repository root:
 
 ```bash

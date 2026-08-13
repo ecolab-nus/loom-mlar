@@ -68,18 +68,18 @@ evaluation, and all export formats.
 ## Documentation
 
 - [Documentation index](docs/README.md)
-- [Installation and toolchain setup](docs/text/installation.md)
-- [Basic architectural concepts](docs/text/architecture-concepts.md)
-- [Usage and end-to-end examples](docs/text/usage.md)
-- [Performance-model YAML](docs/text/perf-yaml.md)
-- [Software architecture and repository layout](docs/text/software-architecture.md)
+- [Installation and toolchain setup](docs/installation.md)
+- [Basic architectural concepts](docs/architecture-concepts.md)
+- [Usage and end-to-end examples](docs/usage.md)
+- [Performance-model YAML](docs/perf-yaml.md)
+- [Software architecture and repository layout](docs/software-architecture.md)
 - [High-level project architecture](docs/.lavish/architecture/mlar-project-architecture.html)
 - [Docusaurus review artifact](docs/.lavish/docusaurus/index.html)
 - [Web visualization](web-visualization/README.md)
 
-The Docusaurus site in [`docsite/`](docsite/) renders the pages under
-`docs/text/`. See the
-[installation guide](docs/text/installation.md#run-the-documentation-site)
+The Docusaurus site in [`docsite/`](docsite/) renders the Markdown pages under
+`docs/`. See the
+[installation guide](docs/installation.md#run-the-documentation-site)
 for local setup.
 
 ## License
