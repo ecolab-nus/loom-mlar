@@ -13,8 +13,9 @@
 7. Evaluate schedules in-process or through generated evaluator binaries.
 8. Query architecture MLIR in-process or through generated query binaries.
 
-The full example in [tests/2d_mesh/arch.rs](../tests/2d_mesh/arch.rs) follows
-this workflow end to end.
+The full example in
+[tests/2d_mesh/arch.rs](https://github.com/ecolab-nus/loom-mlar/blob/main/tests/2d_mesh/arch.rs)
+follows this workflow end to end.
 
 ## Build A Small Scope
 
@@ -74,6 +75,68 @@ vector_lane.validate()?;
 When the MLIR file has `module @vector_lane`, the builder name must also be
 `vector_lane`. Each parsed function must have exactly one matching performance
 model.
+
+## Build Performance Models In Rust
+
+Use `FuncPerfModel::builder()` to describe a function's symbolic timing model.
+A simple time cost represents:
+
+```text
+fixed_latency + volume / throughput
+```
+
+For example, this model has a fixed latency of one time unit and processes `L`
+elements at a throughput of 1024 elements per time unit:
+
+```rust
+use mlar_rust::{Expr, FuncPerfModel, Sym};
+
+let model = FuncPerfModel::builder()
+    .simple_time_cost(
+        Expr::parse("1").unwrap(),
+        Expr::parse("L").unwrap(),
+        Expr::parse("1024").unwrap(),
+    )
+    .build();
+
+assert_eq!(model.symbols, Sym::from_names(["L"]));
+```
+
+Global and scenario constraints default to `true`. Symbols are inferred from
+constraints and cost expressions when `.symbols(...)` is omitted. You can
+still declare symbols explicitly when a model needs declarations that do not
+appear in its formulas, such as symbols used only by linked MLIR shape metadata.
+
+Use scenarios when a function has different performance regimes:
+
+```rust
+use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost};
+
+let matmul = FuncPerfModel::builder()
+    .constraints(ConstraintExpr::parse("M >= 32 && N >= 32 && K >= 32").unwrap())
+    .scenarios([
+        PerfScenario::with_constraints(
+            ConstraintExpr::parse("M * N >= 8192").unwrap(),
+            SimpleTimeCost::new(
+                Expr::parse("100").unwrap(),
+                Expr::parse("M * N * K").unwrap(),
+                Expr::parse("1024").unwrap(),
+            ),
+        ),
+        PerfScenario::with_constraints(
+            ConstraintExpr::parse("M * N < 8192").unwrap(),
+            SimpleTimeCost::new(
+                Expr::parse("100").unwrap(),
+                Expr::parse("M * N * K").unwrap(),
+                Expr::parse("(M * N / 8192) * 1024").unwrap(),
+            ),
+        ),
+    ])
+    .build();
+```
+
+The library does not prove that scenarios are mutually exclusive, so model
+authors should use non-overlapping scenario constraints.
 
 ## Load Performance From YAML
 

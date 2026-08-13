@@ -5,6 +5,7 @@
 - Rust toolchain with Cargo.
 - A toolchain recent enough for Rust edition 2024.
 - Node.js 18 or newer and npm, only if you want to run the web viewer.
+- Node.js 20 or newer and npm, only if you want to run the documentation site.
 
 The crate dependencies are currently `nom`, `serde`, and `serde_json`.
 
@@ -81,8 +82,22 @@ The viewer loads `/sample-viewer.json` by default. Regenerate that file with:
 cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
 ```
 
-For more viewer details, see
-[web-visualization/README.md](../web-visualization/README.md).
+For more viewer details, see the
+[web visualization README](https://github.com/ecolab-nus/loom-mlar/blob/main/web-visualization/README.md).
+
+## Run The Documentation Site
+
+The Docusaurus site reads the Markdown files in `docs/` directly. From the
+repository root:
+
+```bash
+cd docsite
+npm install
+npm start
+```
+
+Create the production static site with `npm run build`. The output is written
+to `docsite/build/`.
 
 ## Using As A Dependency
 

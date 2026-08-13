@@ -201,4 +201,16 @@ Visualization exports include:
 - `architecture_to_hierarchy_json*`: hierarchy tree payload,
 - `architecture_to_viewer_json*`: combined payload for the React viewer.
 
-The web viewer lives under [web-visualization](../web-visualization).
+The web viewer lives under
+[web-visualization](https://github.com/ecolab-nus/loom-mlar/tree/main/web-visualization).
+
+## Current Limitations
+
+- MLIR export requires dimensions and memory sizes that simplify to constants.
+- Scenario overlap is not checked; multiple performance scenarios should use
+  mutually exclusive constraints.
+- Resource maps describe contention relationships, but schedule evaluation does
+  not yet perform resource-aware parallel scheduling.
+- Quantitative resources are experimental. The unchecked MLIR exporter can
+  emit `adl.resource.quantitative`, but the current compiler and checked export
+  path do not support it.

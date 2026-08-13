@@ -1,45 +1,48 @@
 # MLAR Rust Front-End
 
-Rust implementation of MLAR, the Multi-Level Architecture Representation used
-to describe hardware to compiler flows.
+`mlar-rust` is a Rust library for describing hardware architectures as
+structured, queryable compiler input. It implements MLAR (Multi-Level
+Architecture Representation), connecting architecture descriptions with MLIR
+functionality, symbolic performance models, schedule evaluation, and a web
+visualization format.
 
-This crate is a library. It provides Rust data structures, MLIR import/export,
-symbolic performance models, schedule evaluation helpers, and visualization JSON
-export. There is no top-level CLI binary in this repository.
+Use it to model:
 
-## What It Models
+- hierarchical and replicated hardware architectures,
+- memories, compute processors, data movers, and shared resources,
+- mesh-network connectivity and affine links,
+- symbolic costs, constraints, and performance scenarios,
+- schedules evaluated against an architecture.
 
-MLAR describes hardware as:
+Architectures can be exported as `adl.*` MLIR or as graph and hierarchy JSON
+for the included React viewer. Processor functionality is supplied as
+`func.func`/`linalg.*` MLIR with Loom annotations, while performance models can
+be built in Rust or loaded from YAML.
 
-- Memory regions: banks and homogeneous arrays of banks.
-- Compute processors: MLIR functionality plus per-function performance models.
-- Data movers: MLIR transfer functions plus one source and one destination
-  memory region.
-- Architecture hierarchy: scoped composition plus homogeneous dimensions.
-- Resources: shared contention/capacity limits used by processors.
-- Scale-out networks: currently mesh networks with affine-map links.
-- Symbolic costs and constraints: `Expr`, `ConstraintExpr`, `SimpleTimeCost`,
-  `PerfScenario`, and `FuncPerfModel`.
+This repository provides a library rather than a top-level CLI.
 
-Functionality lives in MLIR modules that use ordinary `func.func`/`linalg.*`
-operations plus Loom annotations such as `loom.sym`, `loom.bind_shape`,
-`loom.bind_mem`, `loom.copy`, and `loom.gather`. Performance models are
-represented in Rust and can be loaded from YAML because timing, throughput, and
-scenario constraints are easier to express symbolically outside compute IR.
+## Using An Architecture Model
 
-## Documentation
+Once an architecture has been modeled, it has two primary uses:
 
-- [Basic Architectural Concepts](docs/architecture-concepts.md)
-- [Software Architecture and File Contents](docs/software-architecture.md)
-- [Installation](docs/installation.md)
-- [Usage](docs/usage.md)
-- [Performance YAML](docs/perf-yaml.md)
+1. **Generate a compiler-facing architecture description.**
+   `architecture_to_mlir` exports the hierarchy, memories, processors,
+   resources, and connectivity as operations in the ADL MLIR dialect. It also
+   incorporates the MLIR functionality attached to processors, producing a
+   complete module that can be consumed by the Loom compiler flow.
+2. **Evaluate the symbolic performance of a workload.**
+   Attach performance models to the architecture's functions, represent a
+   workload as a `Schedule`, and call `evaluate` to derive its possible timing
+   scenarios and constraints. Sequential work is combined by summing costs;
+   parallel work is combined by taking the maximum cost. Evaluation is
+   available directly through the Rust API or through generated standalone
+   evaluator binaries.
 
-The full-system example is in [tests/2d_mesh/arch.rs](tests/2d_mesh/arch.rs),
-with processor MLIR and performance models under [tests/2d_mesh/processors/](tests/2d_mesh/processors/).
-It builds a scoped system containing an 8x8 mesh of cores, DRAM, route-specific
-data movers, NoC resources, MLIR export, schedule evaluation, and viewer JSON
-export.
+These uses share the same architecture model, but performance evaluation does
+not execute or interpret the exported ADL MLIR. It evaluates schedules against
+the symbolic `FuncPerfModel`s attached to the modeled processors and data
+movers. The model can also be exported as JSON for inspection in the included
+web viewer.
 
 ## Minimal Example
 
@@ -48,113 +51,32 @@ use mlar_rust::*;
 
 let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
     .with_name("L1");
+let lane = Processor::new("lane");
 
-let module = MlirModule::from_mlir("tests/2d_mesh/processors/vector_lane.mlir")?;
-let perf = module
-    .functions
-    .iter()
-    .map(|_| {
-        FuncPerfModel::builder()
-            .simple_time_cost(
-                Expr::parse("1").unwrap(),
-                Expr::parse("L").unwrap(),
-                Expr::parse("1024").unwrap(),
-            )
-            .build()
-    })
-    .collect();
-
-let lane = ComputeProcessor::builder()
-    .named("vector_lane")
-    .from_region(l1.clone())
-    .to_region(l1.clone())
-    .functionality(module)
-    .perf(perf)
-    .finish()?
-    .into_processor();
-
-let arch = Architecture::scope("core")
+let core = Architecture::scope("core")
     .with_memory(l1)
     .with_processor(lane);
 
-let mlir = architecture_to_mlir(&arch)
-    .expect("MLIR export and validation should succeed");
-let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
+let viewer_json = architecture_to_viewer_json_string_pretty(&core)?;
 ```
 
-MLIR export invokes `adl-opt` for the architecture-only module and then
-`loom-opt` for the complete module. The Cargo build script discovers both
-validators from their standard sibling build directories in the Loom
-monorepo, verifies that they are executable, and compiles their paths into
-loom-mlar. Build ADL and loom-dataflow before running `cargo build` or
-`cargo test`; no validator environment variables or `PATH` changes are
-required. For debugging or experimental output without compiler validation,
-use `architecture_to_mlir_unchecked`.
+The complete 2D mesh example in
+[`tests/2d_mesh/arch.rs`](tests/2d_mesh/arch.rs) demonstrates MLIR-backed
+processors, performance models, data movement, network resources, schedule
+evaluation, and all export formats.
 
-`adl.resource.quantitative` is experimental. The unchecked exporter preserves
-it, but the current ADL/MLIR compiler and checked export path do not support it.
+## Documentation
 
-## Performance Model Builder
+- [Installation and toolchain setup](docs/installation.md)
+- [Basic architectural concepts](docs/architecture-concepts.md)
+- [Usage and end-to-end examples](docs/usage.md)
+- [Performance-model YAML](docs/perf-yaml.md)
+- [Software architecture and repository layout](docs/software-architecture.md)
+- [Web visualization](web-visualization/README.md)
 
-Use `FuncPerfModel::builder()` for new performance models. If global or
-scenario constraints are omitted, they default to `true`; if symbols are
-omitted, they are inferred from the constraints and time-cost expressions.
-For hand-authored descriptive models,
-`PerfYamlSpec::from_file(...).models_for_module(...)` loads YAML files that use
-the same expression and constraint syntax.
-
-```rust
-use mlar_rust::{ConstraintExpr, Expr, FuncPerfModel, PerfScenario, SimpleTimeCost};
-
-let model = FuncPerfModel::builder()
-    .simple_time_cost(
-        Expr::parse("1").unwrap(),
-        Expr::parse("L").unwrap(),
-        Expr::parse("1024").unwrap(),
-    )
-    .build();
-
-assert_eq!(model.symbols, mlar_rust::Sym::from_names(["L"]));
-
-let matmul = FuncPerfModel::builder()
-    .constraints(ConstraintExpr::parse("M >= 32 && N >= 32 && K >= 32").unwrap())
-    .scenarios([
-        PerfScenario::with_constraints(
-            ConstraintExpr::parse("M * N >= 8192").unwrap(),
-            SimpleTimeCost::new(
-                Expr::parse("100").unwrap(),
-                Expr::parse("M * N * K").unwrap(),
-                Expr::parse("1024").unwrap(),
-            ),
-        ),
-        PerfScenario::with_constraints(
-            ConstraintExpr::parse("M * N < 8192").unwrap(),
-            SimpleTimeCost::new(
-                Expr::parse("100").unwrap(),
-                Expr::parse("M * N * K").unwrap(),
-                Expr::parse("(M * N / 8192) * 1024").unwrap(),
-            ),
-        ),
-    ])
-    .build();
-
-assert_eq!(matmul.symbols, mlar_rust::Sym::from_names(["K", "M", "N"]));
-```
-
-You can still call `.symbols([...])` or `.constraints(...)` explicitly when a
-model needs declarations that differ from inferred expression usage.
-
-## Current Limitations
-
-- MLIR export returns `None` if dimensions or memory sizes cannot be simplified
-  to constants.
-- Schedule evaluation supports `Schedule::Func`, `Schedule::Sequential`, and
-  `Schedule::Parallel`; sequential compositions sum child times, while parallel
-  compositions take the maximum child time.
-- Scenario overlap is not checked. Model authors should make scenario
-  constraints mutually exclusive when multiple scenarios are present.
-- Resource maps represent contention relationships, but the current schedule
-  evaluator does not perform resource-aware parallel scheduling.
+The Docusaurus site in [`docsite/`](docsite/) renders the pages under `docs/`.
+See the [installation guide](docs/installation.md#run-the-documentation-site)
+for local setup.
 
 ## License
 
