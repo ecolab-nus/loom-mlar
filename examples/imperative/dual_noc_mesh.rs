@@ -1,10 +1,18 @@
-mod support;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
 use mlar_rust::{
-    Architecture, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource, architecture_to_mlir,
+    Architecture, Connection, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource,
+    architecture_to_mlir,
 };
 
-use support::{ExampleResult, architecture_dir, connection};
+type ExampleResult<T> = Result<T, Box<dyn Error>>;
+
+fn architecture_dir(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/declarative")
+        .join(name)
+}
 
 pub fn build() -> ExampleResult<Architecture> {
     Ok(Architecture::builder("dual_noc_system")
@@ -36,23 +44,23 @@ pub fn build() -> ExampleResult<Architecture> {
         ])
         .connect(
             "matrix_lane",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
         )
         .connect(
             "vector_lane",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
         )
         .connect(
             "dram_l1_noc0",
-            connection([], ["DRAM[:]"], ["all_l1"])?.with_resources(["noc0"]),
+            Connection::parse([], ["DRAM[:]"], ["all_l1"])?.with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            connection([], ["all_l1"], ["all_l1"])?.with_resources(["noc0"]),
+            Connection::parse([], ["all_l1"], ["all_l1"])?.with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            connection([], ["all_l1"], ["DRAM[:]"])?.with_resources(["noc1"]),
+            Connection::parse([], ["all_l1"], ["DRAM[:]"])?.with_resources(["noc1"]),
         )
         .build()?)
 }

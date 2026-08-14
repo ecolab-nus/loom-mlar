@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::architecture::Architecture;
-use super::axis::Axis;
+use super::axis::{Axis, EndpointParseError};
 use super::memory::{MemoryEndpoint, MemoryTechnology};
 use super::perf::FuncPerfModel;
 use super::resource::Resource;
@@ -348,6 +348,19 @@ impl Connection {
         }
     }
 
+    /// Build a connection from endpoint strings, as the declarative loader does.
+    pub fn parse<'a>(
+        domain: impl IntoIterator<Item = &'a str>,
+        inputs: impl IntoIterator<Item = &'a str>,
+        outputs: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, EndpointParseError> {
+        Ok(Self::new(
+            domain,
+            parse_endpoints(inputs)?,
+            parse_endpoints(outputs)?,
+        ))
+    }
+
     pub fn with_resources(
         mut self,
         resources: impl IntoIterator<Item = impl Into<String>>,
@@ -363,6 +376,12 @@ impl Connection {
             .flat_map(MemoryEndpoint::variables)
             .collect()
     }
+}
+
+fn parse_endpoints<'a>(
+    endpoints: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<MemoryEndpoint>, EndpointParseError> {
+    endpoints.into_iter().map(MemoryEndpoint::parse).collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

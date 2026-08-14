@@ -17,22 +17,6 @@ fn load() -> mlar_rust::Architecture {
     mlar_rust::archs::load_arch(processor_dir()).expect("redesigned 2D mesh package should load")
 }
 
-// A concrete `&str` item type keeps `connection([], ...)` inferable.
-fn connection<'a>(
-    domain: impl IntoIterator<Item = &'a str>,
-    inputs: impl IntoIterator<Item = &'a str>,
-    outputs: impl IntoIterator<Item = &'a str>,
-) -> Connection {
-    Connection::new(domain, parse_endpoints(inputs), parse_endpoints(outputs))
-}
-
-fn parse_endpoints<'a>(endpoints: impl IntoIterator<Item = &'a str>) -> Vec<MemoryEndpoint> {
-    endpoints
-        .into_iter()
-        .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
-        .collect()
-}
-
 fn build_imperative() -> Architecture {
     Architecture::builder("system")
         .axis("dram_channel", 8)
@@ -63,23 +47,29 @@ fn build_imperative() -> Architecture {
         ])
         .connect(
             "matrix_lane",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]),
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]).unwrap(),
         )
         .connect(
             "vector_lane",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]),
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]).unwrap(),
         )
         .connect(
             "dram_l1_noc0",
-            connection([], ["DRAM[:]"], ["all_l1"]).with_resources(["noc0"]),
+            Connection::parse([], ["DRAM[:]"], ["all_l1"])
+                .unwrap()
+                .with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            connection([], ["all_l1"], ["all_l1"]).with_resources(["noc0"]),
+            Connection::parse([], ["all_l1"], ["all_l1"])
+                .unwrap()
+                .with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            connection([], ["all_l1"], ["DRAM[:]"]).with_resources(["noc1"]),
+            Connection::parse([], ["all_l1"], ["DRAM[:]"])
+                .unwrap()
+                .with_resources(["noc1"]),
         )
         .build()
         .expect("imperative 2D mesh should build")

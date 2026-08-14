@@ -5,57 +5,37 @@ dimensions:
   x: 8
   y: 8
 memories:
-  DRAM:
-  - dram_channel
-  L1:
-  - x
-  - y
+  DRAM: [dram_channel]
+  L1: [x, y]
 resources:
 - name: noc0
 - name: noc1
 processors:
   matrix_lane:
     definition: matrix_lane.yaml
-    domain:
-    - x
-    - y
-    inputs:
-    - L1[x, y]
-    outputs:
-    - L1[x, y]
+    domain: [x, y]
+    inputs: ["L1[x, y]"]
+    outputs: ["L1[x, y]"]
   vector_lane:
     definition: vector_lane.yaml
-    domain:
-    - x
-    - y
-    inputs:
-    - L1[x, y]
-    outputs:
-    - L1[x, y]
+    domain: [x, y]
+    inputs: ["L1[x, y]"]
+    outputs: ["L1[x, y]"]
   dram_l1_noc0:
     definition: dram_l1_noc0.yaml
     domain: []
-    inputs:
-    - DRAM[:]
-    outputs:
-    - all_l1
-    resources:
-    - noc0
+    inputs: ["DRAM[:]"]
+    outputs: ["all_l1"]
+    resources: [noc0]
   l1_l1_noc0:
     definition: l1_l1_noc0.yaml
     domain: []
-    inputs:
-    - all_l1
-    outputs:
-    - all_l1
-    resources:
-    - noc0
+    inputs: ["all_l1"]
+    outputs: ["all_l1"]
+    resources: [noc0]
   l1_dram_noc1:
     definition: l1_dram_noc1.yaml
     domain: []
-    inputs:
-    - all_l1
-    outputs:
-    - DRAM[:]
-    resources:
-    - noc1
+    inputs: ["all_l1"]
+    outputs: ["DRAM[:]"]
+    resources: [noc1]

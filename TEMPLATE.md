@@ -216,13 +216,9 @@ record flat ownership and optional parentage.
 The builder produces the same canonical model:
 
 ```rust
-use mlar_rust::{Architecture, Connection, MemoryDefinition, MemoryEndpoint};
+use mlar_rust::{Architecture, Connection, MemoryDefinition};
 
-let connection = Connection::new(
-    ["x", "y"],
-    [MemoryEndpoint::parse("L1[x, y]")?],
-    [MemoryEndpoint::parse("L1[x, y]")?],
-);
+let connection = Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?;
 
 let architecture = Architecture::builder("example")
     .axis("x", 4)

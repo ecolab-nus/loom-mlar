@@ -4,11 +4,8 @@ dimensions:
   x: 4
   y: 4
 memories:
-  DRAM:
-  - dram_channel
-  L1:
-  - x
-  - y
+  DRAM: [dram_channel]
+  L1: [x, y]
 resources:
 - name: noc_ingress
 - name: noc_egress
@@ -16,9 +13,7 @@ resources:
 - name: l1_torus_y
 networks:
 - name: l1_torus
-  dimensions:
-  - x
-  - y
+  dimensions: [x, y]
   resources:
   - name: x_links
   - name: y_links
@@ -44,40 +39,25 @@ networks:
     endpoint: mesh_l1
 scopes:
 - name: mesh
-  dimensions:
-  - x
-  - y
-  memories:
-  - L1
-  processors:
-  - matrix_lane
-  networks:
-  - l1_torus
+  dimensions: [x, y]
+  memories: [L1]
+  processors: [matrix_lane]
+  networks: [l1_torus]
 processors:
   matrix_lane:
     definition: matrix_lane.yaml
-    domain:
-    - x
-    - y
-    inputs:
-    - L1[x, y]
-    outputs:
-    - L1[x, y]
+    domain: [x, y]
+    inputs: ["L1[x, y]"]
+    outputs: ["L1[x, y]"]
   dram_l1_dma:
     definition: dram_l1_dma.yaml
     domain: []
-    inputs:
-    - DRAM[:]
-    outputs:
-    - mesh_l1
-    resources:
-    - noc_ingress
+    inputs: ["DRAM[:]"]
+    outputs: ["mesh_l1"]
+    resources: [noc_ingress]
   l1_dram_dma:
     definition: l1_dram_dma.yaml
     domain: []
-    inputs:
-    - mesh_l1
-    outputs:
-    - DRAM[:]
-    resources:
-    - noc_egress
+    inputs: ["mesh_l1"]
+    outputs: ["DRAM[:]"]
+    resources: [noc_egress]

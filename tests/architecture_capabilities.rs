@@ -12,11 +12,7 @@ fn memory_definition() -> MemoryDefinition {
 }
 
 fn connection(input: &str, output: &str) -> Connection {
-    Connection::new(
-        ["x", "y"],
-        vec![MemoryEndpoint::parse(input).unwrap()],
-        vec![MemoryEndpoint::parse(output).unwrap()],
-    )
+    Connection::parse(["x", "y"], [input], [output]).unwrap()
 }
 
 fn function(name: &str, latency: i64) -> OperationModel {

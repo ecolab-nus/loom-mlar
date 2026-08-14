@@ -1,10 +1,18 @@
-mod support;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
 use mlar_rust::{
-    Architecture, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource, architecture_to_mlir,
+    Architecture, Connection, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource,
+    architecture_to_mlir,
 };
 
-use support::{ExampleResult, architecture_dir, connection};
+type ExampleResult<T> = Result<T, Box<dyn Error>>;
+
+fn architecture_dir(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/declarative")
+        .join(name)
+}
 
 pub fn build() -> ExampleResult<Architecture> {
     Ok(Architecture::builder("cache_system")
@@ -38,7 +46,7 @@ pub fn build() -> ExampleResult<Architecture> {
         .processors(["core_lane", "dram_l2_dma", "l2_l1_dma", "l1_l2_dma"])
         .connect(
             "core_lane",
-            connection(
+            Connection::parse(
                 ["cluster", "core"],
                 ["L1[cluster, core]"],
                 ["L1[cluster, core]"],
@@ -46,16 +54,16 @@ pub fn build() -> ExampleResult<Architecture> {
         )
         .connect(
             "dram_l2_dma",
-            connection([], ["DRAM[:]"], ["l2_clusters"])?.with_resources(["memory_fabric"]),
+            Connection::parse([], ["DRAM[:]"], ["l2_clusters"])?.with_resources(["memory_fabric"]),
         )
         .connect(
             "l2_l1_dma",
-            connection(["cluster"], ["L2[cluster]"], ["l1_cluster"])?
+            Connection::parse(["cluster"], ["L2[cluster]"], ["l1_cluster"])?
                 .with_resources(["memory_fabric", "l2_fabric"]),
         )
         .connect(
             "l1_l2_dma",
-            connection(["cluster"], ["l1_cluster"], ["L2[cluster]"])?
+            Connection::parse(["cluster"], ["l1_cluster"], ["L2[cluster]"])?
                 .with_resources(["memory_fabric", "l2_fabric"]),
         )
         .build()?)

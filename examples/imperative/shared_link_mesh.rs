@@ -1,10 +1,17 @@
 //! One definition placed under four names with `connect_as`.
 
-mod support;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
-use mlar_rust::{Architecture, MemoryDefinition, Resource, architecture_to_mlir};
+use mlar_rust::{Architecture, Connection, MemoryDefinition, Resource, architecture_to_mlir};
 
-use support::{ExampleResult, architecture_dir, connection};
+type ExampleResult<T> = Result<T, Box<dyn Error>>;
+
+fn architecture_dir(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/declarative")
+        .join(name)
+}
 
 pub fn build() -> ExampleResult<Architecture> {
     Ok(Architecture::builder("link_system")
@@ -16,29 +23,32 @@ pub fn build() -> ExampleResult<Architecture> {
         .resource(Resource::exclusive("y_links"))
         .processor_source_dir(architecture_dir("shared-link-mesh"))
         .processors(["lane", "link_dma"])
-        .connect("lane", connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?)
+        .connect(
+            "lane",
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
+        )
         .connect_as(
             "east_link",
             "link_dma",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[(x + 1) mod 4, y]"])?
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[(x + 1) mod 4, y]"])?
                 .with_resources(["x_links"]),
         )
         .connect_as(
             "west_link",
             "link_dma",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[(x + 3) mod 4, y]"])?
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[(x + 3) mod 4, y]"])?
                 .with_resources(["x_links"]),
         )
         .connect_as(
             "north_link",
             "link_dma",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, (y + 1) mod 4]"])?
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, (y + 1) mod 4]"])?
                 .with_resources(["y_links"]),
         )
         .connect_as(
             "south_link",
             "link_dma",
-            connection(["x", "y"], ["L1[x, y]"], ["L1[x, (y + 3) mod 4]"])?
+            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, (y + 3) mod 4]"])?
                 .with_resources(["y_links"]),
         )
         .build()?)
