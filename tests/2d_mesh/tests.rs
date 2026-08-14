@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use mlar_rust::arch::{EndpointIndex, ProcessorYaml};
 use mlar_rust::{
     AdlExportError, Architecture, Connection, Expr, MemoryAlias, MemoryDefinition, MemoryEndpoint,
-    Resource, Schedule, Sym, architecture_to_mlir, evaluate,
+    Resource, Schedule, Sym, architecture_to_mlir, evaluate, generate_evaluator_binary,
 };
 
 fn processor_dir() -> std::path::PathBuf {
@@ -266,6 +268,57 @@ fn missing_type_is_a_specific_export_error() {
     let architecture = load().with_processor_type("matrix_lane", None).unwrap();
     let error = architecture_to_mlir(&architecture).expect_err("untyped export must fail");
     assert!(matches!(error, AdlExportError::MissingProcessorType { .. }));
+}
+
+/// The Loom monorepo builds its evaluator through this test — `scripts/build-mlar.sh`
+/// runs it by name, and `loom/loom_utils/mlar/core.py` then invokes the result at
+/// `tests/2d_mesh/bin/eval_system`, feeding it a Schedule on stdin.
+#[test]
+fn test_generate_system_evaluator_binary() {
+    let architecture = load();
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");
+    let binary = generate_evaluator_binary(&architecture, "eval_system", &output_dir)
+        .expect("system evaluator binary should build");
+    assert!(binary.is_file(), "no binary at {binary:?}");
+
+    let function = architecture
+        .get_function("matmul_SS_f16")
+        .expect("golden matmul function")
+        .func
+        .clone();
+    let schedule = Schedule::Func {
+        func: function,
+        scenarios: None,
+    };
+
+    let mut child = Command::new(&binary)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("generated evaluator should run");
+    child
+        .stdin
+        .take()
+        .expect("stdin was piped")
+        .write_all(serde_json::to_string(&schedule).unwrap().as_bytes())
+        .expect("evaluator should accept a schedule");
+    let output = child.wait_with_output().expect("evaluator should exit");
+    assert!(
+        output.status.success(),
+        "evaluator failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The embedded architecture must evaluate exactly as the in-process one does.
+    let from_binary: Schedule =
+        serde_json::from_slice(&output.stdout).expect("evaluator should emit a Schedule");
+    let in_process = evaluate(&schedule, &architecture).expect("schedule should evaluate");
+    assert_eq!(
+        serde_json::to_value(&from_binary).unwrap(),
+        serde_json::to_value(&in_process).unwrap(),
+        "generated binary disagrees with the library evaluator"
+    );
 }
 
 #[derive(Debug, PartialEq, Eq)]

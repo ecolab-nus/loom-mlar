@@ -11,8 +11,10 @@ use crate::arch::{
 };
 use crate::mlir::compact::{LoomMemoryBinding, lower_loom_source};
 
-/// ADL validator discovered and checked by `build.rs`.
-const ADL_PARSE: &str = env!("MLAR_ADL_PARSE");
+/// Architecture-only validator, discovered and checked by `build.rs`.
+const ADL_OPT: &str = env!("MLAR_BUILD_ADL_OPT");
+/// Whole-module validator (ADL and Loom dialects), likewise from `build.rs`.
+const LOOM_OPT: &str = env!("MLAR_BUILD_LOOM_OPT");
 /// Module symbol required by loom-dataflow's exploration drivers.
 const DATAFLOW_ROOT_MODULE: &str = "arch_system";
 
@@ -50,13 +52,20 @@ pub enum AdlExportError {
         scope: String,
         count: usize,
     },
-    /// The emitted module was rejected by the ADL validator.
+    /// The architecture module was rejected by `adl-opt`.
     InvalidAdl {
         program: PathBuf,
         stderr: String,
     },
-    /// The validator could not be run at all.
+    /// The complete module, processor functionality included, was rejected by
+    /// `loom-opt`.
+    InvalidLoomMlir {
+        program: PathBuf,
+        stderr: String,
+    },
+    /// A validator could not be run at all.
     ValidatorUnavailable {
+        tool: &'static str,
         program: PathBuf,
         reason: String,
     },
@@ -108,14 +117,19 @@ impl std::fmt::Display for AdlExportError {
             ),
             Self::InvalidAdl { program, stderr } => write!(
                 f,
-                "exported MLIR was rejected by '{}':\n{stderr}",
+                "exported architecture was rejected by '{}':\n{stderr}",
                 program.display()
             ),
-            Self::ValidatorUnavailable { program, reason } => write!(
+            Self::InvalidLoomMlir { program, stderr } => write!(
                 f,
-                "could not run the ADL validator '{}': {reason}",
+                "exported module was rejected by '{}':\n{stderr}",
                 program.display()
             ),
+            Self::ValidatorUnavailable {
+                tool,
+                program,
+                reason,
+            } => write!(f, "could not run {tool} '{}': {reason}", program.display()),
         }
     }
 }
@@ -123,37 +137,74 @@ impl std::fmt::Display for AdlExportError {
 impl std::error::Error for AdlExportError {}
 
 /// Lower the canonical indexed model to the current dataflow `adl.*` dialect
-/// and validate the result with `adl_parse`.
+/// and validate the result.
+///
+/// The architecture module is checked on its own with `adl-opt`, then the
+/// complete module — processor functionality included — with `loom-opt`, which
+/// loads both dialects. Splitting the stages keeps an architecture-level defect
+/// from surfacing as an error inside a processor function.
 ///
 /// Prefix regions lower to compatible nested memory-array handles. Pointwise
 /// affine relations and explicit bank selections are projected away because
 /// the compatibility dialect cannot represent them.
 ///
-/// The validator path is discovered and checked by the Cargo build script, so
+/// Validator paths are discovered and checked by the Cargo build script, so
 /// callers need no environment variables or `PATH` changes.
 pub fn architecture_to_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
-    let mlir = emit_architecture_mlir(architecture)?;
-    validate_adl(OsStr::new(ADL_PARSE), &mlir)?;
-    Ok(mlir)
+    architecture_to_mlir_with_tools(architecture, OsStr::new(ADL_OPT), OsStr::new(LOOM_OPT))
 }
 
-/// Lower to `adl.*` MLIR without invoking the validator.
+/// Lower to `adl.*` MLIR without invoking the validators.
 ///
 /// Intended for debugging and for emitting constructs the current MLIR
 /// compiler does not yet accept.
 pub fn architecture_to_mlir_unchecked(
     architecture: &Architecture,
 ) -> Result<String, AdlExportError> {
-    emit_architecture_mlir(architecture)
+    Ok(emit_architecture_mlir(architecture)?.complete)
+}
+
+fn architecture_to_mlir_with_tools(
+    architecture: &Architecture,
+    adl_opt: &OsStr,
+    loom_opt: &OsStr,
+) -> Result<String, AdlExportError> {
+    let generated = emit_architecture_mlir(architecture)?;
+    validate_mlir(
+        adl_opt,
+        "adl-opt",
+        &generated.adl_only,
+        ValidationStage::Adl,
+    )?;
+    validate_mlir(
+        loom_opt,
+        "loom-opt",
+        &generated.complete,
+        ValidationStage::Loom,
+    )?;
+    Ok(generated.complete)
+}
+
+/// Which validator rejected a module, and therefore which error it maps to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ValidationStage {
+    Adl,
+    Loom,
 }
 
 /// Run `program` over `mlir` and map a non-zero exit to [`AdlExportError`].
 ///
 /// stdin is written from a worker thread so a validator that fills its stderr
 /// pipe before draining stdin cannot deadlock the caller.
-fn validate_adl(program: &OsStr, mlir: &str) -> Result<(), AdlExportError> {
+fn validate_mlir(
+    program: &OsStr,
+    tool: &'static str,
+    mlir: &str,
+    stage: ValidationStage,
+) -> Result<(), AdlExportError> {
     let path = PathBuf::from(program);
     let unavailable = |reason: String| AdlExportError::ValidatorUnavailable {
+        tool,
         program: path.clone(),
         reason,
     };
@@ -180,15 +231,29 @@ fn validate_adl(program: &OsStr, mlir: &str) -> Result<(), AdlExportError> {
     if !output.status.success() {
         // A validator that rejects early closes stdin, so a broken pipe here is
         // a symptom of the rejection rather than a separate failure.
-        return Err(AdlExportError::InvalidAdl {
-            program: path,
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        return Err(match stage {
+            ValidationStage::Adl => AdlExportError::InvalidAdl {
+                program: path,
+                stderr,
+            },
+            ValidationStage::Loom => AdlExportError::InvalidLoomMlir {
+                program: path,
+                stderr,
+            },
         });
     }
     write_result.map_err(|error| unavailable(error.to_string()))
 }
 
-fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
+/// The architecture module alone, and the same module with processor
+/// functionality appended. Each validator consumes one of them.
+struct GeneratedMlir {
+    adl_only: String,
+    complete: String,
+}
+
+fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, AdlExportError> {
     validate_processors(architecture)?;
     let mut emitter = Emitter::default();
     for dimension in &architecture.axes {
@@ -296,14 +361,20 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<String, AdlExpo
         &emitted_processors,
     )?;
 
-    let mut result = format!("module @{DATAFLOW_ROOT_MODULE} {{\n");
-    result.push_str(&indent(&emitter.body, 2));
+    let header = format!("module @{DATAFLOW_ROOT_MODULE} {{\n");
+    let architecture_body = indent(&emitter.body, 2);
+
+    let adl_only = format!("{header}{architecture_body}}}\n");
+
+    let mut complete = header;
+    complete.push_str(&architecture_body);
     for module in modules {
-        result.push('\n');
-        result.push_str(&indent(&module, 2));
+        complete.push('\n');
+        complete.push_str(&indent(&module, 2));
     }
-    result.push_str("}\n");
-    Ok(result)
+    complete.push_str("}\n");
+
+    Ok(GeneratedMlir { adl_only, complete })
 }
 
 fn lower_processor_source(
@@ -1116,20 +1187,23 @@ fn indent(text: &str, spaces: usize) -> String {
 
 #[cfg(test)]
 mod validator_tests {
-    use super::{ADL_PARSE, AdlExportError, validate_adl};
+    use super::{ADL_OPT, AdlExportError, LOOM_OPT, ValidationStage, validate_mlir};
     use std::ffi::OsStr;
 
     #[test]
-    fn validator_accepts_a_well_formed_module() {
+    fn adl_validator_accepts_a_well_formed_architecture() {
         let mlir = "module @arch_x {\n  %0 = adl.spatial_dim \"dim_x\", 4\n}\n";
-        validate_adl(OsStr::new(ADL_PARSE), mlir).expect("well-formed ADL should validate");
+        validate_mlir(OsStr::new(ADL_OPT), "adl-opt", mlir, ValidationStage::Adl)
+            .expect("well-formed ADL should validate");
     }
 
     #[test]
-    fn validator_rejects_a_malformed_module() {
-        let error = validate_adl(
-            OsStr::new(ADL_PARSE),
+    fn adl_validator_rejects_a_malformed_architecture() {
+        let error = validate_mlir(
+            OsStr::new(ADL_OPT),
+            "adl-opt",
             "module @arch_x {\n  %0 = adl.nope\n}\n",
+            ValidationStage::Adl,
         )
         .expect_err("an unknown operation must be rejected");
         assert!(
@@ -1138,10 +1212,58 @@ mod validator_tests {
         );
     }
 
+    /// `loom-opt` carries the Loom dialect that `adl-opt` does not, so it is the
+    /// only validator that can accept processor functionality.
+    #[test]
+    fn only_the_loom_validator_accepts_loom_operations() {
+        let mlir = concat!(
+            "module @arch_x {\n",
+            "  func.func @f() {\n",
+            "    %0 = loom.sym @M : index\n",
+            "    return\n",
+            "  }\n",
+            "}\n"
+        );
+        validate_mlir(
+            OsStr::new(LOOM_OPT),
+            "loom-opt",
+            mlir,
+            ValidationStage::Loom,
+        )
+        .expect("loom-opt should accept the Loom dialect");
+
+        let error = validate_mlir(OsStr::new(ADL_OPT), "adl-opt", mlir, ValidationStage::Adl)
+            .expect_err("adl-opt does not load the Loom dialect");
+        assert!(
+            matches!(error, AdlExportError::InvalidAdl { .. }),
+            "expected InvalidAdl, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn a_loom_rejection_is_reported_as_such() {
+        let error = validate_mlir(
+            OsStr::new(LOOM_OPT),
+            "loom-opt",
+            "module @arch_x {\n  %0 = adl.nope\n}\n",
+            ValidationStage::Loom,
+        )
+        .expect_err("an unknown operation must be rejected");
+        assert!(
+            matches!(error, AdlExportError::InvalidLoomMlir { .. }),
+            "expected InvalidLoomMlir, got {error:?}"
+        );
+    }
+
     #[test]
     fn missing_validator_reports_unavailable_rather_than_passing() {
-        let error = validate_adl(OsStr::new("/nonexistent/adl_parse"), "module @a {}\n")
-            .expect_err("a missing validator must not silently succeed");
+        let error = validate_mlir(
+            OsStr::new("/nonexistent/adl-opt"),
+            "adl-opt",
+            "module @a {}\n",
+            ValidationStage::Adl,
+        )
+        .expect_err("a missing validator must not silently succeed");
         assert!(
             matches!(error, AdlExportError::ValidatorUnavailable { .. }),
             "expected ValidatorUnavailable, got {error:?}"
