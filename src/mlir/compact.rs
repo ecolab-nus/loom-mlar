@@ -246,10 +246,7 @@ fn lower_body_line(
 
 /// Add operand types to short-form `ins(...)`/`outs(...)` clauses.
 ///
-/// Compact sources write `linalg.matmul ins(%lhs, %rhs) outs(%out)`; MLIR
-/// requires the operand types, which the buffer declarations already fix.
-/// A clause that already carries a `:` is emitted unchanged, so fully spelled
-/// out bodies such as `linalg.generic` pass through.
+/// Types come from buffer declarations. Already typed clauses pass through.
 fn annotate_linalg_operands(
     line: &str,
     function: &CompactFunction,

@@ -1,0 +1,8 @@
+name: link_dma
+type: data_mover
+source: link_dma.loom
+performance:
+  link_copy:
+  - latency: '24'
+    volume: L * 2
+    throughput: '64'

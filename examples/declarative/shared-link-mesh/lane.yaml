@@ -1,0 +1,11 @@
+name: lane
+type: compute
+source: lane.loom
+resources:
+- name: lane_pipeline
+performance:
+  matmul:
+  - constraint: M > 0 && N > 0 && K > 0
+    latency: '16'
+    volume: 2 * M * N * K
+    throughput: '128'

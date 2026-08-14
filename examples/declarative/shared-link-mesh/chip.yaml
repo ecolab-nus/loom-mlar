@@ -1,0 +1,66 @@
+# Four named placements share the `link_dma` definition.
+name: link_system
+dimensions:
+  x: 4
+  y: 4
+memories:
+  L1:
+  - x
+  - y
+resources:
+- name: x_links
+- name: y_links
+processors:
+  lane:
+    definition: lane.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[x, y]
+  east_link:
+    definition: link_dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[(x + 1) mod 4, y]
+    resources:
+    - x_links
+  west_link:
+    definition: link_dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[(x + 3) mod 4, y]
+    resources:
+    - x_links
+  north_link:
+    definition: link_dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[x, (y + 1) mod 4]
+    resources:
+    - y_links
+  south_link:
+    definition: link_dma.yaml
+    domain:
+    - x
+    - y
+    inputs:
+    - L1[x, y]
+    outputs:
+    - L1[x, (y + 3) mod 4]
+    resources:
+    - y_links

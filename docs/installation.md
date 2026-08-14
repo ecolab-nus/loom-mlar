@@ -3,24 +3,30 @@
 ## Requirements
 
 - Rust toolchain supporting edition 2024;
-- a built `adl_parse` from the sibling `loom-dataflow` checkout;
+- `adl-opt` and `loom-opt`, built from the sibling `adl-dialect` and
+  `loom-dataflow` checkouts;
 - Node.js 18+ and npm only for the web viewer.
 
-## ADL validator
+## MLIR validators
 
-Checked export shells out to `adl_parse`, which loads both the ADL and Loom
-dialects and therefore validates a complete exported module in one pass. Build
-it before building this crate:
+Checked export shells out to two drivers: `adl-opt` takes the architecture
+module and `loom-opt` takes the complete module. Both require the LLVM/MLIR 22
+toolchain pinned by the Loom monorepo.
 
 ```bash
-cd ../loom-dataflow/build && cmake --build . --target adl_parse
+cmake -G Ninja -S ../adl-dialect -B ../adl-dialect/build \
+  -DMLIR_DIR=$MLIR_22/lib/cmake/mlir \
+  -DCMAKE_INSTALL_PREFIX=../adl-dialect/build/install
+cmake --build ../adl-dialect/build --target install
+
+cmake -G Ninja -S ../loom-dataflow -B ../loom-dataflow/build \
+  -DMLIR_DIR=$MLIR_22/lib/cmake/mlir \
+  -DADLDialect_DIR=../adl-dialect/build/install/lib/cmake/ADLDialect
+cmake --build ../loom-dataflow/build
 ```
 
-`build.rs` looks for it at
-`../loom-dataflow/build/tool/adl-dialect/adl_parse`, checks that it is
-executable, and compiles the resolved path into the crate, so no environment
-variables or `PATH` changes are needed. The build fails with instructions if the
-validator is missing.
+`build.rs` locates both drivers in those build directories and rejects missing
+or non-executable binaries. Their paths are compiled into the crate.
 
 `architecture_to_mlir` always validates. Use `architecture_to_mlir_unchecked`
 to inspect output the current dialect does not yet accept.
@@ -32,22 +38,15 @@ cargo build
 cargo test
 ```
 
-Selected 2D-mesh tests regenerate inspectable artifacts:
+Selected 2D-mesh tests regenerate inspectable output:
 
 ```bash
 cargo test test_export_2d_mesh_torus_mlir --test 2d_mesh
 cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
 ```
 
-Generated files include:
-
-- `tests/2d_mesh/2d_mesh_torus.mlir`;
-- graph and hierarchy JSON under `tests/2d_mesh/`;
-- `web-visualization/public/sample-viewer.json`;
-- evaluator/query binaries under `tests/2d_mesh/bin/`.
-
-Binary-generation tests create nested Cargo projects and may require registry
-access if their dependencies are not cached.
+Generated MLIR and JSON are written under `tests/2d_mesh/` and
+`web-visualization/public/`; generated ABI binaries use `tests/2d_mesh/bin/`.
 
 ## Web Viewer
 
@@ -68,6 +67,5 @@ details.
 mlar-rust = { path = "../loom-mlar" }
 ```
 
-The crate is primarily a library. The repository also contains
-`export_platform` and `eval_runtime` utility binaries; generated ABI binaries
-are described in [Lowering and Implementation](software-architecture.md).
+The repository also contains the `export_platform` and `eval_runtime` utility
+binaries.

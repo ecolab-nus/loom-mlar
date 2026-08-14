@@ -5,16 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::expr::{Expr, Sym};
 use super::parse::ParseError;
 
-/// Constraint expression — composable, evaluable predicate for performance model applicability.
-///
-/// The compiler uses constraints to determine when a performance model is valid:
-/// - If provably true: model is applicable
-/// - If provably false: reject model
-/// - If unknown (symbolic): keep symbolic, attach as guard, or use fallback
-///
-/// # Parsing from strings
-///
-/// Constraints can be parsed from human-readable strings:
+/// Symbolic predicate used to guard performance alternatives.
 ///
 /// ```
 /// use mlar_rust::math::ConstraintExpr;
@@ -107,31 +98,6 @@ mod tests {
 
 impl ConstraintExpr {
     /// Parse a constraint from a string.
-    ///
-    /// # Grammar
-    ///
-    /// ```text
-    /// constraint := or_expr
-    /// or_expr    := and_expr ('||' and_expr)*
-    /// and_expr   := not_expr ('&&' not_expr)*
-    /// not_expr   := '!' not_expr | atom_c
-    /// atom_c     := 'true' | 'false'
-    ///             | 'divisible' '(' expr ',' expr ')'
-    ///             | 'in_range' '(' expr ',' expr ',' expr ')'
-    ///             | '(' constraint ')'
-    ///             | expr cmp_op expr
-    /// cmp_op     := '==' | '!=' | '<=' | '<' | '>=' | '>'
-    /// ```
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use mlar_rust::math::ConstraintExpr;
-    ///
-    /// let c = ConstraintExpr::parse("M >= 256 && N >= 256").unwrap();
-    /// let c = ConstraintExpr::parse("divisible(M, 16) && in_range(N, 1, 1024)").unwrap();
-    /// let c = ConstraintExpr::parse("!false").unwrap();
-    /// ```
     pub fn parse(input: &str) -> Result<Self, ParseError> {
         super::parse::parse_constraint(input)
     }
@@ -176,30 +142,14 @@ impl ConstraintExpr {
         }
     }
 
-    /// Return the set of symbols referenced in this constraint.
-    ///
-    /// This walks all arithmetic expressions contained in the constraint,
-    /// including comparison operands and predicate arguments. The result is a
-    /// [`HashSet`], so duplicates are removed and iteration order is
-    /// unspecified. Use this when the caller needs membership tests, set
-    /// operations, or does not care about presentation order.
-    ///
-    /// For a deterministic, sorted vector form, use [`ConstraintExpr::symbols`].
+    /// Return referenced symbols as an unordered set.
     pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
         syms
     }
 
-    /// Return the symbols referenced in this constraint in deterministic order.
-    ///
-    /// This walks all arithmetic expressions contained in the constraint,
-    /// removes duplicates, and returns the symbols sorted by name. Use this
-    /// when a stable order is needed for serialization, generated model fields,
-    /// assertions, or user-facing output.
-    ///
-    /// If the caller needs set operations or membership checks, use
-    /// [`ConstraintExpr::free_symbols`] instead.
+    /// Return referenced symbols sorted by name.
     pub fn symbols(&self) -> Vec<Sym> {
         let mut syms: Vec<Sym> = self.free_symbols().into_iter().collect();
         syms.sort();

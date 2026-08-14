@@ -94,20 +94,12 @@ pub struct MlirFunc {
     /// Call-site metadata that MLAR preserves without interpreting.
     #[serde(default, flatten)]
     pub extra_metadata: BTreeMap<String, serde_json::Value>,
-    /// Optional symbolic mapping for this function invocation.
-    ///
-    /// When a function is scheduled, each call site may bind its symbols to
-    /// different expressions. This mapping records those bindings and must be
-    /// filled for schedules given to evaluation.
+    /// Call-site bindings for this function's symbols.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_map: Option<SymbolicMapping>,
 }
 
-/// Reference to an external MLIR module that contains compute semantics.
-///
-/// The referenced `.mlir` file is expected to contain one module with one or
-/// more linalg functions. `functions` can optionally restrict which symbols
-/// in that module are used for this processor.
+/// Parsed MLIR module and its function interfaces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlirModule {
     pub path: Option<String>,
@@ -115,11 +107,7 @@ pub struct MlirModule {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub module_name: Option<String>,
     pub functions: Vec<MlirFunc>,
-    /// Source-level memory aliases resolved while linking an architecture.
-    ///
-    /// Each pair maps an authored alias to the concrete memory-region name
-    /// used by the architecture. The exporter uses these mappings when it
-    /// rewrites the original MLIR source.
+    /// Source aliases mapped to concrete memory-region names.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memory_aliases: Vec<(String, String)>,
 }

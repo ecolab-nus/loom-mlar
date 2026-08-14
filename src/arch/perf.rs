@@ -18,56 +18,27 @@ pub enum TimeCost {
     Expression(Expr),
 }
 
-/// A guarded performance alternative with an associated time cost.
-///
-/// When a [`FuncPerfModel`] contains multiple scenarios, authors are expected
-/// to make scenario constraints mutually exclusive. Evaluation preserves all
-/// alternatives and their guards; it does not select one scenario.
+/// A guarded performance alternative.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerfScenario {
-    /// Constraints under which this scenario applies.
-    ///
-    /// For models with multiple scenarios, these constraints should be
-    /// pairwise mutually exclusive across the model.
+    /// Conditions under which this scenario applies.
     pub constraints: ConstraintExpr,
-    /// Time cost for this scenario — [`TimeCost::Throughput`] in model definitions,
-    /// [`TimeCost::Expression`] after evaluation.
+    /// Throughput form before evaluation; expression form afterward.
     pub time_cost: TimeCost,
 }
 
-/// Per-function performance model — explicit symbol declarations and scenario-based costs.
-///
-/// This model is intentionally independent from MLIR and operation metadata.
-/// It can be linked with an [`MlirFunc`] later (see `validate_for_func`).
-///
-/// # Scenario constraint contract
-///
-/// If `scenarios.len() > 1`, scenario constraints are expected to be mutually
-/// exclusive. This crate currently does not perform overlap detection or
-/// enforce exclusivity at runtime.
+/// Symbols, global constraints, and guarded costs for one function.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FuncPerfModel {
-    /// The symbols this model depends on. All symbols used in `constraints`,
-    /// scenario `constraints`, and `time_cost` must be declared here.
+    /// Symbols used by constraints and costs.
     pub symbols: Vec<Sym>,
-    /// Global constraints that apply to all scenarios. A scenario is only
-    /// applicable when both the global constraints and its own constraints
-    /// are satisfied.
+    /// Constraints applied to every scenario.
     pub constraints: ConstraintExpr,
-    /// The performance scenarios. Each scenario has its own constraints and
-    /// cost expressions.
-    ///
-    /// If multiple scenarios are present, their constraints must be mutually
-    /// exclusive. This is a caller/model-author responsibility; no automatic
-    /// exclusivity check is performed.
+    /// Guarded alternatives. Exclusivity is not checked.
     pub scenarios: Vec<PerfScenario>,
 }
 
-/// Builder for [`FuncPerfModel`].
-///
-/// If `constraints` is not provided, it defaults to [`ConstraintExpr::True`].
-/// If `symbols` is not provided, symbols are inferred from the global
-/// constraints, scenario constraints, and scenario time costs.
+/// Builder for [`FuncPerfModel`]; omitted symbols are inferred.
 #[derive(Clone, Debug, Default)]
 pub struct FuncPerfModelBuilder {
     symbols: Option<Vec<Sym>>,
@@ -185,31 +156,17 @@ impl FuncPerfModel {
         }
     }
 
-    /// Validate that all symbols in global `constraints`, scenario `constraints`,
-    /// and `time_cost` are declared in `symbols`.
-    ///
-    /// This validation checks symbol declaration only. It does not validate
-    /// that scenario constraints are mutually exclusive.
-    ///
-    /// Returns `Ok(())` if valid, or `Err(undeclared)` with undeclared symbols.
+    /// Return any symbols used but not declared in `symbols`.
     pub fn validate(&self) -> Result<(), Vec<Sym>> {
         self.validate_with_extra_symbols(HashSet::new())
     }
 
-    /// Validate this model when linked to a specific function interface.
-    ///
-    /// In addition to model-local symbol usage, this checks symbols referenced
-    /// by `func` tensor symbol bindings.
+    /// Validate model and function-interface symbol use.
     pub fn validate_for_func(&self, func: &MlirFunc) -> Result<(), Vec<Sym>> {
         self.validate_with_extra_symbols(func.shape_symbols())
     }
 
-    /// Total latency expression for a specific scenario.
-    ///
-    /// For `Simple` costs this flattens via `fixed_latency + volume / throughput`;
-    /// for `Expression` costs it returns the stored expression.
-    ///
-    /// Returns `None` if `scenario` is out of range.
+    /// Flatten one scenario to `fixed_latency + volume / throughput`.
     pub fn total_latency_for(&self, scenario: usize) -> Option<Expr> {
         self.scenarios.get(scenario).map(|s| s.time_cost.to_expr())
     }

@@ -440,7 +440,7 @@ impl ChipYaml {
             placements.push((placement_name, definition_name, placement.build()));
         }
         for (placement_name, definition_name, connection) in placements {
-            builder = builder.connect(placement_name, definition_name, connection);
+            builder = builder.connect_as(placement_name, definition_name, connection);
         }
         for scope in &self.scopes {
             builder = builder.scope(scope.build());

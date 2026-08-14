@@ -138,7 +138,7 @@ fn explicit_network_and_scope_survive_canonical_construction() {
         .memory_definition(memory_definition())
         .place_memory("L1", ["x", "y"])
         .processor_definition(definition("lane", "op", 1))
-        .connect("lane", "lane", connection("L1[x, y]", "L1[x, y]"))
+        .connect("lane", connection("L1[x, y]", "L1[x, y]"))
         .network(network)
         .scope(
             Scope::new("mesh", ["x", "y"])
@@ -179,8 +179,8 @@ fn placed_schedule_disambiguates_duplicate_function_implementations() {
         .place_memory("L1", ["x", "y"])
         .processor_definition(definition("fast", "op", 3))
         .processor_definition(definition("slow", "op", 9))
-        .connect("fast", "fast", connection("L1[x, y]", "L1[x, y]"))
-        .connect("slow", "slow", connection("L1[x, y]", "L1[x, y]"))
+        .connect("fast", connection("L1[x, y]", "L1[x, y]"))
+        .connect("slow", connection("L1[x, y]", "L1[x, y]"))
         .build()
         .expect("alternative implementations should be legal");
 
@@ -258,7 +258,7 @@ module @lane {
         .memory_definition(memory_definition())
         .place_memory("L1", ["x", "y"])
         .processor_definition(definition.with_type(mlar_rust::ProcessorType::Compute))
-        .connect("lane", "lane", connection("L1[x, y]", "L1[x, y]"))
+        .connect("lane", connection("L1[x, y]", "L1[x, y]"))
         .build()
         .expect("raw MLIR architecture should build");
     let exported = mlar_rust::architecture_to_mlir(&architecture)

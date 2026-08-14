@@ -9,3 +9,23 @@ nom = "8.0.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+
+# Examples live in examples/declarative (YAML packages plus a loader) and
+# examples/imperative (the same architectures built with ArchitectureBuilder).
+# Cargo only auto-discovers examples/*.rs, so each target is named explicitly.
+
+[[example]]
+name = "inspect_arch"
+path = "examples/declarative/inspect_arch.rs"
+
+[[example]]
+name = "imperative_dual_noc_mesh"
+path = "examples/imperative/dual_noc_mesh.rs"
+
+[[example]]
+name = "imperative_cache_hierarchy"
+path = "examples/imperative/cache_hierarchy.rs"
+
+[[example]]
+name = "imperative_shared_link_mesh"
+path = "examples/imperative/shared_link_mesh.rs"

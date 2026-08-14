@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use mlar_rust::arch::{EndpointIndex, ProcessorYaml};
+use mlar_rust::arch::EndpointIndex;
 use mlar_rust::{
     AdlExportError, Architecture, Connection, Expr, MemoryAlias, MemoryDefinition, MemoryEndpoint,
     Resource, Schedule, Sym, architecture_to_mlir, evaluate, generate_evaluator_binary,
@@ -17,25 +17,20 @@ fn load() -> mlar_rust::Architecture {
     mlar_rust::archs::load_arch(processor_dir()).expect("redesigned 2D mesh package should load")
 }
 
-fn load_processor_definition(name: &str) -> mlar_rust::ProcessorDefinition {
-    let path = processor_dir().join(format!("{name}.yaml"));
-    ProcessorYaml::from_file(&path)
-        .and_then(|yaml| yaml.build_definition(&path))
-        .unwrap_or_else(|error| panic!("processor '{name}' should load: {error}"))
+// A concrete `&str` item type keeps `connection([], ...)` inferable.
+fn connection<'a>(
+    domain: impl IntoIterator<Item = &'a str>,
+    inputs: impl IntoIterator<Item = &'a str>,
+    outputs: impl IntoIterator<Item = &'a str>,
+) -> Connection {
+    Connection::new(domain, parse_endpoints(inputs), parse_endpoints(outputs))
 }
 
-fn connection(domain: &[&str], inputs: &[&str], outputs: &[&str]) -> Connection {
-    Connection::new(
-        domain.iter().copied(),
-        inputs
-            .iter()
-            .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
-            .collect(),
-        outputs
-            .iter()
-            .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
-            .collect(),
-    )
+fn parse_endpoints<'a>(endpoints: impl IntoIterator<Item = &'a str>) -> Vec<MemoryEndpoint> {
+    endpoints
+        .into_iter()
+        .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
+        .collect()
 }
 
 fn build_imperative() -> Architecture {
@@ -58,35 +53,33 @@ fn build_imperative() -> Architecture {
         .place_memory("L1", ["x", "y"])
         .resource(Resource::exclusive("noc0"))
         .resource(Resource::exclusive("noc1"))
-        .processor_definition(load_processor_definition("matrix_lane"))
-        .processor_definition(load_processor_definition("vector_lane"))
-        .processor_definition(load_processor_definition("dram_l1_noc0"))
-        .processor_definition(load_processor_definition("l1_l1_noc0"))
-        .processor_definition(load_processor_definition("l1_dram_noc1"))
+        .processor_source_dir(processor_dir())
+        .processors([
+            "matrix_lane",
+            "vector_lane",
+            "dram_l1_noc0",
+            "l1_l1_noc0",
+            "l1_dram_noc1",
+        ])
         .connect(
             "matrix_lane",
-            "matrix_lane",
-            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"]),
+            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]),
         )
         .connect(
             "vector_lane",
-            "vector_lane",
-            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"]),
+            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]),
         )
         .connect(
             "dram_l1_noc0",
-            "dram_l1_noc0",
-            connection(&[], &["DRAM[:]"], &["all_l1"]).with_resources(["noc0"]),
+            connection([], ["DRAM[:]"], ["all_l1"]).with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            "l1_l1_noc0",
-            connection(&[], &["all_l1"], &["all_l1"]).with_resources(["noc0"]),
+            connection([], ["all_l1"], ["all_l1"]).with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            "l1_dram_noc1",
-            connection(&[], &["all_l1"], &["DRAM[:]"]).with_resources(["noc1"]),
+            connection([], ["all_l1"], ["DRAM[:]"]).with_resources(["noc1"]),
         )
         .build()
         .expect("imperative 2D mesh should build")
@@ -270,9 +263,7 @@ fn missing_type_is_a_specific_export_error() {
     assert!(matches!(error, AdlExportError::MissingProcessorType { .. }));
 }
 
-/// The Loom monorepo builds its evaluator through this test — `scripts/build-mlar.sh`
-/// runs it by name, and `loom/loom_utils/mlar/core.py` then invokes the result at
-/// `tests/2d_mesh/bin/eval_system`, feeding it a Schedule on stdin.
+// Called by the Loom build to produce tests/2d_mesh/bin/eval_system.
 #[test]
 fn test_generate_system_evaluator_binary() {
     let architecture = load();

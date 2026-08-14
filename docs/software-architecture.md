@@ -12,68 +12,41 @@ chip.yaml ───┼─ validate/link ─> canonical indexed Architecture
                                       └─ current-dialect ADL compatibility export
 ```
 
-`src/arch/architecture.rs` owns construction and validation.
-`src/arch/axis.rs` owns concrete axes and the shared affine expression AST.
-`src/arch/memory.rs` owns definitions, arrays, regions, and banking.
-`src/arch/processor.rs` owns unified definitions, connection-specific arrays,
-connections, inferred axes, and generated instances. `src/arch/network.rs` retains affine link
-families and supplies edge enumeration and minimum-hop routing.
-The declarative loader binds symbolic hardware geometry before constructing the
-canonical architecture.
-`src/arch/scope.rs` records explicit ownership without recursive scopes.
-There are no compute/data-mover wrapper types or recursive memories.
+`src/arch/` contains construction, validation, memories, processors, networks,
+resources, and scopes. The declarative loader resolves symbolic geometry before
+constructing the same `Architecture` produced by the Rust builder.
 
 ## Linking
 
-The loader:
+Loading and linking:
 
-1. validates memory geometry and named-region arity;
-2. binds memory definition indices to concrete chip dimensions;
-3. parses compact Loom functions and inline performance;
-4. validates exact source/performance function-name sets;
-5. expands memory aliases for validation and connection resolution while retaining
-   the symbolic alias;
-6. validates each named processor placement's declared connection domain;
-7. resolves valid endpoint points, dropping out-of-bounds mappings; and
-8. resolves `@memory(name)` operands against uniquely matching connected memory
-   technologies; and
-9. creates one processor array per connection, with intrinsic and explicitly
-   referenced shared resources.
+1. resolves architecture parameters and validates memory geometry;
+2. parses processor sources and performance models;
+3. validates placement domains, aliases, and endpoint mappings;
+4. resolves `@memory(name)` against connected technologies; and
+5. creates one processor array per named placement.
 
-Unplaced schedule evaluation dispatches by function name and requires a unique
-implementation. `Schedule::PlacedFunc` dispatches through a processor array.
-Processor `type` is not involved in runtime validation.
+Unplaced schedules dispatch by function name and require a unique
+implementation. `Schedule::PlacedFunc` dispatches through a named processor
+array. Processor `type` affects export, not runtime validation.
 
 ## Compatibility ADL
 
-The exporter validates all processor arrays before writing output. A missing or
-incompatible type returns `AdlExportError`; no processor is silently omitted.
-It emits the fixed top-level symbol `@arch_system` required by loom-dataflow's
-exploration drivers; the runtime architecture name is not changed.
-Every connection gets a unique generated module symbol. Compact `copy`,
-`broadcast`, and `gather` functions lower to the existing compatibility
-copy/gather syntax. A collective without an explicit extent derives it from the
-connected chip-level memory region.
+Checked export validates all processor arrays and the emitted MLIR. A missing or
+incompatible processor type returns `AdlExportError`. The exported top-level
+symbol is `@arch_system`; this does not alter the runtime architecture name.
 
-Declarative memory technologies are opaque names. The loader assigns a numeric
-kind to each distinct name in first-appearance order, and compact lowering emits
-the kind of the candidate selected by `@memory(name)`. MLAR has no hardcoded
-SRAM/RRAM/GCRAM table.
+Memory technologies lower to numeric kinds assigned in first-appearance order.
+`@memory(name)` selects the kind associated with its connected memory.
 
-Logical memory capacity is divided across explicit banks during
-`adl.memory.bank` emission, then wrapped with nested `adl.memory.array`
-operations inferred from processor index domains. Prefix regions select the
-matching nested handle. Geometry is checked before division.
+Memory definitions lower to `adl.memory.bank` and nested `adl.memory.array`
+operations. Prefix selections lower to the corresponding nested handle.
 
-The existing dialect cannot encode pointwise affine endpoint relations or
-explicit bank selectors. Runtime and visualization retain the symbolic
-`Connection` and inferred processor axes; concrete instances are generated on
-demand.
+The compatibility dialect cannot encode pointwise affine relations or explicit
+bank selectors. Runtime and visualization data retain both.
 
 ## ABI and visualization
 
-Processor source is embedded in `ProcessorDefinition`, so serialized
-architectures used by generated evaluator/query binaries are self-contained.
-Visualization schema v2 exposes memory arrays, aliases, processor arrays,
-resource arrays, and affine-connection edges. Network/router/data-mover node
-kinds were removed; `ProcessorType` may still appear as optional metadata.
+`ProcessorDefinition` embeds source, making serialized architectures used by
+generated evaluator/query binaries self-contained. Visualization schema v2
+exports memory, processor, resource, and affine-connection data.

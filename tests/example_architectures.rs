@@ -1,20 +1,32 @@
 use std::path::{Path, PathBuf};
 
-use mlar_rust::{AdlExportError, Architecture, Schedule, architecture_to_mlir, evaluate};
+use mlar_rust::{
+    AdlExportError, Architecture, Connection, MemoryDefinition, MemoryEndpoint,
+    ProcessorDefinition, ProcessorType, Schedule, architecture_to_mlir, evaluate,
+};
 
 /// Examples the current `adl.*` dialect can lower and validate.
-const LOWERABLE: &[&str] = &["single-core", "mesh-torus", "dual-noc-mesh"];
+const LOWERABLE: &[&str] = &[
+    "single-core",
+    "cache-hierarchy",
+    "mesh-torus",
+    "dual-noc-mesh",
+    "shared-link-mesh",
+];
 
 #[allow(dead_code)]
-#[path = "../examples/imperative_cache_hierarchy.rs"]
+#[path = "../examples/imperative/cache_hierarchy.rs"]
 mod imperative_cache_hierarchy;
 #[allow(dead_code)]
-#[path = "../examples/imperative_dual_noc_mesh.rs"]
+#[path = "../examples/imperative/dual_noc_mesh.rs"]
 mod imperative_dual_noc_mesh;
+#[allow(dead_code)]
+#[path = "../examples/imperative/shared_link_mesh.rs"]
+mod imperative_shared_link_mesh;
 
 fn example_dir(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/architectures")
+        .join("examples/declarative")
         .join(name)
 }
 
@@ -25,6 +37,7 @@ fn all_architecture_examples_load_and_export() {
         "cache-hierarchy",
         "mesh-torus",
         "dual-noc-mesh",
+        "shared-link-mesh",
     ] {
         let architecture = mlar_rust::archs::load_arch(example_dir(name))
             .unwrap_or_else(|error| panic!("example '{name}' should load: {error}"));
@@ -52,16 +65,70 @@ fn all_architecture_examples_load_and_export() {
     }
 }
 
-/// A cluster owning both an L1 and an L2 array needs two regions on one
-/// `adl.arch.scale`, which the dialect cannot carry. Export must say so rather
-/// than emit a module the dialect rejects.
+// Each hierarchy level lowers to a scale carrying its own memory.
 #[test]
-fn multi_region_levels_are_reported_as_unlowerable() {
+fn hierarchy_levels_lower_to_nested_scales() {
     let architecture = mlar_rust::archs::load_arch(example_dir("cache-hierarchy"))
         .expect("cache hierarchy should load");
+    let mlir = architecture_to_mlir(&architecture).expect("cache hierarchy should export");
+
+    let scales = mlir
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.contains("= adl.arch.scale "))
+        .collect::<Vec<_>>();
+    assert_eq!(scales.len(), 2, "expected one scale per level: {scales:?}");
+
+    // The inner scale replicates cores and carries the per-cluster L1; the outer
+    // replicates clusters and carries L2.
+    assert!(
+        scales[0].contains("\"arch_cluster_core\"") && scales[0].contains("mem_region"),
+        "inner scale: {}",
+        scales[0]
+    );
+    assert!(
+        scales[1].contains("\"arch_cluster\"") && scales[1].contains("mem_region"),
+        "outer scale: {}",
+        scales[1]
+    );
+    for scale in &scales {
+        assert_eq!(
+            scale.matches("mem_region").count(),
+            1,
+            "a scale carries exactly one region: {scale}"
+        );
+    }
+
+    // The inner scale is composed into the outer level rather than emitted beside it.
+    assert!(mlir.contains("adl.arch.compose \"arch_cluster_element\""));
+}
+
+// Sibling memories cannot share the dialect's single region slot.
+#[test]
+fn sibling_memories_on_one_domain_still_exceed_a_single_scale() {
+    let architecture = Architecture::builder("siblings")
+        .axis("x", 2)
+        .memory_definition(MemoryDefinition::new("sram", ["x"], 1024, 16))
+        .memory_definition(MemoryDefinition::new("rram", ["x"], 1024, 16))
+        .place_memory("sram", ["x"])
+        .place_memory("rram", ["x"])
+        .processor_definition(
+            ProcessorDefinition::new("lane", "", Vec::new()).with_type(ProcessorType::Compute),
+        )
+        .connect(
+            "lane",
+            Connection::new(
+                ["x"],
+                vec![MemoryEndpoint::parse("sram[x]").unwrap()],
+                vec![MemoryEndpoint::parse("rram[x]").unwrap()],
+            ),
+        )
+        .build()
+        .expect("sibling architecture is valid in the runtime model");
+
     match architecture_to_mlir(&architecture) {
         Err(AdlExportError::MultipleMemoryRegions { scope, count }) => {
-            assert_eq!(scope, "cluster");
+            assert_eq!(scope, "x");
             assert_eq!(count, 2);
         }
         other => panic!("expected a multi-region rejection, got {other:?}"),
@@ -77,6 +144,34 @@ fn imperative_examples_match_their_declarative_packages() {
     assert_imperative_matches(
         "cache-hierarchy",
         imperative_cache_hierarchy::build().expect("imperative cache hierarchy should build"),
+    );
+    assert_imperative_matches(
+        "shared-link-mesh",
+        imperative_shared_link_mesh::build().expect("imperative shared-link mesh should build"),
+    );
+}
+
+// Named placements may share one definition.
+#[test]
+fn one_definition_can_back_several_named_placements() {
+    let architecture = mlar_rust::archs::load_arch(example_dir("shared-link-mesh"))
+        .expect("shared-link-mesh should load");
+
+    let links = architecture
+        .processors()
+        .iter()
+        .filter(|processor| processor.definition_name() == "link_dma")
+        .map(|processor| processor.name())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        links,
+        ["east_link", "west_link", "north_link", "south_link"]
+    );
+
+    assert_eq!(
+        architecture.processor_definitions().len(),
+        2,
+        "the four link placements must share one registered definition"
     );
 }
 

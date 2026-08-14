@@ -47,7 +47,9 @@ pub enum AdlExportError {
         processor: String,
         reason: String,
     },
-    /// A scope owns more memory regions than `adl.arch.scale` can carry.
+    /// A scope owns more memory regions than its single `adl.arch.scale` can
+    /// carry. The dialect could hold them as nested scales; this exporter does
+    /// not emit that shape.
     MultipleMemoryRegions {
         scope: String,
         count: usize,
@@ -112,8 +114,8 @@ impl std::fmt::Display for AdlExportError {
             }
             Self::MultipleMemoryRegions { scope, count } => write!(
                 f,
-                "scope '{scope}' owns {count} memory regions, but `adl.arch.scale` \
-                 carries at most one"
+                "scope '{scope}' owns {count} memory regions, but this exporter gives \
+                 each scope one `adl.arch.scale`, which carries at most one region"
             ),
             Self::InvalidAdl { program, stderr } => write!(
                 f,
@@ -136,20 +138,12 @@ impl std::fmt::Display for AdlExportError {
 
 impl std::error::Error for AdlExportError {}
 
-/// Lower the canonical indexed model to the current dataflow `adl.*` dialect
-/// and validate the result.
-///
-/// The architecture module is checked on its own with `adl-opt`, then the
-/// complete module — processor functionality included — with `loom-opt`, which
-/// loads both dialects. Splitting the stages keeps an architecture-level defect
-/// from surfacing as an error inside a processor function.
+/// Lower to dataflow `adl.*` and validate the architecture with `adl-opt` and
+/// the complete module with `loom-opt`.
 ///
 /// Prefix regions lower to compatible nested memory-array handles. Pointwise
 /// affine relations and explicit bank selections are projected away because
 /// the compatibility dialect cannot represent them.
-///
-/// Validator paths are discovered and checked by the Cargo build script, so
-/// callers need no environment variables or `PATH` changes.
 pub fn architecture_to_mlir(architecture: &Architecture) -> Result<String, AdlExportError> {
     architecture_to_mlir_with_tools(architecture, OsStr::new(ADL_OPT), OsStr::new(LOOM_OPT))
 }
@@ -890,24 +884,21 @@ fn emit_architecture_hierarchy(
             .iter()
             .map(|dimension| emitter.emit_dimension(&dimension.name, dimension.extent))
             .collect::<Vec<_>>();
+        // Child memory is carried by the nested child scale.
         let region_memories = architecture
             .memories
             .iter()
             .zip(&memory_owners)
-            .filter_map(|(memory, owner)| {
-                let owner = owner.map(|owner| &scopes[owner].domain)?;
-                is_domain_prefix(&scopes[index].domain, owner).then(|| {
-                    emitter
-                        .memory_level_ssa
-                        .get(&(memory.name.clone(), parent_len))
-                        .expect("scope memory level was emitted")
-                        .clone()
-                })
+            .filter(|(_, owner)| **owner == Some(index))
+            .map(|(memory, _)| {
+                emitter
+                    .memory_level_ssa
+                    .get(&(memory.name.clone(), parent_len))
+                    .expect("scope memory level was emitted")
+                    .clone()
             })
             .collect::<Vec<_>>();
-        // `adl.arch.scale` carries at most one region out to its parent level, so a
-        // scope owning several (an L1 and an L2 array on the same cluster) has no
-        // faithful encoding in the dialect.
+        // The dialect permits at most one region per scale.
         let memory_clause = match region_memories.as_slice() {
             [] => String::new(),
             [region] => format!(", mem_region {region}"),

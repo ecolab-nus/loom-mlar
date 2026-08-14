@@ -59,10 +59,6 @@ impl ProcessorTarget {
 }
 
 /// Maps MLIR symbols to symbolic expressions.
-///
-/// For example, one can record that the MLIR symbol `L` should be replaced by
-/// the expression `BM * BN` during evaluation. Each entry is a `(Sym, Expr)`
-/// pair where `Sym` is the original MLIR symbol and `Expr` is its replacement.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicMapping {
     pub entries: Vec<(Sym, Expr)>,

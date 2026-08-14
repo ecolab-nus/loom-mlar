@@ -1,0 +1,6 @@
+memories:
+  L1:
+    indices: [x, y]
+    capacity: 262144
+    word_size: 64
+    banking: 8

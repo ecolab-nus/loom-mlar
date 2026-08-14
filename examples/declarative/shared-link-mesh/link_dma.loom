@@ -1,0 +1,6 @@
+func @link_copy(
+  in src: f16[L],
+  out dst: f16[L]
+) {
+  loom.copy %src to %dst
+}

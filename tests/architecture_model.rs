@@ -85,7 +85,6 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
         .processor_definition(definition)
         .connect(
             "mixed_lane",
-            "mixed_lane",
             Connection::new(
                 std::iter::empty::<&str>(),
                 ["cache_a", "cache_b"]
@@ -161,10 +160,9 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
         .processor_definition(dma)
         .connect(
             "matrix_lane",
-            "matrix_lane",
             connection(&["x", "y"], &["L1[x, y]", "L1[x, y]"], &["L1[x, y]"]),
         )
-        .connect(
+        .connect_as(
             "l1_to_l2",
             "dma",
             connection(
@@ -173,12 +171,12 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
                 &["L2[x floordiv 2, y floordiv 2]"],
             ),
         )
-        .connect(
+        .connect_as(
             "east_dma",
             "dma",
             connection(&["x", "y"], &["L1[x, y]"], &["L1[(x + 1) mod 4, y]"]),
         )
-        .connect(
+        .connect_as(
             "dram_to_l1",
             "dma",
             connection(
@@ -229,7 +227,6 @@ fn non_modular_out_of_bounds_points_are_dropped() {
         .place_memory("L1", ["x"])
         .processor_definition(dma)
         .connect(
-            "dma",
             "dma",
             Connection::new(
                 ["x"],
@@ -341,7 +338,6 @@ fn memory_and_endpoint_validation_is_strict() {
         )
         .connect(
             "dma",
-            "dma",
             Connection::new(["x"], vec![MemoryEndpoint::parse("L1").unwrap()], vec![]),
         )
         .build()
@@ -450,7 +446,6 @@ fn memory_aliases_target_placed_memory_names_and_require_prefix_slices() {
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
-            "lane",
             Connection::new(
                 ["y"],
                 vec![MemoryEndpoint::parse("L1[:, y]").unwrap()],
@@ -474,7 +469,7 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
         .memory_definition(MemoryDefinition::new("L1", ["row", "column"], 1024, 16))
         .place_memory("L1", ["x", "y"])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
-        .connect(
+        .connect_as(
             "replicated_lane",
             "lane",
             Connection::new(
@@ -511,7 +506,6 @@ fn endpoint_variables_must_be_declared_in_the_connection_domain() {
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
-            "lane",
             Connection::new(
                 std::iter::empty::<&str>(),
                 vec![MemoryEndpoint::parse("L1[x]").unwrap()],
@@ -521,4 +515,31 @@ fn endpoint_variables_must_be_declared_in_the_connection_domain() {
         .build()
         .unwrap_err();
     assert!(error.to_string().contains("not in its declared domain"));
+}
+
+// Builder load failures are deferred until `build`.
+#[test]
+fn processor_load_failures_surface_at_build() {
+    let missing_dir = Architecture::builder("no_dir")
+        .processor("lane")
+        .build()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        missing_dir.contains("processor_source_dir"),
+        "expected a source-directory hint, got: {missing_dir}"
+    );
+
+    let missing_file = Architecture::builder("no_file")
+        .processor_source_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/processors"),
+        )
+        .processor("not_a_processor")
+        .build()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        missing_file.contains("not_a_processor"),
+        "expected the failing name, got: {missing_file}"
+    );
 }

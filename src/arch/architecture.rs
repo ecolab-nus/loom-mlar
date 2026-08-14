@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
+use super::arch_yaml::ProcessorYaml;
 use super::axis::Axis;
 use super::memory::{
     MemoryAlias, MemoryArray, MemoryDefinition, MemoryEndpoint, validate_region_selector,
@@ -425,6 +427,10 @@ pub struct ArchitectureBuilder {
     resources: Vec<Resource>,
     networks: Vec<NetworkTopology>,
     scopes: Vec<Scope>,
+    processor_source_dir: Option<PathBuf>,
+    /// Load failures from [`ArchitectureBuilder::processor`], reported by
+    /// [`ArchitectureBuilder::build`] so the chain itself stays infallible.
+    deferred_errors: Vec<String>,
 }
 
 impl ArchitectureBuilder {
@@ -440,6 +446,8 @@ impl ArchitectureBuilder {
             resources: Vec::new(),
             networks: Vec::new(),
             scopes: Vec::new(),
+            processor_source_dir: None,
+            deferred_errors: Vec::new(),
         }
     }
 
@@ -491,7 +499,53 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn connect(
+    /// Directory holding `<name>.yaml` processor packages for
+    /// [`ArchitectureBuilder::processor`].
+    pub fn processor_source_dir(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.processor_source_dir = Some(directory.into());
+        self
+    }
+
+    /// Load and register `<name>.yaml` from the configured source directory.
+    /// Load failures are reported by [`ArchitectureBuilder::build`].
+    pub fn processor(mut self, name: impl AsRef<str>) -> Self {
+        let name = name.as_ref();
+        let Some(directory) = self.processor_source_dir.as_ref() else {
+            self.deferred_errors.push(format!(
+                "processor '{name}' needs a `processor_source_dir`; set one or pass a \
+                 built definition to `processor_definition`"
+            ));
+            return self;
+        };
+        let path = directory.join(format!("{name}.yaml"));
+        match ProcessorYaml::from_file(&path).and_then(|yaml| yaml.build_definition(&path)) {
+            Ok(definition) => self.processor_definitions.push(definition),
+            Err(error) => self
+                .deferred_errors
+                .push(format!("processor '{name}' ({}): {error}", path.display())),
+        }
+        self
+    }
+
+    /// [`ArchitectureBuilder::processor`] for several names in order.
+    pub fn processors(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        for name in names {
+            self = self.processor(name);
+        }
+        self
+    }
+
+    /// Place `definition` under its own name.
+    ///
+    /// Use [`ArchitectureBuilder::connect_as`] when one definition is placed
+    /// more than once and the placements need distinct names.
+    pub fn connect(self, definition: impl Into<String>, connection: Connection) -> Self {
+        let definition = definition.into();
+        self.connect_as(definition.clone(), definition, connection)
+    }
+
+    /// Place `processor_definition` under an explicit `placement_name`.
+    pub fn connect_as(
         mut self,
         placement_name: impl Into<String>,
         processor_definition: impl Into<String>,
@@ -521,6 +575,9 @@ impl ArchitectureBuilder {
     }
 
     pub fn build(self) -> Result<Architecture, ArchitectureError> {
+        if !self.deferred_errors.is_empty() {
+            return Err(ArchitectureError::Invalid(self.deferred_errors.join("; ")));
+        }
         if self.name.is_empty() {
             return Err(ArchitectureError::Invalid(
                 "architecture name cannot be empty".into(),

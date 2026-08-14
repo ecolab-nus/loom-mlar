@@ -1,13 +1,12 @@
-mod imperative_support;
+mod support;
 
 use mlar_rust::{
     Architecture, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource, architecture_to_mlir,
 };
 
-use imperative_support::{ExampleResult, architecture_dir, connection, processor_definition};
+use support::{ExampleResult, architecture_dir, connection};
 
 pub fn build() -> ExampleResult<Architecture> {
-    let directory = architecture_dir("dual-noc-mesh");
     Ok(Architecture::builder("dual_noc_system")
         .axis("dram_channel", 8)
         .axis("x", 8)
@@ -27,35 +26,33 @@ pub fn build() -> ExampleResult<Architecture> {
         .place_memory("L1", ["x", "y"])
         .resource(Resource::exclusive("noc0"))
         .resource(Resource::exclusive("noc1"))
-        .processor_definition(processor_definition(&directory, "matrix_lane")?)
-        .processor_definition(processor_definition(&directory, "vector_lane")?)
-        .processor_definition(processor_definition(&directory, "dram_l1_noc0")?)
-        .processor_definition(processor_definition(&directory, "l1_l1_noc0")?)
-        .processor_definition(processor_definition(&directory, "l1_dram_noc1")?)
+        .processor_source_dir(architecture_dir("dual-noc-mesh"))
+        .processors([
+            "matrix_lane",
+            "vector_lane",
+            "dram_l1_noc0",
+            "l1_l1_noc0",
+            "l1_dram_noc1",
+        ])
         .connect(
             "matrix_lane",
-            "matrix_lane",
-            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"])?,
+            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
         )
         .connect(
             "vector_lane",
-            "vector_lane",
-            connection(&["x", "y"], &["L1[x, y]"], &["L1[x, y]"])?,
+            connection(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?,
         )
         .connect(
             "dram_l1_noc0",
-            "dram_l1_noc0",
-            connection(&[], &["DRAM[:]"], &["all_l1"])?.with_resources(["noc0"]),
+            connection([], ["DRAM[:]"], ["all_l1"])?.with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            "l1_l1_noc0",
-            connection(&[], &["all_l1"], &["all_l1"])?.with_resources(["noc0"]),
+            connection([], ["all_l1"], ["all_l1"])?.with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            "l1_dram_noc1",
-            connection(&[], &["all_l1"], &["DRAM[:]"])?.with_resources(["noc1"]),
+            connection([], ["all_l1"], ["DRAM[:]"])?.with_resources(["noc1"]),
         )
         .build()?)
 }

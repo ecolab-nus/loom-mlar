@@ -21,15 +21,9 @@ let architecture = mlar_rust::archs::load_arch_with_bindings(
 Axis-extent, memory-capacity, word-size, and bank-count expressions may reference
 those parameters. The resulting `Architecture` is concrete.
 
-The result is the canonical `Architecture`, regardless of whether the package
-was authored in YAML or assembled with `ArchitectureBuilder`.
-
-Memory definitions may carry an arbitrary `technology` name. Declarative
-loading assigns numeric kinds to distinct names in first-appearance order in
-`memory.yaml`; repeated names reuse the first kind. Compact Loom operands select
-among a placement's connected candidates with `@memory(name)`. A match must be
-unique. MLAR does not give names such as `sram`, `rram`, or `gcram` intrinsic
-semantics.
+Both loaders return the same concrete `Architecture` produced by
+`ArchitectureBuilder`. See [Architecture Semantics](architecture-concepts.md)
+for memory technologies and linking rules.
 
 ## Memory selection
 
@@ -71,11 +65,9 @@ let point = lanes.select(&architecture, [Index(2), Index(3)])?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Every call returns a `ProcessorSelection`, including a fully fixed point.
-Selections contain only valid generated connection instances, so a point in the
-declared domain can produce an empty selection when an affine endpoint is out
-of bounds. Selector order follows `ProcessorArray::axes()`;
-`free_domain()` reports dimensions selected with `All`.
+Every call returns a `ProcessorSelection`. Invalid affine endpoint mappings are
+omitted, so even a fixed point may be empty. Selector order follows
+`ProcessorArray::axes()`; `free_domain()` reports axes selected with `All`.
 
 Schedules with several implementations of the same function use an explicit
 target:
@@ -88,8 +80,8 @@ let schedule = Schedule::PlacedFunc {
 };
 ```
 
-`Architecture::networks` retains physical link families. Use `edges()` for the
-concrete directed graph and `shortest_route()` for minimum-hop reachability.
+Use `NetworkTopology::edges()` for its concrete directed graph and
+`shortest_route()` for minimum-hop reachability.
 
 ## Outputs
 

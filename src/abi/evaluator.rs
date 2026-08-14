@@ -1,42 +1,4 @@
-//! Binary evaluator generation for architecture descriptions.
-//!
-//! This module provides the infrastructure to produce standalone executables
-//! that evaluate schedules against a fixed architecture.  External (non-Rust)
-//! tools can invoke the binary, pass a [`Schedule`] as JSON on **stdin**, and
-//! receive the evaluated [`Schedule`] (with `scenarios` filled) as JSON on
-//! **stdout**.
-//!
-//! # Three ways to create an evaluator binary
-//!
-//! ## 1. Macro — define the architecture in Rust code
-//!
-//! ```ignore
-//! // src/bin/eval_my_arch.rs
-//! use mlar_rust::mlar_evaluator;
-//!
-//! mlar_evaluator!(my_crate::build_architecture());
-//! ```
-//!
-//! ## 2. Library function — call from your own `main()`
-//!
-//! ```ignore
-//! fn main() {
-//!     let arch = build_architecture();
-//!     mlar_rust::run_evaluator(&arch).unwrap();
-//! }
-//! ```
-//!
-//! ## 3. Fully programmatic — generate a binary from a runtime `Architecture`
-//!
-//! ```ignore
-//! let arch = build_architecture();
-//! let binary = mlar_rust::generate_evaluator_binary(
-//!     &arch,
-//!     "my_arch_eval",
-//!     Path::new("output/"),
-//! )?;
-//! // `binary` is the path to the compiled executable
-//! ```
+//! JSON-over-stdin schedule evaluator for fixed architecture descriptions.
 
 use std::path::{Path, PathBuf};
 
@@ -44,11 +6,7 @@ use crate::arch::Architecture;
 use crate::schedule::evaluate::evaluate;
 use crate::schedule::schedule::Schedule;
 
-/// Run the schedule-evaluation pipeline:
-///
-/// 1. Read JSON from **stdin** (`Schedule`)
-/// 2. Evaluate against `arch`
-/// 3. Write evaluated `Schedule` JSON to **stdout**
+/// Read a [`Schedule`] from stdin and write its evaluated form to stdout.
 pub fn run_evaluator(arch: &Architecture) -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
     let input: Schedule = serde_json::from_reader(stdin.lock())?;
@@ -60,25 +18,15 @@ pub fn run_evaluator(arch: &Architecture) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// Run the evaluator with an architecture deserialized from a JSON string.
-///
-/// This is the entry point used by binaries produced via
-/// [`generate_evaluator_binary`] — the architecture JSON is embedded in the
-/// binary at compile time.
+/// Evaluate stdin against a JSON-serialized architecture.
 pub fn run_evaluator_from_json(arch_json: &str) -> Result<(), Box<dyn std::error::Error>> {
     let arch: Architecture = serde_json::from_str(arch_json)?;
     run_evaluator(&arch)
 }
 
-/// Generate a standalone evaluator binary for the given architecture.
+/// Build a standalone evaluator binary at `output_dir/name`.
 ///
-/// The function serializes `arch` to JSON, creates a temporary Cargo project
-/// that embeds it, compiles with `cargo build --release`, and copies the
-/// resulting binary to `output_dir/name`.
-///
-/// **Requires a Rust toolchain** (`cargo`) to be available on `$PATH`.
-///
-/// Returns the path to the generated binary.
+/// This invokes `cargo build --release` and requires `cargo` on `PATH`.
 pub fn generate_evaluator_binary(
     arch: &Architecture,
     name: &str,
@@ -137,8 +85,7 @@ serde_json = "1.0"
     Ok(output)
 }
 
-/// Generate a `main` function that builds an architecture and runs the
-/// evaluator pipeline (stdin JSON → evaluate → stdout JSON).
+/// Define an evaluator binary for an architecture expression.
 ///
 /// # Example
 ///

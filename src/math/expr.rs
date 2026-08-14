@@ -12,14 +12,11 @@ pub type Const = i64;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Sym(pub String);
 
-/// General symbolic expression for cost modeling (latency, throughput, bandwidth, etc.).
+/// Symbolic arithmetic for cost models.
 ///
-/// This is distinct from `AffineExpr` which is restricted to the affine/quasi-affine subset
-/// for index mapping. `Expr` supports arbitrary arithmetic needed for cost formulas.
+/// Unlike `AffineExpr`, this supports non-affine cost formulas.
 ///
 /// # Parsing from strings
-///
-/// Expressions can be parsed from human-readable strings:
 ///
 /// ```
 /// use mlar_rust::math::Expr;
@@ -129,35 +126,9 @@ mod tests {
 
 impl Expr {
     /// Parse an expression from a string.
-    ///
-    /// # Grammar
-    ///
-    /// ```text
-    /// expr      := add_expr
-    /// add_expr  := mul_expr (('+' | '-') mul_expr)*
-    /// mul_expr  := unary (('*' | '/') unary)*
-    /// unary     := '-' unary | atom
-    /// atom      := INT | IDENT
-    ///            | 'min' '(' expr ',' expr ')'
-    ///            | 'max' '(' expr ',' expr ')'
-    ///            | 'if' '(' constraint ')' '{' expr '}' 'ELSE' '{' expr '}'
-    ///            | '(' expr ')'
-    /// ```
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use mlar_rust::math::Expr;
-    ///
-    /// let e = Expr::parse("M * N / 64").unwrap();
-    /// let e = Expr::parse("min(M, 1024) + N").unwrap();
-    /// let e = Expr::parse("(A + B) * C").unwrap();
-    /// ```
     pub fn parse(input: &str) -> Result<Self, ParseError> {
         super::parse::parse_expr(input)
     }
-
-    // Convenience constructors
 
     pub fn constant(value: i64) -> Self {
         Expr::Const(value)
@@ -260,28 +231,14 @@ impl Expr {
         }
     }
 
-    /// Return the set of symbols referenced in this expression.
-    ///
-    /// This is the set-oriented API: duplicates are removed and iteration order
-    /// is unspecified because the result is a [`HashSet`]. Use this when the
-    /// caller needs membership tests, set operations, or does not care about
-    /// presentation order.
-    ///
-    /// For a deterministic, sorted vector form, use [`Expr::symbols`].
+    /// Return referenced symbols as an unordered set.
     pub fn free_symbols(&self) -> HashSet<Sym> {
         let mut syms = HashSet::new();
         self.collect_symbols(&mut syms);
         syms
     }
 
-    /// Return the symbols referenced in this expression in deterministic order.
-    ///
-    /// This is the ordered API: duplicates are removed and the returned vector
-    /// is sorted by symbol name. Use this when a stable order is needed for
-    /// serialization, generated model fields, assertions, or user-facing output.
-    ///
-    /// If the caller needs set operations or membership checks, use
-    /// [`Expr::free_symbols`] instead.
+    /// Return referenced symbols sorted by name.
     pub fn symbols(&self) -> Vec<Sym> {
         let mut syms: Vec<Sym> = self.free_symbols().into_iter().collect();
         syms.sort();
@@ -349,16 +306,7 @@ impl Sym {
         Sym(name.into())
     }
 
-    /// Build a vector of symbols from an iterable of symbol-like names.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use mlar_rust::Sym;
-    ///
-    /// let syms = Sym::from_names(["M", "N", "K"]);
-    /// assert_eq!(syms, vec![Sym::new("M"), Sym::new("N"), Sym::new("K")]);
-    /// ```
+    /// Build symbols from an iterable of names.
     pub fn from_names<I, S>(names: I) -> Vec<Sym>
     where
         I: IntoIterator<Item = S>,

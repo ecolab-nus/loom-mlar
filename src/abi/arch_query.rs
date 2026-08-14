@@ -1,42 +1,4 @@
-//! Binary query interface for architecture descriptions.
-//!
-//! This module provides the infrastructure to produce standalone executables
-//! that answer queries against a fixed architecture. External (non-Rust) tools
-//! can invoke the binary, pass an [`ArchitectureQuery`] as JSON on **stdin**,
-//! and receive query output on **stdout** (`mlir` currently prints raw MLIR
-//! text).
-//!
-//! # Three ways to create an architecture-query binary
-//!
-//! ## 1. Macro — define the architecture in Rust code
-//!
-//! ```ignore
-//! // src/bin/query_my_arch.rs
-//! use mlar_rust::mlar_arch_query;
-//!
-//! mlar_arch_query!(my_crate::build_architecture());
-//! ```
-//!
-//! ## 2. Library function — call from your own `main()`
-//!
-//! ```ignore
-//! fn main() {
-//!     let arch = build_architecture();
-//!     mlar_rust::run_arch_query(&arch).unwrap();
-//! }
-//! ```
-//!
-//! ## 3. Fully programmatic — generate a binary from a runtime `Architecture`
-//!
-//! ```ignore
-//! let arch = build_architecture();
-//! let binary = mlar_rust::generate_arch_query_binary(
-//!     &arch,
-//!     "my_arch_query",
-//!     Path::new("output/"),
-//! )?;
-//! // `binary` is the path to the compiled executable
-//! ```
+//! JSON-over-stdin query interface for fixed architecture descriptions.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -74,11 +36,7 @@ pub fn query_architecture(
     }
 }
 
-/// Run the architecture-query pipeline:
-///
-/// 1. Read JSON from **stdin** ([`ArchitectureQuery`])
-/// 2. Execute query against `arch`
-/// 3. Write query output to **stdout** (`mlir` currently writes raw MLIR text)
+/// Read an [`ArchitectureQuery`] from stdin and write its result to stdout.
 pub fn run_arch_query(arch: &Architecture) -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
     let query: ArchitectureQuery = serde_json::from_reader(stdin.lock())?;
@@ -92,25 +50,15 @@ pub fn run_arch_query(arch: &Architecture) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// Run architecture queries using an architecture deserialized from JSON.
-///
-/// This is the entry point used by binaries produced via
-/// [`generate_arch_query_binary`] — the architecture JSON is embedded in the
-/// binary at compile time.
+/// Run a query against a JSON-serialized architecture.
 pub fn run_arch_query_from_json(arch_json: &str) -> Result<(), Box<dyn std::error::Error>> {
     let arch: Architecture = serde_json::from_str(arch_json)?;
     run_arch_query(&arch)
 }
 
-/// Generate a standalone architecture-query binary for the given architecture.
+/// Build a standalone query binary at `output_dir/name`.
 ///
-/// The function serializes `arch` to JSON, creates a temporary Cargo project
-/// that embeds it, compiles with `cargo build --release`, and copies the
-/// resulting binary to `output_dir/name`.
-///
-/// **Requires a Rust toolchain** (`cargo`) to be available on `$PATH`.
-///
-/// Returns the path to the generated binary.
+/// This invokes `cargo build --release` and requires `cargo` on `PATH`.
 pub fn generate_arch_query_binary(
     arch: &Architecture,
     name: &str,
@@ -169,8 +117,7 @@ serde_json = "1.0"
     Ok(output)
 }
 
-/// Generate a `main` function that builds an architecture and runs the
-/// query pipeline (stdin JSON query -> stdout query output).
+/// Define a query binary for an architecture expression.
 ///
 /// # Example
 ///

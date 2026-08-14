@@ -1,57 +1,44 @@
 # Architecture Semantics
 
-The canonical architecture is flat and indexed.
+The canonical architecture is flat and indexed. Symbolic dimensions and memory
+geometry are resolved while loading; the resulting `Architecture` is concrete.
 
-Parameterized definitions are a construction layer: symbolic dimension,
-capacity, word-size, and bank-count expressions are bound before producing the
-canonical concrete architecture. Expression architectures retain affine network
-topologies and explicit flat scope ownership; neither requires recursively
-cloned sub-architectures.
-
-- A `MemoryDefinition` describes rank, bytes per logical instance, word size,
-  optional physical banks, and an optional user-named technology with its
-  catalog-assigned numeric kind.
+- A `MemoryDefinition` describes rank, capacity, word size, optional banks, and
+  an optional technology.
 - A `MemoryArray` binds that rank to concrete chip dimensions.
 - A `MemoryAlias` names a selection and adds no storage.
-- A `ProcessorDefinition` owns compact Loom functionality, performance, and
-  intrinsic resource definitions.
+- A `ProcessorDefinition` owns operations, performance models, and resources.
 - A `ProcessorArray` is one connection-specific instantiation of a definition.
 - A `Connection` retains symbolic endpoints and an explicit ordered domain.
   Endpoint variables must belong to it; unused axes express replication.
-- A `ConnectionInstance` is one lazily computed valid point of a connection.
+- A `ConnectionInstance` is one valid point of a connection.
 - A `ProcessorSelection` is a resolved zero-, one-, or many-instance view
   produced by applying `All` or `Index` selectors to a processor array.
-- A processor-YAML `Resource` is indexed with the processor array that
-  instantiates it. A connection can instead reference a shared chip resource.
+- Processor resources are indexed with their processor array; connection
+  resources refer to shared chip resources.
 - A `NetworkTopology` owns an indexed node domain, affine directed link
   families, interfaces, link resources, bandwidth, and latency expressions.
-- A `Scope` explicitly records ownership and parentage without changing
-  the flat storage representation.
+- A `Scope` records ownership and parentage without changing flat storage.
 
-“Definition” and “array” are runtime distinctions, not two YAML layers: the
-the file named by a `processors.<placement>.definition` supplies reusable
-behavior, and the placement creates one connected array.
+A processor placement references a reusable definition and creates one connected
+array. Several named placements may share a definition.
 
 `L1[x, y]` always means the whole logical memory at that coordinate. Banking is
 not inferred from addresses; only `.bank[b]` selects a bank.
 
-Compact Loom `@memory(name)` is a technology requirement, not a concrete
-storage binding. A processor placement supplies candidate endpoints; linking
-requires a unique candidate of that technology and records its numeric kind in
-compatibility MLIR. Distinct declarative technology names are numbered by first
-appearance in `memory.yaml`, so catalog order is ABI-significant.
+Compact Loom `@memory(name)` selects a uniquely matching connected memory
+technology. Declarative technologies receive numeric kinds in first-appearance
+order in `memory.yaml`; catalog order is therefore ABI-significant.
 
 Free connection variables must be declared chip dimensions. Non-modular
 out-of-bounds mappings are absent from the generated instances. `mod` wraps using
 Euclidean semantics.
 
-Selection validates selector rank and declared-domain bounds, then evaluates
-and filters connection instances. Consequently, a fully fixed selection is not assumed to
-contain an instance when the relation is sparse.
+Selection validates rank and bounds, then filters invalid connection instances.
+A fully fixed selection may therefore be empty.
 
-The optional `ProcessorType` is an export hint, not semantic inference.
-Untyped and mixed-function processors are first-class runtime objects.
+`ProcessorType` is an optional export hint. It is not inferred from operations.
 
-Function names may repeat across definitions. Unplaced schedule evaluation
-requires a unique implementation; `Schedule::PlacedFunc` resolves alternatives
-through a named `ProcessorArray` and optional selectors.
+Function names may repeat across definitions. Unplaced schedules require a
+unique implementation; `Schedule::PlacedFunc` names a processor array and
+optional selectors.

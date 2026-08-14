@@ -1,32 +1,4 @@
-//! Schedule performance evaluation against an architecture description.
-//!
-//! Evaluates a [`Schedule`] tree by matching each leaf [`MlirFunc`] to its
-//! [`OperationModel`] in the architecture, extracting the [`FuncPerfModel`],
-//! and combining scenarios across the sequential composition.
-//!
-//! **Parallel schedules are not supported in this prototype.** Only
-//! [`Schedule::Sequential`] and [`Schedule::Func`] are handled; encountering
-//! a [`Schedule::Parallel`] panics.
-//!
-//! # Algorithm
-//!
-//! 1. **Leaf (`Func`)**: look up the [`OperationModel`] whose `func.name`
-//!    matches, retrieve its [`FuncPerfModel`], fuse global constraints into
-//!    each [`PerfScenario`] with AND logic, apply the per-func `sym_map`
-//!    substitution if present, and set the `scenarios` field on the `Func`
-//!    node.
-//!
-//! 2. **Sequential**: recursively evaluate every sub-schedule, then compute the
-//!    cartesian product of all sub-schedule scenarios. Each product element
-//!    sums the time costs and ANDs the constraints.
-//!
-//! Overlapping [`PerfScenario`] constraints are not detected or resolved here.
-//! Model authors are expected to provide mutually exclusive scenarios per
-//! [`FuncPerfModel`].
-//!
-//! Evaluation preserves guarded alternatives even when substitution makes a
-//! constraint constant. It does not filter false alternatives or choose a true
-//! one; downstream consumers may do so when all required symbols are bound.
+//! Schedule performance evaluation.
 
 use crate::arch::architecture::Architecture;
 use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
@@ -36,20 +8,13 @@ use crate::schedule::schedule::Schedule;
 
 /// Evaluate a schedule's performance on the given architecture.
 ///
-/// Returns a new [`Schedule`] tree with `scenarios` filled on every node:
-///
-/// - **Func**: guarded scenario alternatives come from the architecture's
-///   [`FuncPerfModel`].
-/// - **Sequential**: scenarios are the cartesian product of all sub-schedule
-///   scenarios (times summed, constraints AND-ed).
-/// - **Parallel**: not yet supported — panics.
-///
-/// Overlapping constraints are preserved as-is; evaluation does not check
-/// scenario exclusivity or filter alternatives by constraint truth.
+/// Function scenarios come from their processor models. Sequential scenarios
+/// form their Cartesian product, summing costs and conjoining guards. Guarded
+/// alternatives are preserved; parallel evaluation is unsupported.
 ///
 /// # Errors
 ///
-/// A `Func` whose name cannot be found in `arch` returns an error.
+/// Returns an error for unknown or ambiguous functions and invalid targets.
 pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, String> {
     match schedule {
         Schedule::Parallel { .. } => Err("parallel schedule evaluation is not supported".into()),
@@ -132,9 +97,7 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
     }
 }
 
-/// Extract the `scenarios` from an already-evaluated [`Schedule`] node.
-///
-/// Panics if `scenarios` is `None` (i.e. the node hasn't been evaluated yet).
+/// Return scenarios from an evaluated node.
 fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
     match schedule {
         Schedule::Func {
@@ -153,14 +116,7 @@ fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
     }
 }
 
-/// Compute the cartesian product of scenario vectors from sequential sub-schedules.
-///
-/// For each combination (one scenario per sub-schedule), produces a single
-/// [`PerfScenario`] whose time cost is the sum and whose constraints are the
-/// conjunction (AND) of all selected scenarios.
-///
-/// An empty input (no sub-schedules) yields a single identity scenario with
-/// zero cost and `True` constraint.
+/// Combine sequential alternatives by summing costs and conjoining guards.
 fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfScenario> {
     let mut result = vec![PerfScenario {
         constraints: ConstraintExpr::True,
@@ -186,10 +142,7 @@ fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfSce
     result
 }
 
-/// Fuse a [`FuncPerfModel`]'s global constraints into each scenario and
-/// flatten throughput costs into a single expression in
-/// [`TimeCost::Expression`], producing the final per-function scenario vector
-/// ready for combination. The expression may still contain symbols.
+/// Apply global guards and flatten each cost to an expression.
 fn fuse_model_scenarios(model: &FuncPerfModel) -> Vec<PerfScenario> {
     model
         .scenarios
