@@ -11,8 +11,8 @@ func @vec_max_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %m = arith.maximumf %x, %y : f16
         linalg.yield %m : f16
@@ -30,8 +30,8 @@ func @vec_exp_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a : memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16):
         %e = math.exp %x : f16
         linalg.yield %e : f16
@@ -49,8 +49,8 @@ func @vec_sum_f16(
         ],
         iterator_types = ["reduction"]
       }
-      ins(%a : memref<?xf16>)
-      outs(%init : memref<f16>) {
+      ins(%a)
+      outs(%init) {
       ^bb0(%x: f16, %acc: f16):
         %s = arith.addf %x, %acc : f16
         linalg.yield %s : f16
@@ -70,8 +70,8 @@ func @vec_add_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %r = arith.addf %x, %y : f16
         linalg.yield %r : f16
@@ -91,8 +91,8 @@ func @vec_mul_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %r = arith.mulf %x, %y : f16
         linalg.yield %r : f16
@@ -112,8 +112,8 @@ func @vec_div_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %r = arith.divf %x, %y : f16
         linalg.yield %r : f16
@@ -133,8 +133,8 @@ func @vec_sub_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %r = arith.subf %x, %y : f16
         linalg.yield %r : f16
@@ -154,8 +154,8 @@ func @vec_powf_f16(
         ],
         iterator_types = ["parallel"]
       }
-      ins(%a, %b : memref<?xf16>, memref<?xf16>)
-      outs(%out : memref<?xf16>) {
+      ins(%a, %b)
+      outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %r = math.powf %x, %y : f16
         linalg.yield %r : f16
@@ -175,8 +175,8 @@ func @vec_cmpf_ogt_f16(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : memref<?xf16>, memref<?xf16>)
-    outs(%out : memref<?xi1>) {
+    ins(%a, %b)
+    outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: i1):
         %m = arith.cmpf ogt, %x, %y : f16
         linalg.yield %m : i1
@@ -198,8 +198,8 @@ func @vec_select_f16(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%cond, %a, %b : memref<?xi1>, memref<?xf16>, memref<?xf16>)
-    outs(%out : memref<?xf16>) {
+    ins(%cond, %a, %b)
+    outs(%out) {
       ^bb0(%c: i1, %x: f16, %y: f16, %z: f16):
         %m = arith.select %c, %x, %y : f16
         linalg.yield %m : f16
@@ -217,8 +217,8 @@ func @vec_log_f16(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a : memref<?xf16>)
-    outs(%out : memref<?xf16>) {
+    ins(%a)
+    outs(%out) {
       ^bb0(%x: f16, %y: f16):
         %l = math.log %x : f16
         linalg.yield %l : f16

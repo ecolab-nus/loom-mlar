@@ -167,6 +167,32 @@ func @matmul_f16(
 }
 ```
 
+`ins`/`outs` list operand names only. Writing `: memref<...>` there is an error:
+the buffer declarations are the single source of the memref types, and lowering
+derives element type, rank, and memory space from them. `linalg.generic` works
+the same way; only the region keeps element types.
+
+```text
+func @vec_sum_f16(
+  in a: f16[L],
+  out init: f16
+) {
+  linalg.generic {
+    indexing_maps = [
+      affine_map<(d0) -> (d0)>,
+      affine_map<(d0) -> ()>
+    ],
+    iterator_types = ["reduction"]
+  }
+  ins(%a)
+  outs(%init) {
+    ^bb0(%x: f16, %acc: f16):
+      %s = arith.addf %x, %acc : f16
+      linalg.yield %s : f16
+  }
+}
+```
+
 Movement functions use `loom.copy`, `loom.broadcast`, or `loom.gather`:
 
 ```text

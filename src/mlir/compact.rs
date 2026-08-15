@@ -244,67 +244,76 @@ fn lower_body_line(
     )))
 }
 
-/// Add operand types to short-form `ins(...)`/`outs(...)` clauses.
-///
-/// Types come from buffer declarations. Already typed clauses pass through.
+/// Byte ranges of the operand text inside each `ins(...)`/`outs(...)` clause.
+fn operand_clauses(line: &str) -> Result<Vec<std::ops::Range<usize>>, LoomParseError> {
+    let mut clauses = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(relative) = [line[cursor..].find("ins("), line[cursor..].find("outs(")]
+        .into_iter()
+        .flatten()
+        .min()
+    {
+        let start = cursor + relative;
+        let open = start + line[start..].find('(').expect("clause has a paren");
+        let Some(length) = line[open..].find(')') else {
+            return Err(LoomParseError(format!(
+                "unterminated operand list in '{line}'"
+            )));
+        };
+        clauses.push(open + 1..open + length);
+        cursor = open + length + 1;
+    }
+    Ok(clauses)
+}
+
+/// Add operand types to `ins(...)`/`outs(...)` clauses from buffer declarations.
 fn annotate_linalg_operands(
     line: &str,
     function: &CompactFunction,
     input_memories: &[&LoomMemoryBinding],
     output_memories: &[&LoomMemoryBinding],
 ) -> Result<String, LoomParseError> {
+    let clauses = operand_clauses(line)
+        .map_err(|error| LoomParseError(format!("function '{}': {}", function.name, error.0)))?;
     let mut output = String::with_capacity(line.len());
-    let mut rest = line;
-    while let Some(start) = rest.find("ins(").or_else(|| rest.find("outs(")) {
-        let open = start + rest[start..].find('(').expect("clause has a paren");
-        let Some(length) = rest[open..].find(')') else {
-            return Err(LoomParseError(format!(
-                "function '{}': unterminated operand list in '{line}'",
-                function.name
-            )));
-        };
-        let close = open + length;
-        let operands = &rest[open + 1..close];
-        output.push_str(&rest[..=open]);
-        if operands.contains(':') || operands.trim().is_empty() {
+    let mut end = 0usize;
+    for clause in clauses {
+        output.push_str(&line[end..clause.start]);
+        end = clause.end;
+        let operands = &line[clause];
+        if operands.trim().is_empty() {
             output.push_str(operands);
-        } else {
-            let types = operands
-                .split(',')
-                .map(|operand| {
-                    let name = operand.trim().trim_start_matches('%');
-                    if let Some(index) = function
-                        .inputs
-                        .iter()
-                        .position(|buffer| buffer.name == name)
-                    {
-                        return Ok(
-                            function.inputs[index].lowered_memref_type(input_memories[index])
-                        );
-                    }
-                    if let Some(index) = function
-                        .outputs
-                        .iter()
-                        .position(|buffer| buffer.name == name)
-                    {
-                        return Ok(
-                            function.outputs[index].lowered_memref_type(output_memories[index])
-                        );
-                    }
-                    Err(LoomParseError(format!(
-                        "function '{}' references undeclared operand '%{name}' in '{line}'",
-                        function.name
-                    )))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            output.push_str(operands.trim_end());
-            output.push_str(" : ");
-            output.push_str(&types.join(", "));
+            continue;
         }
-        output.push(')');
-        rest = &rest[close + 1..];
+        let types = operands
+            .split(',')
+            .map(|operand| {
+                let name = operand.trim().trim_start_matches('%');
+                if let Some(index) = function
+                    .inputs
+                    .iter()
+                    .position(|buffer| buffer.name == name)
+                {
+                    return Ok(function.inputs[index].lowered_memref_type(input_memories[index]));
+                }
+                if let Some(index) = function
+                    .outputs
+                    .iter()
+                    .position(|buffer| buffer.name == name)
+                {
+                    return Ok(function.outputs[index].lowered_memref_type(output_memories[index]));
+                }
+                Err(LoomParseError(format!(
+                    "function '{}' references undeclared operand '%{name}' in '{line}'",
+                    function.name
+                )))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        output.push_str(operands.trim_end());
+        output.push_str(" : ");
+        output.push_str(&types.join(", "));
     }
-    output.push_str(rest);
+    output.push_str(&line[end..]);
     Ok(output)
 }
 
@@ -637,6 +646,17 @@ fn parse_compact_function(block: &str) -> Result<CompactFunction, LoomParseError
     for operation in &body {
         let kind = operation.split_whitespace().next().unwrap_or_default();
         if !matches!(kind, "loom.copy" | "loom.broadcast" | "loom.gather") {
+            let clauses = operand_clauses(operation)
+                .map_err(|error| LoomParseError(format!("function '{name}': {}", error.0)))?;
+            if clauses
+                .iter()
+                .any(|clause| operation[clause.clone()].contains(':'))
+            {
+                return Err(LoomParseError(format!(
+                    "function '{name}': `ins`/`outs` list operand names only; their memref \
+                     types come from the buffer declarations"
+                )));
+            }
             continue;
         }
         if operation.contains("area:") {
@@ -940,7 +960,7 @@ func @matmul(
     }
 
     #[test]
-    fn already_typed_linalg_operands_are_left_alone() {
+    fn multiline_generic_operands_gain_types_and_written_types_are_rejected() {
         let source = r#"
 func @generic(
   in src: f16[L],
@@ -949,9 +969,10 @@ func @generic(
   linalg.generic {
     iterator_types = ["parallel"]
   }
-  ins(%src : memref<?xf16>)
-  outs(%dst : memref<?xf16>) {
-    linalg.yield %src : f16
+  ins(%src)
+  outs(%dst) {
+    ^bb0(%x: f16, %y: f16):
+      linalg.yield %x : f16
   }
 }
 "#;
@@ -962,10 +983,20 @@ func @generic(
             &[memory("mem_L1", &[])],
             &[memory("mem_L1", &[])],
         )
-        .expect("typed linalg should lower");
-
+        .expect("multiline generic should lower");
         assert!(lowered.contains("ins(%src : memref<?xf16>)"));
-        assert!(!lowered.contains("memref<?xf16>, memref<?xf16>"));
+        assert!(lowered.contains("outs(%dst : memref<?xf16>) {"));
+        // Region block arguments keep their element types.
+        assert!(lowered.contains("^bb0(%x: f16, %y: f16):"));
+
+        // One spelling only: declarations are the single source of the memref type.
+        let typed = source.replace("ins(%src)", "ins(%src : memref<?xf16>)");
+        assert!(
+            parse_loom_source(&typed)
+                .unwrap_err()
+                .to_string()
+                .contains("list operand names only")
+        );
     }
 
     #[test]
@@ -978,7 +1009,7 @@ func @remote_generic(
   linalg.generic {
     iterator_types = ["parallel"]
   }
-  outs(%dst : memref<?xf16>) {
+  outs(%dst) {
     linalg.yield %src : f16
   }
 }

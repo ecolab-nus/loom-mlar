@@ -3,7 +3,7 @@ func @matmul_SS_f16(
   in B: f16[K, N],
   out C: f16[M, N]
 ) {
-  linalg.matmul ins(%A, %B : memref<?x?xf16>, memref<?x?xf16>) outs(%C : memref<?x?xf16>)
+  linalg.matmul ins(%A, %B) outs(%C)
 }
 
 func @matmul_SR_f16(
@@ -11,7 +11,7 @@ func @matmul_SR_f16(
   in B: f16[K, N] @space(1),
   out C: f16[M, N]
 ) {
-  linalg.matmul ins(%A, %B : memref<?x?xf16>, memref<?x?xf16, 1>) outs(%C : memref<?x?xf16>)
+  linalg.matmul ins(%A, %B) outs(%C)
 }
 
 func @matmul_RS_f16(
@@ -19,7 +19,7 @@ func @matmul_RS_f16(
   in B: f16[K, N],
   out C: f16[M, N]
 ) {
-  linalg.matmul ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16>) outs(%C : memref<?x?xf16>)
+  linalg.matmul ins(%A, %B) outs(%C)
 }
 
 func @matmul_RR_f16(
@@ -27,7 +27,7 @@ func @matmul_RR_f16(
   in B: f16[K, N] @space(1),
   out C: f16[M, N]
 ) {
-  linalg.matmul ins(%A, %B : memref<?x?xf16, 1>, memref<?x?xf16, 1>) outs(%C : memref<?x?xf16>)
+  linalg.matmul ins(%A, %B) outs(%C)
 }
 
 func @batch_matmul_SS_f16(
@@ -35,7 +35,7 @@ func @batch_matmul_SS_f16(
   in Bmat: f16[B, K, N],
   out C: f16[B, M, N]
 ) {
-  linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16>) outs(%C : memref<?x?x?xf16>)
+  linalg.batch_matmul ins(%A, %Bmat) outs(%C)
 }
 
 func @batch_matmul_SR_f16(
@@ -43,7 +43,7 @@ func @batch_matmul_SR_f16(
   in Bmat: f16[B, K, N] @space(1),
   out C: f16[B, M, N]
 ) {
-  linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16>, memref<?x?x?xf16, 1>) outs(%C : memref<?x?x?xf16>)
+  linalg.batch_matmul ins(%A, %Bmat) outs(%C)
 }
 
 func @batch_matmul_RS_f16(
@@ -51,7 +51,7 @@ func @batch_matmul_RS_f16(
   in Bmat: f16[B, K, N],
   out C: f16[B, M, N]
 ) {
-  linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16>) outs(%C : memref<?x?x?xf16>)
+  linalg.batch_matmul ins(%A, %Bmat) outs(%C)
 }
 
 func @batch_matmul_RR_f16(
@@ -59,7 +59,7 @@ func @batch_matmul_RR_f16(
   in Bmat: f16[B, K, N] @space(1),
   out C: f16[B, M, N]
 ) {
-  linalg.batch_matmul ins(%A, %Bmat : memref<?x?x?xf16, 1>, memref<?x?x?xf16, 1>) outs(%C : memref<?x?x?xf16>)
+  linalg.batch_matmul ins(%A, %Bmat) outs(%C)
 }
 
 func @vec_vsum_f16(
@@ -73,8 +73,8 @@ func @vec_vsum_f16(
       ],
       iterator_types = ["parallel", "reduction"]
     }
-    ins(%a : memref<?x?xf16>)
-    outs(%out : memref<?xf16>) {
+    ins(%a)
+    outs(%out) {
       ^bb0(%x: f16, %acc: f16):
         %s = arith.addf %x, %acc : f16
         linalg.yield %s : f16
@@ -92,8 +92,8 @@ func @vec_vmax_f16(
       ],
       iterator_types = ["parallel", "reduction"]
     }
-    ins(%a : memref<?x?xf16>)
-    outs(%out : memref<?xf16>) {
+    ins(%a)
+    outs(%out) {
       ^bb0(%x: f16, %acc: f16):
         %m = arith.maximumf %x, %acc : f16
         linalg.yield %m : f16
@@ -113,8 +113,8 @@ func @vec_max1_f16(
       ],
       iterator_types = ["parallel"]
     }
-    ins(%a, %b : memref<?xf16>, memref<?xf16>)
-    outs(%out : memref<?xf16>) {
+    ins(%a, %b)
+    outs(%out) {
       ^bb0(%x: f16, %y: f16, %z: f16):
         %cmp = arith.cmpf ogt, %x, %y : f16
         %sel = arith.select %cmp, %x, %y : f16
@@ -127,7 +127,7 @@ func @elementwise_add_f16(
   in b: f16[M, N],
   out out: f16[M, N]
 ) {
-  linalg.add ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) outs(%out : memref<?x?xf16>)
+  linalg.add ins(%a, %b) outs(%out)
 }
 
 func @elementwise_mul_f16(
@@ -135,5 +135,5 @@ func @elementwise_mul_f16(
   in b: f16[M, N],
   out out: f16[M, N]
 ) {
-  linalg.mul ins(%a, %b : memref<?x?xf16>, memref<?x?xf16>) outs(%out : memref<?x?xf16>)
+  linalg.mul ins(%a, %b) outs(%out)
 }

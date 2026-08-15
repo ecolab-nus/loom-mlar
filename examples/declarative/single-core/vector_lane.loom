@@ -11,8 +11,8 @@ func @vector_add(
     ],
     iterator_types = ["parallel"]
   }
-  ins(%lhs, %rhs : memref<?xf16>, memref<?xf16>)
-  outs(%out : memref<?xf16>) {
+  ins(%lhs, %rhs)
+  outs(%out) {
     ^bb0(%a: f16, %b: f16, %unused: f16):
       %sum = arith.addf %a, %b : f16
       linalg.yield %sum : f16
