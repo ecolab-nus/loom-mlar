@@ -1,0 +1,126 @@
+# Feature Specification: Memory-Centric Visualization
+
+**Feature Branch**: `dev`
+
+**Created**: 2026-08-17
+
+**Status**: Draft
+
+**Input**: User description: "Refactor the visualization to be memory-centric: emphasize memory regions, the processors and data movers connected to them at each level, and the hierarchy of memory regions."
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Understand the Memory Hierarchy (Priority: P1)
+
+As a hardware architect, I want the visualization to lead with memory regions and their hierarchy so that I can understand the architecture's storage levels before examining the components that use them.
+
+**Why this priority**: The memory hierarchy is the organizing structure for every other part of this feature. Without it, the visualization is not meaningfully memory-centric.
+
+**Independent Test**: Open a visualization of an architecture containing memory regions at multiple nested levels and verify that a reviewer can identify every region, its parent/child placement, and its replication context without consulting the source model.
+
+**Acceptance Scenarios**:
+
+1. **Given** an architecture with system-level DRAM and a replicated child scope containing L1 memory, **When** a user opens the visualization, **Then** DRAM and L1 are presented as memory regions in a clear hierarchy and L1's replication is shown as metadata rather than expanded instances.
+2. **Given** a memory region composed of nested region structures, **When** the user examines that region, **Then** the nested structure and each level's available name, dimensions, capacity, and size information are visible.
+3. **Given** an unconnected memory region, **When** the visualization is generated, **Then** the region still appears in its correct hierarchy and is clearly distinguishable from connected regions.
+
+---
+
+### User Story 2 - See Who Accesses Each Memory Level (Priority: P1)
+
+As a hardware architect, I want each memory region to show the processors and data movers connected to that exact level so that I can verify access boundaries and data movement responsibilities.
+
+**Why this priority**: Connectivity is the central question the memory-centric view must answer: who can read from or write to each memory region.
+
+**Independent Test**: Use a model where compute processors access L1 and data movers connect L1 with DRAM; for each memory region, compare the displayed neighbors and directions with the declared connections in the source architecture.
+
+**Acceptance Scenarios**:
+
+1. **Given** a compute processor that reads from and writes to L1, **When** the user examines L1, **Then** the processor appears once as a compute processor and both its read and write access are unambiguous.
+2. **Given** a data mover from DRAM to L1, **When** the user examines either endpoint, **Then** the same data mover is visible, DRAM is identified as its source, L1 as its destination, and the direction of movement is clear.
+3. **Given** processors connected to different levels of a memory hierarchy, **When** the hierarchy is viewed, **Then** each processor is associated only with the exact region or regions it accesses and is not implied to access ancestors or descendants.
+4. **Given** multiple connections between the same component and memory region, **When** they represent distinct access meanings, **Then** each meaning remains discoverable without duplicating the component's identity.
+
+---
+
+### User Story 3 - Trace Movement Across Memory Levels (Priority: P2)
+
+As a performance engineer, I want to follow a data-movement route between memory levels so that I can quickly understand how data reaches compute and where network or shared-resource constraints apply.
+
+**Why this priority**: Cross-level tracing turns the hierarchy and direct connections into an actionable system-level understanding, while remaining independently useful after the core memory and connectivity views exist.
+
+**Independent Test**: Starting from either endpoint in a multi-level sample, trace a declared DRAM-to-L1 movement through its data mover and confirm that any related network and resource context remains discoverable.
+
+**Acceptance Scenarios**:
+
+1. **Given** a data mover connecting two memory regions at different hierarchy levels, **When** the user follows the connection from one endpoint, **Then** the other endpoint, movement direction, and mover identity can be reached without searching unrelated component views.
+2. **Given** a connected processor or data mover with network or resource relationships, **When** the user inspects that component, **Then** the supporting relationships remain available without displacing memory regions as the primary organizing elements.
+3. **Given** a large architecture that cannot fit in one readable view, **When** the visualization is organized into multiple views, **Then** users can navigate among memory-centered views without losing the identity or hierarchy context of repeated entities.
+
+### Edge Cases
+
+- A memory region has no processor or data-mover connections.
+- A processor reads and writes the same memory region.
+- A data mover has the same memory region as both source and destination.
+- A component connects to multiple memory regions at the same level or across different levels.
+- Different scopes contain memory regions with the same display name.
+- A hierarchy contains symbolic dimensions or sizes that cannot be reduced to concrete values.
+- A hierarchy is deep or wide enough to exceed the readability limit of a single view.
+- A component references a memory region that cannot be resolved uniquely; visualization generation must report the problem rather than show a misleading connection.
+- Supporting resources or networks exist without a direct memory relationship; they must remain discoverable in a secondary context.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: The visualization MUST use memory regions as the primary entry points and organizing elements of the architecture presentation.
+- **FR-002**: The visualization MUST show the parent/child hierarchy of memory regions using the architecture's ownership hierarchy and each region's nested structure.
+- **FR-003**: Every distinct memory region MUST retain a stable identity even when it appears in more than one view, has the same display name as another region, or is accessed by multiple components.
+- **FR-004**: Each memory region MUST expose its available name, hierarchy context, dimensions, replication factor, capacity, block size, and total size without requiring replication to be expanded into individual instances.
+- **FR-005**: For every memory region, users MUST be able to identify all compute processors and data movers directly connected to that exact region.
+- **FR-006**: The visualization MUST distinguish compute processors from data movers wherever they are shown.
+- **FR-007**: Each processor or data-mover connection MUST identify whether it reads from the memory region, writes to the memory region, or does both.
+- **FR-008**: A data mover that connects two memory regions MUST show both endpoints and the direction from source memory to destination memory.
+- **FR-009**: The visualization MUST NOT infer access from hierarchy alone; a connection to one memory region MUST NOT imply a connection to its ancestors, descendants, or siblings.
+- **FR-010**: Users MUST be able to move from a memory region to a connected component and from that component to its other directly connected memory regions while preserving entity identity and access direction.
+- **FR-011**: Unconnected memory regions MUST remain visible in their correct hierarchy and be recognizable as having no direct processor or data-mover connections.
+- **FR-012**: The visualization MUST preserve every modeled component and relationship in at least one view, while presenting networks, shared resources, and other non-memory information as supporting context.
+- **FR-013**: No individual semantic view MUST contain more than 12 primary nodes; larger hierarchies or connection sets MUST be split into navigable, memory-centered views.
+- **FR-014**: Replicated scopes and memory arrays MUST be represented with dimensions and instance-count metadata rather than by expanding every instance.
+- **FR-015**: Ambiguous or missing memory references MUST prevent the affected connection from being presented as valid and MUST produce a diagnostic that identifies the unresolved component and reference.
+- **FR-016**: Previously valid visualization source documents MUST either remain usable or receive an explicit compatibility version and migration guidance.
+- **FR-017**: The canonical visualization content MUST remain available as a human-readable, versioned textual artifact that can be inspected independently of the rendered views.
+- **FR-018**: All project-authored labels, diagnostics, and navigation for the memory-centric experience MUST be in English.
+
+### Key Entities *(include if feature involves data)*
+
+- **Memory Region**: A named or structural storage area with hierarchy context, dimensions, replication, and size characteristics; it can be a parent, child, or endpoint of access relationships.
+- **Memory Hierarchy Relationship**: A parent/child relationship that locates one memory region or nested region structure relative to another without implying access.
+- **Compute Processor**: An executable architecture component that directly reads from and/or writes to one or more memory regions.
+- **Data Mover**: An executable architecture component with a source memory region and destination memory region, representing directed movement within or across hierarchy levels.
+- **Memory Access Connection**: A direct, directional relationship between a memory region and a compute processor or data mover, with read and/or write meaning.
+- **Supporting Context**: Network, shared-resource, scope, dimension, and replication information associated with connected components or hierarchy levels but not used as the primary visual anchor.
+- **Semantic View**: A bounded presentation centered on one portion of the memory hierarchy and its direct connections while preserving links to related views.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: In the representative multi-level architecture sample, 100% of modeled memory regions appear in the visualization with the correct parent/child placement and replication context.
+- **SC-002**: In reference comparisons, 100% of declared processor and data-mover memory connections appear at the correct memory endpoint with the correct direction, with zero inferred or duplicate connections.
+- **SC-003**: At least 90% of evaluators can identify which processors access a selected memory level and which data movers connect it to other levels within 60 seconds, without consulting the source architecture.
+- **SC-004**: At least 90% of evaluators can trace a declared cross-level data-movement route from source memory to destination memory correctly on their first attempt.
+- **SC-005**: Every semantic view contains at most 12 primary nodes, and replicated structures remain understandable without displaying individual instances.
+- **SC-006**: Automated completeness checks confirm that 100% of modeled components and relationships remain discoverable across the generated views.
+- **SC-007**: No previously valid reference visualization becomes unusable without either continued compatibility or documented migration guidance.
+
+## Assumptions
+
+- "Memory-centric" changes how architecture information is organized and explored; it does not change the meaning of the underlying architecture, schedule, performance, or compiler-facing models.
+- Memory hierarchy is derived from the existing scope ownership hierarchy and the recursive structure of each memory region. This feature does not introduce a separate, manually maintained hierarchy that could disagree with the architecture model.
+- Only explicitly modeled source and destination regions establish access. The visualization does not infer cache coherence, transitive reachability, or implicit access through a parent memory level.
+- Compute processors and data movers are both important neighbors of memory, but remain visibly different component roles.
+- Network and shared-resource information remains in scope as secondary context because it can explain data-movement constraints and is required for a complete representation.
+- The representative 2D mesh architecture is the primary acceptance fixture for multi-level memory, compute access, data movement, replication, resources, and networks.
+- Interactive selection is not required for the first usable increment; bounded linked views may satisfy navigation and tracing outcomes.
+

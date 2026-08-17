@@ -1,10 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: 1.3.0 -> 1.4.0
-- Modified principles: IV. Treat Documentation Sources as Reproducible Artifacts ->
-  IV. Keep Structural Documentation Visual and Reproducible
+- Version change: 1.4.0 -> 1.5.0
+- Modified principles: IV. Keep Structural Documentation Visual and Reproducible
 - Added principles: none
-- Modified sections: Core Principles (expanded Principle IV with structural diagram requirements)
+- Modified sections: Core Principles (defined the specification-to-documentation lifecycle);
+  Development Workflow and Quality Gates (added completion and consolidation requirements)
 - Added sections: none
 - Removed sections: none
 - Follow-up TODOs: none
@@ -76,6 +76,19 @@ readability without changing architecture semantics for presentation.
 User-visible behavior, exported schemas, and typical workflows MUST be reflected in the relevant
 hand-authored Markdown and examples, aligned with the public API. `docs/*.md` and `docsite/` are the
 editable textual sources; separate hand-authored HTML versions MUST NOT be created.
+
+Feature directories under `specs/` are change-scoped planning and implementation records, not the
+default canonical documentation for the current system. A feature specification MUST remain
+available while its work is active. Before that work is declared complete, its durable description
+of behavior, architecture, interfaces, constraints, and operating guidance MUST be consolidated
+into the relevant canonical documentation under `docs/`, `README.md`, or another explicitly
+designated maintained source. Consolidation MAY retain the specification's useful section hierarchy,
+headings, examples, and explanatory flow; content MUST NOT be reorganized merely to erase its origin.
+The consolidated document MUST describe the resulting system as it exists, remove superseded
+proposals and task history, and avoid creating a competing source of truth. After consolidation, a
+completed feature directory MAY be removed or archived, or MAY remain for continuing audit or
+decision-traceability value when it is clearly treated as historical rather than canonical. Git
+history provides recovery and provenance when a completed feature directory is removed.
 
 The project's structural model MUST be represented by Archify diagrams. These diagrams MUST show
 the components and modules of the system, their hierarchy and ownership boundaries, and the
@@ -159,7 +172,11 @@ tooling.
 5. When documentation diagrams change, edit only the JSON source, then repeat Archify validation,
    delivery, and visual checking. An exit code indicating a browser-based check was skipped MUST be
    recorded as skipped.
-6. Inspect the final worktree and all task-related diffs. Explicitly distinguish expected tracked
+6. Before closing feature work, consolidate its durable specification content into the canonical
+   documentation. Preserve useful specification structure when it improves the maintained docs,
+   remove stale planning detail, and decide explicitly whether the completed feature directory is
+   removed, archived, or retained as a historical record.
+7. Inspect the final worktree and all task-related diffs. Explicitly distinguish expected tracked
    sample rewrites, ignored generated output, pre-existing user changes, passed checks, and skipped
    or blocked checks in the handoff.
 
@@ -179,4 +196,4 @@ MINOR for new principles or materially expanded obligations, and PATCH for non-s
 clarifications. Compliance review MUST occur when planning a feature, during code review, and before
 declaring implementation complete.
 
-**Version**: 1.4.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-17
+**Version**: 1.5.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-17
