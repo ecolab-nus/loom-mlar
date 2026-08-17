@@ -26,7 +26,7 @@ For example, after building `tests/2d_mesh/bin/eval_system`, pass
 - `core_nested_parallel_sequential.json`: a nested schedule on `single_core()`
   that evaluates `vec_add_f16` sequentially before a parallel
   `vec_exp_f16`/`vec_mul_f16` pair.
-- `core_matmul.json`: a single matrix-lane `matmul_f16` invocation on
+- `core_matmul.json`: a single matrix-lane `matmul_SS_f16` invocation on
   `single_core()`. It maps `M`, `N`, and `K` to schedule-level tile symbols.
 - `system_data_roundtrip.json`: a system-level DRAM-to-L1 and L1-to-DRAM
   transfer schedule on `scaled_mesh_torus()`. It maps data-mover shape symbols

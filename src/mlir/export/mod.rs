@@ -5,7 +5,7 @@ mod rewrite;
 use std::ffi::OsStr;
 use std::fmt;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::arch::architecture::Architecture;
@@ -113,11 +113,18 @@ struct GeneratedMlir {
 /// frontends. `adl-opt` validates the architecture-only module first, then
 /// `loom-opt` validates the complete module including processor functionality.
 ///
-/// Both validator paths are discovered and verified by loom-mlar's Cargo build
-/// script, so callers do not need to configure environment variables or
-/// modify `PATH`.
+/// The build script discovers validators from their standard sibling build
+/// paths or `PATH`. If either is unavailable, this function returns
+/// [`MlirExportError::ToolNotFound`]; use [`architecture_to_mlir_unchecked`] only
+/// when skipping validation is intentional.
 pub fn architecture_to_mlir(arch: &Architecture) -> Result<String, MlirExportError> {
     architecture_to_mlir_with_tools(arch, OsStr::new(ADL_OPT), OsStr::new(LOOM_OPT))
+}
+
+/// Whether both external validators required by [`architecture_to_mlir`] are
+/// currently present and executable.
+pub fn mlir_validators_available() -> bool {
+    is_executable(Path::new(ADL_OPT)) && is_executable(Path::new(LOOM_OPT))
 }
 
 /// Serialize an [`Architecture`] without invoking external validators.
@@ -199,6 +206,24 @@ fn generate_mlir(arch: &Architecture) -> Result<GeneratedMlir, MlirExportError> 
 enum ValidationStage {
     Adl,
     Loom,
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn validate_mlir(

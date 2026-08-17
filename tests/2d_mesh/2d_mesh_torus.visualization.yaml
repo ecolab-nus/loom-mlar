@@ -1,0 +1,321 @@
+schema_version: mlar.visualization.v1
+architecture:
+  id: architecture-system-6052ff9457c197a9
+  name: system
+  root_scope: scope-system-36c9535cd77ddf8a
+scopes:
+- id: scope-mesh-d88d33c5fbde7352
+  name: mesh
+  parent_scope: scope-system-36c9535cd77ddf8a
+  dimensions:
+  - name: x
+    size:
+      text: '8'
+      constant: 8
+  - name: y
+    size:
+      text: '8'
+      constant: 8
+  replication_factor: 64
+- id: scope-system-36c9535cd77ddf8a
+  name: system
+  dimensions: []
+  replication_factor: 1
+components:
+- kind: memory
+  id: memory-memory-dram-68f9109c8d6d9615
+  scope: scope-system-36c9535cd77ddf8a
+  name: DRAM
+  dimensions:
+  - name: dram_channel
+    size:
+      text: '8'
+      constant: 8
+  region:
+    kind: array
+    name: DRAM
+    dimensions:
+    - name: dram_channel
+      size:
+        text: '8'
+        constant: 8
+    element:
+      kind: bank
+      name: DRAM_bank
+      capacity:
+        text: (8192 * 196608)
+        constant: 1610612736
+      block_size:
+        text: '8192'
+        constant: 8192
+      total_size_bytes: 1610612736
+    total_size_bytes: 12884901888
+  total_size_bytes: 12884901888
+- kind: memory
+  id: memory-memory-l1-4b16eb111e85ce44
+  scope: scope-mesh-d88d33c5fbde7352
+  name: L1
+  dimensions:
+  - name: x
+    size:
+      text: '8'
+      constant: 8
+  - name: y
+    size:
+      text: '8'
+      constant: 8
+  - name: nbank
+    size:
+      text: '16'
+      constant: 16
+  region:
+    kind: array
+    name: L1
+    dimensions:
+    - name: nbank
+      size:
+        text: '16'
+        constant: 16
+    element:
+      kind: bank
+      name: null
+      capacity:
+        text: (16 * 5464)
+        constant: 87424
+      block_size:
+        text: '16'
+        constant: 16
+      total_size_bytes: 87424
+    total_size_bytes: 1398784
+  total_size_bytes: 1398784
+- kind: data_mover
+  id: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  scope: scope-system-36c9535cd77ddf8a
+  name: dram_l1_noc0
+  effect: preserve
+  functions:
+  - dram_to_l1_S_f16
+  - dram_to_l1_S_bcst
+  - dram_to_l1_R_f16
+  - dram_to_l1_R_bcst
+- kind: data_mover
+  id: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  scope: scope-system-36c9535cd77ddf8a
+  name: l1_dram_noc1
+  effect: preserve
+  functions:
+  - l1_to_dram_f16
+- kind: data_mover
+  id: processor-processor-l1-l1-noc0-53ad985975875f6d
+  scope: scope-system-36c9535cd77ddf8a
+  name: l1_l1_noc0
+  effect: preserve
+  functions:
+  - l1_gather
+- kind: processor
+  id: processor-processor-matrix-lane-f3de12c5d8563963
+  scope: scope-mesh-d88d33c5fbde7352
+  name: matrix_lane
+  effect: transform
+  functions:
+  - matmul_SS_f16
+  - matmul_SR_f16
+  - matmul_RS_f16
+  - matmul_RR_f16
+  - batch_matmul_SS_f16
+  - batch_matmul_SR_f16
+  - batch_matmul_RS_f16
+  - batch_matmul_RR_f16
+  - vec_vsum_f16
+  - vec_vmax_f16
+  - vec_max1_f16
+  - elementwise_add_f16
+  - elementwise_mul_f16
+- kind: processor
+  id: processor-processor-vector-lane-a2de95a51fc4ff35
+  scope: scope-mesh-d88d33c5fbde7352
+  name: vector_lane
+  effect: transform
+  functions:
+  - vec_max_f16
+  - vec_exp_f16
+  - vec_sum_f16
+  - vec_add_f16
+  - vec_mul_f16
+  - vec_div_f16
+  - vec_sub_f16
+  - vec_powf_f16
+  - vec_cmpf_ogt_f16
+  - vec_select_f16
+  - vec_log_f16
+- kind: resource
+  id: resource-resource-array-l1-582d71b5fbfbda18
+  scope: scope-system-36c9535cd77ddf8a
+  name: array_L1
+  resource_kind: quantitative
+  capacity: 89522176
+- kind: resource
+  id: resource-resource-dram-042c61b4d39ad4dd
+  scope: scope-system-36c9535cd77ddf8a
+  name: DRAM
+  resource_kind: quantitative
+  capacity: 12884901888
+- kind: resource
+  id: resource-resource-l1-c54691203bbf80a6
+  scope: scope-mesh-d88d33c5fbde7352
+  name: L1
+  resource_kind: quantitative
+  capacity: 1398784
+- kind: resource
+  id: resource-resource-l1-e2c61642c31fae32
+  scope: scope-system-36c9535cd77ddf8a
+  name: L1
+  resource_kind: quantitative
+  capacity: 1398784
+- kind: resource
+  id: resource-resource-matrix-lane-5b45a702a65111f3
+  scope: scope-mesh-d88d33c5fbde7352
+  name: matrix_lane
+  resource_kind: exclusive
+  capacity: null
+- kind: resource
+  id: resource-resource-matrix-lane-c0e027b8d1fbbbaf
+  scope: scope-system-36c9535cd77ddf8a
+  name: matrix_lane
+  resource_kind: exclusive
+  capacity: null
+- kind: resource
+  id: resource-resource-noc0-6c81b8fcf0b1cf0d
+  scope: scope-system-36c9535cd77ddf8a
+  name: noc0
+  resource_kind: exclusive
+  capacity: null
+- kind: resource
+  id: resource-resource-noc1-6c81b7fcf0b1cd5a
+  scope: scope-system-36c9535cd77ddf8a
+  name: noc1
+  resource_kind: exclusive
+  capacity: null
+- kind: resource
+  id: resource-resource-vector-lane-47021f2d35ea2041
+  scope: scope-system-36c9535cd77ddf8a
+  name: vector_lane
+  resource_kind: exclusive
+  capacity: null
+- kind: resource
+  id: resource-resource-vector-lane-5550ee94caf4c905
+  scope: scope-mesh-d88d33c5fbde7352
+  name: vector_lane
+  resource_kind: exclusive
+  capacity: null
+relationships:
+- id: relationship-memory-memory-dram-68f9109c8d6d9615-deb13890014fafc0
+  kind: write
+  source: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  target: memory-memory-dram-68f9109c8d6d9615
+  label: write
+- id: relationship-memory-memory-l1-4b16eb111e85ce44-317eae09f6ca0ecc
+  kind: write
+  source: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  target: memory-memory-l1-4b16eb111e85ce44
+  label: write
+- id: relationship-memory-memory-l1-4b16eb111e85ce44-8cf5c456db5addc0
+  kind: write
+  source: processor-processor-l1-l1-noc0-53ad985975875f6d
+  target: memory-memory-l1-4b16eb111e85ce44
+  label: write
+- id: relationship-memory-memory-l1-4b16eb111e85ce44-c95b1a0a720113ec
+  kind: write
+  source: processor-processor-vector-lane-a2de95a51fc4ff35
+  target: memory-memory-l1-4b16eb111e85ce44
+  label: write
+- id: relationship-memory-memory-l1-4b16eb111e85ce44-e5d6abf9be7b5549
+  kind: write
+  source: processor-processor-matrix-lane-f3de12c5d8563963
+  target: memory-memory-l1-4b16eb111e85ce44
+  label: write
+- id: relationship-processor-processor-dram-l1-noc0-5fcd369e124c75d2-00c1cc4f6e38f33c
+  kind: read
+  source: memory-memory-dram-68f9109c8d6d9615
+  target: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  label: read
+- id: relationship-processor-processor-l1-dram-noc1-030bddd0b3ce4c13-b1d720ae61c262bc
+  kind: read
+  source: memory-memory-l1-4b16eb111e85ce44
+  target: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  label: read
+- id: relationship-processor-processor-l1-l1-noc0-53ad985975875f6d-d564a77253784959
+  kind: read
+  source: memory-memory-l1-4b16eb111e85ce44
+  target: processor-processor-l1-l1-noc0-53ad985975875f6d
+  label: read
+- id: relationship-processor-processor-matrix-lane-f3de12c5d8563963-6311fa7cf0842af6
+  kind: read
+  source: memory-memory-l1-4b16eb111e85ce44
+  target: processor-processor-matrix-lane-f3de12c5d8563963
+  label: read
+- id: relationship-processor-processor-vector-lane-a2de95a51fc4ff35-d2e626e666c2f36f
+  kind: read
+  source: memory-memory-l1-4b16eb111e85ce44
+  target: processor-processor-vector-lane-a2de95a51fc4ff35
+  label: read
+- id: relationship-resource-resource-array-l1-582d71b5fbfbda18-357762522fcce676
+  kind: requires
+  source: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  target: resource-resource-array-l1-582d71b5fbfbda18
+  label: requires
+- id: relationship-resource-resource-array-l1-582d71b5fbfbda18-7ab5b6adf26335c3
+  kind: requires
+  source: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  target: resource-resource-array-l1-582d71b5fbfbda18
+  label: requires
+- id: relationship-resource-resource-array-l1-582d71b5fbfbda18-decf943c3735cdca
+  kind: requires
+  source: processor-processor-l1-l1-noc0-53ad985975875f6d
+  target: resource-resource-array-l1-582d71b5fbfbda18
+  label: requires
+- id: relationship-resource-resource-dram-042c61b4d39ad4dd-1bab9ea8d8529d40
+  kind: requires
+  source: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  target: resource-resource-dram-042c61b4d39ad4dd
+  label: requires
+- id: relationship-resource-resource-dram-042c61b4d39ad4dd-60540e61eb896461
+  kind: requires
+  source: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  target: resource-resource-dram-042c61b4d39ad4dd
+  label: requires
+- id: relationship-resource-resource-l1-c54691203bbf80a6-6b206676e000ea65
+  kind: requires
+  source: processor-processor-matrix-lane-f3de12c5d8563963
+  target: resource-resource-l1-c54691203bbf80a6
+  label: requires
+- id: relationship-resource-resource-l1-c54691203bbf80a6-ccdd6f07634fb9b8
+  kind: requires
+  source: processor-processor-vector-lane-a2de95a51fc4ff35
+  target: resource-resource-l1-c54691203bbf80a6
+  label: requires
+- id: relationship-resource-resource-matrix-lane-5b45a702a65111f3-8b0fa6b5d536d446
+  kind: requires
+  source: processor-processor-matrix-lane-f3de12c5d8563963
+  target: resource-resource-matrix-lane-5b45a702a65111f3
+  label: requires
+- id: relationship-resource-resource-noc0-6c81b8fcf0b1cf0d-433e5090dac87e1c
+  kind: requires
+  source: processor-processor-l1-l1-noc0-53ad985975875f6d
+  target: resource-resource-noc0-6c81b8fcf0b1cf0d
+  label: requires
+- id: relationship-resource-resource-noc0-6c81b8fcf0b1cf0d-472cd5fc6ee53028
+  kind: requires
+  source: processor-processor-dram-l1-noc0-5fcd369e124c75d2
+  target: resource-resource-noc0-6c81b8fcf0b1cf0d
+  label: requires
+- id: relationship-resource-resource-noc1-6c81b7fcf0b1cd5a-6b0d34c39fc3f0ed
+  kind: requires
+  source: processor-processor-l1-dram-noc1-030bddd0b3ce4c13
+  target: resource-resource-noc1-6c81b7fcf0b1cd5a
+  label: requires
+- id: relationship-resource-resource-vector-lane-5550ee94caf4c905-6299fb8a20710d90
+  kind: requires
+  source: processor-processor-vector-lane-a2de95a51fc4ff35
+  target: resource-resource-vector-lane-5550ee94caf4c905
+  label: requires

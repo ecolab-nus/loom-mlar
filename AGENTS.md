@@ -7,7 +7,8 @@ Guidance for AI coding agents working in this repository.
 This repository contains `mlar-rust`, a Rust library for MLAR: Multi-Level
 Architecture Representation. It models hierarchical hardware architectures,
 parses processor MLIR metadata, exports `adl.*` MLIR, evaluates symbolic
-performance schedules, and exports versioned JSON payloads for a web viewer.
+performance schedules, and exports a versioned visualization YAML model for
+Archify rendering.
 
 There is no top-level CLI binary. The main crate is a library, with examples and
 integration coverage in `tests/2d_mesh/`.
@@ -20,10 +21,12 @@ Main areas:
 - `src/math/`: symbolic expressions, constraints, affine expressions, and
   parsing helpers.
 - `src/schedule/`: schedule representation and in-process evaluation.
-- `src/visualization/`: graph, hierarchy, and viewer JSON export.
+- `src/visualization/`: renderer-neutral visualization document and YAML export.
 - `src/abi/`: helpers for generated evaluator/query binaries.
 - `tests/2d_mesh/`: the most complete architecture example and export tests.
-- `web-visualization/`: React/Vite viewer for exported architecture JSON.
+- `schemas/`: versioned visualization interchange schema.
+- `tools/mlar-archify/`: YAML validation and semantic Archify adapter.
+- `tools/archify/`: vendored Archify CLI and runtime.
 - `docsite/`: Docusaurus site that reads Markdown directly from `docs/`.
 - `docs/*.md`: hand-authored project documentation.
 - `docs/*.json`: Archify diagram sources of truth.
@@ -38,14 +41,14 @@ Start with `README.md`, `docs/software-architecture.md`, and
 
 - The crate uses Rust edition 2024, so use a sufficiently recent stable Rust
   toolchain.
-- `build.rs` requires two executable validators at fixed sibling paths relative
-  to this repository: `../adl-dialect/build/install/bin/adl-opt` and
-  `../loom-dataflow/build/tool/loom-opt/loom-opt`. A Rust build fails before
-  compilation if either is absent or non-executable. Build the Loom native
-  dependencies first with `cd ../loom-dataflow && ./build.sh`.
-- The web viewer requires Node.js 18 or newer. The Docusaurus site requires
-  Node.js 20 or newer. Both directories have lockfiles; prefer `npm ci` for a
-  clean, reproducible install.
+- `build.rs` looks for `adl-opt` and `loom-opt` first at their standard sibling
+  build paths and then on `PATH`. Missing validators produce Cargo warnings but
+  do not block compilation. `architecture_to_mlir` remains checked and returns
+  `MlirExportError::ToolNotFound` when a validator is unavailable; the focused
+  tests that require the real tools skip in that case. Build the Loom native
+  dependencies with `cd ../loom-dataflow && ./build.sh` to run those checks.
+- The visualization adapter and Docusaurus site require Node.js 20 or newer.
+  Both have lockfiles; prefer `npm ci` for a clean, reproducible install.
 
 ## Common Commands
 
@@ -61,20 +64,20 @@ Targeted Rust tests:
 
 ```bash
 cargo test --test 2d_mesh
-cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
+cargo test --test visualization_export_test
 ```
 
-Web viewer:
+Visualization pipeline:
 
 ```bash
-cd web-visualization
-npm ci
-npm run dev
-npm run build
+npm ci --prefix tools/mlar-archify
+npm test --prefix tools/mlar-archify
+node tools/archify/bin/archify.mjs doctor
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  visualization-output/2d-mesh
+node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 ```
-
-The viewer usually serves at `http://localhost:5173` and loads
-`/sample-viewer.json` by default.
 
 Documentation site:
 
@@ -94,17 +97,13 @@ The following focused tests intentionally overwrite tracked sample files:
 
 - `test_export_2d_mesh_torus_mlir` writes
   `tests/2d_mesh/2d_mesh_torus.mlir`.
-- `test_export_2d_mesh_torus_graph_json` writes
-  `tests/2d_mesh/2d_mesh_torus.json`.
-- `test_export_2d_mesh_torus_hierarchy_json` writes
-  `tests/2d_mesh/2d_mesh_torus_hierarchy.json`.
-- `test_export_2d_mesh_torus_viewer_json` writes
-  `web-visualization/public/sample-viewer.json`.
+- `visualization_export_test` writes
+  `tests/2d_mesh/2d_mesh_torus.visualization.yaml`.
 
 Evaluator/query generation tests also compile temporary Cargo projects and
 write ignored executables under `tests/2d_mesh/bin/`. Generated documentation
 review artifacts under `docs/.lavish/`, Docusaurus output under
-`docsite/build/`, and Vite output under `web-visualization/dist/` are ignored.
+`docsite/build/`, and converted diagrams under `visualization-output/` are ignored.
 The full `cargo test` command runs these integration tests too, so it can update
 all of the tracked samples listed above.
 
@@ -140,19 +139,28 @@ discard or overwrite user changes.
 - Run `cargo fmt` after Rust edits, then use `cargo fmt --check` for the final
   formatting verification.
 
-## Web Visualization Conventions
+## Visualization Conventions
 
-- The frontend is a React/Vite TypeScript app under `web-visualization/`.
-- Runtime payload shapes live in `web-visualization/src/schema.ts`.
-- Graph conversion logic lives in `web-visualization/src/flow.ts`.
-- Components live in `web-visualization/src/components/`.
-- Rust payload producers live in `src/visualization/`. When changing an export
-  shape, update the Rust serializer, TypeScript types/runtime validation,
-  applicable JSON schema under `web-visualization/schema/`, sample payloads,
-  tests, and docs together. The standalone JSON schema currently covers only
-  `mlar.arch-graph.v1`; the runtime also accepts hierarchy and viewer payloads.
-- Use `npm run build` to validate TypeScript and production bundling after
-  frontend edits.
+- Project-authored documentation, CLI output, diagram labels, and gallery UI
+  are English-only. Do not add locale switches to the MLAR adapter. The
+  vendored Archify implementation may retain its upstream localization data.
+- `src/visualization/document.rs` projects the Rust architecture into the
+  renderer-neutral `mlar.visualization.v1` document and YAML.
+- `schemas/mlar-visualization-v1.schema.json` is the compatibility boundary.
+  Update Rust types, schema, tracked sample, adapter tests, and docs together.
+- `tools/mlar-archify/` validates YAML, checks references, and selects semantic
+  views. Every source component and relationship must appear in at least one
+  output diagram; the conversion report enforces this.
+- Keep replicated scopes as dimension and instance-count metadata. Do not
+  expand mesh tiles or collapse distinct model entities into synthetic nodes.
+  Split complex models into separate semantic diagrams, each with no more than
+  12 primary nodes.
+- `tools/archify/` is vendored. Invoke its project-relative CLI; do not rely on
+  a global Archify installation or put machine-specific skill paths in files.
+- Generated diagrams under `visualization-output/` are ignored. The tracked
+  visualization source of truth is the normalized YAML sample. Each bundle also
+  contains a generated static `index.html` gallery. The gallery may organize,
+  filter, and embed diagrams, but must not implement a second diagram renderer.
 
 ## Documentation
 
@@ -164,7 +172,7 @@ update the relevant docs:
 - `docs/usage.md`
 - `docs/software-architecture.md`
 - `docs/perf-yaml.md`
-- `web-visualization/README.md`
+- `tools/mlar-archify/README.md`
 
 Keep examples aligned with the public API re-exported by `src/lib.rs`.
 
@@ -185,21 +193,19 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   composition errors, and zero warnings. Use Archify `deliver` as the final
   acceptance command and write the standalone HTML into
   `docs/.lavish/architecture/`. Never patch the delivered HTML.
-- The command sequence, using the Archify skill package selected for the turn,
-  is:
+- The command sequence uses the vendored project-relative CLI:
 
   ```bash
-  node <archify-skill>/bin/archify.mjs validate <type> docs/<name>.json \
+  node tools/archify/bin/archify.mjs validate <type> docs/<name>.json \
     --quality showcase --repo-root . --json
-  node <archify-skill>/bin/archify.mjs deliver <type> docs/<name>.json \
+  node tools/archify/bin/archify.mjs deliver <type> docs/<name>.json \
     docs/.lavish/architecture/<name>.html \
     --quality showcase --repo-root . --json
-  node <archify-skill>/bin/archify.mjs visual-check \
+  node tools/archify/bin/archify.mjs visual-check \
     docs/.lavish/architecture/<name>.html --json
   ```
 
-  Do not assume a global Archify installation or copy a machine-specific skill
-  path into repository files.
+  Do not assume a global Archify installation.
 - After delivery, run Archify `visual-check` on the exact delivered HTML and
   inspect its screenshots when available. Report the status truthfully: exit 2
   means the check was skipped because Chrome/Chromium was unavailable, not

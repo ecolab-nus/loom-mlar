@@ -1,0 +1,19 @@
+{
+  "name": "@loom-mlar/mlar-archify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mlar-archify": "bin/mlar-archify.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "yaml": "2.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ecolab-nus/loom-mlar/schemas/mlar-visualization-v1.schema.json",
+  "title": "MLAR Visualization Document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "architecture", "scopes", "components", "relationships"],
+  "properties": {
+    "schema_version": { "const": "mlar.visualization.v1" },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "root_scope"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "root_scope": { "$ref": "#/$defs/id" }
+      }
+    },
+    "scopes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scope" }
+    },
+    "components": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relationship" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "unsignedExpression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "constant": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "signedExpression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "constant": { "type": ["integer", "null"] }
+      }
+    },
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "size"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "size": { "$ref": "#/$defs/unsignedExpression" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "dimensions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "parent_scope": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dimension" }
+        },
+        "replication_factor": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "memoryRegion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "capacity", "total_size_bytes"],
+          "properties": {
+            "kind": { "const": "bank" },
+            "name": { "type": ["string", "null"] },
+            "capacity": { "$ref": "#/$defs/unsignedExpression" },
+            "block_size": {
+              "anyOf": [{ "$ref": "#/$defs/unsignedExpression" }, { "type": "null" }]
+            },
+            "total_size_bytes": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "dimensions", "element", "total_size_bytes"],
+          "properties": {
+            "kind": { "const": "array" },
+            "name": { "type": ["string", "null"] },
+            "dimensions": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/dimension" }
+            },
+            "element": { "$ref": "#/$defs/memoryRegion" },
+            "total_size_bytes": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "affineMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_dimensions", "target_dimensions", "expressions"],
+      "properties": {
+        "source_dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dimension" }
+        },
+        "target_dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dimension" }
+        },
+        "expressions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "networkLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "map"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "map": { "$ref": "#/$defs/affineMap" }
+      }
+    },
+    "component": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "scope", "name", "dimensions", "region", "total_size_bytes"],
+          "properties": {
+            "kind": { "const": "memory" },
+            "id": { "$ref": "#/$defs/id" },
+            "scope": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 },
+            "dimensions": { "type": "array", "items": { "$ref": "#/$defs/dimension" } },
+            "region": { "$ref": "#/$defs/memoryRegion" },
+            "total_size_bytes": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "scope", "name", "effect", "functions"],
+          "properties": {
+            "kind": { "enum": ["processor", "data_mover"] },
+            "id": { "$ref": "#/$defs/id" },
+            "scope": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 },
+            "effect": { "enum": ["preserve", "transform", "reduce", "accumulate"] },
+            "functions": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "scope", "name", "resource_kind"],
+          "properties": {
+            "kind": { "const": "resource" },
+            "id": { "$ref": "#/$defs/id" },
+            "scope": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 },
+            "resource_kind": { "enum": ["exclusive", "quantitative"] },
+            "capacity": { "type": ["integer", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "scope", "name", "network_kind", "dimensions", "bandwidth", "links"],
+          "properties": {
+            "kind": { "const": "network" },
+            "id": { "$ref": "#/$defs/id" },
+            "scope": { "$ref": "#/$defs/id" },
+            "name": { "type": "string", "minLength": 1 },
+            "network_kind": { "const": "mesh" },
+            "dimensions": { "type": "array", "items": { "$ref": "#/$defs/dimension" } },
+            "bandwidth": { "$ref": "#/$defs/signedExpression" },
+            "latency": { "anyOf": [{ "$ref": "#/$defs/signedExpression" }, { "type": "null" }] },
+            "links": { "type": "array", "items": { "$ref": "#/$defs/networkLink" } }
+          }
+        }
+      ]
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "source", "target", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["read", "write", "requires", "network_attachment"] },
+        "source": { "$ref": "#/$defs/id" },
+        "target": { "$ref": "#/$defs/id" },
+        "label": { "type": "string", "minLength": 1 },
+        "bandwidth": { "anyOf": [{ "$ref": "#/$defs/signedExpression" }, { "type": "null" }] },
+        "map": { "anyOf": [{ "$ref": "#/$defs/affineMap" }, { "type": "null" }] }
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@
       {
         "Func": {
           "func": {
-            "name": "dram_to_l1_f16",
+            "name": "dram_to_l1_S_f16",
             "symbols": ["M", "N", "effective_bandwidth"],
             "op_label": "example.load.dram_to_l1",
             "sym_map": {

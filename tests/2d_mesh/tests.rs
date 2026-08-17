@@ -2,13 +2,26 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use mlar_rust::visualization::viewer_json::architecture_to_viewer_json_string_pretty;
 use mlar_rust::*;
 
 use crate::arch::{scaled_mesh_torus, single_core};
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors/vector_lane.mlir";
+const MATRIX_LANE_MLIR: &str = "tests/2d_mesh/processors/matrix_lane.mlir";
+const DRAM_L1_NOC0_MLIR: &str = "tests/2d_mesh/processors/dram_l1_noc0.mlir";
 const SCHEDULE_DIR: &str = "tests/2d_mesh/schedules";
+
+fn mlir_function_text<'a>(module: &'a str, name: &str) -> &'a str {
+    let marker = format!("func.func @{name}");
+    let start = module
+        .find(&marker)
+        .unwrap_or_else(|| panic!("function '{name}' should exist in MLIR module"));
+    let remainder = &module[start..];
+    let end = remainder[marker.len()..]
+        .find("\nfunc.func @")
+        .map_or(remainder.len(), |offset| marker.len() + offset);
+    &remainder[..end]
+}
 
 /// Look up the full function name for a given operation prefix (e.g. `"vec_add"`)
 /// from the vector-lane MLIR module. This makes tests resilient to datatype changes
@@ -556,73 +569,52 @@ fn test_2d_mesh_torus() {
         );
     }
 
-    // === JSON export sanity for web visualization ===
-    let json =
-        architecture_to_graph_json_string(&mesh).expect("graph JSON serialization should succeed");
-    assert!(json.contains("\"schema_version\":\"mlar.arch-graph.v1\""));
+    // === Renderer-independent visualization export sanity ===
+    let yaml = architecture_to_visualization_yaml(&mesh)
+        .expect("visualization YAML serialization should succeed");
+    assert!(yaml.contains("schema_version: mlar.visualization.v1"));
     assert!(
-        !json.contains("L1_torus_h") && !json.contains("L1_torus_v"),
-        "torus-link resources should be absent from exported graph JSON"
+        !yaml.contains("L1_torus_h") && !yaml.contains("L1_torus_v"),
+        "torus-link resources should be absent from visualization YAML"
     );
 }
 
 #[test]
-fn test_export_2d_mesh_torus_graph_json() {
+fn test_export_2d_mesh_torus_visualization_yaml() {
     let mesh = scaled_mesh_torus();
-    let json = architecture_to_graph_json_string_pretty(&mesh)
-        .expect("graph JSON serialization should succeed");
+    let yaml = architecture_to_visualization_yaml(&mesh)
+        .expect("visualization YAML serialization should succeed");
+    let document: VisualizationDocumentV1 =
+        serde_yaml::from_str(&yaml).expect("serialized visualization YAML should be valid");
 
-    let value: serde_json::Value =
-        serde_json::from_str(&json).expect("serialized JSON should be valid");
-    assert_eq!(value["schema_version"], "mlar.arch-graph.v1");
-    assert_eq!(value["architecture"]["name"], "system");
-    assert!(value["nodes"].as_array().is_some_and(|v| !v.is_empty()));
-    assert!(value["edges"].as_array().is_some_and(|v| !v.is_empty()));
-
-    let out_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.json");
-    fs::write(out_path, &json).expect("Failed to write JSON file");
-}
-
-#[test]
-fn test_export_2d_mesh_torus_hierarchy_json() {
-    let mesh = scaled_mesh_torus();
-    let json = architecture_to_hierarchy_json_string_pretty(&mesh)
-        .expect("hierarchy JSON serialization should succeed");
-
-    let value: serde_json::Value =
-        serde_json::from_str(&json).expect("serialized JSON should be valid");
-    assert_eq!(value["schema_version"], "mlar.arch-hierarchy.v1");
-    assert_eq!(value["root"]["kind"], "graph");
-    assert_eq!(value["root"]["name"], "system");
+    assert_eq!(document.schema_version, VISUALIZATION_SCHEMA_VERSION);
+    assert_eq!(document.architecture.name, "system");
+    assert_eq!(document.scopes.len(), 2);
+    assert!(document.scopes.iter().any(|scope| {
+        scope.name == "mesh"
+            && scope.replication_factor == Some(64)
+            && scope
+                .dimensions
+                .iter()
+                .any(|dimension| dimension.name == "x")
+            && scope
+                .dimensions
+                .iter()
+                .any(|dimension| dimension.name == "y")
+    }));
+    assert!(document.components.iter().any(
+        |component| matches!(component, VisualizationComponent::Memory { name, .. } if name == "DRAM")
+    ));
     assert!(
-        value["root"]["children"]
-            .as_array()
-            .is_some_and(|v| !v.is_empty())
+        document
+            .relationships
+            .iter()
+            .any(|relationship| { relationship.kind == VisualizationRelationshipKind::Read })
     );
 
-    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/2d_mesh/2d_mesh_torus_hierarchy.json");
-    fs::write(out_path, &json).expect("Failed to write hierarchy JSON file");
-}
-
-#[test]
-fn test_export_2d_mesh_torus_viewer_json() {
-    let mesh = scaled_mesh_torus();
-    let json = architecture_to_viewer_json_string_pretty(&mesh)
-        .expect("viewer JSON serialization should succeed");
-
-    let value: serde_json::Value =
-        serde_json::from_str(&json).expect("serialized JSON should be valid");
-    assert_eq!(value["schema_version"], "mlar.arch-viewer.v1");
-    assert_eq!(value["hierarchy"]["name"], "system");
-    assert!(value["graphs"][""].is_object());
-    assert!(value["graphs"]["mesh"].is_object());
-    assert!(value["graphs"]["mesh"].is_object());
-
-    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("web-visualization/public/sample-viewer.json");
-    fs::write(out_path, &json).expect("Failed to write viewer JSON file");
+    let out_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/2d_mesh/2d_mesh_torus.visualization.yaml");
+    fs::write(out_path, &yaml).expect("Failed to write visualization YAML file");
 }
 
 #[test]
@@ -1206,7 +1198,15 @@ fn test_evaluate_system_data_mover_schedule() {
 }
 
 #[test]
+#[cfg_attr(
+    not(mlar_has_mlir_validators),
+    ignore = "requires adl-opt and loom-opt"
+)]
 fn test_export_2d_mesh_torus_mlir() {
+    if !mlir_validators_available() {
+        eprintln!("skipping checked MLIR export: adl-opt and/or loom-opt is unavailable");
+        return;
+    }
     let mesh = scaled_mesh_torus();
     let mlir = architecture_to_mlir(&mesh).expect("MLIR export and validation should succeed");
 
@@ -1328,7 +1328,15 @@ fn test_generate_system_evaluator_binary() {
 /// Generate a standalone architecture-query binary for the full system and
 /// verify the `mlir` query returns the same MLIR as in-process export.
 #[test]
+#[cfg_attr(
+    not(mlar_has_mlir_validators),
+    ignore = "requires adl-opt and loom-opt"
+)]
 fn test_generate_system_arch_query_binary_mlir() {
+    if !mlir_validators_available() {
+        eprintln!("skipping MLIR query binary test: adl-opt and/or loom-opt is unavailable");
+        return;
+    }
     let system = scaled_mesh_torus();
 
     let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/bin");

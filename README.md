@@ -3,8 +3,8 @@
 `mlar-rust` is a Rust library for describing hardware architectures as
 structured, queryable compiler input. It implements MLAR (Multi-Level
 Architecture Representation), connecting architecture descriptions with MLIR
-functionality, symbolic performance models, schedule evaluation, and a web
-visualization format.
+functionality, symbolic performance models, schedule evaluation, and an
+Archify-based visualization pipeline.
 
 Use it to model:
 
@@ -14,8 +14,9 @@ Use it to model:
 - symbolic costs, constraints, and performance scenarios,
 - schedules evaluated against an architecture.
 
-Architectures can be exported as `adl.*` MLIR or as graph and hierarchy JSON
-for the included React viewer. Processor functionality is supplied as
+Architectures can be exported as `adl.*` MLIR or as a versioned visualization
+YAML document that the repository's converter renders as standalone Archify
+HTML diagrams. Processor functionality is supplied as
 `func.func`/`linalg.*` MLIR with Loom annotations, while performance models can
 be built in Rust or loaded from YAML.
 
@@ -41,8 +42,8 @@ Once an architecture has been modeled, it has two primary uses:
 These uses share the same architecture model, but performance evaluation does
 not execute or interpret the exported ADL MLIR. It evaluates schedules against
 the symbolic `FuncPerfModel`s attached to the modeled processors and data
-movers. The model can also be exported as JSON for inspection in the included
-web viewer.
+movers. The model can also be projected into a visualization-only YAML schema
+without coupling the Rust domain model to a particular renderer.
 
 ## Minimal Example
 
@@ -57,13 +58,33 @@ let core = Architecture::scope("core")
     .with_memory(l1)
     .with_processor(lane);
 
-let viewer_json = architecture_to_viewer_json_string_pretty(&core)?;
+let visualization_yaml = architecture_to_visualization_yaml(&core)?;
+std::fs::write("core.visualization.yaml", visualization_yaml)?;
 ```
+
+This Rust snippet illustrates the library API; `core.visualization.yaml` exists
+only after an application containing the snippet has run. To try the complete
+visualization workflow immediately, build the tracked 2D mesh sample from the
+repository root:
+
+```bash
+npm ci --prefix tools/mlar-archify
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  visualization-output/2d-mesh
+node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
+```
+
+Open `http://127.0.0.1:4173/` to navigate the system, subsystem, memory,
+resource, and network views. The generated application embeds standalone
+Archify artifacts and can also be deployed to any static web host. For an
+architecture exported by your own Rust application, replace the tracked sample
+path with the path passed to `std::fs::write`.
 
 The complete 2D mesh example in
 [`tests/2d_mesh/arch.rs`](tests/2d_mesh/arch.rs) demonstrates MLIR-backed
 processors, performance models, data movement, network resources, schedule
-evaluation, and all export formats.
+evaluation, and the MLIR and visualization export formats.
 
 ## Documentation
 
@@ -75,7 +96,6 @@ evaluation, and all export formats.
 - [Software architecture and repository layout](docs/software-architecture.md)
 - [High-level project architecture](docs/.lavish/architecture/mlar-project-architecture.html)
 - [Docusaurus review artifact](docs/.lavish/docusaurus/index.html)
-- [Web visualization](web-visualization/README.md)
 
 The Docusaurus site in [`docsite/`](docsite/) renders the Markdown pages under
 `docs/`. See the

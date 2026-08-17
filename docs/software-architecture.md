@@ -7,7 +7,7 @@ import ArchifyDiagram from '@site/src/components/ArchifyDiagram';
 <ArchifyDiagram
   src="/diagrams/mlar-project-architecture.html"
   title="mlar-rust project architecture"
-  description="Explore the modeling core, evaluation path, interchange layers, and browser viewer."
+  description="Explore the modeling core, evaluation path, and decoupled Archify visualization pipeline."
 />
 
 ## Top-Level Layout
@@ -19,14 +19,17 @@ src/
 +-- mlir/                 # MLIR parser and adl.* exporter
 +-- math/                 # Symbolic expressions, constraints, affine maps
 +-- schedule/             # Schedule IR and evaluation
-+-- visualization/        # JSON export for the web viewer
++-- visualization/        # Renderer-neutral visualization YAML projection
 `-- abi/                  # Standalone evaluator/query binary helpers
 
 tests/
 +-- 2d_mesh/              # Full architecture example and export/evaluation tests
 `-- math_expr_constraint_test.rs
 
-web-visualization/        # React/Vite viewer for exported JSON payloads
+schemas/                  # Versioned visualization interchange schema
+tools/
++-- mlar-archify/         # YAML validation and semantic diagram adapter
+`-- archify/              # Vendored standalone diagram renderer
 docs/
 +-- *.md                  # Hand-authored Markdown documentation
 +-- *.json                # Archify diagram sources of truth
@@ -108,18 +111,21 @@ composition sums child costs; parallel composition takes the maximum child cost.
 
 ## `src/visualization`
 
-JSON payload builders for the web viewer.
+A renderer-neutral projection of the Rust domain model.
 
-- `graph_json.rs`: derived graph payload (`mlar.arch-graph.v1`) with scope
-  nodes, memory/processor route edges, resources, bandwidths, affine maps, and
-  derived topology classifications.
-- `hierarchy_json.rs`: hierarchy payload (`mlar.arch-hierarchy.v1`).
-- `viewer_json.rs`: combined payload (`mlar.arch-viewer.v1`) containing a
-  hierarchy plus a map of per-path graphs.
-- `mod.rs`: public visualization exports.
+- `document.rs`: versioned `mlar.visualization.v1` document types, stable
+  structural IDs, reference resolution, and YAML serialization.
+- `mod.rs`: visualization module boundary.
 
-The viewer implementation is separate from the Rust crate under
-`web-visualization/`.
+The JSON Schema in `schemas/` defines the external contract. The Node adapter
+under `tools/mlar-archify/` validates YAML and creates bounded semantic Archify
+specifications. It preserves every component and relationship, but keeps array
+dimensions and replication factors as metadata rather than expanding instances.
+The vendored renderer under `tools/archify/` validates each specification at
+showcase quality and delivers standalone HTML. A generated static gallery shell
+organizes those delivered artifacts by scope and semantic view without drawing
+architecture graphics itself. This keeps Rust modeling, view planning,
+navigation, and rendering as separate layers.
 
 ## `src/abi`
 
@@ -151,14 +157,12 @@ It demonstrates:
 - composing scoped architectures,
 - scaling a core scope into a 2D mesh,
 - exporting architecture MLIR,
-- exporting graph, hierarchy, and viewer JSON,
+- exporting normalized visualization YAML,
 - evaluating schedules with `SymbolicMapping`,
 - generating standalone evaluator and architecture-query binaries.
 
 Several export tests intentionally write generated artifacts:
 
 - `tests/2d_mesh/2d_mesh_torus.mlir`,
-- `tests/2d_mesh/2d_mesh_torus.json`,
-- `tests/2d_mesh/2d_mesh_torus_hierarchy.json`,
-- `web-visualization/public/sample-viewer.json`,
+- `tests/2d_mesh/2d_mesh_torus.visualization.yaml`,
 - binaries under `tests/2d_mesh/bin/`.

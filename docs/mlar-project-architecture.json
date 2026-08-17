@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/ecolab-nus/loom-mlar.git",
-      "revision": "634c5e22f7d933c6e7764025f848920dcf2f370e"
+      "revision": "66858922c6c37fba23a6da4d2dea81f9954d1ff8"
     },
     "viewBox": [1420, 760],
     "views": [
@@ -20,14 +20,14 @@
       {
         "id": "evaluation-path",
         "label": "Evaluation path",
-        "focus": ["arch-model", "schedule-eval", "json-export"],
-        "note": "Schedules resolve processor performance scenarios against an architecture, while exporters derive JSON views."
+        "focus": ["arch-model", "schedule-eval", "visualization-yaml"],
+        "note": "Schedules resolve performance scenarios while a separate projection derives renderer-neutral visualization YAML."
       },
       {
         "id": "interchange-and-ui",
         "label": "Interchange and UI",
-        "focus": ["mlir-adapter", "perf-yaml", "arch-model", "json-export", "web-viewer", "abi-helpers", "generated-tools"],
-        "note": "MLIR and YAML feed the model; JSON and ABI boundaries serve visualization and generated tools."
+        "focus": ["mlir-adapter", "perf-yaml", "arch-model", "visualization-yaml", "archify-adapter", "archify-renderer", "abi-helpers", "generated-tools"],
+        "note": "MLIR and performance YAML feed the model; normalized YAML and ABI boundaries serve diagrams and generated tools."
       }
     ]
   },
@@ -81,30 +81,29 @@
       ]
     },
     {
-      "id": "json-export",
+      "id": "visualization-yaml",
       "type": "backend",
-      "label": "Visualization exporters",
-      "sublabel": "graph + hierarchy + viewer JSON",
+      "label": "Visualization document",
+      "sublabel": "mlar.visualization.v1 YAML",
       "pos": [990, 330],
       "size": [190, 76],
-      "sources": [
-        { "path": "src/visualization/viewer_json.rs", "label": "combined payload" },
-        { "path": "src/visualization/graph_json.rs", "label": "graph payload" },
-        { "path": "src/visualization/hierarchy_json.rs", "label": "hierarchy payload" }
-      ]
+      "tag": "renderer neutral"
     },
     {
-      "id": "web-viewer",
+      "id": "archify-adapter",
+      "type": "messagebus",
+      "label": "Semantic view adapter",
+      "sublabel": "YAML validation + multi-diagram plan",
+      "pos": [1210, 260],
+      "size": [180, 76]
+    },
+    {
+      "id": "archify-renderer",
       "type": "frontend",
-      "label": "React/Vite viewer",
-      "sublabel": "interactive architecture UI",
-      "pos": [1240, 330],
-      "size": [160, 76],
-      "sources": [
-        { "path": "web-visualization/src/App.tsx", "label": "viewer shell" },
-        { "path": "web-visualization/src/flow.ts", "label": "graph conversion" },
-        { "path": "web-visualization/src/schema.ts", "label": "runtime schema" }
-      ]
+      "label": "Vendored Archify",
+      "sublabel": "validated standalone HTML",
+      "pos": [1210, 400],
+      "size": [180, 76]
     },
     {
       "id": "mlir-adapter",
@@ -171,13 +170,13 @@
     {
       "kind": "region",
       "label": "mlar-rust library crate",
-      "wraps": ["public-api", "arch-model", "schedule-eval", "json-export", "mlir-adapter", "symbolic-math", "perf-yaml", "abi-helpers"],
+      "wraps": ["public-api", "arch-model", "schedule-eval", "visualization-yaml", "mlir-adapter", "symbolic-math", "perf-yaml", "abi-helpers"],
       "pad": 26
     },
     {
       "kind": "region",
-      "label": "web-visualization browser application",
-      "wraps": ["web-viewer"],
+      "label": "project-owned visualization tools",
+      "wraps": ["archify-adapter", "archify-renderer"],
       "pad": 20
     }
   ],
@@ -206,17 +205,27 @@
     {
       "id": "model-export",
       "from": "arch-model",
-      "to": "json-export",
-      "label": "derive views"
+      "to": "visualization-yaml",
+      "label": "semantic projection"
     },
     {
-      "id": "json-ui",
-      "from": "json-export",
-      "to": "web-viewer",
-      "label": "mlar.*.v1 JSON",
+      "id": "yaml-adapter",
+      "from": "visualization-yaml",
+      "to": "archify-adapter",
+      "label": "versioned YAML",
       "variant": "emphasis",
       "route": "orthogonal-h",
-      "labelAt": [1210, 420]
+      "labelAt": [1185, 235]
+    },
+    {
+      "id": "adapter-renderer",
+      "from": "archify-adapter",
+      "to": "archify-renderer",
+      "label": "bounded semantic specs",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [1300, 370]
     },
     {
       "id": "mlir-model",
@@ -290,8 +299,8 @@
       "dot": "violet",
       "title": "Visualization",
       "items": [
-        "Rust exporters produce graph, hierarchy, or combined viewer payloads.",
-        "The React/Vite frontend validates those payloads and converts them into interactive graph and hierarchy views."
+        "Rust projects one normalized, renderer-neutral YAML document with stable IDs and typed relationships.",
+        "The adapter splits semantic views without expanding arrays or collapsing entities; vendored Archify validates and delivers HTML."
       ]
     }
   ]

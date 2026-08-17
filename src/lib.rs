@@ -15,9 +15,12 @@ pub use arch::{
     MeshNetworkInterface, PerfFunctionYaml, PerfScenario, PerfScenarioYaml, PerfYamlError,
     PerfYamlSpec, Processor, ProcessorModule, Resource, ResourceId, ScaleOutNetwork,
     ScaleOutNetworkBindings, SimpleCostYaml, SimpleTimeCost, SizeExpr, Sym, TimeCost, TimeCostYaml,
-    TimeExpr, architecture_to_mlir, architecture_to_mlir_unchecked,
+    TimeExpr,
 };
-pub use mlir::MlirExportError;
+pub use mlir::{
+    MlirExportError, architecture_to_mlir, architecture_to_mlir_unchecked,
+    mlir_validators_available,
+};
 
 // Re-export commonly used math types
 pub use math::{
@@ -25,23 +28,20 @@ pub use math::{
     ParseError,
 };
 pub use schedule::{
-    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc,
-    MlirFuncDetails, MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
+    MLIRFunc, MLIRFuncRef, MLIRModuleRef, MlirBroadcastDim, MlirCopyOp, MlirFunc, MlirFuncDetails,
+    MlirGatherOp, MlirMemRegionBinding, MlirMemrefSymbolBinding, MlirModule,
     MlirTensorSymbolBinding, Schedule, SymbolicMapping, evaluate,
 };
 
-// Re-export visualization utilities
-pub use visualization::graph_json::{
-    ArchitectureGraphJson, architecture_to_graph_json, architecture_to_graph_json_string,
-    architecture_to_graph_json_string_pretty, architecture_to_graph_json_value,
-};
-pub use visualization::hierarchy_json::{
-    ArchitectureHierarchyJson, architecture_to_hierarchy_json,
-    architecture_to_hierarchy_json_string_pretty, architecture_to_hierarchy_json_value,
-};
-pub use visualization::viewer_json::{
-    ArchitectureViewerJson, architecture_to_viewer_json, architecture_to_viewer_json_string_pretty,
-    architecture_to_viewer_json_value,
+// Re-export the renderer-independent visualization document API.
+pub use visualization::document::{
+    VISUALIZATION_SCHEMA_VERSION, VisualizationAffineMap, VisualizationArchitecture,
+    VisualizationComponent, VisualizationDataEffect, VisualizationDimension,
+    VisualizationDocumentV1, VisualizationExportError, VisualizationMemoryRegion,
+    VisualizationNetworkKind, VisualizationNetworkLink, VisualizationRelationship,
+    VisualizationRelationshipKind, VisualizationResourceKind, VisualizationScope,
+    VisualizationSignedExpression, VisualizationUnsignedExpression,
+    architecture_to_visualization_document, architecture_to_visualization_yaml,
 };
 
 // Re-export evaluator utilities

@@ -118,10 +118,16 @@ fn symbolic_dim_returns_non_concrete_error() {
 
 #[cfg(unix)]
 fn validator_script(body: &str) -> std::path::PathBuf {
+    use std::io::Write as _;
+
     static NEXT_SCRIPT: AtomicUsize = AtomicUsize::new(0);
     let id = NEXT_SCRIPT.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!("mlar-validator-{}-{id}.sh", std::process::id()));
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write validator script");
+    let mut file = std::fs::File::create(&path).expect("create validator script");
+    file.write_all(format!("#!/bin/sh\n{body}\n").as_bytes())
+        .expect("write validator script");
+    file.sync_all().expect("sync validator script");
+    drop(file);
     let mut permissions = std::fs::metadata(&path)
         .expect("validator metadata")
         .permissions();

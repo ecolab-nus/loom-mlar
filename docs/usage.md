@@ -300,35 +300,53 @@ assert!(mlir.starts_with("module @arch_lane"));
 The exporter emits `adl.*` operations and appends any referenced functionality
 MLIR modules after rewriting processor and memory names to exported names.
 It first validates an architecture-only module with `adl-opt`, then validates
-the complete module with `loom-opt`. Their executable paths are discovered and
-verified by loom-mlar's Cargo build script from the standard sibling build
-directories in the Loom monorepo.
+the complete module with `loom-opt`. The build script looks in the standard
+sibling build directories and then on `PATH`. Missing tools do not block crate
+compilation, but checked export returns `MlirExportError::ToolNotFound`.
+
+Use `mlir_validators_available()` when a caller needs to conditionally run a
+checked-export workflow. The repository's real-validator integration tests use
+this check and skip when either executable is unavailable.
 
 `architecture_to_mlir_unchecked` emits the same complete text without invoking
 either tool. It is intended for debugging and experimental features.
 `adl.resource.quantitative` remains available through this unchecked API, but
 is not yet supported by the ADL/MLIR compiler or checked export.
 
-## Export Visualization JSON
+## Export And Render Visualizations
 
 ```rust
 use mlar_rust::*;
 
 let arch = Processor::new("lane").into_elem();
 
-let graph_json = architecture_to_graph_json_string_pretty(&arch)?;
-let hierarchy_json = architecture_to_hierarchy_json_string_pretty(&arch)?;
-let viewer_json = architecture_to_viewer_json_string_pretty(&arch)?;
+let yaml = architecture_to_visualization_yaml(&arch)?;
+std::fs::write("architecture.visualization.yaml", yaml)?;
 ```
 
-Payload schema versions:
+This snippet must run inside an application before the output file exists. The
+file uses the `mlar.visualization.v1` schema. After running the application,
+render the resulting file from the repository root with:
 
-- `mlar.arch-graph.v1`
-- `mlar.arch-hierarchy.v1`
-- `mlar.arch-viewer.v1`
+```bash
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  architecture.visualization.yaml visualization-output/architecture
 
-Use `architecture_to_viewer_json_string_pretty` for the web viewer in
-`web-visualization/`.
+node tools/mlar-archify/bin/mlar-archify.mjs serve \
+  visualization-output/architecture
+```
+
+Open `http://127.0.0.1:4173/` to use the generated architecture gallery. Its
+sidebar exposes system and subsystem overviews plus memory, resource, and
+network views. Search, scope filtering, previous/next navigation, deep links,
+and independent diagram opening are available without a backend.
+
+The converter produces several flat semantic diagrams when needed instead of
+folding distinct components together. Replication such as an 8×8 mesh remains
+metadata on a scope; it does not create 64 repeated nodes. The output manifest
+contains the source hash and Archify validation/delivery receipts, while the
+conversion report confirms that no scopes, components, or relationships were
+omitted.
 
 ## Evaluate A Schedule In Process
 

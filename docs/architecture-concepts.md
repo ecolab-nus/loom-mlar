@@ -195,14 +195,15 @@ simplify to constants and both validators accept the result.
 output. In particular, `adl.resource.quantitative` can be emitted through the
 unchecked API but is not currently supported by the MLIR compiler.
 
-Visualization exports include:
+`architecture_to_visualization_document` projects the model into the normalized
+`mlar.visualization.v1` contract. `architecture_to_visualization_yaml` serializes
+that contract as YAML. It records scopes, replication dimensions, components,
+and typed relationships without expanding every replicated instance.
 
-- `architecture_to_graph_json*`: single graph payload,
-- `architecture_to_hierarchy_json*`: hierarchy tree payload,
-- `architecture_to_viewer_json*`: combined payload for the React viewer.
-
-The web viewer lives under
-[web-visualization](https://github.com/ecolab-nus/loom-mlar/tree/main/web-visualization).
+The Rust exporter deliberately contains no layout or Archify-specific fields.
+`tools/mlar-archify/` validates the YAML against
+`schemas/mlar-visualization-v1.schema.json`, selects semantic views, and invokes
+the vendored Archify tool to produce standalone HTML diagrams.
 
 ## Current Limitations
 

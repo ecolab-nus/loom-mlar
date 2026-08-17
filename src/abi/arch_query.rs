@@ -202,6 +202,7 @@ macro_rules! mlar_arch_query {
 mod tests {
     use super::*;
     use crate::arch::processor::Processor;
+    use crate::mlir::mlir_validators_available;
 
     fn test_arch() -> Architecture {
         Processor::new("vec_lane").into_elem()
@@ -215,7 +216,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(mlar_has_mlir_validators),
+        ignore = "requires adl-opt and loom-opt"
+    )]
     fn mlir_query_returns_module() {
+        if !mlir_validators_available() {
+            eprintln!("skipping checked MLIR query: adl-opt and/or loom-opt is unavailable");
+            return;
+        }
         let result =
             query_architecture(&test_arch(), &ArchitectureQuery::Mlir).expect("query should work");
         match result {

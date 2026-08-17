@@ -4,10 +4,9 @@
 
 - Rust toolchain with Cargo.
 - A toolchain recent enough for Rust edition 2024.
-- Node.js 18 or newer and npm, only if you want to run the web viewer.
-- Node.js 20 or newer and npm, only if you want to run the documentation site.
+- Node.js 20 or newer and npm for Archify conversion or the documentation site.
 
-The crate dependencies are currently `nom`, `serde`, and `serde_json`.
+The crate dependencies include `nom`, `serde`, `serde_json`, and `serde_yaml`.
 
 ## Build The Rust Crate
 
@@ -24,10 +23,12 @@ cargo test
 ```
 
 Checked MLIR export requires compatible `adl-opt` and `loom-opt` executables.
-Build the sibling ADL and loom-dataflow projects first. The loom-mlar Cargo
-build script discovers the validators in their standard monorepo build
-directories, checks that they are executable, and compiles their paths into
-the crate. No validator environment variables or `PATH` changes are required.
+The Cargo build script first checks their standard sibling build directories,
+then searches `PATH`. If either tool is missing, the crate still builds and
+Cargo emits a warning. `architecture_to_mlir` then returns
+`MlirExportError::ToolNotFound`, while tests that specifically require the real
+validators skip. Build the sibling ADL and loom-dataflow projects to enable
+those checks.
 
 The first tool validates the generated architecture-only ADL module. The second
 validates the complete module after processor functionality using the Loom
@@ -39,17 +40,14 @@ For test output:
 cargo test -- --nocapture
 ```
 
-Some 2D mesh tests generate files for inspection and viewer samples:
+Some 2D mesh tests generate files for inspection and visualization:
 
 ```bash
 cargo test test_export_2d_mesh_torus_mlir --test 2d_mesh
-cargo test test_export_2d_mesh_torus_graph_json --test 2d_mesh
-cargo test test_export_2d_mesh_torus_hierarchy_json --test 2d_mesh
-cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
+cargo test --test visualization_export_test
 ```
 
-Generated outputs are written under `tests/2d_mesh/` and
-`web-visualization/public/`.
+Generated outputs are written under `tests/2d_mesh/`.
 
 The evaluator/query binary generation tests compile temporary Cargo projects and
 copy binaries into `tests/2d_mesh/bin/`:
@@ -60,30 +58,34 @@ cargo test test_generate_system_evaluator_binary --test 2d_mesh
 cargo test test_generate_system_arch_query_binary_mlir --test 2d_mesh
 ```
 
-## Run The Web Viewer
+## Build Archify Visualizations
 
-From the repository root:
+Install the small YAML/schema adapter's dependencies once:
 
 ```bash
-cd web-visualization
-npm install
-npm run dev
+cd tools/mlar-archify
+npm ci
+cd ../..
 ```
 
-Open the URL printed by Vite, usually:
+Check the vendored Archify installation and render the tracked 2D mesh sample:
 
 ```text
-http://localhost:5173
+node tools/archify/bin/archify.mjs doctor
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  visualization-output/2d-mesh
+node tools/mlar-archify/bin/mlar-archify.mjs serve \
+  visualization-output/2d-mesh
 ```
 
-The viewer loads `/sample-viewer.json` by default. Regenerate that file with:
-
-```bash
-cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
-```
-
-For more viewer details, see the
-[web visualization README](https://github.com/ecolab-nus/loom-mlar/blob/main/web-visualization/README.md).
+The converter validates `mlar.visualization.v1`, splits the model into bounded
+semantic diagrams, runs Archify showcase validation and delivery for every
+diagram, and writes a manifest plus a loss report. Replicated scopes retain
+their dimensions and instance counts but are not expanded into individual
+tiles. It also generates a static gallery application at `index.html`; open
+`http://127.0.0.1:4173/` after starting the server. Generated output under
+`visualization-output/` is intentionally ignored.
 
 ## Run The Documentation Site
 

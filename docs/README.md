@@ -32,14 +32,17 @@ The documentation is split by responsibility:
 Run Archify from the repository root. Validate the JSON source before delivery:
 
 ```bash
-node /path/to/archify/bin/archify.mjs validate architecture \
+node tools/archify/bin/archify.mjs validate architecture \
   docs/mlar-project-architecture.json \
   --quality showcase --repo-root . --json
 
-node /path/to/archify/bin/archify.mjs deliver architecture \
+node tools/archify/bin/archify.mjs deliver architecture \
   docs/mlar-project-architecture.json \
   docs/.lavish/architecture/mlar-project-architecture.html \
   --quality showcase --repo-root . --json
+
+node tools/archify/bin/archify.mjs visual-check \
+  docs/.lavish/architecture/mlar-project-architecture.html --json
 ```
 
 All diagram changes must be made in the JSON specification and regenerated;
