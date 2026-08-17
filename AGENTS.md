@@ -30,9 +30,6 @@ Main areas:
 - `docsite/`: Docusaurus site that reads Markdown directly from `docs/`.
 - `docs/*.md`: hand-authored project documentation.
 - `docs/*.json`: Archify diagram sources of truth.
-- `docs/.lavish/`: generated HTML review artifacts, including the architecture
-  viewer and the Docusaurus review build. Git tracks only its `.gitkeep`
-  scaffold; never edit or commit generated contents.
 
 Start with `README.md`, `docs/software-architecture.md`, and
 `tests/2d_mesh/arch.rs` when you need a broad understanding of the system.
@@ -88,9 +85,8 @@ npm run typecheck
 npm run build
 ```
 
-The Docusaurus build requires delivered Archify HTML under
-`docs/.lavish/architecture/`. The docsite's `prestart` and `prebuild` scripts
-validate and deliver all `docs/*.json` diagrams automatically.
+The docsite's `prestart` and `prebuild` scripts validate and compile all
+`docs/*.json` diagrams into `docsite/static/diagrams/` automatically.
 
 ## Generated Artifacts
 
@@ -103,7 +99,7 @@ The following focused tests intentionally overwrite tracked sample files:
 
 Evaluator/query generation tests also compile temporary Cargo projects and
 write ignored executables under `tests/2d_mesh/bin/`. Generated documentation
-review artifacts under `docs/.lavish/`, Docusaurus output under
+diagrams under `docsite/static/diagrams/`, Docusaurus output under
 `docsite/build/`, and converted diagrams under `visualization-output/` are ignored.
 The full `cargo test` command runs these integration tests too, so it can update
 all of the tracked samples listed above.
@@ -193,17 +189,17 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   `--json`. A valid showcase receipt has all 9 artifact checks, zero
   composition errors, and zero warnings. Use Archify `deliver` as the final
   acceptance command and write the standalone HTML into
-  `docs/.lavish/architecture/`. Never patch the delivered HTML.
+  `docsite/static/diagrams/`. Never patch the generated HTML.
 - The command sequence uses the vendored project-relative CLI:
 
   ```bash
   node tools/archify/bin/archify.mjs validate <type> docs/<name>.json \
     --quality showcase --repo-root . --json
   node tools/archify/bin/archify.mjs deliver <type> docs/<name>.json \
-    docs/.lavish/architecture/<name>.html \
+    docsite/static/diagrams/<name>.html \
     --quality showcase --repo-root . --json
   node tools/archify/bin/archify.mjs visual-check \
-    docs/.lavish/architecture/<name>.html --json
+    docsite/static/diagrams/<name>.html --json
   ```
 
   Do not assume a global Archify installation.
@@ -218,33 +214,17 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   as `/diagrams/mlar-project-architecture.html`; do not inline the generated
   HTML, SVG, scripts, or styles into Markdown.
 - Run the Archify delivery before building Docusaurus. The Docusaurus build
-  automation performs this through `npm run diagrams:build`, then copies the
-  delivered HTML from `docs/.lavish/architecture/` into its own `diagrams/`
-  output. A documentation build with an embedded diagram is not complete if
-  that generated diagram is missing.
+  automation performs this through `npm run diagrams:build`; Docusaurus then
+  copies `static/diagrams/` into its `diagrams/` output. A documentation build
+  with an embedded diagram is not complete if that generated diagram is
+  missing.
 - `npm run build` in `docsite/` creates the browser-router deployment tree in
-  `docsite/build/`. `npm run build:lavish` uses the dedicated hash-router config
-  and writes a complete review artifact directly to
-  `docs/.lavish/docusaurus/`. Do not deploy the hash-router review build as the
-  production site.
-- Treat a Docusaurus site as a complete artifact tree: HTML alone is unusable
-  without its generated CSS, JavaScript, images, and other referenced assets.
-  Prefer `npm run build:lavish`. If a production page is mirrored for a routing
-  check, preserve the full emitted hierarchy and all dependencies; for example,
-  `docsite/build/docs/usage/index.html` maps to
-  `docs/.lavish/docusaurus/docs/usage/index.html`.
-- Lavish is only the review surface; it is not an authoring or generation step.
-  Open the standalone diagram or complete Docusaurus review artifact with
-  `npx -y lavish-axi <html-file>` and follow the Lavish skill's polling/session
-  workflow when interactive feedback is requested. Apply diagram feedback to
-  the corresponding Archify JSON, textual feedback to `docs/*.md`, and
-  navigation/theme/component feedback to `docsite/`, then regenerate the
-  artifacts. Never patch generated files under `docs/.lavish/`.
-- Generated contents under `docs/.lavish/` are disposable and Git-ignored. Git
-  tracks only `docs/.lavish/.gitkeep` so the directory exists in a fresh
-  checkout. Generated contents may be removed and rebuilt at any time, while
-  `docs/*.md`, Archify `docs/*.json`, and `docsite/` must remain sufficient to
-  reproduce them.
+  `docsite/build/`. Treat the site as a complete artifact tree: HTML alone is
+  unusable without its generated CSS, JavaScript, images, diagrams, and other
+  referenced assets.
+- Generated contents under `docsite/static/diagrams/` and `docsite/build/` are
+  disposable and Git-ignored. `docs/*.md`, Archify `docs/*.json`, and
+  `docsite/` must remain sufficient to reproduce them.
 
 ## Working Notes
 

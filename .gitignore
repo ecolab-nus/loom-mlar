@@ -23,10 +23,6 @@ node_modules/
 
 *.png
 
-# Generated documentation review artifacts
-docs/.lavish/*
-!docs/.lavish/.gitkeep
-
 # Generated evaluator/query binaries (keep the folder via .gitkeep)
 tests/2d_mesh/bin/*
 !tests/2d_mesh/bin/.gitkeep

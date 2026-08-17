@@ -4,13 +4,11 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "diagrams:build": "node scripts/build-archify-diagrams.mjs && node scripts/copy-archify-diagrams.mjs static/diagrams",
+    "diagrams:build": "node scripts/build-archify-diagrams.mjs",
     "prestart": "npm run diagrams:build",
     "start": "docusaurus start",
     "prebuild": "npm run diagrams:build",
     "build": "docusaurus build",
-    "postbuild": "node scripts/copy-archify-diagrams.mjs build/diagrams",
-    "build:lavish": "npm run diagrams:build && docusaurus build --config docusaurus.lavish.config.ts --out-dir ../docs/.lavish/docusaurus && node scripts/copy-archify-diagrams.mjs ../docs/.lavish/docusaurus/diagrams",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc"

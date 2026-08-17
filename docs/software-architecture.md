@@ -33,7 +33,6 @@ tools/
 docs/
 +-- *.md                  # Hand-authored Markdown documentation
 +-- *.json                # Archify diagram sources of truth
-+-- .lavish/              # Generated HTML artifacts for Lavish review
 `-- README.md             # Documentation index and generation workflow
 ```
 

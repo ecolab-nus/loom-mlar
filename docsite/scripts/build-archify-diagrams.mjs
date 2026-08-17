@@ -16,8 +16,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const siteDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(siteDir, '..');
 const docsDir = path.join(repoRoot, 'docs');
-const lavishDir = path.join(docsDir, '.lavish');
-const outputDir = path.join(lavishDir, 'architecture');
+const staticDir = path.join(siteDir, 'static');
+const outputDir = path.join(staticDir, 'diagrams');
 const archifyCli = path.join(repoRoot, 'tools/archify/bin/archify.mjs');
 
 const entries = (await readdir(docsDir, {withFileTypes: true}))
@@ -28,8 +28,8 @@ if (entries.length === 0) {
   throw new Error(`No Archify JSON specifications found in ${docsDir}.`);
 }
 
-await mkdir(lavishDir, {recursive: true});
-const stagingDir = await mkdtemp(path.join(lavishDir, '.architecture-build-'));
+await mkdir(staticDir, {recursive: true});
+const stagingDir = await mkdtemp(path.join(staticDir, '.diagrams-build-'));
 
 function runArchify(args, sourceName) {
   const result = spawnSync(process.execPath, [archifyCli, ...args], {

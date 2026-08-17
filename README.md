@@ -101,8 +101,6 @@ evaluation, and the MLIR and visualization export formats.
 - [Usage and end-to-end examples](docs/usage.md)
 - [Performance-model YAML](docs/perf-yaml.md)
 - [Software architecture and repository layout](docs/software-architecture.md)
-- [High-level project architecture](docs/.lavish/architecture/mlar-project-architecture.html)
-- [Docusaurus review artifact](docs/.lavish/docusaurus/index.html)
 
 The Docusaurus site in [`docsite/`](docsite/) renders the Markdown pages under
 `docs/`. See the
