@@ -1,9 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: 1.2.0 -> 1.3.0
-- Modified principles: none
-- Added principles: VI. Occam's Razor; VII. Human-Readable Textual Contracts
-- Modified sections: Core Principles (expanded from five to seven principles)
+- Version change: 1.3.0 -> 1.4.0
+- Modified principles: IV. Treat Documentation Sources as Reproducible Artifacts ->
+  IV. Keep Structural Documentation Visual and Reproducible
+- Added principles: none
+- Modified sections: Core Principles (expanded Principle IV with structural diagram requirements)
 - Added sections: none
 - Removed sections: none
 - Follow-up TODOs: none
@@ -71,17 +72,30 @@ CLI output, labels, and gallery UI MUST be English-only. The gallery MAY organiz
 diagrams, but MUST NOT implement a second renderer. These constraints preserve traceability and
 readability without changing architecture semantics for presentation.
 
-### IV. Treat Documentation Sources as Reproducible Artifacts
+### IV. Keep Structural Documentation Visual and Reproducible
 User-visible behavior, exported schemas, and typical workflows MUST be reflected in the relevant
 hand-authored Markdown and examples, aligned with the public API. `docs/*.md` and `docsite/` are the
-editable textual sources; separate hand-authored HTML versions MUST NOT be created. Architecture,
-workflow, sequence, data-flow, and lifecycle diagrams MUST use Archify JSON sources directly under
-`docs/` unless the user explicitly requests another format. Diagram delivery MUST use the vendored,
-project-relative Archify CLI at showcase quality, finish with all nine artifact checks, zero
-composition errors, and zero warnings, and run `visual-check` on the delivered HTML. Generated HTML
-MUST NOT be patched. Docusaurus MUST embed delivered diagrams through `ArchifyDiagram.tsx`, and a
-documentation build is incomplete when an embedded diagram or any referenced site asset is missing.
-Rationale: tracked sources must be sufficient to reproduce the complete published documentation.
+editable textual sources; separate hand-authored HTML versions MUST NOT be created.
+
+The project's structural model MUST be represented by Archify diagrams. These diagrams MUST show
+the components and modules of the system, their hierarchy and ownership boundaries, and the
+meaningful relationships among classes or equivalent types, public data structures, interfaces,
+and persistent schemas. A structural relationship that is introduced, removed, or materially
+changed in the implementation MUST be updated in the relevant diagram in the same change. Diagrams
+MUST communicate stable design structure rather than incidental local implementation detail, and
+MUST use names and boundaries that can be traced to the code or textual contracts they describe.
+The implementation remains the source of truth for executable behavior; the Archify JSON remains
+the source of truth for its maintained structural visualization.
+
+Architecture, workflow, sequence, data-flow, lifecycle, and structural diagrams MUST use Archify
+JSON sources directly under `docs/` unless the user explicitly requests another format. Diagram
+delivery MUST use the vendored, project-relative Archify CLI at showcase quality, finish with all
+nine artifact checks, zero composition errors, and zero warnings, and run `visual-check` on the
+delivered HTML. Generated HTML MUST NOT be patched. Docusaurus MUST embed delivered diagrams through
+`ArchifyDiagram.tsx`, and a documentation build is incomplete when an embedded diagram or any
+referenced site asset is missing. Rationale: visual structural documentation makes design
+boundaries and dependencies reviewable, while tracked sources make the complete published
+documentation reproducible and resistant to drift.
 
 ### V. Protect Source Truth and User Work
 Agents and contributors MUST inspect relevant existing code and documentation before modifying
@@ -165,4 +179,4 @@ MINOR for new principles or materially expanded obligations, and PATCH for non-s
 clarifications. Compliance review MUST occur when planning a feature, during code review, and before
 declaring implementation complete.
 
-**Version**: 1.3.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-17
+**Version**: 1.4.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-17
