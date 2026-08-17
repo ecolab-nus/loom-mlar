@@ -9,7 +9,7 @@ an `Architecture` in their own Rust code and explicitly call the APIs that
 produce the artifacts they need.
 
 <ArchifyDiagram
-  src="/diagrams/project-overview.html"
+  src="/diagrams/project-overview/"
   title="MLAR project overview"
   description="Follow one architecture model through Rust compilation, MLIR export, binary generation, and the Node-based visualization pipeline."
 />

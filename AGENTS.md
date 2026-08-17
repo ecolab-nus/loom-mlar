@@ -29,7 +29,8 @@ Main areas:
 - `tools/archify/`: vendored Archify CLI and runtime.
 - `docsite/`: Docusaurus site that reads Markdown directly from `docs/`.
 - `docs/*.md`: hand-authored project documentation.
-- `docs/*.json`: Archify diagram sources of truth.
+- `docs/*.json`: Archify diagram specifications and sources of truth; they are
+  not general MLAR architecture instances or generated Docusaurus data.
 
 Start with `README.md`, `docs/software-architecture.md`, and
 `tests/2d_mesh/arch.rs` when you need a broad understanding of the system.
@@ -176,9 +177,9 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
 ### Documentation Artifact Workflow
 
 - `docs/*.md` and `docsite/` are the editable sources for textual
-  documentation. Docusaurus reads `docs/` directly and excludes
-  `docs/README.md` from routes. Never hand-author a separate HTML version of a
-  Markdown page.
+  documentation. Docusaurus reads `docs/` directly. `docsite/README.md` is the
+  single source for documentation-site development and deployment
+  instructions. Never hand-author a separate HTML version of a Markdown page.
 - Use the Archify skill for architecture, workflow, sequence, data-flow, and
   lifecycle/state diagrams in the documentation. Keep the editable diagram
   specification as a JSON file directly under `docs/`; do not replace it with
@@ -189,17 +190,17 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   `--json`. A valid showcase receipt has all 9 artifact checks, zero
   composition errors, and zero warnings. Use Archify `deliver` as the final
   acceptance command and write the standalone HTML into
-  `docsite/static/diagrams/`. Never patch the generated HTML.
+  `docsite/static/diagrams/<name>/index.html`. Never patch the generated HTML.
 - The command sequence uses the vendored project-relative CLI:
 
   ```bash
   node tools/archify/bin/archify.mjs validate <type> docs/<name>.json \
     --quality showcase --repo-root . --json
   node tools/archify/bin/archify.mjs deliver <type> docs/<name>.json \
-    docsite/static/diagrams/<name>.html \
+    docsite/static/diagrams/<name>/index.html \
     --quality showcase --repo-root . --json
   node tools/archify/bin/archify.mjs visual-check \
-    docsite/static/diagrams/<name>.html --json
+    docsite/static/diagrams/<name>/index.html --json
   ```
 
   Do not assume a global Archify installation.
@@ -211,7 +212,7 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   validation, delivery, and visual checking.
 - Embed delivered diagrams in Docusaurus with
   `docsite/src/components/ArchifyDiagram.tsx`. Pass a site-relative source such
-  as `/diagrams/mlar-project-architecture.html`; do not inline the generated
+  as `/diagrams/mlar-project-architecture/`; do not inline the generated
   HTML, SVG, scripts, or styles into Markdown.
 - Run the Archify delivery before building Docusaurus. The Docusaurus build
   automation performs this through `npm run diagrams:build`; Docusaurus then

@@ -95,12 +95,12 @@ evaluation, and the MLIR and visualization export formats.
 ## Documentation
 
 - [Project overview and artifact flow](docs/project-overview.md)
-- [Documentation index](docs/README.md)
 - [Installation and toolchain setup](docs/installation.md)
 - [Basic architectural concepts](docs/architecture-concepts.md)
 - [Usage and end-to-end examples](docs/usage.md)
 - [Performance-model YAML](docs/perf-yaml.md)
 - [Software architecture and repository layout](docs/software-architecture.md)
+- [Documentation site development and deployment](docsite/README.md)
 
 The Docusaurus site in [`docsite/`](docsite/) renders the Markdown pages under
 `docs/`. See the

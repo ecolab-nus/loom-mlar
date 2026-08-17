@@ -106,6 +106,15 @@ instead of serving a page with missing content.
 
 Create the production static site with `npm run build`. Its prebuild step runs
 the same diagram compilation, and the output is written to `docsite/build/`.
+Preview that exact build with:
+
+```bash
+npm run serve
+```
+
+Open `http://localhost:3000/loom-mlar/docs/project-overview`. Do not run
+`npm start` and `npm run serve` at the same time unless one is assigned a
+different port; both use port 3000 by default.
 
 ## Using As A Dependency
 

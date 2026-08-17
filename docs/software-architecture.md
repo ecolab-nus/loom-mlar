@@ -5,7 +5,7 @@ import ArchifyDiagram from '@site/src/components/ArchifyDiagram';
 ## High-Level Architecture
 
 <ArchifyDiagram
-  src="/diagrams/mlar-project-architecture.html"
+  src="/diagrams/mlar-project-architecture/"
   title="mlar-rust project architecture"
   description="Explore the modeling core, evaluation path, and decoupled Archify visualization pipeline."
 />
@@ -32,8 +32,7 @@ tools/
 `-- archify/              # Vendored standalone diagram renderer
 docs/
 +-- *.md                  # Hand-authored Markdown documentation
-+-- *.json                # Archify diagram sources of truth
-`-- README.md             # Documentation index and generation workflow
+`-- *.json                # Archify diagram specifications and sources of truth
 ```
 
 `src/lib.rs` re-exports the commonly used public API so downstream users can

@@ -32,7 +32,6 @@ const config: Config = {
           path: '../docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
-          exclude: ['README.md'],
         },
         blog: false,
         theme: {

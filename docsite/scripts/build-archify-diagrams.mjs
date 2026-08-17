@@ -57,7 +57,9 @@ try {
       );
     }
 
-    const output = path.join(stagingDir, entry.name.replace(/\.json$/, '.html'));
+    const diagramName = entry.name.replace(/\.json$/, '');
+    const output = path.join(stagingDir, diagramName, 'index.html');
+    await mkdir(path.dirname(output), {recursive: true});
     const commonArgs = [
       type,
       input,
