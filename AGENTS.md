@@ -89,7 +89,8 @@ npm run build
 ```
 
 The Docusaurus build requires delivered Archify HTML under
-`docs/.lavish/architecture/`; follow the documentation workflow below first.
+`docs/.lavish/architecture/`. The docsite's `prestart` and `prebuild` scripts
+validate and deliver all `docs/*.json` diagrams automatically.
 
 ## Generated Artifacts
 
@@ -217,9 +218,10 @@ Keep examples aligned with the public API re-exported by `src/lib.rs`.
   as `/diagrams/mlar-project-architecture.html`; do not inline the generated
   HTML, SVG, scripts, or styles into Markdown.
 - Run the Archify delivery before building Docusaurus. The Docusaurus build
-  copies delivered HTML from `docs/.lavish/architecture/` into its own
-  `diagrams/` output. A documentation build with an embedded diagram is not
-  complete if that generated diagram is missing.
+  automation performs this through `npm run diagrams:build`, then copies the
+  delivered HTML from `docs/.lavish/architecture/` into its own `diagrams/`
+  output. A documentation build with an embedded diagram is not complete if
+  that generated diagram is missing.
 - `npm run build` in `docsite/` creates the browser-router deployment tree in
   `docsite/build/`. `npm run build:lavish` uses the dedicated hash-router config
   and writes a complete review artifact directly to

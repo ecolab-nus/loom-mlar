@@ -15,6 +15,7 @@ The documentation is split by responsibility:
 
 ## Text Documentation
 
+- [Project overview](project-overview.md)
 - [Installation and toolchain setup](installation.md)
 - [Basic architectural concepts](architecture-concepts.md)
 - [Usage and end-to-end examples](usage.md)
@@ -23,6 +24,8 @@ The documentation is split by responsibility:
 
 ## Architecture Visualizations
 
+- [Project overview and artifact flow](.lavish/architecture/project-overview.html)
+  ([Archify JSON source](project-overview.json))
 - [High-level project architecture](.lavish/architecture/mlar-project-architecture.html)
   ([Archify JSON source](mlar-project-architecture.json))
 - [Docusaurus documentation artifact](.lavish/docusaurus/index.html)
@@ -45,8 +48,16 @@ node tools/archify/bin/archify.mjs visual-check \
   docs/.lavish/architecture/mlar-project-architecture.html --json
 ```
 
+Replace `mlar-project-architecture` with `project-overview` to regenerate the
+overview diagram.
+
 All diagram changes must be made in the JSON specification and regenerated;
 the HTML artifact is delivery output only.
+
+`npm start` and `npm run build` under `docsite/` automatically run this
+validation and delivery workflow before Docusaurus starts compiling. Run
+`npm run diagrams:build` there to regenerate the diagrams without starting the
+site.
 
 Documentation diagrams must use the Archify skill. Embed a delivered diagram
 in a Markdown/MDX page with the shared Docusaurus component:

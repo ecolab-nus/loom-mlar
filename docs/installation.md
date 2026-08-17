@@ -94,12 +94,18 @@ repository root:
 
 ```bash
 cd docsite
-npm install
+npm ci
 npm start
 ```
 
-Create the production static site with `npm run build`. The output is written
-to `docsite/build/`.
+`npm start` first validates every Archify JSON file under `docs/`, delivers the
+standalone HTML diagrams, and copies them into Docusaurus static assets. The
+development server therefore serves embedded diagrams without a separate
+manual generation step. A diagram validation or delivery failure stops startup
+instead of serving a page with missing content.
+
+Create the production static site with `npm run build`. Its prebuild step runs
+the same diagram compilation, and the output is written to `docsite/build/`.
 
 ## Using As A Dependency
 

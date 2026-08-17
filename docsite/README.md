@@ -11,11 +11,14 @@ second copy to keep synchronized. Archify JSON sources also live directly under
 From `docsite/`:
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
 The development server opens at `http://localhost:3000/loom-mlar/`.
+The `prestart` script validates and delivers every Archify JSON specification
+under `docs/`, then copies the generated HTML into `static/diagrams/` so the
+development server can resolve embedded `/diagrams/...` URLs.
 
 Create a production deployment build with:
 
@@ -25,7 +28,8 @@ npm run build
 
 The static output is written to `docsite/build/`. The configured URL and base
 path are ready for deployment to the `ecolab-nus/loom-mlar` GitHub Pages site.
-The `postbuild` step copies delivered Archify HTML from
+The `prebuild` step recompiles the Archify diagrams from their JSON sources. The
+`postbuild` step copies the delivered HTML from
 `docs/.lavish/architecture/` into `build/diagrams/`.
 
 Create a Lavish-compatible review artifact with:
@@ -39,10 +43,11 @@ the complete static site to `docs/.lavish/docusaurus/`. Open its `index.html`
 with Lavish; do not edit the generated files directly. The command also copies
 the delivered Archify viewers into the artifact's `diagrams/` directory.
 
-Before either build, use the Archify skill to validate the diagram JSON under
-`docs/` and deliver its standalone HTML under
-`docs/.lavish/architecture/`. Docusaurus pages embed those files through
-`src/components/ArchifyDiagram.tsx` using site-relative `/diagrams/...` URLs.
+Use `npm run diagrams:build` to compile the diagrams without starting or
+building Docusaurus. This command uses the vendored Archify CLI with showcase
+validation and writes standalone HTML under `docs/.lavish/architecture/`.
+Docusaurus pages embed those files through `src/components/ArchifyDiagram.tsx`
+using site-relative `/diagrams/...` URLs.
 
 When a browser-router production build is used for page-level review, preserve
 each page's emitted path when mirroring it into the same artifact tree. For

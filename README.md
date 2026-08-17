@@ -45,27 +45,35 @@ the symbolic `FuncPerfModel`s attached to the modeled processors and data
 movers. The model can also be projected into a visualization-only YAML schema
 without coupling the Rust domain model to a particular renderer.
 
-## Minimal Example
+## Generate An Archify Visualization
+
+An MLAR architecture instance is an ordinary Rust `Architecture` value. After
+constructing it in your application, call `architecture_to_visualization_yaml`
+and write the returned string to a file:
 
 ```rust
 use mlar_rust::*;
 
-let l1 = MemoryRegion::bank(SizeExpr::Const(128), SizeExpr::Const(1024))
-    .with_name("L1");
-let lane = Processor::new("lane");
-
-let core = Architecture::scope("core")
-    .with_memory(l1)
-    .with_processor(lane);
-
-let visualization_yaml = architecture_to_visualization_yaml(&core)?;
-std::fs::write("core.visualization.yaml", visualization_yaml)?;
+// `architecture` is the Architecture value built by your application.
+let yaml = architecture_to_visualization_yaml(&architecture)?;
+std::fs::write("architecture.visualization.yaml", yaml)?;
 ```
 
-This Rust snippet illustrates the library API; `core.visualization.yaml` exists
-only after an application containing the snippet has run. To try the complete
-visualization workflow immediately, build the tracked 2D mesh sample from the
-repository root:
+The exporter walks the architecture's scopes, components, resources, memories,
+and networks and produces a renderer-independent `mlar.visualization.v1`
+document. Convert that document into a static web application and serve it:
+
+```bash
+npm ci --prefix tools/mlar-archify
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  architecture.visualization.yaml visualization-output/architecture
+node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/architecture
+```
+
+Open `http://127.0.0.1:4173/`. No Archify-specific fields need to be added to
+the Rust `Architecture` itself.
+
+To skip the Rust export step and inspect the larger tracked 2D mesh sample, run:
 
 ```bash
 npm ci --prefix tools/mlar-archify
@@ -75,11 +83,9 @@ node tools/mlar-archify/bin/mlar-archify.mjs build \
 node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 ```
 
-Open `http://127.0.0.1:4173/` to navigate the system, subsystem, memory,
-resource, and network views. The generated application embeds standalone
-Archify artifacts and can also be deployed to any static web host. For an
-architecture exported by your own Rust application, replace the tracked sample
-path with the path passed to `std::fs::write`.
+The generated application lets users navigate the system, subsystem, memory,
+resource, and network views. It embeds standalone Archify artifacts and can
+also be deployed to any static web host.
 
 The complete 2D mesh example in
 [`tests/2d_mesh/arch.rs`](tests/2d_mesh/arch.rs) demonstrates MLIR-backed
@@ -88,6 +94,7 @@ evaluation, and the MLIR and visualization export formats.
 
 ## Documentation
 
+- [Project overview and artifact flow](docs/project-overview.md)
 - [Documentation index](docs/README.md)
 - [Installation and toolchain setup](docs/installation.md)
 - [Basic architectural concepts](docs/architecture-concepts.md)

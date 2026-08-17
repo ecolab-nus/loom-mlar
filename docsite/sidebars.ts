@@ -2,6 +2,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
+    'project-overview',
     'architecture-concepts',
     'installation',
     'usage',
@@ -11,4 +12,3 @@ const sidebars: SidebarsConfig = {
 };
 
 export default sidebars;
-
