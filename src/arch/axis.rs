@@ -27,6 +27,22 @@ impl Axis {
     }
 }
 
+/// Every point of an indexed domain, last axis varying fastest.
+pub(crate) fn axis_points(axes: &[Axis]) -> impl Iterator<Item = Vec<u64>> + '_ {
+    let total = axes
+        .iter()
+        .fold(1u64, |count, axis| count.saturating_mul(axis.extent));
+    (0..total).map(move |index| {
+        let mut point = vec![0; axes.len()];
+        let mut remainder = index;
+        for (coordinate, axis) in point.iter_mut().zip(axes).rev() {
+            *coordinate = remainder % axis.extent;
+            remainder /= axis.extent;
+        }
+        point
+    })
+}
+
 /// Integer affine expression used by memory endpoints and network maps.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

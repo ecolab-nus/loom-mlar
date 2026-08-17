@@ -301,6 +301,55 @@ fn processor_array_selection_is_uniform_for_all_subset_and_point_queries() {
 }
 
 #[test]
+fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
+    let architecture = mlar_rust::archs::load_arch(fixture_dir()).unwrap();
+
+    assert_eq!(
+        architecture
+            .processors_of("dma")
+            .map(|processor| processor.name())
+            .collect::<Vec<_>>(),
+        ["l1_to_l2", "east_dma", "dram_to_l1"]
+    );
+    assert_eq!(architecture.processors_of("matrix_lane").count(), 1);
+    assert_eq!(architecture.processors_of("absent").count(), 0);
+
+    let l1 = architecture.memory("L1").unwrap();
+    let points = l1.points().collect::<Vec<_>>();
+    assert_eq!(points.len() as u64, l1.instances());
+    assert_eq!(points[0], [0, 0]);
+    assert_eq!(points[1], [0, 1]);
+    assert_eq!(points[4], [1, 0]);
+    assert_eq!(points.last().unwrap(), &[3, 3]);
+
+    let shared = Architecture::builder("shared_definition")
+        .axis("x", 2)
+        .memory_definition(MemoryDefinition::new("L1", ["row"], 4096, 64))
+        .place_memory_as("l1_a", "L1", ["x"])
+        .place_memory_as("l1_b", "L1", ["x"])
+        .build()
+        .unwrap();
+    assert_eq!(
+        shared
+            .memories_of("L1")
+            .map(|memory| memory.name())
+            .collect::<Vec<_>>(),
+        ["l1_a", "l1_b"]
+    );
+    assert_eq!(shared.memories_of("l1_a").count(), 0);
+
+    let scalar = Architecture::builder("scalar")
+        .memory_definition(MemoryDefinition::new("regs", Vec::<String>::new(), 256, 4))
+        .place_memory("regs", Vec::<String>::new())
+        .build()
+        .unwrap();
+    assert_eq!(
+        scalar.memory("regs").unwrap().points().collect::<Vec<_>>(),
+        [Vec::<u64>::new()]
+    );
+}
+
+#[test]
 fn memory_and_endpoint_validation_is_strict() {
     assert!(
         MemoryDefinition {

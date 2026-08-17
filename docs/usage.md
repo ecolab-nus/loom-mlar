@@ -49,6 +49,32 @@ is optional.
 when current-dialect ADL export is needed. Mixed or untyped definitions can
 still be evaluated and visualized.
 
+## Enumeration
+
+Definitions and placements are plain slices: `axes()`, `memory_definitions()`,
+`memories()`, `memory_aliases()`, `processor_definitions()`, `processors()`,
+`resources()`, `networks()`, `scopes()`. List the placements of one definition
+with:
+
+```rust
+let dmas = architecture.processors_of("dma").collect::<Vec<_>>();
+let l1s = architecture.memories_of("L1").collect::<Vec<_>>();
+```
+
+Instance coordinates come from the array:
+
+```rust
+let cells = architecture.memory("L1").unwrap().points();
+let lanes = architecture
+    .processor_array("matrix_lane")
+    .unwrap()
+    .instances(&architecture);
+```
+
+`MemoryArray::points()` is dense in `axes()` order with the last axis varying
+fastest, and a rank-0 array yields one empty point. Processor instances are
+filtered instead: points whose endpoints fall out of range are absent.
+
 ## Processor selection
 
 Look up a connected processor array by its explicit placement name, then select

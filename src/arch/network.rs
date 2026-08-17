@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
+use super::axis::axis_points;
 use super::{Axis, MemoryEndpoint, Resource};
 use crate::math::{AffineMap, Expr};
 
@@ -123,7 +124,7 @@ impl NetworkTopology {
 
     /// Enumerate the directed edges denoted by every affine link family.
     pub fn edges(&self) -> Vec<NetworkEdge> {
-        let points = domain_points(&self.dimensions);
+        let points = axis_points(&self.dimensions).collect::<Vec<_>>();
         let mut edges = Vec::new();
         for link in &self.links {
             for source in &points {
@@ -282,22 +283,6 @@ impl NetworkTopology {
         }
         Ok(())
     }
-}
-
-fn domain_points(dimensions: &[Axis]) -> Vec<Vec<u64>> {
-    let mut points = vec![Vec::new()];
-    for dimension in dimensions {
-        let mut expanded = Vec::new();
-        for point in points {
-            for value in 0..dimension.extent {
-                let mut point = point.clone();
-                point.push(value);
-                expanded.push(point);
-            }
-        }
-        points = expanded;
-    }
-    points
 }
 
 fn in_domain(point: &[u64], dimensions: &[Axis]) -> bool {

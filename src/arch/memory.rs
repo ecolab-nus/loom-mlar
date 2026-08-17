@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::axis::{Axis, EndpointParseError};
+use super::axis::{Axis, EndpointParseError, axis_points};
 use crate::math::AffineExpr;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -157,6 +157,12 @@ impl MemoryArray {
         self.indices
             .iter()
             .fold(1, |count, index| count.saturating_mul(index.extent))
+    }
+
+    /// Instance coordinates in `axes()` order, last axis varying fastest.
+    /// A rank-0 array yields one empty point.
+    pub fn points(&self) -> impl Iterator<Item = Vec<u64>> + '_ {
+        axis_points(&self.indices)
     }
 
     pub fn name(&self) -> &str {

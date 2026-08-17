@@ -184,6 +184,13 @@ impl Architecture {
         self.memories.iter().find(|memory| memory.name == name)
     }
 
+    /// Memory arrays placed from one definition, in placement order.
+    pub fn memories_of(&self, definition: &str) -> impl Iterator<Item = &MemoryArray> {
+        self.memories
+            .iter()
+            .filter(move |memory| memory.definition == definition)
+    }
+
     pub fn memory_alias(&self, name: &str) -> Option<&MemoryAlias> {
         self.memory_aliases.iter().find(|alias| alias.name == name)
     }
@@ -217,6 +224,13 @@ impl Architecture {
         self.processors
             .iter()
             .find(|processor| processor.name == name)
+    }
+
+    /// Processor arrays placed from one definition, in placement order.
+    pub fn processors_of(&self, definition: &str) -> impl Iterator<Item = &ProcessorArray> {
+        self.processors
+            .iter()
+            .filter(move |processor| processor.definition == definition)
     }
 
     pub fn get_function(&self, name: &str) -> Option<&super::processor::OperationModel> {
