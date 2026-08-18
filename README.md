@@ -83,9 +83,14 @@ node tools/mlar-archify/bin/mlar-archify.mjs build \
 node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 ```
 
-The generated application lets users navigate the system, subsystem, memory,
-resource, and network views. It embeds standalone Archify artifacts and can
-also be deployed to any static web host.
+The generated application opens on one combined memory hierarchy-and-access
+diagram whenever the model fits the 12-node readability limit. Scope boundaries
+show where each canonical memory belongs; recursive banks, directly connected
+compute processors and data movers, and original read/write directions appear
+in that same diagram. Larger models alone use overflow views. Resources,
+networks, and otherwise uncovered components remain available under supporting
+context. The gallery embeds standalone Archify artifacts and can be deployed to
+any static web host.
 
 The complete 2D mesh example in
 [`tests/2d_mesh/arch.rs`](tests/2d_mesh/arch.rs) demonstrates MLIR-backed

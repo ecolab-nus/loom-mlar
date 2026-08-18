@@ -112,10 +112,14 @@ instead of expanding into one node per hardware instance.
 ## 4. Build And Serve The Visualization
 
 The Node.js adapter validates the visualization YAML, checks its references,
-and plans bounded semantic views for systems, subsystems, memories, resources,
-and networks. Vendored Archify then validates and renders each view as a
-standalone HTML diagram. `mlar-archify` assembles those diagrams into a static
-gallery; it does not implement a second renderer.
+and derives a memory-first presentation without changing the v1 interchange
+contract. When it fits within 12 nodes, one primary diagram combines scope
+ownership, recursive memory structure, every connected processor/data mover,
+and the exact read/write relationships and endpoints. Larger models alone use
+bounded hierarchy/access overflow. Resources, networks, and uncovered entities
+remain in supporting views. Vendored Archify validates and renders every view
+as standalone HTML, and `mlar-archify` assembles those artifacts into a static
+gallery without implementing a second renderer.
 
 From the repository root:
 
@@ -127,9 +131,10 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/system
 ```
 
-Open `http://127.0.0.1:4173/`. The generated directory is a complete static web
-application and can also be copied to a static web host; no application backend
-is required.
+Open `http://127.0.0.1:4173/`. The combined root memory hierarchy-and-access
+diagram is the default view.
+The generated directory is a complete static web application and can also be
+copied to a static web host; no application backend is required.
 
 ## Artifact Responsibilities
 

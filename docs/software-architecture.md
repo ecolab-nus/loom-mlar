@@ -116,14 +116,21 @@ A renderer-neutral projection of the Rust domain model.
 - `mod.rs`: visualization module boundary.
 
 The JSON Schema in `schemas/` defines the external contract. The Node adapter
-under `tools/mlar-archify/` validates YAML and creates bounded semantic Archify
-specifications. It preserves every component and relationship, but keeps array
-dimensions and replication factors as metadata rather than expanding instances.
+under `tools/mlar-archify/` validates YAML and creates bounded, memory-centric
+Archify specifications. It derives scope paths, presentation-only recursive
+memory layers, and actor access units from the unchanged v1 fields, then places
+them in one primary diagram when the union fits within 12 nodes. Memory-anchored
+pages remain an overflow strategy for larger models; resource/network views are
+secondary. The adapter preserves every canonical component and relationship,
+but keeps array dimensions and replication factors as metadata rather than
+expanding instances. Scope or structural containment never creates access; only
+the exported directional read/write relationships do.
 The vendored renderer under `tools/archify/` validates each specification at
 showcase quality and delivers standalone HTML. A generated static gallery shell
-organizes those delivered artifacts by scope and semantic view without drawing
-architecture graphics itself. This keeps Rust modeling, view planning,
-navigation, and rendering as separate layers.
+orders the unified primary diagram, any required overflow, and supporting
+context without drawing architecture graphics itself. This keeps
+Rust modeling, adapter-side view planning, navigation, and rendering as
+separate layers.
 
 ## `src/abi`
 

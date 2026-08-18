@@ -9,7 +9,7 @@
    region and one destination memory region.
 5. Compose memories, processors, resources, networks, and child scopes into an
    `Architecture`.
-6. Export architecture MLIR or visualization JSON.
+6. Export architecture MLIR or visualization YAML.
 7. Evaluate schedules in-process or through generated evaluator binaries.
 8. Query architecture MLIR in-process or through generated query binaries.
 
@@ -336,17 +336,27 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/architecture
 ```
 
-Open `http://127.0.0.1:4173/` to use the generated architecture gallery. Its
-sidebar exposes system and subsystem overviews plus memory, resource, and
-network views. Search, scope filtering, previous/next navigation, deep links,
-and independent diagram opening are available without a backend.
+Open `http://127.0.0.1:4173/` to use the generated architecture gallery. When
+the complete memory projection fits within 12 nodes, it opens one diagram that
+combines memory hierarchy, recursive layers, processors/data movers, and access
+edges. Search accepts memory names, canonical IDs, scope paths, and view titles.
+Scope filtering, previous/next navigation, deep links, and independent diagram
+opening are available without a backend.
+
+Use the primary diagram to answer who uses each exact memory. Compute processors
+and data movers use different node styles; an actor that both reads and writes
+appears once with both original directional edges. A mover includes all its
+declared canonical memory endpoints, so a DRAM → mover → L1 route is visible
+beside the hierarchy and banks. Structure `contains` edges and scope boundaries
+show hierarchy only and must not be interpreted as access. Additional access
+pages are generated only when the combined diagram would exceed 12 nodes.
 
 The converter produces several flat semantic diagrams when needed instead of
 folding distinct components together. Replication such as an 8×8 mesh remains
 metadata on a scope; it does not create 64 repeated nodes. The output manifest
 contains the source hash and Archify validation/delivery receipts, while the
 conversion report confirms that no scopes, components, or relationships were
-omitted.
+omitted and accounts for derived structural layers separately.
 
 ## Evaluate A Schedule In Process
 

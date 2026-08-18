@@ -79,11 +79,12 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/2d-mesh
 ```
 
-The converter validates `mlar.visualization.v1`, splits the model into bounded
-semantic diagrams, runs Archify showcase validation and delivery for every
-diagram, and writes a manifest plus a loss report. Replicated scopes retain
-their dimensions and instance counts but are not expanded into individual
-tiles. It also generates a static gallery application at `index.html`; open
+The converter validates `mlar.visualization.v1` and first attempts one combined
+memory hierarchy-and-access diagram. It creates hierarchy/access overflow only
+when the combined projection would exceed 12 nodes, then adds supporting
+context. Every diagram receives Archify showcase validation and delivery, and
+the adapter writes a manifest plus a loss report. Replicated scopes and memory
+arrays retain dimensions and instance counts but are not expanded. Open
 `http://127.0.0.1:4173/` after starting the server. Generated output under
 `visualization-output/` is intentionally ignored.
 

@@ -30,12 +30,15 @@ function scopePath(scopeId, scopesById) {
 
 export function buildGalleryCatalog(document, diagrams) {
   const scopesById = new Map(document.scopes.map((scope) => [scope.id, scope]));
+  const memoriesById = new Map(
+    document.components
+      .filter((component) => component.kind === 'memory')
+      .map((memory) => [memory.id, memory]),
+  );
   const sectionLabels = {
-    overview: 'System and subsystems',
-    memory_reads: 'Memory reads',
-    memory_writes: 'Memory writes',
-    resources: 'Resource dependencies',
-    networks: 'Network connections',
+    memory_hierarchy: 'Memory hierarchy and access',
+    memory_access: 'Additional memory access',
+    supporting_context: 'Supporting context',
     other: 'Other views',
   };
   const sectionOrder = Object.keys(sectionLabels);
@@ -49,6 +52,11 @@ export function buildGalleryCatalog(document, diagrams) {
       scope_id: scope?.id ?? null,
       scope_name: scope?.name ?? null,
       scope_path: scopePath(scope?.id, scopesById),
+      scope_ids: diagram.scopeIds ?? (scope ? [scope.id] : []),
+      memory_ids: diagram.memoryIds ?? [],
+      memory_names: (diagram.memoryIds ?? [])
+        .map((memoryId) => memoriesById.get(memoryId)?.name)
+        .filter(Boolean),
       is_root_scope: scope?.id === document.architecture.root_scope,
       html: `html/${diagram.id}.html`,
       component_count: diagram.componentIds.length,
@@ -62,7 +70,7 @@ export function buildGalleryCatalog(document, diagrams) {
     return left.title.localeCompare(right.title, 'en');
   });
   const defaultEntry =
-    entries.find((entry) => entry.section === 'overview' && entry.is_root_scope) ?? entries[0];
+    entries.find((entry) => entry.section === 'memory_hierarchy' && entry.is_root_scope) ?? entries[0];
   return {
     schema_version: 'mlar.archify-gallery.v1',
     architecture: document.architecture,
@@ -210,8 +218,8 @@ export function renderGalleryHtml(document, diagrams) {
       const query = search.value.trim().toLocaleLowerCase();
       const selectedScope = scopeFilter.value;
       visible = catalog.diagrams.filter((diagram) => {
-        const searchable = [diagram.title, diagram.section_label, diagram.scope_name, ...diagram.scope_path].filter(Boolean).join(' ').toLocaleLowerCase();
-        return (!query || searchable.includes(query)) && (!selectedScope || diagram.scope_id === selectedScope);
+        const searchable = [diagram.title, diagram.section_label, diagram.scope_name, ...diagram.scope_path, ...diagram.scope_ids, ...diagram.memory_ids, ...diagram.memory_names].filter(Boolean).join(' ').toLocaleLowerCase();
+        return (!query || searchable.includes(query)) && (!selectedScope || diagram.scope_ids.includes(selectedScope));
       });
       navigation.replaceChildren();
       for (const section of catalog.sections) {
@@ -235,7 +243,9 @@ export function renderGalleryHtml(document, diagrams) {
           const title = document.createElement('strong');
           title.textContent = diagram.title;
           const detail = document.createElement('small');
-          detail.textContent = diagram.scope_path.length ? diagram.scope_path.join(' / ') : diagram.section_label;
+          detail.textContent = diagram.memory_names.length
+            ? diagram.memory_names.join(', ')
+            : (diagram.scope_path.length ? diagram.scope_path.join(' / ') : diagram.section_label);
           button.append(title, detail);
           button.addEventListener('click', () => selectDiagram(diagram.id, true));
           wrapper.append(button);

@@ -205,6 +205,22 @@ The Rust exporter deliberately contains no layout or Archify-specific fields.
 `schemas/mlar-visualization-v1.schema.json`, selects semantic views, and invokes
 the vendored Archify tool to produce standalone HTML diagrams.
 
+The existing v1 document contains everything needed by the memory-centric
+planner: scope parents and replication metadata, stable canonical memory IDs,
+recursive array/bank structure, and directional read/write relationships. A
+registered memory component is the only canonical access endpoint. Nested
+array or bank layers receive deterministic presentation IDs in the combined
+memory view, but are not independently accessible model entities.
+
+When the complete projection fits within 12 nodes, one diagram combines scope
+ownership, each memory's recursive region structure, connected processors/data
+movers, and exact read/write edges. Larger models use overflow views. Neither
+scope nor structural containment implies access. Only source relationships
+establish connectivity: a read is memory → processor/data mover, and a write is
+processor/data mover → memory. Consequently, connecting a processor to L1 does
+not imply access to an ancestor DRAM, a descendant bank, or a same-named memory
+in another scope.
+
 ## Current Limitations
 
 - MLIR export requires dimensions and memory sizes that simplify to constants.

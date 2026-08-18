@@ -201,19 +201,170 @@ function formatCompactNumber(value) {
   }).format(value);
 }
 
+function scopePath(scopeId, scopesById) {
+  const result = [];
+  const visited = new Set();
+  let cursor = scopesById.get(scopeId);
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id);
+    result.unshift(cursor);
+    cursor = cursor.parent_scope ? scopesById.get(cursor.parent_scope) : null;
+  }
+  return result;
+}
+
+function scopeContextLabel(scopeId, scopesById) {
+  const path = scopePath(scopeId, scopesById);
+  const replication = path.at(-1)?.replication_factor ?? 1;
+  const suffix = replication > 1 ? ` · ${replication} instances` : '';
+  return `${path.map((scope) => scope.name).join(' / ')}${suffix}`;
+}
+
+function regionSummary(region) {
+  if (region.kind === 'array') {
+    return [
+      'array',
+      dimensionsLabel(region.dimensions),
+      formatBytes(region.total_size_bytes),
+    ].filter(Boolean).join(' · ');
+  }
+  return [
+    region.capacity?.text ? `capacity ${region.capacity.text} B` : null,
+    region.block_size?.text ? `block ${region.block_size.text} B` : null,
+    formatBytes(region.total_size_bytes),
+  ].filter(Boolean).join(' · ');
+}
+
+function derivedLayer(memory, region, depth, parentId) {
+  const id = `${memory.id}-layer-${depth}`;
+  return {
+    component: {
+      kind: 'memory_layer',
+      id,
+      name: region.name || (region.kind === 'array' ? `Array level ${depth}` : 'Bank'),
+      layer_kind: region.kind,
+      dimensions: region.dimensions ?? [],
+      capacity: region.capacity ?? null,
+      block_size: region.block_size ?? null,
+      total_size_bytes: region.total_size_bytes ?? null,
+      derived: true,
+      canonical_memory_id: memory.id,
+      scope: memory.scope,
+    },
+    relationship: {
+      id: `${id}-contains`,
+      kind: 'contains',
+      source: parentId,
+      target: id,
+      label: 'contains',
+      derived: true,
+    },
+  };
+}
+
+function projectMemoryLayers(memory) {
+  const components = [];
+  const relationships = [];
+  let region = memory.region;
+  let parentId = memory.id;
+  let depth = 1;
+  while (region?.kind === 'array') {
+    region = region.element;
+    const layer = derivedLayer(memory, region, depth, parentId);
+    components.push(layer.component);
+    relationships.push(layer.relationship);
+    parentId = layer.component.id;
+    depth += 1;
+  }
+  return { components, relationships };
+}
+
+function buildProjection(document) {
+  const scopesById = new Map(document.scopes.map((scope) => [scope.id, scope]));
+  const componentsById = new Map(document.components.map((component) => [component.id, component]));
+  const memories = document.components
+    .filter((component) => component.kind === 'memory')
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const memoryIds = new Set(memories.map((memory) => memory.id));
+  const actorIds = new Set(document.components
+    .filter((component) => component.kind === 'processor' || component.kind === 'data_mover')
+    .map((actor) => actor.id));
+  const accessByActor = new Map();
+  const actorIdsByMemory = new Map(memories.map((memory) => [memory.id, new Set()]));
+
+  for (const relationship of document.relationships) {
+    if (relationship.kind !== 'read' && relationship.kind !== 'write') continue;
+    const memoryId = relationship.kind === 'read' ? relationship.source : relationship.target;
+    const actorId = relationship.kind === 'read' ? relationship.target : relationship.source;
+    if (!memoryIds.has(memoryId) || !actorIds.has(actorId)) continue;
+    if (!accessByActor.has(actorId)) {
+      accessByActor.set(actorId, {
+        actor: componentsById.get(actorId),
+        endpointIds: new Set(),
+        relationships: [],
+      });
+    }
+    const unit = accessByActor.get(actorId);
+    unit.endpointIds.add(memoryId);
+    unit.relationships.push(relationship);
+    actorIdsByMemory.get(memoryId).add(actorId);
+  }
+
+  for (const unit of accessByActor.values()) {
+    unit.endpointIds = [...unit.endpointIds].sort();
+    unit.relationships.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  const layersByMemory = new Map(
+    memories.map((memory) => [memory.id, projectMemoryLayers(memory)]),
+  );
+  return {
+    scopesById,
+    componentsById,
+    memories,
+    accessByActor,
+    actorIdsByMemory,
+    layersByMemory,
+  };
+}
+
 function archifyComponent(component, index, columns) {
   const base = {
     id: component.id,
     label: component.name,
-    row: Math.floor(index / columns),
-    col: index % columns,
+    row: component.row ?? Math.floor(index / columns),
+    col: component.col ?? index % columns,
+    size: [320, 62],
   };
   switch (component.kind) {
     case 'memory': {
-      const details = [dimensionsLabel(component.dimensions), formatBytes(component.total_size_bytes)]
+      const details = component.region.kind === 'array'
+        ? ['array', dimensionsLabel(component.dimensions), formatBytes(component.total_size_bytes)]
+        : ['bank', dimensionsLabel(component.dimensions), regionSummary(component.region)];
+      const sublabel = details
         .filter(Boolean)
         .join(' · ');
-      return { ...base, type: 'database', sublabel: details || 'memory' };
+      return {
+        ...base,
+        type: 'database',
+        sublabel: sublabel || 'memory',
+        tag: component.connection_count === 0 ? 'unconnected' : undefined,
+      };
+    }
+    case 'memory_layer': {
+      const details = component.layer_kind === 'array'
+        ? [dimensionsLabel(component.dimensions), formatBytes(component.total_size_bytes)]
+        : [
+            component.capacity?.text ? `capacity ${component.capacity.text} B` : null,
+            component.block_size?.text ? `block ${component.block_size.text} B` : null,
+            formatBytes(component.total_size_bytes),
+          ];
+      return {
+        ...base,
+        type: 'database',
+        sublabel: details.filter(Boolean).join(' · ') || component.layer_kind,
+        tag: component.layer_kind,
+      };
     }
     case 'processor':
       return {
@@ -269,12 +420,24 @@ function archifyComponent(component, index, columns) {
   }
 }
 
-function archifyConnection(relationship) {
+function componentBox(component, layout) {
+  const width = component.size?.[0] ?? layout.cellW;
+  const height = component.size?.[1] ?? layout.cellH;
+  return {
+    x: layout.origin[0] + component.col * (layout.cellW + layout.gapX),
+    y: layout.origin[1] + component.row * (layout.cellH + layout.gapY),
+    width,
+    height,
+  };
+}
+
+function archifyConnection(relationship, componentsById, layout) {
   const labels = {
     read: 'read',
     write: 'write',
     requires: 'requires',
     network_attachment: 'attaches',
+    contains: 'contains',
   };
   const connection = {
     id: relationship.id,
@@ -284,7 +447,34 @@ function archifyConnection(relationship) {
   };
   if (relationship.kind === 'requires') connection.variant = 'dashed';
   if (relationship.kind === 'requires') connection.labelDy = 24;
-  if (relationship.kind === 'read' || relationship.kind === 'write') connection.variant = 'emphasis';
+  if (relationship.kind === 'read' || relationship.kind === 'write') {
+    connection.variant = 'emphasis';
+    const source = componentsById.get(relationship.source);
+    const target = componentsById.get(relationship.target);
+    const actor = relationship.kind === 'read' ? target : source;
+    const memory = relationship.kind === 'read' ? source : target;
+    const actorBox = componentBox(actor, layout);
+    const memoryBox = componentBox(memory, layout);
+    if (actor.row !== memory.row) {
+      const upper = actor.row < memory.row ? actorBox : memoryBox;
+      const lower = actor.row < memory.row ? memoryBox : actorBox;
+      connection.labelAt = [
+        actorBox.x + actorBox.width / 2 + (relationship.kind === 'read' ? -52 : 52),
+        (upper.y + upper.height + lower.y) / 2,
+      ];
+    } else {
+      const left = actor.col < memory.col ? actorBox : memoryBox;
+      const right = actor.col < memory.col ? memoryBox : actorBox;
+      connection.labelAt = [
+        (left.x + left.width + right.x) / 2,
+        actorBox.y + actorBox.height / 2 + (relationship.kind === 'read' ? -20 : 20),
+      ];
+    }
+  }
+  if (relationship.kind === 'contains') {
+    connection.variant = 'dashed';
+    connection.labelDy = 24;
+  }
   return connection;
 }
 
@@ -300,10 +490,13 @@ function diagramId(parts) {
 function createDiagram({
   id,
   title,
-  section = 'other',
+  section = 'supporting_context',
   primaryScopeId = null,
   components,
-  relationships,
+  relationships = [],
+  boundaries = [],
+  sourceScopeIds = [],
+  memoryIds = [],
 }) {
   const sortedComponents = [...components].sort((left, right) => left.id.localeCompare(right.id));
   if (sortedComponents.length === 0) return null;
@@ -316,7 +509,35 @@ function createDiagram({
       (relationship) => componentIds.has(relationship.source) && componentIds.has(relationship.target),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
-  const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(sortedComponents.length))));
+  const explicitColumns = sortedComponents.reduce(
+    (maximum, component) => Math.max(maximum, (component.col ?? -1) + 1),
+    0,
+  );
+  const columns = Math.min(
+    12,
+    Math.max(1, explicitColumns || Math.min(4, Math.ceil(Math.sqrt(sortedComponents.length)))),
+  );
+  const selectedBoundaries = boundaries
+    .map((boundary) => ({
+      ...boundary,
+      wraps: boundary.wraps.filter((componentId) => componentIds.has(componentId)),
+    }))
+    .filter((boundary) => boundary.wraps.length > 0);
+  const presentationComponents = sortedComponents.map((component, index) =>
+    archifyComponent(component, index, columns),
+  );
+  const presentationById = new Map(
+    presentationComponents.map((component) => [component.id, component]),
+  );
+  const layout = {
+    mode: 'grid',
+    origin: [40, 70],
+    cols: columns,
+    gapX: 86,
+    gapY: 76,
+    cellW: 320,
+    cellH: 76,
+  };
   const spec = {
     schema_version: 1,
     diagram_type: 'architecture',
@@ -324,22 +545,13 @@ function createDiagram({
       title,
       quality_profile: 'showcase',
     },
-    layout: {
-      mode: 'grid',
-      origin: [40, 70],
-      cols: columns,
-      gapX: 86,
-      gapY: 76,
-      cellW: 176,
-      cellH: 76,
-    },
-    components: sortedComponents.map((component, index) =>
-      archifyComponent(component, index, columns),
-    ),
+    layout,
+    components: presentationComponents,
     connections: selectedRelationships.map((relationship) =>
-      archifyConnection(relationship),
+      archifyConnection(relationship, presentationById, layout),
     ),
   };
+  if (selectedBoundaries.length > 0) spec.boundaries = selectedBoundaries;
   return {
     id,
     title,
@@ -347,9 +559,25 @@ function createDiagram({
     section,
     primaryScopeId,
     spec,
-    componentIds: sortedComponents.filter((component) => component.kind !== 'scope').map((component) => component.id),
-    scopeIds: sortedComponents.filter((component) => component.kind === 'scope').map((component) => component.id),
-    relationshipIds: selectedRelationships.map((relationship) => relationship.id),
+    componentIds: sortedComponents
+      .filter((component) => component.kind !== 'scope' && !component.derived)
+      .map((component) => component.id),
+    derivedComponentIds: sortedComponents
+      .filter((component) => component.derived)
+      .map((component) => component.id),
+    scopeIds: [...new Set([
+      ...sourceScopeIds,
+      ...sortedComponents
+        .filter((component) => component.kind === 'scope')
+        .map((component) => component.id),
+    ])].sort(),
+    relationshipIds: selectedRelationships
+      .filter((relationship) => !relationship.derived)
+      .map((relationship) => relationship.id),
+    derivedRelationshipIds: selectedRelationships
+      .filter((relationship) => relationship.derived)
+      .map((relationship) => relationship.id),
+    memoryIds: [...new Set(memoryIds)].sort(),
   };
 }
 
@@ -361,34 +589,254 @@ function chunks(values, size) {
   return result;
 }
 
-function relationDiagrams({ document, relationships, prefix, title, section }) {
-  if (relationships.length === 0) return [];
-  const byId = new Map(document.components.map((component) => [component.id, component]));
-  const grouped = new Map();
-  for (const relationship of relationships) {
-    const source = byId.get(relationship.source);
-    const target = byId.get(relationship.target);
-    const anchor = source.kind === 'memory' || source.kind === 'resource' ? target : source;
-    if (!grouped.has(anchor.id)) grouped.set(anchor.id, []);
-    grouped.get(anchor.id).push(relationship);
+function scopeIdsForComponents(components, scopesById) {
+  const result = new Set();
+  for (const component of components) {
+    if (!component.scope) continue;
+    for (const scope of scopePath(component.scope, scopesById)) result.add(scope.id);
   }
+  return [...result].sort();
+}
+
+function unifiedMemoryDiagram(document, projection) {
+  if (projection.memories.length === 0) return null;
+
+  const memories = projection.memories.map((memory) => ({
+    ...memory,
+    connection_count: projection.actorIdsByMemory.get(memory.id)?.size ?? 0,
+  }));
+  const actorUnits = [...projection.accessByActor.values()]
+    .sort((left, right) => left.actor.id.localeCompare(right.actor.id));
+  const derivedLayers = memories.flatMap(
+    (memory) => projection.layersByMemory.get(memory.id).components,
+  );
+  if (memories.length + derivedLayers.length + actorUnits.length > MAX_COMPONENTS) {
+    return null;
+  }
+
+  const memoryPositions = new Map();
+  const memoryCountByDepth = new Map();
+  for (const memory of memories) {
+    const depth = scopePath(memory.scope, projection.scopesById).length - 1;
+    const col = memoryCountByDepth.get(depth) ?? 0;
+    memoryCountByDepth.set(depth, col + 1);
+    memoryPositions.set(memory.id, { row: depth * 3, col });
+  }
+  const actorColumnOffset = Math.max(1, ...memoryCountByDepth.values());
+  const components = [];
+  const relationships = [];
+  for (const memory of memories) {
+    const position = memoryPositions.get(memory.id);
+    components.push({ ...memory, ...position });
+    const layers = projection.layersByMemory.get(memory.id);
+    layers.components.forEach((layer, index) => {
+      components.push({ ...layer, row: position.row + index + 1, col: position.col });
+    });
+    relationships.push(...layers.relationships);
+  }
+  actorUnits.forEach((unit, index) => {
+    const endpointRows = unit.endpointIds.map((memoryId) => memoryPositions.get(memoryId).row);
+    const shallowest = Math.min(...endpointRows);
+    const deepest = Math.max(...endpointRows);
+    const row = shallowest === deepest
+      ? (deepest === 0 ? 2 : deepest - 1)
+      : Math.max(shallowest + 1, deepest - 1);
+    components.push({
+      ...unit.actor,
+      row,
+      col: actorColumnOffset + index,
+    });
+    relationships.push(...unit.relationships);
+  });
+
+  const memoryAndLayerIdsByScope = new Map();
+  for (const component of components) {
+    if (component.kind !== 'memory' && component.kind !== 'memory_layer') continue;
+    if (!memoryAndLayerIdsByScope.has(component.scope)) {
+      memoryAndLayerIdsByScope.set(component.scope, []);
+    }
+    memoryAndLayerIdsByScope.get(component.scope).push(component.id);
+  }
+  const boundaries = [...memoryAndLayerIdsByScope.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([scopeId, wraps]) => ({
+      kind: 'region',
+      label: scopeContextLabel(scopeId, projection.scopesById),
+      wraps,
+    }));
+
+  return createDiagram({
+    id: 'memory-hierarchy-1',
+    title: 'Memory hierarchy and access',
+    section: 'memory_hierarchy',
+    primaryScopeId: document.architecture.root_scope,
+    components,
+    relationships,
+    boundaries,
+    sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
+    memoryIds: memories.map((memory) => memory.id),
+  });
+}
+
+function hierarchyDiagrams(document, projection) {
   const diagrams = [];
-  for (const [anchorId, entries] of [...grouped.entries()].sort()) {
-    const anchor = byId.get(anchorId);
-    for (const [chunkIndex, relationChunk] of chunks(entries, 1).entries()) {
-      const ids = new Set([anchorId]);
-      for (const relationship of relationChunk) {
-        ids.add(relationship.source);
-        ids.add(relationship.target);
-      }
-      const suffix = entries.length > 1 ? `-${chunkIndex + 1}` : '';
+  const memoryPresentations = projection.memories.map((memory) => ({
+    ...memory,
+    connection_count: projection.actorIdsByMemory.get(memory.id)?.size ?? 0,
+  }));
+  const overviewChunks = memoryPresentations.length === 0
+    ? [[]]
+    : chunks(memoryPresentations, MAX_COMPONENTS);
+  for (const [chunkIndex, memoryChunk] of overviewChunks.entries()) {
+    const components = memoryChunk.length > 0
+      ? memoryChunk
+      : [{
+          kind: 'scope',
+          id: document.architecture.root_scope,
+          name: document.architecture.name,
+          dimensions: [],
+          replication_factor: 1,
+        }];
+    const scopeIds = new Set();
+    const boundaries = [];
+    const byScope = new Map();
+    for (const memory of memoryChunk) {
+      if (!byScope.has(memory.scope)) byScope.set(memory.scope, []);
+      byScope.get(memory.scope).push(memory.id);
+      for (const scope of scopePath(memory.scope, projection.scopesById)) scopeIds.add(scope.id);
+    }
+    for (const [scopeId, wraps] of [...byScope.entries()].sort()) {
+      boundaries.push({
+        kind: 'region',
+        label: scopeContextLabel(scopeId, projection.scopesById),
+        wraps,
+      });
+    }
+    if (memoryChunk.length === 0) scopeIds.add(document.architecture.root_scope);
+    const suffix = overviewChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
+    const diagram = createDiagram({
+      id: diagramId(['memory-hierarchy', String(chunkIndex + 1)]),
+      title: `Memory hierarchy${suffix}`,
+      section: 'memory_hierarchy',
+      primaryScopeId: document.architecture.root_scope,
+      components,
+      boundaries,
+      sourceScopeIds: [...scopeIds],
+      memoryIds: memoryChunk.map((memory) => memory.id),
+    });
+    if (diagram) diagrams.push(diagram);
+  }
+
+  for (const memory of memoryPresentations) {
+    const layers = projection.layersByMemory.get(memory.id);
+    if (layers.components.length === 0) continue;
+    let cursor = 0;
+    let previousLayer = null;
+    let page = 1;
+    while (cursor < layers.components.length) {
+      const pageCapacity = previousLayer ? MAX_COMPONENTS - 2 : MAX_COMPONENTS - 1;
+      const pageLayers = layers.components.slice(cursor, cursor + pageCapacity);
+      const components = [memory, ...(previousLayer ? [previousLayer] : []), ...pageLayers]
+        .map((component, index) => ({ ...component, row: index, col: 0 }));
+      const ids = new Set(components.map((component) => component.id));
+      const relationships = layers.relationships.filter(
+        (relationship) => ids.has(relationship.source) && ids.has(relationship.target),
+      );
+      const pathNames = scopePath(memory.scope, projection.scopesById).map((scope) => scope.name);
+      const pageSuffix = layers.components.length > pageCapacity ? ` · ${page}` : '';
       const diagram = createDiagram({
-        id: diagramId([prefix, anchor.name, suffix]),
-        title: `${title} · ${anchor.name}${suffix}`,
-        section,
-        primaryScopeId: anchor.scope,
-        components: [...ids].map((id) => byId.get(id)),
-        relationships: relationChunk,
+        id: diagramId(['memory-structure', memory.id, String(page)]),
+        title: `Memory structure · ${[...pathNames, memory.name].join(' / ')}${pageSuffix}`,
+        section: 'memory_hierarchy',
+        primaryScopeId: memory.scope,
+        components,
+        relationships,
+        boundaries: [{
+          kind: 'region',
+          label: scopeContextLabel(memory.scope, projection.scopesById),
+          wraps: components.map((component) => component.id),
+        }],
+        sourceScopeIds: scopePath(memory.scope, projection.scopesById).map((scope) => scope.id),
+        memoryIds: [memory.id],
+      });
+      if (diagram) diagrams.push(diagram);
+      cursor += pageLayers.length;
+      previousLayer = pageLayers.at(-1);
+      page += 1;
+    }
+  }
+  return diagrams;
+}
+
+function packActorUnits(anchorId, actorIds, projection) {
+  const result = [];
+  let units = [];
+  let ids = new Set([anchorId]);
+  const flush = () => {
+    if (units.length > 0) result.push(units);
+    units = [];
+    ids = new Set([anchorId]);
+  };
+  for (const actorId of actorIds) {
+    const unit = projection.accessByActor.get(actorId);
+    const unitIds = new Set([actorId, ...unit.endpointIds]);
+    const candidate = new Set([...ids, ...unitIds]);
+    if (candidate.size > MAX_COMPONENTS && units.length > 0) flush();
+    units.push(unit);
+    ids = new Set([...ids, ...unitIds]);
+  }
+  flush();
+  return result;
+}
+
+function accessDiagrams(projection) {
+  const diagrams = [];
+  for (const memory of projection.memories) {
+    const actorIds = [...(projection.actorIdsByMemory.get(memory.id) ?? [])].sort();
+    if (actorIds.length === 0) continue;
+    const unitChunks = packActorUnits(memory.id, actorIds, projection);
+    for (const [chunkIndex, units] of unitChunks.entries()) {
+      const ids = new Set([memory.id]);
+      const relationshipById = new Map();
+      for (const unit of units) {
+        ids.add(unit.actor.id);
+        for (const endpointId of unit.endpointIds) ids.add(endpointId);
+        for (const relationship of unit.relationships) {
+          relationshipById.set(relationship.id, relationship);
+        }
+      }
+      const components = [...ids].map((id) => ({ ...projection.componentsById.get(id) }));
+      const positions = new Map([[
+        memory.id,
+        { row: 0, col: Math.floor((units.length - 1) / 2) },
+      ]]);
+      units.forEach((unit, index) => {
+        positions.set(unit.actor.id, { row: 1, col: index });
+        for (const relationship of unit.relationships) {
+          const endpointId = relationship.kind === 'read'
+            ? relationship.source
+            : relationship.target;
+          if (endpointId === memory.id || positions.has(endpointId)) continue;
+          positions.set(endpointId, {
+            row: 2,
+            col: index,
+          });
+        }
+      });
+      for (const component of components) Object.assign(component, positions.get(component.id));
+      const pathNames = scopePath(memory.scope, projection.scopesById).map((scope) => scope.name);
+      const suffix = unitChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
+      const diagram = createDiagram({
+        id: diagramId(['memory-access', memory.id, String(chunkIndex + 1)]),
+        title: `Memory access · ${[...pathNames, memory.name].join(' / ')}${suffix}`,
+        section: 'memory_access',
+        primaryScopeId: memory.scope,
+        components,
+        relationships: [...relationshipById.values()],
+        sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
+        memoryIds: components
+          .filter((component) => component.kind === 'memory')
+          .map((component) => component.id),
       });
       if (diagram) diagrams.push(diagram);
     }
@@ -396,118 +844,112 @@ function relationDiagrams({ document, relationships, prefix, title, section }) {
   return diagrams;
 }
 
-export function planDiagrams(document) {
-  const componentsByScope = new Map();
-  for (const component of document.components) {
-    if (!componentsByScope.has(component.scope)) componentsByScope.set(component.scope, []);
-    componentsByScope.get(component.scope).push(component);
-  }
-  const childrenByScope = new Map();
-  for (const scope of document.scopes) {
-    if (!scope.parent_scope) continue;
-    if (!childrenByScope.has(scope.parent_scope)) childrenByScope.set(scope.parent_scope, []);
-    childrenByScope.get(scope.parent_scope).push(scope);
-  }
-
+function supportingDiagrams(document, projection, existingDiagrams) {
   const diagrams = [];
-  const orderedScopes = [...document.scopes].sort((left, right) => {
-    if (left.id === document.architecture.root_scope) return -1;
-    if (right.id === document.architecture.root_scope) return 1;
-    return left.id.localeCompare(right.id);
-  });
-  for (const scope of orderedScopes) {
-    const direct = (componentsByScope.get(scope.id) ?? []).filter(
-      (component) => component.kind !== 'resource' && component.kind !== 'network',
-    );
-    const childScopes = (childrenByScope.get(scope.id) ?? []).map((child) => ({
-      kind: 'scope',
-      id: child.id,
-      name: child.name,
-      dimensions: child.dimensions,
-      replication_factor: child.replication_factor,
-    }));
-    const scopeComponents = [...direct, ...childScopes];
-    const scopeMarker = {
-      kind: 'scope',
-      id: scope.id,
-      name: scope.name,
-      dimensions: scope.dimensions,
-      replication_factor: scope.replication_factor,
-    };
-    const componentChunks =
-      scopeComponents.length === 0 ? [[]] : chunks(scopeComponents, MAX_COMPONENTS - 1);
-    for (const [chunkIndex, componentChunk] of componentChunks.entries()) {
-      const suffix = scopeComponents.length > MAX_COMPONENTS - 1 ? `-${chunkIndex + 1}` : '';
+  const coveredRelationships = new Set(
+    existingDiagrams.flatMap((diagram) => diagram.relationshipIds),
+  );
+  const remainingRelationships = document.relationships
+    .filter((relationship) => !coveredRelationships.has(relationship.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const relationshipsBySource = new Map();
+  for (const relationship of remainingRelationships) {
+    if (!relationshipsBySource.has(relationship.source)) {
+      relationshipsBySource.set(relationship.source, []);
+    }
+    relationshipsBySource.get(relationship.source).push(relationship);
+  }
+  for (const [sourceId, sourceRelationships] of [...relationshipsBySource.entries()].sort()) {
+    for (const [chunkIndex, relationshipChunk] of chunks(
+      sourceRelationships,
+      MAX_COMPONENTS - 1,
+    ).entries()) {
+      const targetIds = [...new Set(
+        relationshipChunk.map((relationship) => relationship.target),
+      )].sort();
+      const source = { ...projection.componentsById.get(sourceId) };
+      source.row = 0;
+      source.col = Math.floor((targetIds.length - 1) / 2);
+      const components = [
+        source,
+        ...targetIds.map((targetId, index) => ({
+          ...projection.componentsById.get(targetId),
+          row: 1,
+          col: index,
+        })),
+      ];
+      const suffix = sourceRelationships.length > MAX_COMPONENTS - 1
+        ? ` · ${chunkIndex + 1}`
+        : '';
       const diagram = createDiagram({
-        id: diagramId(['scope', scope.name, suffix]),
-        title: `${scope.name} · components${suffix}`,
-        section: 'overview',
-        primaryScopeId: scope.id,
-        components: [scopeMarker, ...componentChunk],
-        relationships: [],
+        id: diagramId(['supporting-relationships', sourceId, String(chunkIndex + 1)]),
+        title: `Supporting context · ${source.name}${suffix}`,
+        section: 'supporting_context',
+        primaryScopeId: source.scope ?? document.architecture.root_scope,
+        components,
+        relationships: relationshipChunk,
+        sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
+        memoryIds: components
+          .filter((component) => component.kind === 'memory')
+          .map((component) => component.id),
       });
       if (diagram) diagrams.push(diagram);
     }
   }
 
-  diagrams.push(
-    ...relationDiagrams({
-      document,
-      relationships: document.relationships.filter(
-        (relationship) => relationship.kind === 'read',
-      ),
-      prefix: 'memory-reads',
-      title: 'Memory reads',
-      section: 'memory_reads',
-    }),
-  );
-  diagrams.push(
-    ...relationDiagrams({
-      document,
-      relationships: document.relationships.filter(
-        (relationship) => relationship.kind === 'write',
-      ),
-      prefix: 'memory-writes',
-      title: 'Memory writes',
-      section: 'memory_writes',
-    }),
-  );
-  diagrams.push(
-    ...relationDiagrams({
-      document,
-      relationships: document.relationships.filter(
-        (relationship) => relationship.kind === 'requires',
-      ),
-      prefix: 'resource-dependencies',
-      title: 'Resource dependencies',
-      section: 'resources',
-    }),
-  );
-  diagrams.push(
-    ...relationDiagrams({
-      document,
-      relationships: document.relationships.filter(
-        (relationship) => relationship.kind === 'network_attachment',
-      ),
-      prefix: 'network-attachments',
-      title: 'Network attachments',
-      section: 'networks',
-    }),
-  );
-
-  const coveredComponents = new Set(diagrams.flatMap((diagram) => diagram.componentIds));
-  const uncovered = document.components.filter((component) => !coveredComponents.has(component.id));
-  for (const [chunkIndex, componentChunk] of chunks(uncovered, MAX_COMPONENTS).entries()) {
+  const allDiagrams = [...existingDiagrams, ...diagrams];
+  const coveredComponents = new Set(allDiagrams.flatMap((diagram) => diagram.componentIds));
+  const uncoveredComponents = document.components
+    .filter((component) => !coveredComponents.has(component.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  for (const componentChunk of chunks(uncoveredComponents, MAX_COMPONENTS)) {
     const diagram = createDiagram({
-      id: diagramId(['other-components', String(chunkIndex + 1)]),
-      title: `Other components · ${chunkIndex + 1}`,
-      section: 'other',
-      primaryScopeId: componentChunk[0]?.scope ?? null,
+      id: diagramId(['supporting-components', String(diagrams.length + 1)]),
+      title: `Supporting context · components ${diagrams.length + 1}`,
+      section: 'supporting_context',
+      primaryScopeId: componentChunk[0]?.scope ?? document.architecture.root_scope,
       components: componentChunk,
-      relationships: document.relationships,
+      sourceScopeIds: scopeIdsForComponents(componentChunk, projection.scopesById),
+      memoryIds: componentChunk
+        .filter((component) => component.kind === 'memory')
+        .map((component) => component.id),
     });
     if (diagram) diagrams.push(diagram);
   }
+
+  const coveredScopes = new Set(
+    [...existingDiagrams, ...diagrams].flatMap((diagram) => diagram.scopeIds),
+  );
+  const uncoveredScopes = document.scopes
+    .filter((scope) => !coveredScopes.has(scope.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  for (const scopeChunk of chunks(uncoveredScopes, MAX_COMPONENTS)) {
+    const scopeComponents = scopeChunk.map((scope) => ({
+      kind: 'scope',
+      id: scope.id,
+      name: scope.name,
+      dimensions: scope.dimensions,
+      replication_factor: scope.replication_factor,
+    }));
+    const diagram = createDiagram({
+      id: diagramId(['supporting-scopes', String(diagrams.length + 1)]),
+      title: `Supporting context · scopes ${diagrams.length + 1}`,
+      section: 'supporting_context',
+      primaryScopeId: scopeChunk[0]?.id ?? document.architecture.root_scope,
+      components: scopeComponents,
+      sourceScopeIds: scopeChunk.map((scope) => scope.id),
+    });
+    if (diagram) diagrams.push(diagram);
+  }
+  return diagrams;
+}
+
+export function planDiagrams(document) {
+  const projection = buildProjection(document);
+  const unified = unifiedMemoryDiagram(document, projection);
+  const diagrams = unified ? [unified] : hierarchyDiagrams(document, projection);
+  if (!unified) diagrams.push(...accessDiagrams(projection));
+  diagrams.push(...supportingDiagrams(document, projection, diagrams));
 
   const ids = new Set();
   for (const diagram of diagrams) {
@@ -517,11 +959,21 @@ export function planDiagrams(document) {
   return diagrams;
 }
 
-function runArchify(args) {
+function runArchify(args, { allowSkipped = false } = {}) {
   const result = spawnSync(process.execPath, [archifyBin, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
   });
+  const output = result.stdout.trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    parsed = { raw: output };
+  }
+  if (allowSkipped && result.status === 2 && parsed.status === 'skipped') {
+    return parsed;
+  }
   if (result.status !== 0) {
     fail(`Archify command failed: ${args.join(' ')}`, {
       status: result.status,
@@ -529,12 +981,7 @@ function runArchify(args) {
       stderr: result.stderr,
     });
   }
-  const output = result.stdout.trim();
-  try {
-    return JSON.parse(output);
-  } catch {
-    return { raw: output };
-  }
+  return parsed;
 }
 
 function writeJson(filePath, value) {
@@ -574,7 +1021,7 @@ function build({ inputPath, outputDirectory, visualCheck }) {
       '--json',
     ]);
     const visual = visualCheck
-      ? runArchify(['visual-check', htmlPath, '--json'])
+      ? runArchify(['visual-check', htmlPath, '--json'], { allowSkipped: true })
       : { status: 'not_requested' };
     manifestDiagrams.push({
       id: diagram.id,
@@ -585,8 +1032,11 @@ function build({ inputPath, outputDirectory, visualCheck }) {
       specification: path.relative(outputDirectory, specificationPath),
       html: path.relative(outputDirectory, htmlPath),
       component_ids: diagram.componentIds,
+      derived_component_ids: diagram.derivedComponentIds,
       scope_ids: diagram.scopeIds,
       relationship_ids: diagram.relationshipIds,
+      derived_relationship_ids: diagram.derivedRelationshipIds,
+      memory_ids: diagram.memoryIds,
       validation,
       delivery,
       visual_check: visual,
@@ -599,6 +1049,12 @@ function build({ inputPath, outputDirectory, visualCheck }) {
   const coveredScopes = new Set(manifestDiagrams.flatMap((diagram) => diagram.scope_ids));
   const coveredRelationships = new Set(
     manifestDiagrams.flatMap((diagram) => diagram.relationship_ids),
+  );
+  const coveredDerivedComponents = new Set(
+    manifestDiagrams.flatMap((diagram) => diagram.derived_component_ids),
+  );
+  const coveredDerivedRelationships = new Set(
+    manifestDiagrams.flatMap((diagram) => diagram.derived_relationship_ids),
   );
   const report = {
     schema_version: 'mlar.archify-conversion-report.v1',
@@ -617,11 +1073,13 @@ function build({ inputPath, outputDirectory, visualCheck }) {
       .map((relationship) => relationship.id)
       .filter((id) => !coveredRelationships.has(id))
       .sort(),
+    included_derived_component_ids: [...coveredDerivedComponents].sort(),
+    included_derived_relationship_ids: [...coveredDerivedRelationships].sort(),
     policy: {
       maximum_primary_nodes: MAX_COMPONENTS,
       expand_replicated_instances: false,
       create_synthetic_collapsed_nodes: false,
-      partition_strategy: 'semantic_views_then_anchor_subgraphs',
+      partition_strategy: 'unified_memory_view_then_bounded_overflow_then_supporting_context',
     },
   };
   writeJson(path.join(outputDirectory, 'conversion-report.json'), report);
