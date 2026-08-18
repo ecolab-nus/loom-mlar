@@ -35,20 +35,24 @@ export function buildGalleryCatalog(document, diagrams) {
       .filter((component) => component.kind === 'memory')
       .map((memory) => [memory.id, memory]),
   );
+  const componentsById = new Map(
+    document.components.map((component) => [component.id, component]),
+  );
   const sectionLabels = {
-    memory_hierarchy: 'Memory hierarchy and access',
-    memory_access: 'Additional memory access',
-    supporting_context: 'Resources, networks, and scopes',
-    other: 'Other views',
+    system_view: 'System View',
+    component_views: 'Component Views',
   };
   const sectionOrder = Object.keys(sectionLabels);
   const entries = diagrams.map((diagram) => {
     const scope = diagram.primaryScopeId ? scopesById.get(diagram.primaryScopeId) : null;
+    const focus = diagram.focusComponentId
+      ? componentsById.get(diagram.focusComponentId)
+      : null;
     return {
       id: diagram.id,
       title: diagram.title,
-      section: diagram.section ?? 'other',
-      section_label: sectionLabels[diagram.section] ?? sectionLabels.other,
+      section: diagram.section,
+      section_label: sectionLabels[diagram.section],
       scope_id: scope?.id ?? null,
       scope_name: scope?.name ?? null,
       scope_path: scopePath(scope?.id, scopesById),
@@ -57,6 +61,9 @@ export function buildGalleryCatalog(document, diagrams) {
       memory_names: (diagram.memoryIds ?? [])
         .map((memoryId) => memoriesById.get(memoryId)?.name)
         .filter(Boolean),
+      focus_component_id: focus?.id ?? null,
+      focus_component_name: focus?.name ?? null,
+      focus_component_kind: focus?.kind ?? null,
       is_root_scope: scope?.id === document.architecture.root_scope,
       html: `html/${diagram.id}.html`,
       component_count: diagram.componentIds.length,
@@ -70,7 +77,7 @@ export function buildGalleryCatalog(document, diagrams) {
     return left.title.localeCompare(right.title, 'en');
   });
   const defaultEntry =
-    entries.find((entry) => entry.section === 'memory_hierarchy' && entry.is_root_scope) ?? entries[0];
+    entries.find((entry) => entry.section === 'system_view' && entry.is_root_scope) ?? entries[0];
   return {
     schema_version: 'mlar.archify-gallery.v1',
     architecture: document.architecture,
@@ -218,7 +225,7 @@ export function renderGalleryHtml(document, diagrams) {
       const query = search.value.trim().toLocaleLowerCase();
       const selectedScope = scopeFilter.value;
       visible = catalog.diagrams.filter((diagram) => {
-        const searchable = [diagram.title, diagram.section_label, diagram.scope_name, ...diagram.scope_path, ...diagram.scope_ids, ...diagram.memory_ids, ...diagram.memory_names].filter(Boolean).join(' ').toLocaleLowerCase();
+        const searchable = [diagram.title, diagram.section_label, diagram.scope_name, ...diagram.scope_path, ...diagram.scope_ids, ...diagram.memory_ids, ...diagram.memory_names, diagram.focus_component_id, diagram.focus_component_name, diagram.focus_component_kind].filter(Boolean).join(' ').toLocaleLowerCase();
         return (!query || searchable.includes(query)) && (!selectedScope || diagram.scope_ids.includes(selectedScope));
       });
       navigation.replaceChildren();

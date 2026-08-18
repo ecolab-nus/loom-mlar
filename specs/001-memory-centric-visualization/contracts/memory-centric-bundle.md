@@ -16,13 +16,12 @@ The output remains a deployable static directory containing:
 
 ## View Sections and Order
 
-1. **Memory hierarchy and access** (`memory_hierarchy`): ownership, recursive memory structure, connected processors/data movers, and exact directional access together. The first root-scope view is the default.
-2. **Additional memory access** (`memory_access`): overflow pages created only when a complete unified view would exceed 12 primary nodes.
-3. **Resources, networks, and scopes** (`supporting_context`): purpose-specific secondary diagrams for resource requirements, network attachments, unconnected scope-owned components, and scopes without components. The internal ID remains stable; `Supporting context` is not shown to readers.
+1. **System View** (`system_view`): ownership, recursive memory structure, connected processors/data movers, and exact directional access together. The first root-scope view is the default.
+2. **Component Views** (`component_views`): one exact one-hop view for every memory, processor, and data mover, plus owning-scope fallbacks for otherwise uncovered entities.
 
 All authored section labels, titles, diagnostics, and navigation strings are English.
 
-## Unified Memory Hierarchy And Access View
+## System View
 
 - When all canonical memories, recursive layers, and directly connected actors total at most 12 primary nodes, the planner emits exactly one primary view and no separate structure or access views.
 - Every canonical memory appears in the primary view, even when unconnected.
@@ -38,27 +37,27 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 - Symbolic values show their expression text; unavailable concrete totals remain explicitly unknown rather than fabricated.
 - No edge is inferred from hierarchy, same-name matching, resource dependencies, or network attachments.
 
-## Overflow Views
+## System View Overflow
 
-- Separate hierarchy windows and memory-anchored access pages are created only when the unified view would contain more than 12 primary nodes.
+- Separate bounded System View windows are created only when the unified view would contain more than 12 primary nodes. Exact routes remain available in Component Views.
 - Wide/deep structures split deterministically with stable breadcrumb context.
-- Access overflow pages retain whole actor units, all direct canonical memory endpoints, and exact unlabeled directional routes.
 - Overflow never expands replicated instances or replaces distinct canonical entities with aggregate nodes.
 
-## Resource, Network, And Scope Views
+## Component Views
 
-- Every source `requires` and `network_attachment` relationship appears at least once.
-- Networks, resources, and actors without memory access remain discoverable.
-- These views are secondary and are not chosen as the default.
-- Resource diagrams are titled as processor or data-mover resource requirements.
-- Network diagrams are titled as network attachments.
-- Uncovered component diagrams name their owning architecture scope.
-- Scope-only diagrams state that they show architecture scopes without components.
+- Every memory, processor, and data mover has a focused view, including unconnected anchors.
+- A focused view contains the anchor, every directly connected canonical component, and all source relationships between them.
+- No transitive neighbor or inferred hierarchy/name/scope relationship is added.
+- A processor or data mover shows exact memory input/output and every directly required resource.
+- A memory shows exact processors/data movers and direct network attachments.
+- Resources and networks do not receive dedicated focus views by default.
+- More than 11 unique neighbors are partitioned deterministically, with the anchor repeated and each neighbor's relationships kept together.
+- Otherwise uncovered components and empty scopes remain discoverable in views explicitly titled for their owning `Architecture Scope`.
 
 ## Gallery Behavior
 
-- Default view: first root-scope unified memory hierarchy-and-access view.
-- Search matches view title, section, scope path, canonical memory name, and memory identity.
+- Default view: first root-scope `System View`.
+- Search matches view title, section, scope path, canonical memory metadata, and focused component ID/name/kind.
 - Scope filtering remains available; an optional memory filter may be added from catalog metadata.
 - URL hashes preserve selected views.
 - Previous/next controls and keyboard navigation remain available.

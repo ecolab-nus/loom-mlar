@@ -38,7 +38,7 @@
 
 ## Decision 4: Unify Hierarchy, Structure, and Access When They Fit
 
-**Decision**: First project canonical memories, recursive layers, and all directly connected actors into one diagram. Emit that single primary diagram whenever the union has at most 12 nodes. Group all read/write relationships by actor so each actor appears once with all of its canonical memory endpoints and original directional edges. Use memory-anchored access pages only as overflow for larger models.
+**Decision**: First project canonical memories, recursive layers, and all directly connected actors into one diagram. Emit that single System View whenever the union has at most 12 nodes. Group all read/write relationships by actor so each actor appears once with all of its canonical memory endpoints and original directional edges. Use bounded System View windows for larger models; exact one-hop Component Views are always generated.
 
 **Rationale**: Separating hierarchy, recursive structure, and access forced users to move among diagrams even when the representative model has only nine relevant nodes. One diagram is the smaller mechanism and makes DRAM, L1, banks, processors, movers, and routes directly comparable. The overflow path remains justified only by the hard readability bound.
 
@@ -51,7 +51,7 @@
 
 ## Decision 5: Partition Deterministically Without Collapsing Entities
 
-**Decision**: Attempt the unified memory view first. Only if it exceeds 12 nodes, split hierarchy subtrees and access actor units into deterministic chunks. Repeat canonical anchors and breadcrumb context across chunks; never replace entities with aggregate nodes or expand replicated instances.
+**Decision**: Attempt the unified System View first. Only if it exceeds 12 nodes, split its hierarchy and structure into deterministic bounded windows. Partition every large focused neighborhood separately by direct-neighbor group, repeating its canonical anchor. Never replace entities with aggregate nodes or expand replicated instances.
 
 **Rationale**: Repetition with stable IDs preserves identity and navigation while satisfying the constitution's hard readability and replication rules. Deterministic ordering makes output reproducible and testable.
 
@@ -61,20 +61,20 @@
 - Collapse many actors into summary nodes: rejected because distinct source entities would become untraceable.
 - Allow oversized views: rejected because the 12-node limit is a compatibility and quality gate.
 
-## Decision 6: Keep Secondary Architecture Details Complete
+## Decision 6: Keep Component Neighborhoods Complete
 
-**Decision**: Preserve resource, network, and otherwise uncovered components in secondary views, chunked by unique nodes. Use the stable internal `supporting_context` section ID, but give the gallery and every diagram purpose-specific reader-facing names. Keep source coverage accounting distinct from presentation-only containment edges.
+**Decision**: Preserve resource, network, and otherwise uncovered components through exact one-hop component neighborhoods. Resources required by processors/data movers and networks attached to memories appear as neighbors; uncovered entities are grouped by owning scope. Keep source coverage accounting distinct from presentation-only containment edges.
 
 **Rationale**: The feature is memory-centric, not memory-exclusive. Network and resource relationships explain movement constraints and every source component/relationship must remain discoverable.
 
 **Alternatives considered**:
 
 - Remove non-memory views: rejected because it would lose modeled information and fail completeness checks.
-- Show all secondary details on every memory page: rejected because it would crowd the primary views and frequently exceed the node cap.
+- Show transitive details on every component page: rejected because it would crowd focused views, frequently exceed the node cap, and imply indirect dependencies.
 
 ## Decision 7: Retain the Static Gallery and Archify Renderer Boundary
 
-**Decision**: Make the unified hierarchy-and-access diagram the gallery default, list overflow access only when required, enrich catalog search/filter metadata, and retain hashes, keyboard navigation, scope filtering, standalone opening, and iframe embedding of delivered Archify HTML.
+**Decision**: Make `System View` the gallery default, place all focused neighborhoods under `Component Views`, enrich catalog search/filter metadata, and retain hashes, keyboard navigation, scope filtering, standalone opening, and iframe embedding of delivered Archify HTML.
 
 **Rationale**: The existing shell already provides the needed navigation without drawing architecture graphics. Enhancing its catalog is sufficient for linked bounded views and avoids a second renderer.
 
@@ -108,7 +108,7 @@
 
 ## Decision 10: Use MLAR Legend And View Names
 
-**Decision**: Override Archify's architecture-type legend labels with `Memory`, `Processor`, `Data Mover`, `Resource`, `Network`, and `Architecture Scope`. Use automatic legend visibility so only roles present in a diagram appear. Rename the gallery's secondary section to `Resources, networks, and scopes`, and name each secondary diagram after the relationship or scope membership it actually presents.
+**Decision**: Override Archify's architecture-type legend labels with `Memory`, `Processor`, `Data Mover`, `Resource`, `Network`, and `Architecture Scope`. Use automatic legend visibility so only roles present in a diagram appear. Name the two reader-facing sections `System View` and `Component Views`.
 
 **Rationale**: Archify's stable visual types are an implementation detail. Labels such as `Backend`, `Database`, `Message bus`, and `Supporting context` do not describe MLAR concepts and make scope ownership or processor I/O unnecessarily hard to interpret. A legend override and precise titles fix the wording without changing the renderer, source schema, or topology.
 
@@ -116,4 +116,16 @@
 
 - Change the vendored Archify type catalog: rejected because MLAR-specific language belongs in generated specifications and changing global defaults would affect unrelated diagrams.
 - Hide the legend: rejected because the three actor/memory roles are useful when named correctly.
-- Add separate processor-I/O diagrams for every actor: rejected because the unified view already shows those exact paths; a subtitle can explain them without duplicating diagrams.
+- Keep generic `Resources, networks, and scopes` pages: rejected because resource requirements and network attachments are clearer in the exact one-hop view of the component they constrain or connect.
+
+## Decision 11: Give Every Primary Component An Exact One-Hop View
+
+**Decision**: Create a focused view for every memory, processor, and data mover. Each view contains its anchor, every directly connected canonical component, and all source relationships between the anchor and those neighbors. Do not include transitive neighbors. Resources and networks remain neighbors rather than focus anchors; uncovered components use owning-scope fallback views.
+
+**Rationale**: A user inspecting one component needs both its immediate data path and its direct resource dependencies without guessing what a generic context page represents. One-hop projection is the smallest precise rule: it is complete for the anchor, deterministic, and cannot accidentally imply transitive access.
+
+**Alternatives considered**:
+
+- Add a focus view only for actors: rejected because memory users and network attachments are equally important direct questions.
+- Recursively expand neighbors: rejected because it obscures the focus, duplicates the system graph, and can imply dependencies the anchor does not have.
+- Give resources and networks dedicated views: rejected because they have no additional modeled relationships beyond the direct neighborhoods that already expose them.

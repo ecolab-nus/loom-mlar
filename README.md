@@ -83,7 +83,7 @@ node tools/mlar-archify/bin/mlar-archify.mjs build \
 node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 ```
 
-The generated application opens on one combined memory hierarchy-and-access
+The generated application opens on `System View`, one combined memory-centric
 diagram whenever the model fits the 12-node readability limit. Scope boundaries
 show where each canonical memory belongs; recursive banks, directly connected
 compute processors and data movers appear in that same diagram. Actors sit
@@ -91,10 +91,12 @@ between their source and destination memory levels, and arrowheads form
 source-memory → actor → destination-memory routes without `read`/`write` edge
 text. The legend uses the MLAR names `Memory`, `Processor`, and `Data Mover`,
 and the subtitle distinguishes these I/O paths from architecture-scope
-boundaries. Larger models alone use overflow views. Resource requirements,
-network attachments, unconnected components in a named scope, and empty scopes
-remain available under `Resources, networks, and scopes`, with each diagram
-titled by its exact purpose. The gallery embeds standalone Archify artifacts
+boundaries. `Component Views` then provides one exact one-hop view for every
+memory, processor, and data mover. Processor/data-mover views include their
+direct memory endpoints and required resources; memory views include their
+direct actors and network attachments. Resources and networks are neighbors,
+not standalone focus views, and uncovered entities are grouped by owning
+architecture scope. The gallery embeds standalone Archify artifacts
 and can be deployed to any static web host.
 
 The complete 2D mesh example in

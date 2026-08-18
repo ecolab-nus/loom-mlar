@@ -336,8 +336,8 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/architecture
 ```
 
-Open `http://127.0.0.1:4173/` to use the generated architecture gallery. When
-the complete memory projection fits within 12 nodes, it opens one diagram that
+Open `http://127.0.0.1:4173/` to use the generated architecture gallery. Its
+default `System View`, when the complete projection fits within 12 nodes, is one diagram that
 combines memory hierarchy, recursive layers, processors/data movers, and access
 edges. Search accepts memory names, canonical IDs, scope paths, and view titles.
 Scope filtering, previous/next navigation, deep links, and independent diagram
@@ -355,10 +355,13 @@ show hierarchy and ownership only and must not be interpreted as access.
 Additional access pages are generated only when the combined diagram would
 exceed 12 nodes.
 
-The secondary gallery section is `Resources, networks, and scopes`. Its
-diagrams are not generic context pages: their titles identify processor or
-data-mover resource requirements, network attachments, unconnected components
-owned by a named architecture scope, or architecture scopes without components.
+`Component Views` contains one exact one-hop diagram for every memory,
+processor, and data mover. An actor view combines its direct memory input/output
+with every resource it directly requires. A memory view combines its direct
+actors and network attachments. These views never add transitive neighbors.
+Resources and networks appear as neighbors rather than standalone focus views;
+otherwise uncovered entities are grouped by an explicitly named owning
+`Architecture Scope`.
 
 The converter produces several flat semantic diagrams when needed instead of
 folding distinct components together. Replication such as an 8×8 mesh remains

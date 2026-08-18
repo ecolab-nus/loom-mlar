@@ -151,6 +151,18 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 
 ---
 
+## Phase 10: System And Component Views Follow-up
+
+**Purpose**: Replace the hierarchy/resource-oriented gallery taxonomy with one complete `System View` and direct one-hop `Component Views` for memories, processors, and data movers.
+
+- [X] T039 Add failing tests for the `System View` default, `Component Views` gallery section, one anchored view per memory/processor/data mover, exact direct-neighbor relationships, processor/data-mover resource inclusion, no transitive neighbors, no default resource/network focus views, deterministic over-12 partitioning, and scope-owned fallback coverage in `tools/mlar-archify/test/planner.test.mjs`
+- [X] T040 Implement the system-view naming, one-hop component-neighborhood projection, anchored bounded partitioning, scope boundaries, and uncovered-component fallback in `tools/mlar-archify/bin/mlar-archify.mjs`
+- [X] T041 Update gallery ordering, default selection, component-focus catalog metadata, and search behavior for `System View` and `Component Views` in `tools/mlar-archify/lib/gallery.mjs`
+- [X] T042 Update `plan.md`, `research.md`, `data-model.md`, bundle contract, quickstart, adapter README, and canonical project documentation to make the two-section system/component model authoritative
+- [X] T043 Rebuild and validate the representative bundle, verify all focused neighborhoods and coverage receipts, rerun adapter/documentation/Rust compatibility checks, inspect the final worktree, and record the evidence below
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -164,6 +176,7 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 - **Unified follow-up (Phase 7)**: Starts after T026; T027 → T028 → T029 → T030.
 - **Actor-route follow-up (Phase 8)**: Starts after T030; T031 → T032 → T033 → T034.
 - **Semantic-label follow-up (Phase 9)**: Starts after T034; T035 → T036 → T037 → T038.
+- **System/component follow-up (Phase 10)**: Starts after T038; T039 → T040 → T041 → T042 → T043.
 
 ### User Story Dependencies
 
@@ -255,6 +268,7 @@ Task T016: Implement supporting-context gallery organization in tools/mlar-archi
 - T030 follow-up: the rebuilt 2D mesh bundle has exactly one 9-node `memory_hierarchy` primary diagram, zero `memory_access` diagrams, all 10 canonical read/write relationships, both derived bank-containment relationships, and zero omitted source IDs. One machine-assisted query found hierarchy, both bank layers, both compute processors with read/write access, and both cross-level mover routes in that single diagram in 0.195 ms. All seven generated diagrams passed showcase validation/delivery; browser visual checks remain truthfully `skipped` because Chrome/Chromium is unavailable. Rust/v1 compatibility-boundary files retain zero diff.
 - T034 follow-up: the rebuilt 2D mesh primary specification places DRAM at column 0, all five connected processors/data movers at column 1, and L1 at column 2. It contains DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM with arrow-only access segments and zero access labels. All 14 adapter tests pass, all seven diagrams pass showcase validation/delivery with zero source omissions, and all seven browser visual checks remain `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, and the four focused Rust visualization tests pass; the Rust projection, public re-export, v1 schema, and tracked visualization YAML retain zero diff.
 - T038 follow-up: the final 2D mesh bundle contains the visible primary legend labels `Memory`, `Processor`, and `Data Mover`, with no `Backend`, `Database`, or `Message bus` text. Its six secondary diagrams are titled as three data-mover resource views, two processor resource views, and one `Unconnected components in scope · system` view; the gallery section is `Resources, networks, and scopes`. All 15 adapter tests pass, all seven diagrams pass showcase validation/delivery with zero source omissions, and all seven browser visual checks remain `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, and the four focused Rust visualization tests pass; the Rust projection, public re-export, v1 schema, tracked visualization YAML, and maintained documentation-diagram JSON sources retain zero diff.
+- T043 follow-up: the rebuilt 2D mesh bundle contains one `System View`, seven focused `Component Views` (one per memory, processor, and data mover), and one owning-scope fallback for the three otherwise uncovered resources. The `dram_l1_noc0` view contains only DRAM, L1, the mover, and its three direct required resources; the L1 view contains only L1 and its five directly connected actors. All 18 adapter tests pass, all nine specifications pass showcase validation/delivery, every source scope/component/relationship is covered, and all nine browser visual checks are truthfully `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, focused Rust visualization/export tests, and the full Rust suite pass (with external-validator-dependent tests ignored as declared). The Rust projection, public re-export, v1 schema, tracked visualization YAML, and maintained documentation-diagram JSON sources retain zero diff.
 - Rust and v1 schema files are regression boundaries, not implementation targets.
 - Derived memory-layer IDs are presentation-only and cannot become processor/data-mover endpoints.
 - Scope containment communicates ownership only; it never creates read/write access.

@@ -469,8 +469,9 @@ function createDiagram({
   id,
   title,
   subtitle = null,
-  section = 'supporting_context',
+  section = 'component_views',
   primaryScopeId = null,
+  focusComponentId = null,
   components,
   relationships = [],
   boundaries = [],
@@ -534,6 +535,7 @@ function createDiagram({
     type: 'architecture',
     section,
     primaryScopeId,
+    focusComponentId,
     spec,
     componentIds: sortedComponents
       .filter((component) => component.kind !== 'scope' && !component.derived)
@@ -572,6 +574,22 @@ function scopeIdsForComponents(components, scopesById) {
     for (const scope of scopePath(component.scope, scopesById)) result.add(scope.id);
   }
   return [...result].sort();
+}
+
+function scopeBoundariesForComponents(components, scopesById) {
+  const componentIdsByScope = new Map();
+  for (const component of components) {
+    if (!component.scope) continue;
+    if (!componentIdsByScope.has(component.scope)) componentIdsByScope.set(component.scope, []);
+    componentIdsByScope.get(component.scope).push(component.id);
+  }
+  return [...componentIdsByScope.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([scopeId, wraps]) => ({
+      kind: 'region',
+      label: scopeContextLabel(scopeId, scopesById),
+      wraps: wraps.sort(),
+    }));
 }
 
 function unifiedMemoryDiagram(document, projection) {
@@ -634,27 +652,13 @@ function unifiedMemoryDiagram(document, projection) {
     relationships.push(...unit.relationships);
   });
 
-  const memoryAndLayerIdsByScope = new Map();
-  for (const component of components) {
-    if (component.kind !== 'memory' && component.kind !== 'memory_layer') continue;
-    if (!memoryAndLayerIdsByScope.has(component.scope)) {
-      memoryAndLayerIdsByScope.set(component.scope, []);
-    }
-    memoryAndLayerIdsByScope.get(component.scope).push(component.id);
-  }
-  const boundaries = [...memoryAndLayerIdsByScope.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([scopeId, wraps]) => ({
-      kind: 'region',
-      label: scopeContextLabel(scopeId, projection.scopesById),
-      wraps,
-    }));
+  const boundaries = scopeBoundariesForComponents(components, projection.scopesById);
 
   return createDiagram({
-    id: 'memory-hierarchy-1',
-    title: 'Memory hierarchy and access',
+    id: 'system-view-1',
+    title: 'System View',
     subtitle: 'Arrows show source memory → processor or data mover → destination memory; boundaries show architecture scopes.',
-    section: 'memory_hierarchy',
+    section: 'system_view',
     primaryScopeId: document.architecture.root_scope,
     components,
     relationships,
@@ -664,7 +668,7 @@ function unifiedMemoryDiagram(document, projection) {
   });
 }
 
-function hierarchyDiagrams(document, projection) {
+function systemOverflowDiagrams(document, projection) {
   const diagrams = [];
   const memoryPresentations = projection.memories.map((memory) => ({
     ...memory,
@@ -701,10 +705,10 @@ function hierarchyDiagrams(document, projection) {
     if (memoryChunk.length === 0) scopeIds.add(document.architecture.root_scope);
     const suffix = overviewChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
     const diagram = createDiagram({
-      id: diagramId(['memory-hierarchy', String(chunkIndex + 1)]),
-      title: `Memory hierarchy${suffix}`,
+      id: diagramId(['system-view', String(chunkIndex + 1)]),
+      title: `System View${suffix}`,
       subtitle: 'Boundaries show architecture scopes; containment lines show recursive memory structure.',
-      section: 'memory_hierarchy',
+      section: 'system_view',
       primaryScopeId: document.architecture.root_scope,
       components,
       boundaries,
@@ -735,7 +739,7 @@ function hierarchyDiagrams(document, projection) {
         id: diagramId(['memory-structure', memory.id, String(page)]),
         title: `Memory structure · ${[...pathNames, memory.name].join(' / ')}${pageSuffix}`,
         subtitle: 'Containment lines show recursive memory structure inside the owning architecture scope.',
-        section: 'memory_hierarchy',
+        section: 'system_view',
         primaryScopeId: memory.scope,
         components,
         relationships,
@@ -756,72 +760,73 @@ function hierarchyDiagrams(document, projection) {
   return diagrams;
 }
 
-function packActorUnits(anchorId, actorIds, projection) {
-  const result = [];
-  let units = [];
-  let ids = new Set([anchorId]);
-  const flush = () => {
-    if (units.length > 0) result.push(units);
-    units = [];
-    ids = new Set([anchorId]);
+function componentRole(component) {
+  const labels = {
+    memory: 'Memory',
+    processor: 'Processor',
+    data_mover: 'Data Mover',
   };
-  for (const actorId of actorIds) {
-    const unit = projection.accessByActor.get(actorId);
-    const unitIds = new Set([actorId, ...unit.endpointIds]);
-    const candidate = new Set([...ids, ...unitIds]);
-    if (candidate.size > MAX_COMPONENTS && units.length > 0) flush();
-    units.push(unit);
-    ids = new Set([...ids, ...unitIds]);
-  }
-  flush();
-  return result;
+  return labels[component.kind];
 }
 
-function accessDiagrams(projection) {
+function componentTitle(component, scopesById) {
+  const pathNames = scopePath(component.scope, scopesById).map((scope) => scope.name);
+  return `${componentRole(component)} · ${[...pathNames, component.name].join(' / ')}`;
+}
+
+function directRelationshipGroups(componentId, document) {
+  const groupsByNeighbor = new Map();
+  for (const relationship of document.relationships) {
+    let neighborId = null;
+    if (relationship.source === componentId) neighborId = relationship.target;
+    if (relationship.target === componentId) neighborId = relationship.source;
+    if (!neighborId) continue;
+    if (!groupsByNeighbor.has(neighborId)) groupsByNeighbor.set(neighborId, []);
+    groupsByNeighbor.get(neighborId).push(relationship);
+  }
+  return [...groupsByNeighbor.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([neighborId, relationships]) => ({
+      neighborId,
+      relationships: relationships.sort((left, right) => left.id.localeCompare(right.id)),
+    }));
+}
+
+function componentDiagrams(document, projection) {
   const diagrams = [];
-  for (const memory of projection.memories) {
-    const actorIds = [...(projection.actorIdsByMemory.get(memory.id) ?? [])].sort();
-    if (actorIds.length === 0) continue;
-    const unitChunks = packActorUnits(memory.id, actorIds, projection);
-    for (const [chunkIndex, units] of unitChunks.entries()) {
-      const ids = new Set([memory.id]);
-      const relationshipById = new Map();
-      for (const unit of units) {
-        ids.add(unit.actor.id);
-        for (const endpointId of unit.endpointIds) ids.add(endpointId);
-        for (const relationship of unit.relationships) {
-          relationshipById.set(relationship.id, relationship);
-        }
-      }
-      const components = [...ids].map((id) => ({ ...projection.componentsById.get(id) }));
-      const positions = new Map([[
-        memory.id,
-        { row: 0, col: Math.floor((units.length - 1) / 2) },
-      ]]);
-      units.forEach((unit, index) => {
-        positions.set(unit.actor.id, { row: 1, col: index });
-        for (const relationship of unit.relationships) {
-          const endpointId = relationship.kind === 'read'
-            ? relationship.source
-            : relationship.target;
-          if (endpointId === memory.id || positions.has(endpointId)) continue;
-          positions.set(endpointId, {
-            row: 2,
-            col: index,
-          });
-        }
+  const focusComponents = document.components
+    .filter((component) => ['memory', 'processor', 'data_mover'].includes(component.kind))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  for (const focus of focusComponents) {
+    const groups = directRelationshipGroups(focus.id, document);
+    const pages = groups.length === 0 ? [[]] : chunks(groups, MAX_COMPONENTS - 1);
+    for (const [pageIndex, pageGroups] of pages.entries()) {
+      const relationships = pageGroups.flatMap((group) => group.relationships);
+      const components = [{
+        ...focus,
+        row: 0,
+        col: Math.floor(Math.max(0, pageGroups.length - 1) / 2),
+      }];
+      pageGroups.forEach((group, index) => {
+        components.push({
+          ...projection.componentsById.get(group.neighborId),
+          row: 1,
+          col: index,
+        });
       });
-      for (const component of components) Object.assign(component, positions.get(component.id));
-      const pathNames = scopePath(memory.scope, projection.scopesById).map((scope) => scope.name);
-      const suffix = unitChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
+      const suffix = pages.length > 1 ? ` · ${pageIndex + 1}` : '';
       const diagram = createDiagram({
-        id: diagramId(['memory-access', memory.id, String(chunkIndex + 1)]),
-        title: `Memory access · ${[...pathNames, memory.name].join(' / ')}${suffix}`,
-        subtitle: 'Arrows show source memory → processor or data mover → destination memory.',
-        section: 'memory_access',
-        primaryScopeId: memory.scope,
+        id: diagramId(['component', focus.id, String(pageIndex + 1)]),
+        title: `${componentTitle(focus, projection.scopesById)}${suffix}`,
+        subtitle: focus.kind === 'memory'
+          ? 'Direct processors, data movers, and network attachments; boundaries show architecture scopes.'
+          : 'Arrows show direct memory input and output; dashed edges show required resources; boundaries show architecture scopes.',
+        section: 'component_views',
+        primaryScopeId: focus.scope,
+        focusComponentId: focus.id,
         components,
-        relationships: [...relationshipById.values()],
+        relationships,
+        boundaries: scopeBoundariesForComponents(components, projection.scopesById),
         sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
         memoryIds: components
           .filter((component) => component.kind === 'memory')
@@ -833,74 +838,9 @@ function accessDiagrams(projection) {
   return diagrams;
 }
 
-function supportingDiagrams(document, projection, existingDiagrams) {
+function fallbackDiagrams(document, projection, existingDiagrams) {
   const diagrams = [];
-  const coveredRelationships = new Set(
-    existingDiagrams.flatMap((diagram) => diagram.relationshipIds),
-  );
-  const remainingRelationships = document.relationships
-    .filter((relationship) => !coveredRelationships.has(relationship.id))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const relationshipsBySource = new Map();
-  for (const relationship of remainingRelationships) {
-    if (!relationshipsBySource.has(relationship.source)) {
-      relationshipsBySource.set(relationship.source, []);
-    }
-    relationshipsBySource.get(relationship.source).push(relationship);
-  }
-  for (const [sourceId, sourceRelationships] of [...relationshipsBySource.entries()].sort()) {
-    for (const [chunkIndex, relationshipChunk] of chunks(
-      sourceRelationships,
-      MAX_COMPONENTS - 1,
-    ).entries()) {
-      const targetIds = [...new Set(
-        relationshipChunk.map((relationship) => relationship.target),
-      )].sort();
-      const source = { ...projection.componentsById.get(sourceId) };
-      source.row = 0;
-      source.col = Math.floor((targetIds.length - 1) / 2);
-      const components = [
-        source,
-        ...targetIds.map((targetId, index) => ({
-          ...projection.componentsById.get(targetId),
-          row: 1,
-          col: index,
-        })),
-      ];
-      const suffix = sourceRelationships.length > MAX_COMPONENTS - 1
-        ? ` · ${chunkIndex + 1}`
-        : '';
-      const relationshipKind = relationshipChunk[0].kind;
-      const actorRole = source.kind === 'data_mover' ? 'Data mover' : 'Processor';
-      const title = relationshipKind === 'requires'
-        ? `${actorRole} resources · ${source.name}${suffix}`
-        : relationshipKind === 'network_attachment'
-          ? `Network attachments · ${source.name}${suffix}`
-          : `Component relationships · ${source.name}${suffix}`;
-      const subtitle = relationshipKind === 'requires'
-        ? `Shared resources required by this ${source.kind === 'data_mover' ? 'data mover' : 'processor'}.`
-        : relationshipKind === 'network_attachment'
-          ? 'Memory regions attached to this architecture network.'
-          : 'Source relationships not included in the memory-path diagram.';
-      const diagram = createDiagram({
-        id: diagramId(['supporting-relationships', sourceId, String(chunkIndex + 1)]),
-        title,
-        subtitle,
-        section: 'supporting_context',
-        primaryScopeId: source.scope ?? document.architecture.root_scope,
-        components,
-        relationships: relationshipChunk,
-        sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
-        memoryIds: components
-          .filter((component) => component.kind === 'memory')
-          .map((component) => component.id),
-      });
-      if (diagram) diagrams.push(diagram);
-    }
-  }
-
-  const allDiagrams = [...existingDiagrams, ...diagrams];
-  const coveredComponents = new Set(allDiagrams.flatMap((diagram) => diagram.componentIds));
+  const coveredComponents = new Set(existingDiagrams.flatMap((diagram) => diagram.componentIds));
   const uncoveredComponents = document.components
     .filter((component) => !coveredComponents.has(component.id))
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -919,10 +859,10 @@ function supportingDiagrams(document, projection, existingDiagrams) {
     for (const [chunkIndex, componentChunk] of componentChunks.entries()) {
       const suffix = componentChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
       const diagram = createDiagram({
-        id: diagramId(['supporting-components', scopeId, String(chunkIndex + 1)]),
-        title: `Unconnected components in scope · ${scopeName}${suffix}`,
-        subtitle: 'Canonical components owned by this architecture scope with no displayed memory path, resource requirement, or network attachment.',
-        section: 'supporting_context',
+        id: diagramId(['scope-components', scopeId, String(chunkIndex + 1)]),
+        title: `Architecture Scope · ${scopeName} · unconnected components${suffix}`,
+        subtitle: 'Canonical components owned by this architecture scope that are not direct neighbors of a memory, processor, or data mover.',
+        section: 'component_views',
         primaryScopeId: scopeId,
         components: componentChunk,
         sourceScopeIds: scopeIdsForComponents(componentChunk, projection.scopesById),
@@ -934,31 +874,27 @@ function supportingDiagrams(document, projection, existingDiagrams) {
     }
   }
 
-  const coveredScopes = new Set(
-    [...existingDiagrams, ...diagrams].flatMap((diagram) => diagram.scopeIds),
-  );
+  const coveredScopes = new Set([...existingDiagrams, ...diagrams]
+    .flatMap((diagram) => diagram.scopeIds));
   const uncoveredScopes = document.scopes
     .filter((scope) => !coveredScopes.has(scope.id))
     .sort((left, right) => left.id.localeCompare(right.id));
-  for (const scopeChunk of chunks(uncoveredScopes, MAX_COMPONENTS)) {
-    const scopeLabel = scopeChunk.length === 1
-      ? scopeChunk[0].name
-      : `${scopeChunk.length} scopes`;
-    const scopeComponents = scopeChunk.map((scope) => ({
+  for (const scope of uncoveredScopes) {
+    const scopeComponent = {
       kind: 'scope',
       id: scope.id,
       name: scope.name,
       dimensions: scope.dimensions,
       replication_factor: scope.replication_factor,
-    }));
+    };
     const diagram = createDiagram({
-      id: diagramId(['supporting-scopes', String(diagrams.length + 1)]),
-      title: `Architecture scopes without components · ${scopeLabel}`,
-      subtitle: 'Architecture scopes not represented by a component or memory ownership boundary in another diagram.',
-      section: 'supporting_context',
-      primaryScopeId: scopeChunk[0]?.id ?? document.architecture.root_scope,
-      components: scopeComponents,
-      sourceScopeIds: scopeChunk.map((scope) => scope.id),
+      id: diagramId(['scope', scope.id]),
+      title: `Architecture Scope · ${scopeContextLabel(scope.id, projection.scopesById)}`,
+      subtitle: 'An architecture scope with no canonical components.',
+      section: 'component_views',
+      primaryScopeId: scope.id,
+      components: [scopeComponent],
+      sourceScopeIds: [scope.id],
     });
     if (diagram) diagrams.push(diagram);
   }
@@ -968,9 +904,9 @@ function supportingDiagrams(document, projection, existingDiagrams) {
 export function planDiagrams(document) {
   const projection = buildProjection(document);
   const unified = unifiedMemoryDiagram(document, projection);
-  const diagrams = unified ? [unified] : hierarchyDiagrams(document, projection);
-  if (!unified) diagrams.push(...accessDiagrams(projection));
-  diagrams.push(...supportingDiagrams(document, projection, diagrams));
+  const diagrams = unified ? [unified] : systemOverflowDiagrams(document, projection);
+  diagrams.push(...componentDiagrams(document, projection));
+  diagrams.push(...fallbackDiagrams(document, projection, diagrams));
 
   const ids = new Set();
   for (const diagram of diagrams) {
@@ -1058,6 +994,7 @@ function build({ inputPath, outputDirectory, visualCheck }) {
       relationship_ids: diagram.relationshipIds,
       derived_relationship_ids: diagram.derivedRelationshipIds,
       memory_ids: diagram.memoryIds,
+      focus_component_id: diagram.focusComponentId,
       validation,
       delivery,
       visual_check: visual,
@@ -1100,7 +1037,7 @@ function build({ inputPath, outputDirectory, visualCheck }) {
       maximum_primary_nodes: MAX_COMPONENTS,
       expand_replicated_instances: false,
       create_synthetic_collapsed_nodes: false,
-      partition_strategy: 'unified_memory_view_then_bounded_overflow_then_supporting_context',
+      partition_strategy: 'bounded_system_view_then_one_hop_component_views',
     },
   };
   writeJson(path.join(outputDirectory, 'conversion-report.json'), report);

@@ -86,14 +86,14 @@ Presentation of one recursive array or bank value inside a canonical memory.
 
 Derived layer IDs are stable within the same canonical source structure but are not added to source coverage counts.
 
-### Unified Memory View
+### System View
 
 The default bounded diagram for architectures whose complete memory-centric
 projection fits within 12 primary nodes.
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable root view ID (`memory-hierarchy-1`) |
+| `id` | Stable root view ID (`system-view-1`) |
 | `canonical_memory_ids` | Every canonical memory in the architecture |
 | `layer_nodes` | Every derived recursive array/bank layer |
 | `actor_ids` | Every processor/data mover with direct memory access |
@@ -113,10 +113,10 @@ Validation rules:
 - A subtitle defines arrows as source-memory input → actor → destination-memory output and boundaries as architecture scopes.
 - Containment never implies access and remains separate from source coverage.
 
-### Memory Hierarchy Overflow Window
+### System View Overflow Window
 
 A bounded overflow view of ownership and recursive containment, used only when
-the unified memory view would exceed 12 nodes.
+the unified System View would exceed 12 nodes.
 
 | Field | Meaning |
 | --- | --- |
@@ -135,56 +135,52 @@ Validation rules:
 - Containment connections never enter the source relationship coverage set.
 - No aggregate or replicated-instance nodes are generated.
 
-### Actor Access Unit
+### Direct Neighbor Group
 
-One executable component and all of its direct memory access facts, considered atomically for packing.
+One canonical neighbor and every source relationship directly connecting it to a focused component, considered atomically for packing.
 
 | Field | Meaning |
 | --- | --- |
-| `actor_id` | Canonical processor/data-mover ID |
-| `anchor_memory_id` | Memory whose page includes this unit |
-| `endpoint_memory_ids` | All canonical memories connected to the actor by read/write relationships |
-| `relationship_ids` | All canonical read/write relationships among the actor and endpoints |
-| `source_memory_ids` | Canonical memories whose relationship arrows enter the actor |
-| `destination_memory_ids` | Canonical memories whose relationship arrows leave the actor |
+| `focus_component_id` | Canonical memory, processor, or data-mover anchor |
+| `neighbor_component_id` | Canonical component at the other end of a direct relationship |
+| `relationship_ids` | Every canonical relationship directly connecting anchor and neighbor |
 
 Validation rules:
 
-- The anchor must occur in `endpoint_memory_ids`.
-- The actor appears once per view even when both read and write relationships exist.
-- All endpoints are exact canonical memories; no ancestor/descendant inference is allowed.
-- A data mover with source and destination shows both unlabeled directional segments whenever its unit fits in one view.
+- The neighbor appears once per view even when multiple relationships connect it to the anchor.
+- No neighbor-of-neighbor relationship is included.
+- Read/write, requires, and network-attachment semantics and directions remain unchanged.
 
-### Memory Access Overflow Window
+### Component View
 
-A bounded overflow diagram anchored on one canonical memory and containing one
-or more actor access units. It is not generated when the unified view fits.
+A bounded one-hop diagram anchored on one canonical memory, processor, or data mover.
 
 | Field | Meaning |
 | --- | --- |
 | `id` | Deterministic anchor/page ID |
-| `anchor_memory_id` | Repeated canonical center across pages |
-| `actor_units` | Whole access units packed into this page |
-| `component_ids` | Unique canonical memories and actors displayed |
-| `source_relationship_ids` | Exact directional route segments displayed without access-kind labels |
-| `primary_scope_id` | Anchor memory's owning scope |
+| `focus_component_id` | Repeated canonical anchor across pages |
+| `neighbor_groups` | Direct neighbor groups packed into this page |
+| `component_ids` | Anchor and unique direct canonical neighbors displayed |
+| `source_relationship_ids` | Exact incident relationships displayed |
+| `primary_scope_id` | Anchor's owning scope |
 
 Validation rules:
 
 - At most 12 unique primary nodes.
-- Units are ordered deterministically by actor ID before packing.
-- If one unit exceeds the limit, endpoint paging retains both the anchor and actor on every page.
-- Across all access windows, every source read/write relationship appears at least once.
+- Neighbor groups are ordered deterministically by canonical ID before packing.
+- The anchor is retained on every page.
+- Every memory, processor, and data mover receives at least one view, including unconnected anchors.
+- Resources required by actors and networks attached to memories appear as direct neighbors, not dedicated focus views.
 
-### Resource, Network, Or Scope Window
+### Architecture Scope Fallback
 
-Secondary bounded view stored under the compatibility-stable `supporting_context` section ID for resource dependencies, network attachments, or canonical components/scopes not otherwise covered.
+Bounded fallback under `component_views` for canonical components or scopes not covered by any focus neighborhood.
 
 - Uses canonical component and relationship IDs.
 - Contains at most 12 primary nodes.
+- Groups uncovered components by their exact owning scope.
+- Uses `Architecture Scope` in the title so ownership semantics are explicit.
 - Never becomes the default gallery view.
-- Ensures complete source coverage without crowding memory hierarchy/access views.
-- Uses a purpose-specific title: processor/data-mover resources, network attachments, unconnected components in a named architecture scope, or architecture scopes without components.
 
 ### Gallery Catalog Entry
 
@@ -193,12 +189,13 @@ Navigation metadata for one delivered Archify diagram.
 | Field | Meaning |
 | --- | --- |
 | `id`, `title`, `html` | Stable view identity and delivered artifact |
-| `section` | Unified/overflow `memory_hierarchy`, overflow-only `memory_access`, or compatibility-stable `supporting_context` displayed as `Resources, networks, and scopes` |
+| `section` | `system_view` or `component_views` |
 | `scope_id`, `scope_path` | Ownership/filter context |
 | `memory_ids`, `memory_names` | Search and optional memory-filter context |
 | `component_count`, `relationship_count` | Review metadata |
+| `focus_component_id`, `focus_component_name`, `focus_component_kind` | Exact anchor metadata, null for scope fallbacks |
 
-The first root-scope `memory_hierarchy` entry is the default. Catalog metadata supports navigation only; rendered architecture graphics remain inside delivered Archify HTML.
+The first root-scope `system_view` entry is the default. Catalog metadata supports navigation only; rendered architecture graphics remain inside delivered Archify HTML.
 
 ## Relationships
 
@@ -208,10 +205,10 @@ Scope 1 ──owns──> 0..* Executable Component
 Scope 0..1 ──parents──> 0..* Scope
 Canonical Memory Component 1 ──contains──> 1..* Memory Layer Node
 Canonical Memory Component * <──read/write──> * Executable Component
-Unified Memory View 1 ──presents──> * Canonical Memory Component / Memory Layer Node / Executable Component
-Canonical Memory Component 1 ──anchors──> 0..* Memory Access Overflow Window
-Memory Hierarchy Overflow Window * ──presents──> * Canonical Memory Component / Memory Layer Node
-Memory Access Overflow Window * ──packs──> * Actor Access Unit
+System View 1 ──presents──> * Canonical Memory Component / Memory Layer Node / Executable Component
+System View Overflow Window * ──presents──> * Canonical Memory Component / Memory Layer Node
+Canonical Memory Component / Executable Component 1 ──anchors──> 1..* Component View
+Component View * ──packs──> * Direct Neighbor Group
 Gallery Catalog Entry 1 ──opens──> 1 delivered Archify diagram
 ```
 
@@ -221,7 +218,7 @@ The bundle has no mutable user state. Its build lifecycle is:
 
 1. **Loaded**: YAML parsed.
 2. **Validated**: v1 schema and canonical references pass.
-3. **Projected**: scope paths, memory layers, and access units derived.
-4. **Planned**: one unified memory view is created when it fits; otherwise bounded hierarchy/access overflow windows are created, followed by purpose-specific resource, network, and scope views.
+3. **Projected**: scope paths, memory layers, and direct neighbor groups derived.
+4. **Planned**: bounded System View pages, exact one-hop Component Views, and any scope fallbacks are created.
 5. **Delivered**: each specification passes showcase validation and becomes standalone HTML.
 6. **Reported**: manifest and conversion report prove coverage; the build fails if omissions exist.

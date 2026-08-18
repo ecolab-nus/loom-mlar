@@ -117,16 +117,16 @@ function planned(source = document) {
   return planDiagrams(source);
 }
 
-test('US1 plans root-first bounded memory hierarchy with stable structural detail', () => {
+test('US1 plans a bounded System View with stable structural detail', () => {
   const diagrams = planned();
-  const hierarchy = diagrams.filter((diagram) => diagram.section === 'memory_hierarchy');
-  assert.equal(hierarchy.length, 1);
-  assert.equal(diagrams.filter((diagram) => diagram.section === 'memory_access').length, 0);
+  const systemViews = diagrams.filter((diagram) => diagram.section === 'system_view');
+  assert.equal(systemViews.length, 1);
   assert.ok(diagrams.every((diagram) => diagram.spec.components.length <= 12));
   assert.ok(diagrams.every((diagram) => diagram.spec.meta.quality_profile === 'showcase'));
 
-  const overview = hierarchy[0];
-  assert.equal(overview.id, 'memory-hierarchy-1');
+  const overview = systemViews[0];
+  assert.equal(overview.id, 'system-view-1');
+  assert.equal(overview.title, 'System View');
   assert.deepEqual(overview.spec.meta.legend, {
     mode: 'auto',
     entries: {
@@ -149,6 +149,9 @@ test('US1 plans root-first bounded memory hierarchy with stable structural detai
   assert.deepEqual(overview.scopeIds, ['scope-core', 'scope-system']);
   assert.ok(overview.spec.boundaries.some(
     (boundary) => boundary.label === 'system / core · 4 instances',
+  ));
+  assert.ok(overview.spec.boundaries.some(
+    (boundary) => boundary.wraps.includes('processor-lane'),
   ));
   assert.equal(
     overview.spec.components.find((component) => component.id === 'memory-scratch').tag,
@@ -182,7 +185,7 @@ test('US1 plans root-first bounded memory hierarchy with stable structural detai
   ), 'scope hierarchy must not imply DRAM/L1 access');
 });
 
-test('US1 partitions wide memory hierarchies without expanding instances', () => {
+test('US1 partitions a wide System View without expanding instances', () => {
   const wide = structuredClone(document);
   for (let index = 0; index < 12; index += 1) {
     wide.components.push(memory({
@@ -193,7 +196,7 @@ test('US1 partitions wide memory hierarchies without expanding instances', () =>
   }
   const diagrams = planned(wide);
   const overviews = diagrams.filter(
-    (diagram) => diagram.section === 'memory_hierarchy' && diagram.id.startsWith('memory-hierarchy-'),
+    (diagram) => diagram.section === 'system_view' && diagram.id.startsWith('system-view-'),
   );
   assert.ok(overviews.length > 1);
   assert.ok(overviews.every((diagram) => diagram.spec.components.length <= 12));
@@ -203,14 +206,14 @@ test('US1 partitions wide memory hierarchies without expanding instances', () =>
   )));
 });
 
-test('US1 keeps an all-unconnected memory hierarchy on non-negative grid rows', () => {
+test('US1 keeps an all-unconnected System View on non-negative grid rows', () => {
   const unconnected = structuredClone(document);
   unconnected.components = unconnected.components.filter(
     (component) => component.kind === 'memory',
   );
   unconnected.relationships = [];
   const hierarchy = planned(unconnected).find(
-    (diagram) => diagram.section === 'memory_hierarchy',
+    (diagram) => diagram.section === 'system_view',
   );
   assert.ok(hierarchy);
   assert.ok(hierarchy.spec.components.every((component) => component.row >= 0));
@@ -219,124 +222,94 @@ test('US1 keeps an all-unconnected memory hierarchy on non-negative grid rows', 
     .every((component) => component.tag === 'unconnected' || component.tag === 'bank'));
 });
 
-test('US1 gallery defaults to hierarchy and indexes canonical memory context', () => {
+test('US1 gallery defaults to System View and exposes only System and Component sections', () => {
   const diagrams = planned();
   const catalog = buildGalleryCatalog(document, diagrams);
   assert.equal(catalog.schema_version, 'mlar.archify-gallery.v1');
   assert.equal(catalog.language, 'en');
-  assert.equal(catalog.default_diagram_id, 'memory-hierarchy-1');
-  assert.equal(catalog.sections[0].id, 'memory_hierarchy');
-  const hierarchy = catalog.diagrams.find((diagram) => diagram.id === 'memory-hierarchy-1');
+  assert.equal(catalog.default_diagram_id, 'system-view-1');
+  assert.deepEqual(catalog.sections, [
+    { id: 'system_view', label: 'System View' },
+    { id: 'component_views', label: 'Component Views' },
+  ]);
+  const hierarchy = catalog.diagrams.find((diagram) => diagram.id === 'system-view-1');
   assert.deepEqual(hierarchy.memory_names.sort(), ['DRAM', 'L1', 'Scratch', 'Shared', 'Shared'].sort());
   assert.ok(hierarchy.scope_ids.includes('scope-core'));
 });
 
-test('US2 combines read and write access while preserving actor roles and mover routes', () => {
+test('US2 creates one focused view for every memory, processor, and data mover', () => {
   const diagrams = planned();
-  const l1Access = diagrams.find(
-    (diagram) => diagram.section === 'memory_hierarchy'
-      && diagram.memoryIds.includes('memory-l1')
-      && diagram.componentIds.includes('processor-lane'),
+  const focused = diagrams.filter(
+    (diagram) => diagram.section === 'component_views' && diagram.focusComponentId,
   );
-  assert.ok(l1Access);
-  assert.equal(
-    l1Access.componentIds.filter((id) => id === 'processor-lane').length,
-    1,
+  assert.deepEqual(
+    focused.map((diagram) => diagram.focusComponentId).sort(),
+    document.components
+      .filter((component) => ['memory', 'processor', 'data_mover'].includes(component.kind))
+      .map((component) => component.id)
+      .sort(),
   );
-  assert.ok(l1Access.relationshipIds.includes('relationship-lane-read'));
-  assert.ok(l1Access.relationshipIds.includes('relationship-lane-write'));
-  assert.equal(
-    l1Access.spec.components.find((component) => component.id === 'processor-lane').type,
-    'backend',
-  );
+  assert.ok(focused.every((diagram) => diagram.componentIds.includes(diagram.focusComponentId)));
+});
 
-  const moverView = diagrams.find(
-    (diagram) => diagram.section === 'memory_hierarchy'
-      && diagram.componentIds.includes('processor-copy'),
+test('US2 data-mover view combines direct memory routes and required resources', () => {
+  const moverView = planned().find(
+    (diagram) => diagram.focusComponentId === 'processor-copy',
   );
   assert.ok(moverView);
-  assert.ok(moverView.componentIds.includes('memory-dram'));
-  assert.ok(moverView.componentIds.includes('memory-l1'));
+  assert.equal(moverView.title, 'Data Mover · system / copy');
+  assert.deepEqual(moverView.componentIds.sort(), [
+    'memory-dram',
+    'memory-l1',
+    'processor-copy',
+    'resource-bus',
+  ]);
+  assert.deepEqual(moverView.relationshipIds.sort(), [
+    'relationship-copy-read',
+    'relationship-copy-requires',
+    'relationship-copy-write',
+  ]);
+  assert.ok(!moverView.componentIds.includes('network-noc'), 'transitive neighbors must be absent');
   assert.equal(
     moverView.spec.components.find((component) => component.id === 'processor-copy').type,
     'messagebus',
   );
-  const dramNode = moverView.spec.components.find((component) => component.id === 'memory-dram');
-  const l1Node = moverView.spec.components.find((component) => component.id === 'memory-l1');
-  const moverNode = moverView.spec.components.find((component) => component.id === 'processor-copy');
-  assert.ok(dramNode.col < moverNode.col && moverNode.col < l1Node.col);
-  assert.deepEqual(
-    moverView.spec.connections
-      .filter((connection) => connection.id.startsWith('relationship-copy-'))
-      .map(({ id, from, to }) => ({ id, from, to }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    [
-      {
-        id: 'relationship-copy-read',
-        from: 'memory-dram',
-        to: 'processor-copy',
-      },
-      {
-        id: 'relationship-copy-write',
-        from: 'processor-copy',
-        to: 'memory-l1',
-      },
-    ],
+  assert.equal(
+    moverView.spec.connections.find(
+      (connection) => connection.id === 'relationship-copy-requires',
+    ).label,
+    'requires',
   );
   assert.ok(moverView.spec.connections
-    .filter((connection) => connection.id.startsWith('relationship-copy-'))
-    .every((connection) => !Object.hasOwn(connection, 'label')));
-  assert.ok(!moverView.spec.connections.some((connection) =>
-    connection.from === 'memory-dram' && connection.to === 'memory-l1'),
-  'scope or structural hierarchy must not infer read/write access');
-});
-
-test('US2 places forward and reverse movers between their memory endpoints', () => {
-  const bidirectional = structuredClone(document);
-  bidirectional.components.push(
-    actor('data_mover', 'processor-copy-back', 'scope-system', 'copy back'),
-  );
-  bidirectional.relationships.push(
-    relationship('relationship-copy-back-read', 'read', 'memory-l1', 'processor-copy-back'),
-    relationship('relationship-copy-back-write', 'write', 'processor-copy-back', 'memory-dram'),
-  );
-
-  const view = planned(bidirectional).find(
-    (diagram) => diagram.section === 'memory_hierarchy'
-      && diagram.componentIds.includes('processor-copy-back'),
-  );
-  assert.ok(view);
-  const componentById = new Map(view.spec.components.map((component) => [component.id, component]));
-  for (const actorId of ['processor-copy', 'processor-copy-back']) {
-    assert.ok(
-      componentById.get('memory-dram').col < componentById.get(actorId).col
-        && componentById.get(actorId).col < componentById.get('memory-l1').col,
-    );
-  }
-  assert.deepEqual(
-    view.spec.connections
-      .filter((connection) => connection.id.startsWith('relationship-copy-back-'))
-      .map(({ id, from, to }) => ({ id, from, to }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    [
-      {
-        id: 'relationship-copy-back-read',
-        from: 'memory-l1',
-        to: 'processor-copy-back',
-      },
-      {
-        id: 'relationship-copy-back-write',
-        from: 'processor-copy-back',
-        to: 'memory-dram',
-      },
-    ],
-  );
-  assert.ok(view.spec.connections
-    .filter((connection) => connection.id.includes('copy'))
+    .filter((connection) => ['relationship-copy-read', 'relationship-copy-write'].includes(
+      connection.id,
+    ))
     .every((connection) => !Object.hasOwn(connection, 'label')));
 });
 
-test('US2 keeps same-memory mover meanings without duplicating its identity', () => {
+test('US2 memory view contains exact direct actors and network attachment only', () => {
+  const memoryView = planned().find(
+    (diagram) => diagram.focusComponentId === 'memory-l1',
+  );
+  assert.ok(memoryView);
+  assert.equal(memoryView.title, 'Memory · system / core / L1');
+  assert.deepEqual(memoryView.componentIds.sort(), [
+    'memory-l1',
+    'network-noc',
+    'processor-copy',
+    'processor-lane',
+  ]);
+  assert.deepEqual(memoryView.relationshipIds.sort(), [
+    'relationship-copy-write',
+    'relationship-lane-read',
+    'relationship-lane-write',
+    'relationship-noc-attachment',
+  ]);
+  assert.ok(!memoryView.componentIds.includes('memory-dram'));
+  assert.ok(!memoryView.componentIds.includes('resource-bus'));
+});
+
+test('US2 keeps same-memory actor meanings without duplicating identities', () => {
   const sameMemory = structuredClone(document);
   sameMemory.components.push(actor('data_mover', 'processor-loop', 'scope-system', 'loop'));
   sameMemory.relationships.push(
@@ -344,8 +317,7 @@ test('US2 keeps same-memory mover meanings without duplicating its identity', ()
     relationship('relationship-loop-write', 'write', 'processor-loop', 'memory-dram'),
   );
   const view = planned(sameMemory).find(
-    (diagram) => diagram.section === 'memory_hierarchy'
-      && diagram.componentIds.includes('processor-loop'),
+    (diagram) => diagram.focusComponentId === 'processor-loop',
   );
   assert.ok(view);
   assert.equal(view.componentIds.filter((id) => id === 'processor-loop').length, 1);
@@ -356,7 +328,7 @@ test('US2 keeps same-memory mover meanings without duplicating its identity', ()
   );
 });
 
-test('US2 deterministically partitions more than twelve direct neighbors', () => {
+test('US2 deterministically partitions more than twelve memory neighbors', () => {
   const large = structuredClone(document);
   for (let index = 0; index < 13; index += 1) {
     const id = `processor-scratch-${index}`;
@@ -366,8 +338,7 @@ test('US2 deterministically partitions more than twelve direct neighbors', () =>
     );
   }
   const pages = planned(large).filter(
-    (diagram) => diagram.section === 'memory_access'
-      && diagram.memoryIds.includes('memory-scratch'),
+    (diagram) => diagram.focusComponentId === 'memory-scratch',
   );
   assert.equal(pages.length, 2);
   assert.ok(pages.every((diagram) => diagram.spec.components.length <= 12));
@@ -383,56 +354,54 @@ test('US2 deterministically partitions more than twelve direct neighbors', () =>
   );
   assert.deepEqual(
     pages.map((page) => page.id),
-    ['memory-access-memory-scratch-1', 'memory-access-memory-scratch-2'],
+    ['component-memory-scratch-1', 'component-memory-scratch-2'],
   );
 });
 
-test('US2 gallery indexes all canonical memories in the unified route view', () => {
-  const catalog = buildGalleryCatalog(document, planned());
-  const moverEntry = catalog.diagrams.find(
-    (diagram) => diagram.section === 'memory_hierarchy'
-      && diagram.memory_ids.includes('memory-dram')
-      && diagram.memory_ids.includes('memory-l1'),
+test('US2 keeps unconnected memories and processors as anchor-only component views', () => {
+  const views = planned();
+  for (const focusId of ['memory-scratch', 'processor-orphan']) {
+    const view = views.find((diagram) => diagram.focusComponentId === focusId);
+    assert.ok(view);
+    assert.deepEqual(view.componentIds, [focusId]);
+    assert.deepEqual(view.relationshipIds, []);
+  }
+});
+
+test('US2 does not create dedicated resource or network views', () => {
+  const focusedIds = planned()
+    .filter((diagram) => diagram.focusComponentId)
+    .map((diagram) => diagram.focusComponentId);
+  assert.ok(!focusedIds.includes('resource-bus'));
+  assert.ok(!focusedIds.includes('network-noc'));
+});
+
+test('US3 preserves opposite routes in System View', () => {
+  const bidirectional = structuredClone(document);
+  bidirectional.components.push(
+    actor('data_mover', 'processor-copy-back', 'scope-system', 'copy back'),
   );
-  assert.ok(moverEntry);
+  bidirectional.relationships.push(
+    relationship('relationship-copy-back-read', 'read', 'memory-l1', 'processor-copy-back'),
+    relationship('relationship-copy-back-write', 'write', 'processor-copy-back', 'memory-dram'),
+  );
+  const view = planned(bidirectional).find((diagram) => diagram.section === 'system_view');
+  assert.ok(view);
+  const componentById = new Map(view.spec.components.map((component) => [component.id, component]));
+  for (const actorId of ['processor-copy', 'processor-copy-back']) {
+    assert.ok(
+      componentById.get('memory-dram').col < componentById.get(actorId).col
+        && componentById.get(actorId).col < componentById.get('memory-l1').col,
+    );
+  }
   assert.deepEqual(
-    moverEntry.memory_names.sort(),
-    ['DRAM', 'L1', 'Scratch', 'Shared', 'Shared'].sort(),
+    view.relationshipIds.filter((id) => id.startsWith('relationship-copy-back-')).sort(),
+    ['relationship-copy-back-read', 'relationship-copy-back-write'],
   );
 });
 
-test('US3 preserves routes, supporting relationships, and complete canonical coverage', () => {
+test('US3 preserves complete canonical coverage through system and component views', () => {
   const diagrams = planned();
-  const supporting = diagrams.filter((diagram) => diagram.section === 'supporting_context');
-  const resourceView = supporting.find((diagram) => diagram.relationshipIds.includes(
-    'relationship-copy-requires',
-  ));
-  assert.equal(resourceView?.title, 'Data mover resources · copy');
-  assert.equal(
-    resourceView?.spec.meta.subtitle,
-    'Shared resources required by this data mover.',
-  );
-  const networkView = supporting.find((diagram) => diagram.relationshipIds.includes(
-    'relationship-noc-attachment',
-  ));
-  assert.equal(networkView?.title, 'Network attachments · noc');
-  assert.equal(
-    networkView?.spec.meta.subtitle,
-    'Memory regions attached to this architecture network.',
-  );
-  assert.equal(
-    networkView?.spec.components.find((component) => component.id === 'network-noc').type,
-    'external',
-  );
-  const orphanView = supporting.find(
-    (diagram) => diagram.componentIds.includes('processor-orphan'),
-  );
-  assert.equal(orphanView?.title, 'Unconnected components in scope · system');
-  assert.equal(
-    orphanView?.spec.meta.subtitle,
-    'Canonical components owned by this architecture scope with no displayed memory path, resource requirement, or network attachment.',
-  );
-
   assert.deepEqual(
     [...new Set(diagrams.flatMap((diagram) => diagram.componentIds))].sort(),
     document.components.map((component) => component.id).sort(),
@@ -447,42 +416,41 @@ test('US3 preserves routes, supporting relationships, and complete canonical cov
   );
   assert.ok(diagrams.every((diagram) => diagram.spec.components.length <= 12));
 
-  for (const memoryId of ['memory-dram', 'memory-l1']) {
-    const route = diagrams.find(
-      (diagram) => diagram.section === 'memory_hierarchy'
-        && diagram.memoryIds.includes(memoryId)
-        && diagram.componentIds.includes('processor-copy'),
-    );
-    assert.ok(route);
-    assert.ok(route.componentIds.includes('memory-dram'));
-    assert.ok(route.componentIds.includes('memory-l1'));
-  }
 });
 
-test('US3 names an uncovered architecture scope explicitly', () => {
-  const emptyScope = structuredClone(document);
-  emptyScope.scopes.push({
+test('US3 groups uncovered components and empty scopes under their architecture scope', () => {
+  const uncovered = structuredClone(document);
+  uncovered.components.push({
+    kind: 'resource',
+    id: 'resource-unused',
+    scope: 'scope-system',
+    name: 'unused resource',
+    resource_kind: 'exclusive',
+    capacity: null,
+  });
+  uncovered.scopes.push({
     id: 'scope-empty',
     name: 'empty cluster',
     parent_scope: 'scope-system',
     dimensions: [],
     replication_factor: 1,
   });
-  const scopeView = planned(emptyScope).find(
-    (diagram) => diagram.title === 'Architecture scopes without components · empty cluster',
+  const views = planned(uncovered);
+  const componentFallback = views.find(
+    (diagram) => diagram.title === 'Architecture Scope · system · unconnected components',
+  );
+  assert.ok(componentFallback.componentIds.includes('resource-unused'));
+  const scopeView = views.find(
+    (diagram) => diagram.title === 'Architecture Scope · system / empty cluster',
   );
   assert.ok(scopeView);
-  assert.equal(
-    scopeView.spec.meta.subtitle,
-    'Architecture scopes not represented by a component or memory ownership boundary in another diagram.',
-  );
   assert.deepEqual(
     scopeView.spec.components.map(({ label, type }) => ({ label, type })),
     [{ label: 'empty cluster', type: 'frontend' }],
   );
 });
 
-test('US3 partitions dense supporting context by canonical source', () => {
+test('US3 partitions a dense component neighborhood around the stable anchor', () => {
   const dense = structuredClone(document);
   for (let index = 0; index < 13; index += 1) {
     const resourceId = `resource-copy-${index}`;
@@ -504,9 +472,7 @@ test('US3 partitions dense supporting context by canonical source', () => {
     );
   }
   const pages = planned(dense).filter(
-    (diagram) => diagram.section === 'supporting_context'
-      && diagram.componentIds.includes('processor-copy')
-      && diagram.relationshipIds.some((id) => id.startsWith('relationship-copy-resource-')),
+    (diagram) => diagram.focusComponentId === 'processor-copy',
   );
   assert.equal(pages.length, 2);
   assert.ok(pages.every((diagram) => diagram.spec.components.length <= 12));
@@ -515,22 +481,24 @@ test('US3 partitions dense supporting context by canonical source', () => {
       .filter((id) => id.startsWith('relationship-copy-resource-'))).size,
     13,
   );
+  assert.ok(pages.every((page) => page.componentIds.includes('processor-copy')));
 });
 
-test('US3 planning and catalog output are deterministic and memory-first', () => {
+test('US3 planning and component-aware catalog output are deterministic', () => {
   const first = planned();
   const second = planned();
   assert.deepEqual(second, first);
   const catalog = buildGalleryCatalog(document, first);
   assert.deepEqual(
     catalog.sections.map((section) => section.id),
-    ['memory_hierarchy', 'memory_access', 'supporting_context', 'other'],
+    ['system_view', 'component_views'],
   );
-  assert.equal(
-    catalog.sections.find((section) => section.id === 'supporting_context').label,
-    'Resources, networks, and scopes',
+  assert.equal(catalog.default_diagram_id, 'system-view-1');
+  const copy = catalog.diagrams.find(
+    (diagram) => diagram.focus_component_id === 'processor-copy',
   );
-  assert.equal(catalog.default_diagram_id, 'memory-hierarchy-1');
+  assert.equal(copy.focus_component_name, 'copy');
+  assert.equal(copy.focus_component_kind, 'data_mover');
 });
 
 test('US3 gallery remains an English Archify shell without a second renderer', () => {

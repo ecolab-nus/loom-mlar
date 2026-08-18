@@ -113,15 +113,16 @@ instead of expanding into one node per hardware instance.
 
 The Node.js adapter validates the visualization YAML, checks its references,
 and derives a memory-first presentation without changing the v1 interchange
-contract. When it fits within 12 nodes, one primary diagram combines scope
+contract. When it fits within 12 nodes, the default `System View` combines scope
 ownership, recursive memory structure, every connected processor/data mover,
 and exact source-memory → actor → destination-memory routes. Actors are placed
 between their endpoint memory levels, and arrow direction replaces
-`read`/`write` edge labels. Larger models alone use
-bounded hierarchy/access overflow. Resources, networks, and uncovered entities
-remain in purpose-specific secondary views grouped under `Resources, networks,
-and scopes`. Their titles distinguish resource requirements, network
-attachments, unconnected scope-owned components, and scopes without components.
+`read`/`write` edge labels. Larger models use bounded overflow. `Component
+Views` provides one exact one-hop diagram per memory, processor, and data mover.
+Actor views include direct memory routes and required resources; memory views
+include direct actors and network attachments. Resources and networks are
+neighbors rather than focus anchors, and uncovered entities are grouped by
+owning architecture scope.
 The primary legend uses `Memory`, `Processor`, and `Data Mover`, while its
 subtitle distinguishes actor I/O arrows from architecture-scope boundaries.
 Vendored Archify validates and renders every view as standalone HTML, and
@@ -138,8 +139,7 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/system
 ```
 
-Open `http://127.0.0.1:4173/`. The combined root memory hierarchy-and-access
-diagram is the default view.
+Open `http://127.0.0.1:4173/`. The root `System View` is the default.
 The generated directory is a complete static web application and can also be
 copied to a static web host; no application backend is required.
 

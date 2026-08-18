@@ -23,7 +23,7 @@ npm test --prefix tools/mlar-archify
 
 Expected coverage:
 
-- one combined memory hierarchy-and-access diagram is the default when it fits;
+- one combined `System View` is the default when it fits;
 - recursive array/bank detail and unconnected memories remain visible;
 - one processor with the same source and destination memory appears once with both directional segments and no `read`/`write` edge labels;
 - DRAM, L1, recursive banks, processors, and data movers share the same primary diagram;
@@ -31,7 +31,10 @@ Expected coverage:
 - the primary legend says `Memory`, `Processor`, and `Data Mover`, and its subtitle distinguishes processor/data-mover I/O arrows from architecture scope boundaries;
 - duplicate display names remain distinct through canonical IDs and scope paths;
 - symbolic sizes retain expression text;
-- hierarchy/access partitions never exceed 12 primary nodes;
+- every memory, processor, and data mover has an exact one-hop `Component View`;
+- processor/data-mover views include direct memory endpoints and required resources, while memory views include direct actors and network attachments;
+- resources and networks do not receive dedicated focus views, and transitive neighbors are absent;
+- all partitions never exceed 12 primary nodes;
 - every source ID remains covered; and
 - the gallery stays English-only and contains no inline architecture SVG.
 
@@ -69,12 +72,13 @@ Expected outcome:
 
 - every generated specification passes Archify showcase validation and delivery;
 - `visualization-output/2d-mesh/index.html` is generated;
-- the default view is the unified root memory hierarchy-and-access diagram;
+- the default view is the root `System View`;
 - DRAM and replicated L1 appear with scope/replication context;
 - DRAM/L1 bank layers and all connected processors/data movers appear in that same diagram;
 - `dram_l1_noc0` forms a visible DRAM → mover → L1 route while `l1_dram_noc1` forms L1 → mover → DRAM;
 - matrix and vector processors appear in the actor column with arrowheads showing their L1 source and destination, without access-kind text;
-- network and resource relationships remain available in clearly titled secondary views under `Resources, networks, and scopes`; and
+- the gallery exposes only `System View` and `Component Views`;
+- each processor/data-mover view contains its direct resources and exact memory routes, and each memory view contains its direct actors and network attachments; and
 - no view exceeds 12 primary nodes.
 
 If browser automation is unavailable, the visual-check receipt must say skipped; do not describe it as passing.
@@ -112,7 +116,8 @@ Open `http://127.0.0.1:4173/` and verify:
 2. Without changing diagrams, identify matrix and vector compute processors between the memory-region columns and follow their incoming and outgoing L1 arrows; confirm the edges do not say `read` or `write`.
 3. In that same diagram, confirm both movers lie between DRAM and L1, then trace DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM by arrow direction.
 4. Confirm that selecting hierarchy context does not imply an access edge.
-5. Search by memory name and move between the unified primary diagram and the `Resources, networks, and scopes` section while retaining stable identities; confirm each secondary title states whether it shows resources, network attachments, unconnected components in a scope, or scopes without components.
+5. Move from `System View` to `Component Views`. Open `dram_l1_noc0` and confirm its view contains DRAM, L1, and all resources it directly requires—but no transitive neighbors. Open L1 and confirm its direct processors/data movers and network attachments.
+6. Confirm unconnected primary components still have anchor-only views and otherwise uncovered components are grouped under an explicitly named `Architecture Scope` fallback.
 
 ## 8. Validate Canonical Documentation
 

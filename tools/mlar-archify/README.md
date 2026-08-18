@@ -17,12 +17,12 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/2d-mesh
 ```
 
-Open `http://127.0.0.1:4173/`. When the full memory-centric projection fits
-within 12 nodes, the generated `index.html` starts with one diagram containing
-the hierarchy, recursive layers, processors/data movers, and access edges.
-Additional hierarchy/access views appear only as overflow for larger models;
-resource, network, and scope views remain secondary. Search includes canonical
-memory names and IDs as well as scope paths; scope filtering, keyboard
+Open `http://127.0.0.1:4173/`. `System View` starts with the memory hierarchy,
+recursive layers, processors/data movers, and access edges in one diagram when
+they fit within 12 nodes; larger models use bounded overflow. `Component Views`
+contains one exact one-hop view for every memory, processor, and data mover.
+Search includes canonical memory and focused-component names and IDs as well as
+scope paths; scope filtering, keyboard
 navigation, URL hashes, and independent diagram opening remain available. The
 application shell never redraws architecture data; it embeds the delivered
 Archify HTML so Archify remains the only diagram renderer.
@@ -38,16 +38,15 @@ The unified diagram includes each actor once, positioned between its source and
 destination memory columns, so routes read visually as source memory → actor →
 destination memory. The primary legend says `Memory`, `Processor`, and
 `Data Mover`; its subtitle explains that arrows are input/output paths and
-boundaries are architecture scopes. The older memory-anchored packing remains
-only for overflow.
+boundaries are architecture scopes.
 
-The gallery's final section is named `Resources, networks, and scopes`.
-Individual diagrams say exactly what they contain: processor or data-mover
-resource requirements, network attachments, unconnected components in a named
-architecture scope, or architecture scopes without components. The stable
-manifest section ID remains `supporting_context` for generated-bundle
-compatibility; that implementation term is not shown as the reader-facing
-section name.
+Each component view contains only its anchor, directly connected canonical
+neighbors, and their relationships. Processor/data-mover views include direct
+memory input/output and required resources; memory views include direct actors
+and network attachments. No neighbor-of-neighbor is added. Resources and
+networks therefore appear as neighbors rather than dedicated focus views.
+Otherwise uncovered components and empty scopes use clearly named
+`Architecture Scope` fallbacks.
 
 Each diagram contains at most 12 primary nodes. Replicated architecture scopes
 retain dimension and replication-factor metadata but are never expanded. Distinct

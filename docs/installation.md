@@ -79,10 +79,11 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/2d-mesh
 ```
 
-The converter validates `mlar.visualization.v1` and first attempts one combined
-memory hierarchy-and-access diagram. It creates hierarchy/access overflow only
-when the combined projection would exceed 12 nodes, then adds clearly titled
-resource, network, and architecture-scope views. The primary legend reads
+The converter validates `mlar.visualization.v1` and first creates the combined
+`System View`. It partitions only when the projection would exceed 12 nodes,
+then creates one exact one-hop `Component View` for every memory, processor, and
+data mover. Direct resources and network attachments appear beside their anchor;
+uncovered entities use owning-scope fallbacks. The primary legend reads
 `Memory`, `Processor`, and `Data Mover`; its subtitle distinguishes actor I/O
 arrows from scope boundaries. Every diagram receives Archify showcase
 validation and delivery, and the adapter writes a manifest plus a loss report.

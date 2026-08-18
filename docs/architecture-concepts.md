@@ -212,7 +212,7 @@ registered memory component is the only canonical access endpoint. Nested
 array or bank layers receive deterministic presentation IDs in the combined
 memory view, but are not independently accessible model entities.
 
-When the complete projection fits within 12 nodes, one diagram combines scope
+When the complete projection fits within 12 nodes, `System View` combines scope
 ownership, each memory's recursive region structure, connected processors/data
 movers, and exact directional routes. Canonical memories occupy hierarchy
 columns and each actor appears between its source and destination levels. The
@@ -220,9 +220,10 @@ edges are intentionally unlabeled: arrowheads establish source memory → actor 
 destination memory. The visible role legend says `Memory`, `Processor`, and
 `Data Mover`, while the subtitle explains that boundaries represent
 architecture scope ownership rather than access. Larger models use overflow
-views. Resource, network-attachment, and otherwise uncovered scope information
-appears in precisely titled secondary diagrams under `Resources, networks, and
-scopes`. Neither scope nor structural containment implies access. Only source
+views. `Component Views` adds one exact one-hop view for every memory,
+processor, and data mover. Direct resource requirements and network attachments
+appear beside their anchor, while otherwise uncovered entities are grouped by
+owning architecture scope. Neither scope nor structural containment implies access. Only source
 relationships establish connectivity. Consequently, connecting a processor to L1 does
 not imply access to an ancestor DRAM, a descendant bank, or a same-named memory
 in another scope.
