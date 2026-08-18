@@ -875,7 +875,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arch::{MemoryRegion, MemoryRegionRef, MeshNetworkInterface, Processor};
+    use crate::arch::{MemoryRegion, MemoryRegionRef, MeshNetworkInterface, Processor, Resource};
 
     #[test]
     fn exports_stable_normalized_document() {
@@ -961,6 +961,39 @@ mod tests {
                     .and_then(|value| value.constant)
                     == Some(32)
                 && relationship.map.is_some()
+        }));
+    }
+
+    #[test]
+    fn exports_child_resource_once_and_links_its_processor() {
+        let mut processor = Processor::new("matrix_lane");
+        processor.resources.push(Resource::exclusive("matrix_lane"));
+        let architecture = Architecture::scope("system")
+            .with_child(Architecture::scope("mesh").with_processor(processor));
+
+        let document = architecture_to_visualization_document(&architecture).unwrap();
+        let resources = document
+            .components
+            .iter()
+            .filter_map(|component| match component {
+                VisualizationComponent::Resource {
+                    id, scope, name, ..
+                } if name == "matrix_lane" => Some((id, scope)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(resources.len(), 1);
+        let (resource_id, resource_scope) = resources[0];
+        let mesh_scope = document
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "mesh")
+            .expect("mesh scope should be exported");
+        assert_eq!(resource_scope, &mesh_scope.id);
+        assert!(document.relationships.iter().any(|relationship| {
+            relationship.kind == VisualizationRelationshipKind::Requires
+                && relationship.target == *resource_id
         }));
     }
 }

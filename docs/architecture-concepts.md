@@ -145,7 +145,9 @@ Processors can declare resources with `.with_resources(...)`. Compute builders
 also add an exclusive self resource when the processor is named. Memory
 resources are derived from source/destination regions where possible and are
 registered with the containing architecture scope. Shared resources, such as
-`noc0`, express contention among otherwise separate processors.
+`noc0`, express contention among otherwise separate processors. Adding a child
+scope preserves those resource definitions in the child; parent resource lookup
+recurses into children instead of copying the definitions into every ancestor.
 
 The current schedule evaluator does not yet use these resource declarations for
 parallel scheduling.

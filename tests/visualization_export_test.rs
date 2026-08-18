@@ -32,7 +32,23 @@ fn export_2d_mesh_visualization_yaml() {
     assert!(document.components.iter().any(
         |component| matches!(component, VisualizationComponent::Memory { name, .. } if name == "DRAM")
     ));
-    assert_eq!(document.components.len(), 17);
+    assert_eq!(document.components.len(), 14);
+    for resource_name in ["L1", "matrix_lane", "vector_lane"] {
+        let matching_resources = document
+            .components
+            .iter()
+            .filter(|component| {
+                matches!(
+                    component,
+                    VisualizationComponent::Resource { name, .. } if name == resource_name
+                )
+            })
+            .count();
+        assert_eq!(
+            matching_resources, 1,
+            "child resource '{resource_name}' should be exported once"
+        );
+    }
     assert!(
         document
             .relationships

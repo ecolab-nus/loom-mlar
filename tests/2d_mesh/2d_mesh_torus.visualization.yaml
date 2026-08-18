@@ -167,20 +167,8 @@ components:
   resource_kind: quantitative
   capacity: 1398784
 - kind: resource
-  id: resource-resource-l1-e2c61642c31fae32
-  scope: scope-system-36c9535cd77ddf8a
-  name: L1
-  resource_kind: quantitative
-  capacity: 1398784
-- kind: resource
   id: resource-resource-matrix-lane-5b45a702a65111f3
   scope: scope-mesh-d88d33c5fbde7352
-  name: matrix_lane
-  resource_kind: exclusive
-  capacity: null
-- kind: resource
-  id: resource-resource-matrix-lane-c0e027b8d1fbbbaf
-  scope: scope-system-36c9535cd77ddf8a
   name: matrix_lane
   resource_kind: exclusive
   capacity: null
@@ -194,12 +182,6 @@ components:
   id: resource-resource-noc1-6c81b7fcf0b1cd5a
   scope: scope-system-36c9535cd77ddf8a
   name: noc1
-  resource_kind: exclusive
-  capacity: null
-- kind: resource
-  id: resource-resource-vector-lane-47021f2d35ea2041
-  scope: scope-system-36c9535cd77ddf8a
-  name: vector_lane
   resource_kind: exclusive
   capacity: null
 - kind: resource

@@ -139,10 +139,12 @@ impl Architecture {
         self.processors.push(processor);
     }
 
+    /// Add a child scope without hoisting its resource definitions.
+    ///
+    /// Resource identity is carried by [`ResourceId`], and recursive lookups
+    /// already traverse child scopes. Keeping definitions in their owning
+    /// scope avoids creating a second scoped component for the same resource.
     pub fn add_child(&mut self, child: Architecture) {
-        for resource in &child.resources {
-            self.register_resource(resource.clone());
-        }
         self.children.push(child);
     }
 
@@ -361,5 +363,23 @@ impl From<Processor> for Architecture {
 impl From<&Architecture> for Architecture {
     fn from(architecture: &Architecture) -> Self {
         architecture.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_resources_remain_owned_by_the_child_scope() {
+        let child = Architecture::scope("child").with_resource(Resource::exclusive("lane"));
+        let parent = Architecture::scope("parent").with_child(child);
+
+        assert!(parent.resources.is_empty());
+        assert_eq!(parent.children[0].resources.len(), 1);
+        let resource = parent
+            .get_resource(&ResourceId::from("lane"))
+            .expect("parent lookup should recurse into child scopes");
+        assert_eq!(resource.id().as_str(), "lane");
     }
 }
