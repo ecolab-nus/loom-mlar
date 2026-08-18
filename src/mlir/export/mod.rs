@@ -148,6 +148,11 @@ pub fn architecture_to_mlir(architecture: &Architecture) -> Result<String, AdlEx
     architecture_to_mlir_with_tools(architecture, OsStr::new(ADL_OPT), OsStr::new(LOOM_OPT))
 }
 
+/// Whether both checked-export validators were found when the crate was built.
+pub fn mlir_validators_available() -> bool {
+    cfg!(mlar_has_mlir_validators)
+}
+
 /// Lower to `adl.*` MLIR without invoking the validators.
 ///
 /// Intended for debugging and for emitting constructs the current MLIR

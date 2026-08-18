@@ -42,3 +42,12 @@ A fully fixed selection may therefore be empty.
 Function names may repeat across definitions. Unplaced schedules require a
 unique implementation; `Schedule::PlacedFunc` names a processor array and
 optional selectors.
+
+## Visualization projection
+
+`architecture_to_visualization_yaml` lowers the canonical architecture to the
+versioned `mlar.visualization.v1` document consumed by `mlar-archify`.
+Placements become visible components, aliases resolve to their backing memory,
+and processor domains infer replicated scopes when explicit scopes are absent.
+The visualization document is intentionally lossy: it is a stable rendering
+input, not a second architecture representation or a round-trip format.

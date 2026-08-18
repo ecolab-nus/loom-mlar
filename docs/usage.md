@@ -45,9 +45,9 @@ performance models. Each function maps directly to a non-empty list of flat
 `constraint`, `latency`, `volume`, and `throughput` alternatives; `constraint`
 is optional.
 
-`type` is optional at runtime. Add `type: compute` or `type: data_mover` only
-when current-dialect ADL export is needed. Mixed or untyped definitions can
-still be evaluated and visualized.
+`type` is optional for runtime construction and schedule evaluation. ADL and
+visualization export require `type: compute` or `type: data_mover` because both
+outputs distinguish those component kinds.
 
 ## Enumeration
 
@@ -113,15 +113,16 @@ Use `NetworkTopology::edges()` for its concrete directed graph and
 
 ```rust
 let mlir = mlar_rust::architecture_to_mlir(&architecture)?;
-let graph = mlar_rust::visualization::graph_json::architecture_to_graph_json_string_pretty(
-    &architecture,
-)?;
-let hierarchy = mlar_rust::visualization::hierarchy_json::
-    architecture_to_hierarchy_json_string_pretty(&architecture)?;
-let viewer = mlar_rust::visualization::viewer_json::
-    architecture_to_viewer_json_string_pretty(&architecture)?;
+let visualization = mlar_rust::architecture_to_visualization_yaml(&architecture)?;
+std::fs::write("architecture.visualization.yaml", visualization)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ADL export lowers prefix regions to nested memory-array handles and projects
-away pointwise affine relations and explicit bank selectors. Viewer JSON
-preserves symbolic relations and resolved valid instances.
+away pointwise affine relations and explicit bank selectors.
+
+Visualization export projects placed memories, processor arrays, resources,
+networks, scopes, and their relationships into `mlar.visualization.v1` YAML.
+Definitions are folded into their placements, and aliases resolve to their
+backing memories rather than becoming independent nodes. Convert the result
+with `tools/mlar-archify`; no separate visualization architecture is required.

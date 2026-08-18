@@ -35,8 +35,22 @@ let adl = mlar_rust::architecture_to_mlir(&architecture)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The library also evaluates schedules and exports ADL MLIR and visualization
-JSON.
+The library also evaluates schedules and exports ADL MLIR and renderer-neutral
+`mlar.visualization.v1` YAML.
+
+```rust
+let yaml = mlar_rust::architecture_to_visualization_yaml(&architecture)?;
+std::fs::write("architecture.visualization.yaml", yaml)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Convert that YAML with the project-owned Archify adapter:
+
+```bash
+npm ci --prefix tools/mlar-archify
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  architecture.visualization.yaml visualization-output/architecture
+```
 
 ## Documentation
 
@@ -55,5 +69,9 @@ JSON.
   and loom-dataflow exploration passes do not consume them.
 - Automatic address-to-bank mapping and bank-conflict inference are not
   implemented; bank selection is explicit.
-- `Schedule::Parallel` evaluation is not implemented.
+- Sequential schedule composition sums child costs; parallel composition takes
+  their maximum. Both preserve guarded scenario alternatives.
 - Duplicate function implementations require `Schedule::PlacedFunc`.
+- Visualization is a projection of placed components. Memory aliases and exact
+  endpoint selectors resolve connectivity but are not emitted as separate
+  visualization nodes.

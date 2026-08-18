@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MLAR Project Overview",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ecolab-nus/loom-mlar.git",
+      "revision": "5073515de677b71f07364553b44f9f5b4f6d15e2"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [40, 60],
+    "cols": 5,
+    "gapX": 190,
+    "gapY": 82,
+    "cellW": 190,
+    "cellH": 76
+  },
+  "components": [
+    {
+      "id": "functional-description",
+      "type": "database",
+      "label": "Functional description",
+      "sublabel": "func.func / linalg.* MLIR",
+      "row": 0,
+      "col": 0,
+      "size": [190, 70],
+      "sources": [
+        { "path": "tests/2d_mesh/processors/vector_lane.loom", "label": "Compact Loom source" }
+      ]
+    },
+    {
+      "id": "architecture-model",
+      "type": "cloud",
+      "label": "MLAR Architecture",
+      "sublabel": "Definitions, placements, scopes, networks",
+      "tag": "user-defined",
+      "row": 1,
+      "col": 0,
+      "size": [190, 70],
+      "sources": [
+        { "path": "tests/2d_mesh/tests.rs", "label": "Complete model tests" }
+      ]
+    },
+    {
+      "id": "performance-models",
+      "type": "database",
+      "label": "Performance models",
+      "sublabel": "Rust builders or YAML",
+      "row": 2,
+      "col": 0,
+      "size": [190, 70],
+      "sources": [
+        { "path": "tests/2d_mesh/processors/vector_lane.yaml", "label": "Processor package YAML" },
+        { "path": "src/arch/perf.rs", "label": "Rust model" }
+      ]
+    },
+    {
+      "id": "rust-application",
+      "type": "backend",
+      "label": "Rust application",
+      "sublabel": "mlar-rust public APIs",
+      "tag": "compile + export",
+      "row": 1,
+      "col": 1,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/lib.rs", "label": "Public API" }
+      ]
+    },
+    {
+      "id": "evaluator-binary",
+      "type": "backend",
+      "label": "Evaluator binary",
+      "sublabel": "Schedule JSON in / evaluated JSON out",
+      "row": 0,
+      "col": 2,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/abi/evaluator.rs", "line": 82, "label": "Binary generator" }
+      ]
+    },
+    {
+      "id": "query-binary",
+      "type": "backend",
+      "label": "Architecture-query binary",
+      "sublabel": "Architecture embedded at compile time",
+      "row": 1,
+      "col": 2,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/abi/arch_query.rs", "line": 114, "label": "Binary generator" }
+      ]
+    },
+    {
+      "id": "compiler-validation",
+      "type": "security",
+      "label": "Compiler validation",
+      "sublabel": "adl-opt then loom-opt",
+      "row": 2,
+      "col": 2,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/mlir/export/mod.rs", "line": 120, "label": "Checked export" }
+      ]
+    },
+    {
+      "id": "adl-mlir",
+      "type": "database",
+      "label": "ADL MLIR",
+      "sublabel": "adl.* plus processor functionality",
+      "row": 2,
+      "col": 3,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/mlir/export/mod.rs", "line": 120, "label": "MLIR export" }
+      ]
+    },
+    {
+      "id": "visualization-yaml",
+      "type": "database",
+      "label": "Visualization YAML",
+      "sublabel": "mlar.visualization.v1",
+      "row": 3,
+      "col": 1,
+      "size": [190, 70],
+      "sources": [
+        { "path": "src/visualization/document.rs", "line": 262, "label": "YAML export" }
+      ]
+    },
+    {
+      "id": "node-adapter",
+      "type": "backend",
+      "label": "mlar-archify",
+      "sublabel": "Node.js validation and view planning",
+      "row": 3,
+      "col": 2,
+      "size": [190, 70],
+      "sources": [
+        { "path": "tools/mlar-archify/bin/mlar-archify.mjs", "label": "Node adapter" }
+      ]
+    },
+    {
+      "id": "visualization-app",
+      "type": "frontend",
+      "label": "Static visualization app",
+      "sublabel": "Archify HTML diagrams and gallery",
+      "tag": "browser",
+      "row": 3,
+      "col": 3,
+      "size": [190, 70],
+      "sources": [
+        { "path": "tools/mlar-archify/lib/gallery.mjs", "label": "Gallery" },
+        { "path": "tools/archify/bin/archify.mjs", "label": "Renderer" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "attach-functionality",
+      "from": "functional-description",
+      "to": "architecture-model",
+      "label": "MlirModule",
+      "labelDy": 24
+    },
+    {
+      "id": "attach-performance",
+      "from": "performance-models",
+      "to": "architecture-model",
+      "label": "FuncPerfModel"
+    },
+    {
+      "id": "use-model",
+      "from": "architecture-model",
+      "to": "rust-application",
+      "label": "construct and pass",
+      "variant": "emphasis"
+    },
+    {
+      "id": "build-evaluator",
+      "from": "rust-application",
+      "to": "evaluator-binary",
+      "label": "release Cargo build"
+    },
+    {
+      "id": "build-query",
+      "from": "rust-application",
+      "to": "query-binary",
+      "label": "release Cargo build",
+      "labelDy": 13
+    },
+    {
+      "id": "checked-mlir-export",
+      "from": "rust-application",
+      "to": "compiler-validation",
+      "label": "architecture_to_mlir",
+      "variant": "security"
+    },
+    {
+      "id": "validated-mlir",
+      "from": "compiler-validation",
+      "to": "adl-mlir",
+      "label": "validated module",
+      "variant": "security"
+    },
+    {
+      "id": "runtime-mlir-query",
+      "from": "query-binary",
+      "to": "compiler-validation",
+      "label": "MLIR query",
+      "labelDy": 24
+    },
+    {
+      "id": "export-visualization",
+      "from": "rust-application",
+      "to": "visualization-yaml",
+      "label": "architecture_to_visualization_yaml",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "convert-views",
+      "from": "visualization-yaml",
+      "to": "node-adapter",
+      "label": "build"
+    },
+    {
+      "id": "deliver-web-app",
+      "from": "node-adapter",
+      "to": "visualization-app",
+      "label": "Archify HTML + gallery",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One architecture model",
+      "items": [
+        "Scopes compose hierarchy and replicated topology.",
+        "Processor MLIR supplies functional behavior.",
+        "Rust or YAML models supply symbolic performance scenarios."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Explicit Rust outputs",
+      "items": [
+        "Binary generators invoke cargo build --release and embed the architecture.",
+        "MLIR and visualization exporters return strings that the application writes to files."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Decoupled visualization",
+      "items": [
+        "Rust owns the renderer-neutral YAML schema.",
+        "Node selects semantic views; Archify renders standalone HTML.",
+        "The generated gallery is a static web application with no backend."
+      ]
+    }
+  ]
+}

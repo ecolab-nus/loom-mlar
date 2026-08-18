@@ -208,17 +208,40 @@ fn placed_schedule_disambiguates_duplicate_function_implementations() {
 }
 
 #[test]
-fn parallel_schedule_reports_an_error_instead_of_panicking() {
-    let architecture = Architecture::builder("empty").build().unwrap();
+fn parallel_schedule_uses_the_slowest_child_cost() {
+    let architecture = Architecture::builder("parallel")
+        .axis("x", 2)
+        .axis("y", 1)
+        .memory_definition(memory_definition())
+        .place_memory("L1", ["x", "y"])
+        .processor_definition(definition("left", "left_op", 3))
+        .processor_definition(definition("right", "right_op", 9))
+        .connect("left", connection("L1[x, y]", "L1[x, y]"))
+        .connect("right", connection("L1[x, y]", "L1[x, y]"))
+        .build()
+        .unwrap();
     let schedule = Schedule::Parallel {
-        schedules: Vec::new(),
+        schedules: vec![
+            Schedule::Func {
+                func: MlirFunc::named("left_op"),
+                scenarios: None,
+            },
+            Schedule::Func {
+                func: MlirFunc::named("right_op"),
+                scenarios: None,
+            },
+        ],
         scenarios: None,
     };
-    assert!(
-        evaluate(&schedule, &architecture)
-            .unwrap_err()
-            .contains("not supported")
-    );
+    let evaluated = evaluate(&schedule, &architecture).unwrap();
+    let Schedule::Parallel {
+        scenarios: Some(scenarios),
+        ..
+    } = evaluated
+    else {
+        panic!("expected evaluated parallel schedule")
+    };
+    assert_eq!(scenarios[0].time_cost.to_expr().eval_const(), Some(9));
 }
 
 #[test]

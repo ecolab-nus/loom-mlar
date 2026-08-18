@@ -7,7 +7,7 @@ memory.yaml ─┐
 chip.yaml ───┼─ validate/link ─> canonical indexed Architecture
 *.yaml ──────┤                         │
 *.loom ──────┘                         ├─ schedule evaluation
-                                      ├─ graph/hierarchy/viewer JSON v2
+                                      ├─ mlar.visualization.v1 YAML
                                       ├─ evaluator/query ABI serialization
                                       └─ current-dialect ADL compatibility export
 ```
@@ -43,10 +43,16 @@ Memory definitions lower to `adl.memory.bank` and nested `adl.memory.array`
 operations. Prefix selections lower to the corresponding nested handle.
 
 The compatibility dialect cannot encode pointwise affine relations or explicit
-bank selectors. Runtime and visualization data retain both.
+bank selectors. The runtime architecture retains both.
 
 ## ABI and visualization
 
 `ProcessorDefinition` embeds source, making serialized architectures used by
-generated evaluator/query binaries self-contained. Visualization schema v2
-exports memory, processor, resource, and affine-connection data.
+generated evaluator/query binaries self-contained.
+
+`src/visualization/document.rs` projects the canonical model into the stable
+`mlar.visualization.v1` contract consumed by `tools/mlar-archify`. It emits
+placements rather than reusable definitions, resolves aliases to backing
+memories, and infers replicated scopes from processor domains when explicit
+scopes are absent. This is a rendering projection, not an architecture
+round-trip format.

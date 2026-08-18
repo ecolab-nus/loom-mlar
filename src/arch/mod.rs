@@ -9,7 +9,9 @@ pub mod processor;
 pub mod resource;
 pub mod scope;
 
-pub use crate::mlir::{AdlExportError, architecture_to_mlir, architecture_to_mlir_unchecked};
+pub use crate::mlir::{
+    AdlExportError, architecture_to_mlir, architecture_to_mlir_unchecked, mlir_validators_available,
+};
 pub use arch_yaml::{ArchLoadError, ChipYaml, ProcessorYaml};
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureError};
 pub use axis::{Axis, EndpointParseError};

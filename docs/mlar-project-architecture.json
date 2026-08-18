@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "mlar-rust Project Architecture",
+    "output": "mlar-project-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ecolab-nus/loom-mlar.git",
+      "revision": "66858922c6c37fba23a6da4d2dea81f9954d1ff8"
+    },
+    "viewBox": [1420, 760],
+    "views": [
+      {
+        "id": "modeling-core",
+        "label": "Modeling core",
+        "focus": ["client", "public-api", "arch-model", "symbolic-math"],
+        "note": "The public crate surface builds typed architecture objects backed by symbolic expressions."
+      },
+      {
+        "id": "evaluation-path",
+        "label": "Evaluation path",
+        "focus": ["arch-model", "schedule-eval", "visualization-yaml"],
+        "note": "Schedules resolve performance scenarios while a separate projection derives renderer-neutral visualization YAML."
+      },
+      {
+        "id": "interchange-and-ui",
+        "label": "Interchange and UI",
+        "focus": ["mlir-adapter", "perf-yaml", "arch-model", "visualization-yaml", "archify-adapter", "archify-renderer", "abi-helpers", "generated-tools"],
+        "note": "MLIR and performance YAML feed the model; normalized YAML and ABI boundaries serve diagrams and generated tools."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Library clients",
+      "sublabel": "examples + integration tests",
+      "pos": [40, 330],
+      "size": [150, 68],
+      "sources": [
+        { "path": "examples/imperative/dual_noc_mesh.rs", "label": "builder usage" }
+      ]
+    },
+    {
+      "id": "public-api",
+      "type": "backend",
+      "label": "Public crate API",
+      "sublabel": "src/lib.rs re-exports",
+      "pos": [250, 330],
+      "size": [160, 68],
+      "sources": [
+        { "path": "src/lib.rs", "label": "public surface" }
+      ]
+    },
+    {
+      "id": "arch-model",
+      "type": "backend",
+      "label": "Architecture model",
+      "sublabel": "definitions, placements, scopes, networks",
+      "tag": "core domain",
+      "pos": [480, 330],
+      "size": [180, 76],
+      "sources": [
+        { "path": "src/arch/architecture.rs", "label": "canonical builder" },
+        { "path": "src/arch/processor.rs", "label": "execution" },
+        { "path": "src/arch/memory.rs", "label": "storage" }
+      ]
+    },
+    {
+      "id": "schedule-eval",
+      "type": "backend",
+      "label": "Schedule evaluator",
+      "sublabel": "in-process scenario costing",
+      "pos": [740, 500],
+      "size": [180, 68],
+      "sources": [
+        { "path": "src/schedule/evaluate.rs", "label": "evaluation" },
+        { "path": "src/schedule/schedule.rs", "label": "schedule IR" }
+      ]
+    },
+    {
+      "id": "visualization-yaml",
+      "type": "backend",
+      "label": "Visualization document",
+      "sublabel": "mlar.visualization.v1 YAML",
+      "pos": [990, 330],
+      "size": [190, 76],
+      "tag": "renderer neutral"
+    },
+    {
+      "id": "archify-adapter",
+      "type": "messagebus",
+      "label": "Semantic view adapter",
+      "sublabel": "YAML validation + multi-diagram plan",
+      "pos": [1210, 260],
+      "size": [180, 76]
+    },
+    {
+      "id": "archify-renderer",
+      "type": "frontend",
+      "label": "Vendored Archify",
+      "sublabel": "validated standalone HTML",
+      "pos": [1210, 400],
+      "size": [180, 76]
+    },
+    {
+      "id": "mlir-adapter",
+      "type": "cloud",
+      "label": "MLIR adapter",
+      "sublabel": "parse native/loom; emit adl.*",
+      "pos": [250, 100],
+      "size": [180, 68],
+      "sources": [
+        { "path": "src/mlir/parser/mod.rs", "label": "parser" },
+        { "path": "src/mlir/export/mod.rs", "label": "export" }
+      ]
+    },
+    {
+      "id": "symbolic-math",
+      "type": "backend",
+      "label": "Symbolic math",
+      "sublabel": "expressions, affine forms, constraints",
+      "pos": [500, 100],
+      "size": [180, 68],
+      "sources": [
+        { "path": "src/math/expr.rs", "label": "expressions" },
+        { "path": "src/math/affine.rs", "label": "affine forms" },
+        { "path": "src/math/constraint.rs", "label": "constraints" }
+      ]
+    },
+    {
+      "id": "perf-yaml",
+      "type": "cloud",
+      "label": "Performance YAML",
+      "sublabel": "per-function cost models",
+      "pos": [250, 550],
+      "size": [180, 68],
+      "sources": [
+        { "path": "src/arch/perf_yaml.rs", "label": "loader" },
+        { "path": "src/arch/perf.rs", "label": "performance model" }
+      ]
+    },
+    {
+      "id": "abi-helpers",
+      "type": "backend",
+      "label": "ABI helpers",
+      "sublabel": "evaluator + architecture query",
+      "pos": [990, 550],
+      "size": [180, 68],
+      "sources": [
+        { "path": "src/abi/evaluator.rs", "label": "evaluator ABI" },
+        { "path": "src/abi/arch_query.rs", "label": "query ABI" }
+      ]
+    },
+    {
+      "id": "generated-tools",
+      "type": "external",
+      "label": "Generated tools",
+      "sublabel": "evaluator/query binaries",
+      "pos": [1240, 550],
+      "size": [160, 68],
+      "sources": [
+        { "path": "tests/2d_mesh/bin/.gitkeep", "label": "binary output" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "mlar-rust library crate",
+      "wraps": ["public-api", "arch-model", "schedule-eval", "visualization-yaml", "mlir-adapter", "symbolic-math", "perf-yaml", "abi-helpers"],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "project-owned visualization tools",
+      "wraps": ["archify-adapter", "archify-renderer"],
+      "pad": 20
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-api",
+      "from": "client",
+      "to": "public-api",
+      "label": "builder API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-model",
+      "from": "public-api",
+      "to": "arch-model",
+      "label": "constructs"
+    },
+    {
+      "id": "model-evaluation",
+      "from": "arch-model",
+      "to": "schedule-eval",
+      "label": "architecture + schedule",
+      "variant": "emphasis",
+      "labelAt": [700, 450]
+    },
+    {
+      "id": "model-export",
+      "from": "arch-model",
+      "to": "visualization-yaml",
+      "label": "semantic projection"
+    },
+    {
+      "id": "yaml-adapter",
+      "from": "visualization-yaml",
+      "to": "archify-adapter",
+      "label": "versioned YAML",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [1185, 235]
+    },
+    {
+      "id": "adapter-renderer",
+      "from": "archify-adapter",
+      "to": "archify-renderer",
+      "label": "bounded semantic specs",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [1300, 370]
+    },
+    {
+      "id": "mlir-model",
+      "from": "mlir-adapter",
+      "to": "arch-model",
+      "label": "functionality + ADL",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "math-model",
+      "from": "symbolic-math",
+      "to": "arch-model",
+      "label": "symbolic dimensions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [577, 182]
+    },
+    {
+      "id": "perf-model",
+      "from": "perf-yaml",
+      "to": "arch-model",
+      "label": "loads cost models",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "evaluation-abi",
+      "from": "schedule-eval",
+      "to": "abi-helpers",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "model-abi",
+      "from": "arch-model",
+      "to": "abi-helpers",
+      "label": "query contract",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "abi-tools",
+      "from": "abi-helpers",
+      "to": "generated-tools",
+      "label": "JSON over process ABI",
+      "variant": "dashed",
+      "labelAt": [1205, 632]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Modeling",
+      "items": [
+        "Architecture composes scopes, arrays, processors, memory regions, routers, networks, and shared resources.",
+        "Symbolic expressions and constraints carry parameterized sizes and costs across the model."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Evaluation and interchange",
+      "items": [
+        "MLIR describes executable functionality; YAML attaches function-level performance scenarios.",
+        "Schedule evaluation resolves in process, while ABI helpers support generated evaluator and query binaries."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Visualization",
+      "items": [
+        "Rust projects one normalized, renderer-neutral YAML document with stable IDs and typed relationships.",
+        "The adapter splits semantic views without expanding arrays or collapsing entities; vendored Archify validates and delivers HTML."
+      ]
+    }
+  ]
+}

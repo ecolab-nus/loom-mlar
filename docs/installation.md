@@ -1,71 +1,134 @@
-# Build and Installation
+# Installation
 
-## Requirements
+## Prerequisites
 
-- Rust toolchain supporting edition 2024;
-- `adl-opt` and `loom-opt`, built from the sibling `adl-dialect` and
-  `loom-dataflow` checkouts;
-- Node.js 18+ and npm only for the web viewer.
+- Rust toolchain with Cargo.
+- A toolchain recent enough for Rust edition 2024.
+- Node.js 20 or newer and npm for Archify conversion or the documentation site.
 
-## MLIR validators
+The crate dependencies include `nom`, `serde`, `serde_json`, and `serde_yaml`.
 
-Checked export shells out to two drivers: `adl-opt` takes the architecture
-module and `loom-opt` takes the complete module. Both require the LLVM/MLIR 22
-toolchain pinned by the Loom monorepo.
+## Build The Rust Crate
 
-```bash
-cmake -G Ninja -S ../adl-dialect -B ../adl-dialect/build \
-  -DMLIR_DIR=$MLIR_22/lib/cmake/mlir \
-  -DCMAKE_INSTALL_PREFIX=../adl-dialect/build/install
-cmake --build ../adl-dialect/build --target install
-
-cmake -G Ninja -S ../loom-dataflow -B ../loom-dataflow/build \
-  -DMLIR_DIR=$MLIR_22/lib/cmake/mlir \
-  -DADLDialect_DIR=../adl-dialect/build/install/lib/cmake/ADLDialect
-cmake --build ../loom-dataflow/build
-```
-
-`build.rs` locates both drivers in those build directories and rejects missing
-or non-executable binaries. Their paths are compiled into the crate.
-
-`architecture_to_mlir` always validates. Use `architecture_to_mlir_unchecked`
-to inspect output the current dialect does not yet accept.
-
-## Rust
+From the repository root:
 
 ```bash
 cargo build
+```
+
+Run the test suite:
+
+```bash
 cargo test
 ```
 
-Selected 2D-mesh tests regenerate inspectable output:
+Checked MLIR export requires compatible `adl-opt` and `loom-opt` executables.
+The Cargo build script first checks their standard sibling build directories,
+then searches `PATH`. If either tool is missing, the crate still builds and
+Cargo emits a warning. `architecture_to_mlir` then returns
+`AdlExportError::ValidatorUnavailable`, while tests that specifically require
+the real validators can use `mlir_validators_available()` to skip. Build the
+sibling ADL and loom-dataflow projects to enable those checks.
+
+The first tool validates the generated architecture-only ADL module. The second
+validates the complete module after processor functionality using the Loom
+dialect has been appended.
+
+For test output:
 
 ```bash
-cargo test test_export_2d_mesh_torus_mlir --test 2d_mesh
-cargo test test_export_2d_mesh_torus_viewer_json --test 2d_mesh
+cargo test -- --nocapture
 ```
 
-Generated MLIR and JSON are written under `tests/2d_mesh/` and
-`web-visualization/public/`; generated ABI binaries use `tests/2d_mesh/bin/`.
-
-## Web Viewer
+Some 2D mesh tests generate files for inspection and visualization:
 
 ```bash
-cd web-visualization
-npm install
-npm run dev
+cargo test declarative_imperative_and_pre_redesign_golden_agree --test 2d_mesh
+cargo test --test visualization_export_test
 ```
 
-The viewer loads `/sample-viewer.json` by default. See
-[web-visualization/README.md](../web-visualization/README.md) for payload and UI
-details.
+Generated outputs are written under `tests/2d_mesh/`.
 
-## Local Dependency
+The evaluator/query binary generation tests compile temporary Cargo projects and
+copy binaries into `tests/2d_mesh/bin/`:
+
+```bash
+cargo test test_generate_system_evaluator_binary --test 2d_mesh
+```
+
+## Build Archify Visualizations
+
+Install the small YAML/schema adapter's dependencies once:
+
+```bash
+cd tools/mlar-archify
+npm ci
+cd ../..
+```
+
+Check the vendored Archify installation and render the tracked 2D mesh sample:
+
+```text
+node tools/archify/bin/archify.mjs doctor
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  visualization-output/2d-mesh
+node tools/mlar-archify/bin/mlar-archify.mjs serve \
+  visualization-output/2d-mesh
+```
+
+The converter validates `mlar.visualization.v1`, splits the model into bounded
+semantic diagrams, runs Archify showcase validation and delivery for every
+diagram, and writes a manifest plus a loss report. Replicated scopes retain
+their dimensions and instance counts but are not expanded into individual
+tiles. It also generates a static gallery application at `index.html`; open
+`http://127.0.0.1:4173/` after starting the server. Generated output under
+`visualization-output/` is intentionally ignored.
+
+## Run The Documentation Site
+
+The Docusaurus site reads the Markdown files in `docs/` directly. From the
+repository root:
+
+```bash
+cd docsite
+npm ci
+npm start
+```
+
+`npm start` first validates every Archify JSON file under `docs/`, delivers the
+standalone HTML diagrams, and copies them into Docusaurus static assets. The
+development server therefore serves embedded diagrams without a separate
+manual generation step. A diagram validation or delivery failure stops startup
+instead of serving a page with missing content.
+
+Create the production static site with `npm run build`. Its prebuild step runs
+the same diagram compilation, and the output is written to `docsite/build/`.
+Preview that exact build with:
+
+```bash
+npm run serve
+```
+
+Open `http://localhost:3000/loom-mlar/docs/project-overview`. Do not run
+`npm start` and `npm run serve` at the same time unless one is assigned a
+different port; both use port 3000 by default.
+
+## Using As A Dependency
+
+In another local Cargo project, depend on this repository path:
 
 ```toml
 [dependencies]
 mlar-rust = { path = "../loom-mlar" }
 ```
 
-The repository also contains the `export_platform` and `eval_runtime` utility
-binaries.
+Then import the public API:
+
+```rust
+use mlar_rust::*;
+```
+
+This crate does not currently publish a CLI entry point. External tools can
+call generated evaluator/query binaries through the `abi` helpers described in
+[usage.md](usage.md).

@@ -6,7 +6,8 @@ use std::process::{Command, Stdio};
 use mlar_rust::arch::EndpointIndex;
 use mlar_rust::{
     AdlExportError, Architecture, Connection, Expr, MemoryAlias, MemoryDefinition, MemoryEndpoint,
-    Resource, Schedule, Sym, architecture_to_mlir, evaluate, generate_evaluator_binary,
+    PerfScenario, Resource, Schedule, Sym, architecture_to_mlir, evaluate,
+    generate_evaluator_binary,
 };
 
 fn processor_dir() -> std::path::PathBuf {
@@ -15,6 +16,37 @@ fn processor_dir() -> std::path::PathBuf {
 
 fn load() -> mlar_rust::Architecture {
     mlar_rust::archs::load_arch(processor_dir()).expect("redesigned 2D mesh package should load")
+}
+
+fn load_example_schedule(name: &str) -> Schedule {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/2d_mesh/schedules")
+        .join(name);
+    let json = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {path:?}: {error}"));
+    serde_json::from_str(&json).unwrap_or_else(|error| panic!("failed to parse {path:?}: {error}"))
+}
+
+fn node_scenarios(schedule: &Schedule) -> &[PerfScenario] {
+    match schedule {
+        Schedule::Func {
+            scenarios: Some(scenarios),
+            ..
+        }
+        | Schedule::PlacedFunc {
+            scenarios: Some(scenarios),
+            ..
+        }
+        | Schedule::Sequential {
+            scenarios: Some(scenarios),
+            ..
+        }
+        | Schedule::Parallel {
+            scenarios: Some(scenarios),
+            ..
+        } => scenarios,
+        _ => panic!("expected an evaluated schedule node"),
+    }
 }
 
 fn build_imperative() -> Architecture {
@@ -244,6 +276,87 @@ fn schedule_uses_the_restored_processor_performance_models() {
         (Sym::new("K"), Expr::Const(32)),
     ]);
     assert!(cost.eval_const().is_some());
+}
+
+#[test]
+fn evaluates_main_schedule_examples_on_the_redesigned_architecture() {
+    let architecture = load();
+    let bindings = [
+        (Sym::new("BM"), Expr::Const(32)),
+        (Sym::new("BN"), Expr::Const(32)),
+    ];
+
+    let vector = evaluate(
+        &load_example_schedule("core_vector_two_ops.json"),
+        &architecture,
+    )
+    .unwrap();
+    assert_eq!(
+        node_scenarios(&vector)[0]
+            .time_cost
+            .to_expr()
+            .substitute(&bindings)
+            .eval_const(),
+        Some(4)
+    );
+
+    let parallel = evaluate(
+        &load_example_schedule("core_parallel_vector.json"),
+        &architecture,
+    )
+    .unwrap();
+    assert_eq!(
+        node_scenarios(&parallel)[0]
+            .time_cost
+            .to_expr()
+            .substitute(&bindings)
+            .eval_const(),
+        Some(147)
+    );
+
+    let nested = evaluate(
+        &load_example_schedule("core_nested_parallel_sequential.json"),
+        &architecture,
+    )
+    .unwrap();
+    assert_eq!(
+        node_scenarios(&nested)[0]
+            .time_cost
+            .to_expr()
+            .substitute(&bindings)
+            .eval_const(),
+        Some(149)
+    );
+
+    let matmul = evaluate(&load_example_schedule("core_matmul.json"), &architecture).unwrap();
+    assert_eq!(node_scenarios(&matmul).len(), 2);
+    for scenario in node_scenarios(&matmul) {
+        let mut symbols = scenario.time_cost.to_expr().free_symbols();
+        symbols.extend(scenario.constraints.free_symbols());
+        assert!(!symbols.contains(&Sym::new("M")));
+        assert!(!symbols.contains(&Sym::new("N")));
+        assert!(!symbols.contains(&Sym::new("K")));
+        assert!(symbols.contains(&Sym::new("BM")));
+        assert!(symbols.contains(&Sym::new("BN")));
+        assert!(symbols.contains(&Sym::new("BK")));
+    }
+
+    let roundtrip = evaluate(
+        &load_example_schedule("system_data_roundtrip.json"),
+        &architecture,
+    )
+    .unwrap();
+    assert_eq!(
+        node_scenarios(&roundtrip)[0]
+            .time_cost
+            .to_expr()
+            .substitute(&[
+                (Sym::new("BM"), Expr::Const(30)),
+                (Sym::new("BN"), Expr::Const(25)),
+            ])
+            .eval_const(),
+        Some(928)
+    );
 }
 
 #[test]

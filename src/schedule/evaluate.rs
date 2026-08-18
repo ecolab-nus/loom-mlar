@@ -8,16 +8,28 @@ use crate::schedule::schedule::Schedule;
 
 /// Evaluate a schedule's performance on the given architecture.
 ///
-/// Function scenarios come from their processor models. Sequential scenarios
-/// form their Cartesian product, summing costs and conjoining guards. Guarded
-/// alternatives are preserved; parallel evaluation is unsupported.
+/// Function scenarios come from their processor models. Composition forms the
+/// Cartesian product of child alternatives and conjoins their guards.
+/// Sequential costs are summed; parallel costs take their maximum.
 ///
 /// # Errors
 ///
 /// Returns an error for unknown or ambiguous functions and invalid targets.
 pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, String> {
     match schedule {
-        Schedule::Parallel { .. } => Err("parallel schedule evaluation is not supported".into()),
+        Schedule::Parallel { schedules, .. } => {
+            let evaluated = schedules
+                .iter()
+                .map(|sub| evaluate(sub, arch))
+                .collect::<Result<Vec<_>, _>>()?;
+            let sub_scenarios = evaluated.iter().map(extract_scenarios).collect::<Vec<_>>();
+            let combined =
+                cartesian_product_scenarios(&sub_scenarios, ScheduleComposition::Parallel);
+            Ok(Schedule::Parallel {
+                schedules: evaluated,
+                scenarios: Some(combined),
+            })
+        }
 
         Schedule::Sequential { schedules, .. } => {
             let evaluated: Result<Vec<Schedule>, String> =
@@ -26,7 +38,8 @@ pub fn evaluate(schedule: &Schedule, arch: &Architecture) -> Result<Schedule, St
 
             let sub_scenarios: Vec<&[PerfScenario]> =
                 evaluated.iter().map(|s| extract_scenarios(s)).collect();
-            let combined = cartesian_product_scenarios(&sub_scenarios);
+            let combined =
+                cartesian_product_scenarios(&sub_scenarios, ScheduleComposition::Sequential);
 
             Ok(Schedule::Sequential {
                 schedules: evaluated,
@@ -116,8 +129,16 @@ fn extract_scenarios(schedule: &Schedule) -> &[PerfScenario] {
     }
 }
 
-/// Combine sequential alternatives by summing costs and conjoining guards.
-fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfScenario> {
+#[derive(Clone, Copy)]
+enum ScheduleComposition {
+    Sequential,
+    Parallel,
+}
+
+fn cartesian_product_scenarios(
+    sub_scenarios: &[&[PerfScenario]],
+    composition: ScheduleComposition,
+) -> Vec<PerfScenario> {
     let mut result = vec![PerfScenario {
         constraints: ConstraintExpr::True,
         time_cost: TimeCost::Expression(Expr::Const(0)),
@@ -127,12 +148,15 @@ fn cartesian_product_scenarios(sub_scenarios: &[&[PerfScenario]]) -> Vec<PerfSce
         let mut next = Vec::with_capacity(result.len() * scenarios.len());
         for existing in &result {
             for new in *scenarios {
+                let left = existing.time_cost.to_expr();
+                let right = new.time_cost.to_expr();
+                let time_cost = match composition {
+                    ScheduleComposition::Sequential => Expr::add(left, right),
+                    ScheduleComposition::Parallel => Expr::max(left, right),
+                };
                 next.push(PerfScenario {
                     constraints: and_constraints(&existing.constraints, &new.constraints),
-                    time_cost: TimeCost::Expression(Expr::add(
-                        existing.time_cost.to_expr(),
-                        new.time_cost.to_expr(),
-                    )),
+                    time_cost: TimeCost::Expression(time_cost),
                 });
             }
         }

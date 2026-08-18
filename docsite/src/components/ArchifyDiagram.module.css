@@ -1,0 +1,49 @@
+.figure {
+  width: 100%;
+  margin: 2rem 0;
+}
+
+.frameShell {
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+  box-shadow: 0 18px 45px rgba(7, 26, 43, 0.12);
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  height: min(82vh, 900px);
+  min-height: 640px;
+  border: 0;
+  background: var(--ifm-background-color);
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.875rem;
+}
+
+.caption a {
+  flex: none;
+  font-weight: 600;
+}
+
+@media screen and (max-width: 996px) {
+  .frame {
+    height: 72vh;
+    min-height: 560px;
+  }
+
+  .caption {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+}
