@@ -93,3 +93,15 @@
 
 - Run only unit tests: rejected because they do not prove showcase delivery, source coverage, or bundle navigation.
 - Run the full repository suite before focused checks: rejected because focused failures are faster to diagnose; broader validation remains a final gate.
+
+## Decision 9: Present Access as Routes Through Actors
+
+**Decision**: Place each processor or data mover between the hierarchy columns of its source and destination memories whenever those endpoints differ. Draw the two canonical relationship segments as unlabeled directional arrows, producing source memory → actor → destination memory.
+
+**Rationale**: The existing v1 `read` edge already points from source memory to actor and the `write` edge already points from actor to destination memory. Their topology and arrowheads fully encode the route, so repeating `read` and `write` as edge text adds visual noise without adding semantics. Spatially placing the actor between the memory regions makes both forward and reverse routes immediately traceable.
+
+**Alternatives considered**:
+
+- Keep actors beside the hierarchy with `read`/`write` labels: rejected because it obscures the memory-to-memory route and duplicates meaning already carried by arrow direction.
+- Add a direct memory-to-memory edge: rejected because it bypasses the processor/data mover identity and invents a source relationship that is not in the v1 document.
+- Change the Rust exporter to emit route objects: rejected because the existing paired directional relationships contain all required information.

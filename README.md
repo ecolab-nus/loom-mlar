@@ -86,8 +86,10 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 The generated application opens on one combined memory hierarchy-and-access
 diagram whenever the model fits the 12-node readability limit. Scope boundaries
 show where each canonical memory belongs; recursive banks, directly connected
-compute processors and data movers, and original read/write directions appear
-in that same diagram. Larger models alone use overflow views. Resources,
+compute processors and data movers appear in that same diagram. Actors sit
+between their source and destination memory levels, and arrowheads form
+source-memory → actor → destination-memory routes without `read`/`write` edge
+text. Larger models alone use overflow views. Resources,
 networks, and otherwise uncovered components remain available under supporting
 context. The gallery embeds standalone Archify artifacts and can be deployed to
 any static web host.

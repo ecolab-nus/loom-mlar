@@ -29,8 +29,9 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 - Scope boundaries and paths show ownership hierarchy.
 - Recursive array/bank structure is shown with deterministic derived layer IDs and `contains` connections.
 - Every directly connected processor and data mover appears in the same view, once per canonical actor identity.
-- Original relationship direction is preserved: memory → actor for reads and actor → memory for writes.
-- A data mover includes all its canonical memory endpoints, allowing source → mover → destination routes to appear in the unified view.
+- Original relationship direction is preserved as unlabeled arrows; the presentation does not add `read` or `write` edge text.
+- Each connected actor is placed between its source and destination hierarchy columns whenever the endpoints differ, forming source memory → actor → destination memory.
+- A data mover includes all its canonical memory endpoints, allowing complete source → mover → destination routes to appear in the unified view.
 - Derived containment is not reported as a canonical source relationship and never implies access.
 - Symbolic values show their expression text; unavailable concrete totals remain explicitly unknown rather than fabricated.
 - No edge is inferred from hierarchy, same-name matching, resource dependencies, or network attachments.
@@ -39,7 +40,7 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 
 - Separate hierarchy windows and memory-anchored access pages are created only when the unified view would contain more than 12 primary nodes.
 - Wide/deep structures split deterministically with stable breadcrumb context.
-- Access overflow pages retain whole actor units, all direct canonical memory endpoints, and exact directional relationships.
+- Access overflow pages retain whole actor units, all direct canonical memory endpoints, and exact unlabeled directional routes.
 - Overflow never expands replicated instances or replaces distinct canonical entities with aggregate nodes.
 
 ## Supporting Context Views

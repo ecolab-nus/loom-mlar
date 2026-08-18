@@ -188,6 +188,22 @@ test('US1 partitions wide memory hierarchies without expanding instances', () =>
   )));
 });
 
+test('US1 keeps an all-unconnected memory hierarchy on non-negative grid rows', () => {
+  const unconnected = structuredClone(document);
+  unconnected.components = unconnected.components.filter(
+    (component) => component.kind === 'memory',
+  );
+  unconnected.relationships = [];
+  const hierarchy = planned(unconnected).find(
+    (diagram) => diagram.section === 'memory_hierarchy',
+  );
+  assert.ok(hierarchy);
+  assert.ok(hierarchy.spec.components.every((component) => component.row >= 0));
+  assert.ok(hierarchy.spec.components
+    .filter((component) => component.id.startsWith('memory-'))
+    .every((component) => component.tag === 'unconnected' || component.tag === 'bank'));
+});
+
 test('US1 gallery defaults to hierarchy and indexes canonical memory context', () => {
   const diagrams = planned();
   const catalog = buildGalleryCatalog(document, diagrams);
@@ -230,29 +246,79 @@ test('US2 combines read and write access while preserving actor roles and mover 
     moverView.spec.components.find((component) => component.id === 'processor-copy').type,
     'messagebus',
   );
+  const dramNode = moverView.spec.components.find((component) => component.id === 'memory-dram');
+  const l1Node = moverView.spec.components.find((component) => component.id === 'memory-l1');
+  const moverNode = moverView.spec.components.find((component) => component.id === 'processor-copy');
+  assert.ok(dramNode.col < moverNode.col && moverNode.col < l1Node.col);
   assert.deepEqual(
     moverView.spec.connections
       .filter((connection) => connection.id.startsWith('relationship-copy-'))
-      .map(({ id, from, to, label }) => ({ id, from, to, label }))
+      .map(({ id, from, to }) => ({ id, from, to }))
       .sort((left, right) => left.id.localeCompare(right.id)),
     [
       {
         id: 'relationship-copy-read',
         from: 'memory-dram',
         to: 'processor-copy',
-        label: 'read',
       },
       {
         id: 'relationship-copy-write',
         from: 'processor-copy',
         to: 'memory-l1',
-        label: 'write',
       },
     ],
   );
+  assert.ok(moverView.spec.connections
+    .filter((connection) => connection.id.startsWith('relationship-copy-'))
+    .every((connection) => !Object.hasOwn(connection, 'label')));
   assert.ok(!moverView.spec.connections.some((connection) =>
     connection.from === 'memory-dram' && connection.to === 'memory-l1'),
   'scope or structural hierarchy must not infer read/write access');
+});
+
+test('US2 places forward and reverse movers between their memory endpoints', () => {
+  const bidirectional = structuredClone(document);
+  bidirectional.components.push(
+    actor('data_mover', 'processor-copy-back', 'scope-system', 'copy back'),
+  );
+  bidirectional.relationships.push(
+    relationship('relationship-copy-back-read', 'read', 'memory-l1', 'processor-copy-back'),
+    relationship('relationship-copy-back-write', 'write', 'processor-copy-back', 'memory-dram'),
+  );
+
+  const view = planned(bidirectional).find(
+    (diagram) => diagram.section === 'memory_hierarchy'
+      && diagram.componentIds.includes('processor-copy-back'),
+  );
+  assert.ok(view);
+  const componentById = new Map(view.spec.components.map((component) => [component.id, component]));
+  for (const actorId of ['processor-copy', 'processor-copy-back']) {
+    assert.ok(
+      componentById.get('memory-dram').col < componentById.get(actorId).col
+        && componentById.get(actorId).col < componentById.get('memory-l1').col,
+    );
+  }
+  assert.deepEqual(
+    view.spec.connections
+      .filter((connection) => connection.id.startsWith('relationship-copy-back-'))
+      .map(({ id, from, to }) => ({ id, from, to }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    [
+      {
+        id: 'relationship-copy-back-read',
+        from: 'memory-l1',
+        to: 'processor-copy-back',
+      },
+      {
+        id: 'relationship-copy-back-write',
+        from: 'processor-copy-back',
+        to: 'memory-dram',
+      },
+    ],
+  );
+  assert.ok(view.spec.connections
+    .filter((connection) => connection.id.includes('copy'))
+    .every((connection) => !Object.hasOwn(connection, 'label')));
 });
 
 test('US2 keeps same-memory mover meanings without duplicating its identity', () => {

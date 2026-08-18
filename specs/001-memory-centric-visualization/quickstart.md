@@ -25,9 +25,9 @@ Expected coverage:
 
 - one combined memory hierarchy-and-access diagram is the default when it fits;
 - recursive array/bank detail and unconnected memories remain visible;
-- one processor reading and writing the same memory appears once with both edges;
+- one processor with the same source and destination memory appears once with both directional segments and no `read`/`write` edge labels;
 - DRAM, L1, recursive banks, processors, and data movers share the same primary diagram;
-- a DRAM-to-L1 data mover shows both endpoints and directions there;
+- forward and reverse data movers are positioned between DRAM and L1 and form unlabeled source memory → mover → destination memory routes;
 - duplicate display names remain distinct through canonical IDs and scope paths;
 - symbolic sizes retain expression text;
 - hierarchy/access partitions never exceed 12 primary nodes;
@@ -71,8 +71,8 @@ Expected outcome:
 - the default view is the unified root memory hierarchy-and-access diagram;
 - DRAM and replicated L1 appear with scope/replication context;
 - DRAM/L1 bank layers and all connected processors/data movers appear in that same diagram;
-- `dram_l1_noc0` forms a visible DRAM → mover → L1 route;
-- matrix and vector processors show read/write access at L1;
+- `dram_l1_noc0` forms a visible DRAM → mover → L1 route while `l1_dram_noc1` forms L1 → mover → DRAM;
+- matrix and vector processors appear in the actor column with arrowheads showing their L1 source and destination, without access-kind text;
 - network and resource relationships remain available in supporting views; and
 - no view exceeds 12 primary nodes.
 
@@ -108,8 +108,8 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
 Open `http://127.0.0.1:4173/` and verify:
 
 1. In the one primary diagram, identify DRAM, L1, their ownership levels, L1's 8×8 replication context, and both recursive bank layers without opening the source YAML.
-2. Without changing diagrams, identify matrix and vector compute processors at L1 and confirm both read and write access.
-3. In that same diagram, trace DRAM → `dram_l1_noc0` → L1, then trace L1 → `l1_dram_noc1` → DRAM.
+2. Without changing diagrams, identify matrix and vector compute processors between the memory-region columns and follow their incoming and outgoing L1 arrows; confirm the edges do not say `read` or `write`.
+3. In that same diagram, confirm both movers lie between DRAM and L1, then trace DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM by arrow direction.
 4. Confirm that selecting hierarchy context does not imply an access edge.
 5. Search by memory name and move between the unified primary diagram and supporting context while retaining stable identities.
 

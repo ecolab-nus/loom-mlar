@@ -129,6 +129,17 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 
 ---
 
+## Phase 8: Actor Route Layout Follow-up
+
+**Purpose**: Make processors and data movers explicit route nodes between their source and destination memory regions, using arrow direction instead of access-kind labels.
+
+- [X] T031 Add focused forward/reverse route tests requiring actors between DRAM and L1, exact source → actor → destination direction, and no `read`/`write` edge labels in `tools/mlar-archify/test/planner.test.mjs`
+- [X] T032 Implement hierarchy-depth memory columns, intervening actor placement, and unlabeled directional access connections in `tools/mlar-archify/bin/mlar-archify.mjs`
+- [X] T033 Update feature artifacts and canonical user documentation to specify actor-between-memory routing and arrow-only access semantics
+- [X] T034 Rebuild and validate the 2D mesh bundle, inspect both opposite mover routes and node positions, rerun regression checks, and record the evidence below
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -140,6 +151,7 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 - **User Story 3 (Phase 5)**: Starts after T005; T014 → (T015 and T016 in parallel) → T017.
 - **Polish (Phase 6)**: Starts after the selected story phases. T018, T019, and T020 can run in parallel; T021 follows relevant documentation edits; T022 follows T021; T023 and T024 can run in parallel; T025 follows the complete bundle; T026 is last.
 - **Unified follow-up (Phase 7)**: Starts after T026; T027 → T028 → T029 → T030.
+- **Actor-route follow-up (Phase 8)**: Starts after T030; T031 → T032 → T033 → T034.
 
 ### User Story Dependencies
 
@@ -229,6 +241,7 @@ Task T016: Implement supporting-context gallery organization in tools/mlar-archi
 - T024: all 11 specifications passed showcase validation and delivery. Visual checks were recorded as `skipped` for all 11 because Chrome/Chromium was unavailable; no visual pass is claimed.
 - T025 machine-assisted journey over the generated manifest/specifications: hierarchy identification took 0.044 ms and found DRAM, replicated `x=8 × y=8` L1, both scope boundaries, and the L1 bank layer; SC-003 access identification took 0.092 ms and found `matrix_lane` and `vector_lane`, each with read and write edges; SC-004 route tracing took 0.052 ms and found both DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM on the first query. These results validate the artifact paths and are under the 60-second target, but they do not establish the specified 90% human-evaluator rate; no human study or browser visual review was performed.
 - T030 follow-up: the rebuilt 2D mesh bundle has exactly one 9-node `memory_hierarchy` primary diagram, zero `memory_access` diagrams, all 10 canonical read/write relationships, both derived bank-containment relationships, and zero omitted source IDs. One machine-assisted query found hierarchy, both bank layers, both compute processors with read/write access, and both cross-level mover routes in that single diagram in 0.195 ms. All seven generated diagrams passed showcase validation/delivery; browser visual checks remain truthfully `skipped` because Chrome/Chromium is unavailable. Rust/v1 compatibility-boundary files retain zero diff.
+- T034 follow-up: the rebuilt 2D mesh primary specification places DRAM at column 0, all five connected processors/data movers at column 1, and L1 at column 2. It contains DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM with arrow-only access segments and zero access labels. All 14 adapter tests pass, all seven diagrams pass showcase validation/delivery with zero source omissions, and all seven browser visual checks remain `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, and the four focused Rust visualization tests pass; the Rust projection, public re-export, v1 schema, and tracked visualization YAML retain zero diff.
 - Rust and v1 schema files are regression boundaries, not implementation targets.
 - Derived memory-layer IDs are presentation-only and cannot become processor/data-mover endpoints.
 - Scope containment communicates ownership only; it never creates read/write access.

@@ -344,10 +344,11 @@ Scope filtering, previous/next navigation, deep links, and independent diagram
 opening are available without a backend.
 
 Use the primary diagram to answer who uses each exact memory. Compute processors
-and data movers use different node styles; an actor that both reads and writes
-appears once with both original directional edges. A mover includes all its
-declared canonical memory endpoints, so a DRAM → mover → L1 route is visible
-beside the hierarchy and banks. Structure `contains` edges and scope boundaries
+and data movers use different node styles. Each actor is placed between its
+source and destination memory levels, with unlabeled arrows forming source
+memory → actor → destination memory. Thus DRAM → mover → L1 and the reverse
+L1 → mover → DRAM can be read directly from arrowheads without `read`/`write`
+edge text. Structure `contains` edges and scope boundaries
 show hierarchy only and must not be interpreted as access. Additional access
 pages are generated only when the combined diagram would exceed 12 nodes.
 

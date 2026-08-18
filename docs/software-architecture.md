@@ -124,7 +124,9 @@ pages remain an overflow strategy for larger models; resource/network views are
 secondary. The adapter preserves every canonical component and relationship,
 but keeps array dimensions and replication factors as metadata rather than
 expanding instances. Scope or structural containment never creates access; only
-the exported directional read/write relationships do.
+the exported directional read/write relationships do. In the rendered primary
+view, those relationships become unlabeled source-memory → actor →
+destination-memory arrows, with actors occupying columns between memory levels.
 The vendored renderer under `tools/archify/` validates each specification at
 showcase quality and delivers standalone HTML. A generated static gallery shell
 orders the unified primary diagram, any required overflow, and supporting

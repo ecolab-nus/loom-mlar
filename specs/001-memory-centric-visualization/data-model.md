@@ -99,7 +99,7 @@ projection fits within 12 primary nodes.
 | `actor_ids` | Every processor/data mover with direct memory access |
 | `scope_boundaries` | Ownership and replication context for memories/layers |
 | `contains_connections` | Presentation-only structural containment |
-| `source_relationship_ids` | Exact canonical read/write edges |
+| `source_relationship_ids` | Exact canonical relationship segments rendered as unlabeled directional arrows |
 
 Validation rules:
 
@@ -107,6 +107,8 @@ Validation rules:
   connected actors contains at most 12 nodes.
 - Replaces separate hierarchy, structure, and access diagrams when emitted.
 - Each actor appears once with all directly connected canonical memory endpoints.
+- Actors with different source and destination hierarchy levels occupy an intervening column, so the visual route is source memory → actor → destination memory.
+- Canonical `read`/`write` kinds determine arrow direction internally but are not repeated as edge labels.
 - Containment never implies access and remains separate from source coverage.
 
 ### Memory Hierarchy Overflow Window
@@ -141,14 +143,15 @@ One executable component and all of its direct memory access facts, considered a
 | `anchor_memory_id` | Memory whose page includes this unit |
 | `endpoint_memory_ids` | All canonical memories connected to the actor by read/write relationships |
 | `relationship_ids` | All canonical read/write relationships among the actor and endpoints |
-| `access_mode_at_anchor` | Read, write, or both |
+| `source_memory_ids` | Canonical memories whose relationship arrows enter the actor |
+| `destination_memory_ids` | Canonical memories whose relationship arrows leave the actor |
 
 Validation rules:
 
 - The anchor must occur in `endpoint_memory_ids`.
 - The actor appears once per view even when both read and write relationships exist.
 - All endpoints are exact canonical memories; no ancestor/descendant inference is allowed.
-- A data mover with source and destination shows both directional edges whenever its unit fits in one view.
+- A data mover with source and destination shows both unlabeled directional segments whenever its unit fits in one view.
 
 ### Memory Access Overflow Window
 
@@ -161,7 +164,7 @@ or more actor access units. It is not generated when the unified view fits.
 | `anchor_memory_id` | Repeated canonical center across pages |
 | `actor_units` | Whole access units packed into this page |
 | `component_ids` | Unique canonical memories and actors displayed |
-| `source_relationship_ids` | Exact read/write edges displayed |
+| `source_relationship_ids` | Exact directional route segments displayed without access-kind labels |
 | `primary_scope_id` | Anchor memory's owning scope |
 
 Validation rules:

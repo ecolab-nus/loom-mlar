@@ -115,7 +115,9 @@ The Node.js adapter validates the visualization YAML, checks its references,
 and derives a memory-first presentation without changing the v1 interchange
 contract. When it fits within 12 nodes, one primary diagram combines scope
 ownership, recursive memory structure, every connected processor/data mover,
-and the exact read/write relationships and endpoints. Larger models alone use
+and exact source-memory → actor → destination-memory routes. Actors are placed
+between their endpoint memory levels, and arrow direction replaces
+`read`/`write` edge labels. Larger models alone use
 bounded hierarchy/access overflow. Resources, networks, and uncovered entities
 remain in supporting views. Vendored Archify validates and renders every view
 as standalone HTML, and `mlar-archify` assembles those artifacts into a static

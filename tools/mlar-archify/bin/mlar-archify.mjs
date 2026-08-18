@@ -420,21 +420,8 @@ function archifyComponent(component, index, columns) {
   }
 }
 
-function componentBox(component, layout) {
-  const width = component.size?.[0] ?? layout.cellW;
-  const height = component.size?.[1] ?? layout.cellH;
-  return {
-    x: layout.origin[0] + component.col * (layout.cellW + layout.gapX),
-    y: layout.origin[1] + component.row * (layout.cellH + layout.gapY),
-    width,
-    height,
-  };
-}
-
-function archifyConnection(relationship, componentsById, layout) {
+function archifyConnection(relationship) {
   const labels = {
-    read: 'read',
-    write: 'write',
     requires: 'requires',
     network_attachment: 'attaches',
     contains: 'contains',
@@ -443,33 +430,13 @@ function archifyConnection(relationship, componentsById, layout) {
     id: relationship.id,
     from: relationship.source,
     to: relationship.target,
-    label: labels[relationship.kind] ?? relationship.label,
   };
+  const label = labels[relationship.kind];
+  if (label) connection.label = label;
   if (relationship.kind === 'requires') connection.variant = 'dashed';
   if (relationship.kind === 'requires') connection.labelDy = 24;
   if (relationship.kind === 'read' || relationship.kind === 'write') {
     connection.variant = 'emphasis';
-    const source = componentsById.get(relationship.source);
-    const target = componentsById.get(relationship.target);
-    const actor = relationship.kind === 'read' ? target : source;
-    const memory = relationship.kind === 'read' ? source : target;
-    const actorBox = componentBox(actor, layout);
-    const memoryBox = componentBox(memory, layout);
-    if (actor.row !== memory.row) {
-      const upper = actor.row < memory.row ? actorBox : memoryBox;
-      const lower = actor.row < memory.row ? memoryBox : actorBox;
-      connection.labelAt = [
-        actorBox.x + actorBox.width / 2 + (relationship.kind === 'read' ? -52 : 52),
-        (upper.y + upper.height + lower.y) / 2,
-      ];
-    } else {
-      const left = actor.col < memory.col ? actorBox : memoryBox;
-      const right = actor.col < memory.col ? memoryBox : actorBox;
-      connection.labelAt = [
-        (left.x + left.width + right.x) / 2,
-        actorBox.y + actorBox.height / 2 + (relationship.kind === 'read' ? -20 : 20),
-      ];
-    }
   }
   if (relationship.kind === 'contains') {
     connection.variant = 'dashed';
@@ -526,9 +493,6 @@ function createDiagram({
   const presentationComponents = sortedComponents.map((component, index) =>
     archifyComponent(component, index, columns),
   );
-  const presentationById = new Map(
-    presentationComponents.map((component) => [component.id, component]),
-  );
   const layout = {
     mode: 'grid',
     origin: [40, 70],
@@ -547,9 +511,7 @@ function createDiagram({
     },
     layout,
     components: presentationComponents,
-    connections: selectedRelationships.map((relationship) =>
-      archifyConnection(relationship, presentationById, layout),
-    ),
+    connections: selectedRelationships.map(archifyConnection),
   };
   if (selectedBoundaries.length > 0) spec.boundaries = selectedBoundaries;
   return {
@@ -614,15 +576,23 @@ function unifiedMemoryDiagram(document, projection) {
     return null;
   }
 
+  const maximumLayerCount = Math.max(
+    0,
+    ...memories.map((memory) => projection.layersByMemory.get(memory.id).components.length),
+  );
+  const memoryRowStride = maximumLayerCount + 2;
+  const actorMiddleRow = Math.max(0, Math.floor((actorUnits.length - 1) / 2));
   const memoryPositions = new Map();
   const memoryCountByDepth = new Map();
   for (const memory of memories) {
     const depth = scopePath(memory.scope, projection.scopesById).length - 1;
-    const col = memoryCountByDepth.get(depth) ?? 0;
-    memoryCountByDepth.set(depth, col + 1);
-    memoryPositions.set(memory.id, { row: depth * 3, col });
+    const indexAtDepth = memoryCountByDepth.get(depth) ?? 0;
+    memoryCountByDepth.set(depth, indexAtDepth + 1);
+    memoryPositions.set(memory.id, {
+      row: actorMiddleRow + indexAtDepth * memoryRowStride,
+      col: depth * 2,
+    });
   }
-  const actorColumnOffset = Math.max(1, ...memoryCountByDepth.values());
   const components = [];
   const relationships = [];
   for (const memory of memories) {
@@ -635,16 +605,17 @@ function unifiedMemoryDiagram(document, projection) {
     relationships.push(...layers.relationships);
   }
   actorUnits.forEach((unit, index) => {
-    const endpointRows = unit.endpointIds.map((memoryId) => memoryPositions.get(memoryId).row);
-    const shallowest = Math.min(...endpointRows);
-    const deepest = Math.max(...endpointRows);
-    const row = shallowest === deepest
-      ? (deepest === 0 ? 2 : deepest - 1)
-      : Math.max(shallowest + 1, deepest - 1);
+    const endpointColumns = unit.endpointIds
+      .map((memoryId) => memoryPositions.get(memoryId).col);
+    const shallowestColumn = Math.min(...endpointColumns);
+    const deepestColumn = Math.max(...endpointColumns);
+    const col = shallowestColumn === deepestColumn
+      ? (shallowestColumn === 0 ? 1 : shallowestColumn - 1)
+      : shallowestColumn + 1;
     components.push({
       ...unit.actor,
-      row,
-      col: actorColumnOffset + index,
+      row: index,
+      col,
     });
     relationships.push(...unit.relationships);
   });

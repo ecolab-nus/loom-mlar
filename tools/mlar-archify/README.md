@@ -33,9 +33,10 @@ array and bank values are rendered with deterministic presentation-only IDs and
 `contains` connections; processors and movers never connect to those derived
 nodes. Scope ownership and recursive containment show hierarchy only and do not
 create access. A read remains memory → actor, and a write remains actor →
-memory. The unified diagram includes each actor once together with all of its
-declared canonical memory endpoints, so mover routes can be traced without
-changing diagrams. The older memory-anchored packing remains only for overflow.
+memory in the source contract, but the rendered edges omit those kind labels.
+The unified diagram includes each actor once, positioned between its source and
+destination memory columns, so routes read visually as source memory → actor →
+destination memory. The older memory-anchored packing remains only for overflow.
 
 Each diagram contains at most 12 primary nodes. Replicated architecture scopes
 retain dimension and replication-factor metadata but are never expanded. Distinct

@@ -6,7 +6,7 @@
 
 ## Summary
 
-Refactor the generated architecture explorer around one unified memory hierarchy-and-access diagram. Retain the existing `mlar.visualization.v1` document and Rust exporter: the current contract already contains stable top-level memory IDs, scope hierarchy and replication, recursive array/bank details, and directional read/write relationships. The adapter places canonical memories, recursive layers, and all directly connected processors/data movers together whenever their union fits within 12 primary nodes. It creates deterministic overflow pages only for larger models and keeps resource/network context secondary. Preserve canonical source IDs, exact access semantics, complete source coverage, English-only output, and Archify as the sole diagram renderer.
+Refactor the generated architecture explorer around one unified memory hierarchy-and-access diagram. Retain the existing `mlar.visualization.v1` document and Rust exporter: the current contract already contains stable top-level memory IDs, scope hierarchy and replication, recursive array/bank details, and directional read/write relationships. The adapter places canonical memories and recursive layers by hierarchy level, with each directly connected processor/data mover between its source and destination memory columns whenever the complete projection fits within 12 primary nodes. Access is drawn as unlabeled source memory → actor → destination memory arrows. Deterministic overflow pages are created only for larger models and resource/network context remains secondary. Preserve canonical source IDs, exact access semantics, complete source coverage, English-only output, and Archify as the sole diagram renderer.
 
 ## Technical Context
 
@@ -57,9 +57,9 @@ No constitution violations require justification.
 ### 2. Replace Scope-First Planning with One Unified Memory View
 
 - Build one `memory_hierarchy` diagram containing all canonical memories, recursive layer nodes, directly connected processors/data movers, derived `contains` connections, and original read/write relationships when the union contains at most 12 nodes.
-- Place canonical memories by scope depth, their recursive layers directly below them, and connected actors between or beside the exact memory levels they access.
+- Place canonical memories in hierarchy-depth columns, their recursive layers directly below them, and connected actors in the intervening column between their exact source and destination memories whenever those endpoints differ.
 - Show scope ownership with boundaries. Scope containment communicates placement only and MUST NOT create memory access edges.
-- Deduplicate each actor while including every directly connected canonical memory endpoint and every original directional relationship. This keeps source-memory → data-mover → destination-memory routes and same-memory read/write meanings visible together.
+- Deduplicate each actor while including every directly connected canonical memory endpoint and every original directional relationship. Render those relationships as arrow-only source-memory → actor → destination-memory routes, without `read` or `write` text. Same-memory source/destination pairs remain two directional segments around one actor identity.
 - Only when the union exceeds 12 nodes, fall back to deterministic hierarchy windows and memory-anchored actor-unit overflow pages. Repeat stable context without aggregate placeholders or instance expansion.
 
 ### 3. Preserve Supporting Context and Coverage

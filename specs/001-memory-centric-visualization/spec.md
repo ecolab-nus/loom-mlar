@@ -37,8 +37,8 @@ As a hardware architect, I want each memory region to show the processors and da
 
 **Acceptance Scenarios**:
 
-1. **Given** a compute processor that reads from and writes to L1, **When** the user examines L1, **Then** the processor appears once as a compute processor and both its read and write access are unambiguous.
-2. **Given** a data mover from DRAM to L1, **When** the user examines either endpoint, **Then** the same data mover is visible, DRAM is identified as its source, L1 as its destination, and the direction of movement is clear.
+1. **Given** a compute processor whose source and destination are both L1, **When** the user examines L1, **Then** the processor appears once between the memory hierarchy levels and the arrows form L1 → processor → L1 without `read` or `write` text labels.
+2. **Given** a data mover from DRAM to L1, **When** the user examines either endpoint, **Then** the same data mover is placed between DRAM and L1 and the arrows form DRAM → data mover → L1.
 3. **Given** processors connected to different levels of a memory hierarchy, **When** the hierarchy is viewed, **Then** each processor is associated only with the exact region or regions it accesses and is not implied to access ancestors or descendants.
 4. **Given** multiple connections between the same component and memory region, **When** they represent distinct access meanings, **Then** each meaning remains discoverable without duplicating the component's identity.
 
@@ -80,10 +80,10 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **FR-004**: Each memory region MUST expose its available name, hierarchy context, dimensions, replication factor, capacity, block size, and total size without requiring replication to be expanded into individual instances.
 - **FR-005**: For every memory region, users MUST be able to identify all compute processors and data movers directly connected to that exact region in the same primary diagram whenever the combined view fits within the 12-node limit.
 - **FR-006**: The visualization MUST distinguish compute processors from data movers wherever they are shown.
-- **FR-007**: Each processor or data-mover connection MUST identify whether it reads from the memory region, writes to the memory region, or does both.
-- **FR-008**: A data mover that connects two memory regions MUST show both endpoints and the direction from source memory to destination memory.
+- **FR-007**: Each processor or data mover MUST be presented as a route from its exact source memory through the actor to its exact destination memory; arrow direction alone MUST convey the access direction, without `read` or `write` edge labels.
+- **FR-008**: A data mover that connects two memory regions MUST show both endpoints and the complete source memory → data mover → destination memory route.
 - **FR-009**: The visualization MUST NOT infer access from hierarchy alone; a connection to one memory region MUST NOT imply a connection to its ancestors, descendants, or siblings.
-- **FR-010**: Users MUST be able to move from a memory region to a connected component and from that component to its other directly connected memory regions while preserving entity identity and access direction.
+- **FR-010**: Users MUST be able to follow directional arrows from a source memory to a connected component and from that component to its destination memory while preserving entity identity.
 - **FR-011**: Unconnected memory regions MUST remain visible in their correct hierarchy and be recognizable as having no direct processor or data-mover connections.
 - **FR-012**: The visualization MUST preserve every modeled component and relationship in at least one view, while presenting networks, shared resources, and other non-memory information as supporting context.
 - **FR-013**: No individual semantic view MUST contain more than 12 primary nodes; larger hierarchies or connection sets MUST be split into navigable, memory-centered views.
@@ -93,6 +93,7 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **FR-017**: The canonical visualization content MUST remain available as a human-readable, versioned textual artifact that can be inspected independently of the rendered views.
 - **FR-018**: All project-authored labels, diagnostics, and navigation for the memory-centric experience MUST be in English.
 - **FR-019**: The planner MUST NOT create separate hierarchy, recursive-structure, or memory-access diagrams when their union contains at most 12 primary nodes; partitioned overflow views are permitted only when the combined view would exceed that limit.
+- **FR-020**: In a unified view, each processor or data mover whose source and destination are at different memory hierarchy levels MUST be positioned spatially between those canonical memory regions.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -100,9 +101,9 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **Memory Hierarchy Relationship**: A parent/child relationship that locates one memory region or nested region structure relative to another without implying access.
 - **Compute Processor**: An executable architecture component that directly reads from and/or writes to one or more memory regions.
 - **Data Mover**: An executable architecture component with a source memory region and destination memory region, representing directed movement within or across hierarchy levels.
-- **Memory Access Connection**: A direct, directional relationship between a memory region and a compute processor or data mover, with read and/or write meaning.
+- **Memory Access Connection**: One segment of an unlabeled directional route from source memory through a compute processor or data mover to destination memory.
 - **Supporting Context**: Network, shared-resource, scope, dimension, and replication information associated with connected components or hierarchy levels but not used as the primary visual anchor.
-- **Unified Memory View**: The default bounded presentation containing canonical memories, recursive structural layers, connected processors/data movers, containment, and exact read/write relationships together.
+- **Unified Memory View**: The default bounded presentation containing canonical memories, recursive structural layers, connected processors/data movers positioned between hierarchy levels, containment, and exact source-to-destination routes together.
 - **Semantic View**: A bounded primary or overflow presentation preserving canonical identities when the complete unified memory view cannot fit.
 
 ## Success Criteria *(mandatory)*
@@ -110,19 +111,20 @@ As a performance engineer, I want to follow a data-movement route between memory
 ### Measurable Outcomes
 
 - **SC-001**: In the representative multi-level architecture sample, 100% of modeled memory regions appear in the visualization with the correct parent/child placement and replication context.
-- **SC-002**: In reference comparisons, 100% of declared processor and data-mover memory connections appear at the correct memory endpoint with the correct direction, with zero inferred or duplicate connections.
+- **SC-002**: In reference comparisons, 100% of declared processor and data-mover routes appear as source memory → actor → destination memory with the correct arrow direction, no `read`/`write` text labels, and zero inferred or duplicate connections.
 - **SC-003**: At least 90% of evaluators can identify which processors access a selected memory level and which data movers connect it to other levels within 60 seconds, without consulting the source architecture.
 - **SC-004**: At least 90% of evaluators can trace a declared cross-level data-movement route from source memory to destination memory correctly on their first attempt.
 - **SC-005**: Every semantic view contains at most 12 primary nodes, and replicated structures remain understandable without displaying individual instances.
 - **SC-006**: Automated completeness checks confirm that 100% of modeled components and relationships remain discoverable across the generated views.
 - **SC-007**: No previously valid reference visualization becomes unusable without either continued compatibility or documented migration guidance.
-- **SC-008**: The representative 2D mesh sample produces exactly one primary memory hierarchy-and-access diagram containing DRAM, L1, both bank layers, and every directly connected processor/data mover.
+- **SC-008**: The representative 2D mesh sample produces exactly one primary memory hierarchy-and-access diagram containing DRAM, L1, both bank layers, and every directly connected processor/data mover positioned between DRAM and L1, including DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM.
 
 ## Assumptions
 
 - "Memory-centric" changes how architecture information is organized and explored; it does not change the meaning of the underlying architecture, schedule, performance, or compiler-facing models.
 - Memory hierarchy is derived from the existing scope ownership hierarchy and the recursive structure of each memory region. This feature does not introduce a separate, manually maintained hierarchy that could disagree with the architecture model.
 - Only explicitly modeled source and destination regions establish access. The visualization does not infer cache coherence, transitive reachability, or implicit access through a parent memory level.
+- Existing directional `read` and `write` source relationships remain canonical interchange facts, but the Archify presentation uses them only to form unlabeled source memory → actor → destination memory arrows.
 - Compute processors and data movers are both important neighbors of memory, but remain visibly different component roles.
 - Network and shared-resource information remains in scope as secondary context because it can explain data-movement constraints and is required for a complete representation.
 - The representative 2D mesh architecture is the primary acceptance fixture for multi-level memory, compute access, data movement, replication, resources, and networks.
