@@ -28,6 +28,7 @@ Expected coverage:
 - one processor with the same source and destination memory appears once with both directional segments and no `read`/`write` edge labels;
 - DRAM, L1, recursive banks, processors, and data movers share the same primary diagram;
 - forward and reverse data movers are positioned between DRAM and L1 and form unlabeled source memory → mover → destination memory routes;
+- the primary legend says `Memory`, `Processor`, and `Data Mover`, and its subtitle distinguishes processor/data-mover I/O arrows from architecture scope boundaries;
 - duplicate display names remain distinct through canonical IDs and scope paths;
 - symbolic sizes retain expression text;
 - hierarchy/access partitions never exceed 12 primary nodes;
@@ -73,7 +74,7 @@ Expected outcome:
 - DRAM/L1 bank layers and all connected processors/data movers appear in that same diagram;
 - `dram_l1_noc0` forms a visible DRAM → mover → L1 route while `l1_dram_noc1` forms L1 → mover → DRAM;
 - matrix and vector processors appear in the actor column with arrowheads showing their L1 source and destination, without access-kind text;
-- network and resource relationships remain available in supporting views; and
+- network and resource relationships remain available in clearly titled secondary views under `Resources, networks, and scopes`; and
 - no view exceeds 12 primary nodes.
 
 If browser automation is unavailable, the visual-check receipt must say skipped; do not describe it as passing.
@@ -111,7 +112,7 @@ Open `http://127.0.0.1:4173/` and verify:
 2. Without changing diagrams, identify matrix and vector compute processors between the memory-region columns and follow their incoming and outgoing L1 arrows; confirm the edges do not say `read` or `write`.
 3. In that same diagram, confirm both movers lie between DRAM and L1, then trace DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM by arrow direction.
 4. Confirm that selecting hierarchy context does not imply an access edge.
-5. Search by memory name and move between the unified primary diagram and supporting context while retaining stable identities.
+5. Search by memory name and move between the unified primary diagram and the `Resources, networks, and scopes` section while retaining stable identities; confirm each secondary title states whether it shows resources, network attachments, unconnected components in a scope, or scopes without components.
 
 ## 8. Validate Canonical Documentation
 

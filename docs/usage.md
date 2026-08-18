@@ -348,9 +348,17 @@ and data movers use different node styles. Each actor is placed between its
 source and destination memory levels, with unlabeled arrows forming source
 memory → actor → destination memory. Thus DRAM → mover → L1 and the reverse
 L1 → mover → DRAM can be read directly from arrowheads without `read`/`write`
-edge text. Structure `contains` edges and scope boundaries
-show hierarchy only and must not be interpreted as access. Additional access
-pages are generated only when the combined diagram would exceed 12 nodes.
+edge text. Its legend names the node roles `Memory`, `Processor`, and
+`Data Mover`. The subtitle explains that arrows are processor/data-mover
+input/output paths, whereas structure `contains` edges and scope boundaries
+show hierarchy and ownership only and must not be interpreted as access.
+Additional access pages are generated only when the combined diagram would
+exceed 12 nodes.
+
+The secondary gallery section is `Resources, networks, and scopes`. Its
+diagrams are not generic context pages: their titles identify processor or
+data-mover resource requirements, network attachments, unconnected components
+owned by a named architecture scope, or architecture scopes without components.
 
 The converter produces several flat semantic diagrams when needed instead of
 folding distinct components together. Replication such as an 8×8 mesh remains

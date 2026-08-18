@@ -119,9 +119,14 @@ and exact source-memory → actor → destination-memory routes. Actors are plac
 between their endpoint memory levels, and arrow direction replaces
 `read`/`write` edge labels. Larger models alone use
 bounded hierarchy/access overflow. Resources, networks, and uncovered entities
-remain in supporting views. Vendored Archify validates and renders every view
-as standalone HTML, and `mlar-archify` assembles those artifacts into a static
-gallery without implementing a second renderer.
+remain in purpose-specific secondary views grouped under `Resources, networks,
+and scopes`. Their titles distinguish resource requirements, network
+attachments, unconnected scope-owned components, and scopes without components.
+The primary legend uses `Memory`, `Processor`, and `Data Mover`, while its
+subtitle distinguishes actor I/O arrows from architecture-scope boundaries.
+Vendored Archify validates and renders every view as standalone HTML, and
+`mlar-archify` assembles those artifacts into a static gallery without
+implementing a second renderer.
 
 From the repository root:
 

@@ -38,7 +38,7 @@ export function buildGalleryCatalog(document, diagrams) {
   const sectionLabels = {
     memory_hierarchy: 'Memory hierarchy and access',
     memory_access: 'Additional memory access',
-    supporting_context: 'Supporting context',
+    supporting_context: 'Resources, networks, and scopes',
     other: 'Other views',
   };
   const sectionOrder = Object.keys(sectionLabels);

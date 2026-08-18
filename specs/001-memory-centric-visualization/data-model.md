@@ -100,6 +100,7 @@ projection fits within 12 primary nodes.
 | `scope_boundaries` | Ownership and replication context for memories/layers |
 | `contains_connections` | Presentation-only structural containment |
 | `source_relationship_ids` | Exact canonical relationship segments rendered as unlabeled directional arrows |
+| `legend` | Automatic role legend using `Memory`, `Processor`, and `Data Mover` for the visual types present |
 
 Validation rules:
 
@@ -109,6 +110,7 @@ Validation rules:
 - Each actor appears once with all directly connected canonical memory endpoints.
 - Actors with different source and destination hierarchy levels occupy an intervening column, so the visual route is source memory → actor → destination memory.
 - Canonical `read`/`write` kinds determine arrow direction internally but are not repeated as edge labels.
+- A subtitle defines arrows as source-memory input → actor → destination-memory output and boundaries as architecture scopes.
 - Containment never implies access and remains separate from source coverage.
 
 ### Memory Hierarchy Overflow Window
@@ -174,14 +176,15 @@ Validation rules:
 - If one unit exceeds the limit, endpoint paging retains both the anchor and actor on every page.
 - Across all access windows, every source read/write relationship appears at least once.
 
-### Supporting Context Window
+### Resource, Network, Or Scope Window
 
-Secondary bounded view for resource dependencies, network attachments, or canonical components not otherwise covered.
+Secondary bounded view stored under the compatibility-stable `supporting_context` section ID for resource dependencies, network attachments, or canonical components/scopes not otherwise covered.
 
 - Uses canonical component and relationship IDs.
 - Contains at most 12 primary nodes.
 - Never becomes the default gallery view.
 - Ensures complete source coverage without crowding memory hierarchy/access views.
+- Uses a purpose-specific title: processor/data-mover resources, network attachments, unconnected components in a named architecture scope, or architecture scopes without components.
 
 ### Gallery Catalog Entry
 
@@ -190,7 +193,7 @@ Navigation metadata for one delivered Archify diagram.
 | Field | Meaning |
 | --- | --- |
 | `id`, `title`, `html` | Stable view identity and delivered artifact |
-| `section` | Unified/overflow `memory_hierarchy`, overflow-only `memory_access`, or `supporting_context` |
+| `section` | Unified/overflow `memory_hierarchy`, overflow-only `memory_access`, or compatibility-stable `supporting_context` displayed as `Resources, networks, and scopes` |
 | `scope_id`, `scope_path` | Ownership/filter context |
 | `memory_ids`, `memory_names` | Search and optional memory-filter context |
 | `component_count`, `relationship_count` | Review metadata |
@@ -219,6 +222,6 @@ The bundle has no mutable user state. Its build lifecycle is:
 1. **Loaded**: YAML parsed.
 2. **Validated**: v1 schema and canonical references pass.
 3. **Projected**: scope paths, memory layers, and access units derived.
-4. **Planned**: one unified memory view is created when it fits; otherwise bounded hierarchy/access overflow windows are created, followed by supporting context.
+4. **Planned**: one unified memory view is created when it fits; otherwise bounded hierarchy/access overflow windows are created, followed by purpose-specific resource, network, and scope views.
 5. **Delivered**: each specification passes showcase validation and becomes standalone HTML.
 6. **Reported**: manifest and conversion report prove coverage; the build fails if omissions exist.

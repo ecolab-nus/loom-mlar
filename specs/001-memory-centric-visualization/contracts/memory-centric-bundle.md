@@ -18,7 +18,7 @@ The output remains a deployable static directory containing:
 
 1. **Memory hierarchy and access** (`memory_hierarchy`): ownership, recursive memory structure, connected processors/data movers, and exact directional access together. The first root-scope view is the default.
 2. **Additional memory access** (`memory_access`): overflow pages created only when a complete unified view would exceed 12 primary nodes.
-3. **Supporting context** (`supporting_context`): resources, networks, and canonical entities not covered by the primary view.
+3. **Resources, networks, and scopes** (`supporting_context`): purpose-specific secondary diagrams for resource requirements, network attachments, unconnected scope-owned components, and scopes without components. The internal ID remains stable; `Supporting context` is not shown to readers.
 
 All authored section labels, titles, diagnostics, and navigation strings are English.
 
@@ -29,6 +29,8 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 - Scope boundaries and paths show ownership hierarchy.
 - Recursive array/bank structure is shown with deterministic derived layer IDs and `contains` connections.
 - Every directly connected processor and data mover appears in the same view, once per canonical actor identity.
+- The automatic role legend names present visual types `Memory`, `Processor`, and `Data Mover`, not `Database`, `Backend`, or `Message bus`.
+- The subtitle explains that arrows show source-memory input through an actor to destination-memory output and that boundaries show architecture scope ownership.
 - Original relationship direction is preserved as unlabeled arrows; the presentation does not add `read` or `write` edge text.
 - Each connected actor is placed between its source and destination hierarchy columns whenever the endpoints differ, forming source memory → actor → destination memory.
 - A data mover includes all its canonical memory endpoints, allowing complete source → mover → destination routes to appear in the unified view.
@@ -43,11 +45,15 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 - Access overflow pages retain whole actor units, all direct canonical memory endpoints, and exact unlabeled directional routes.
 - Overflow never expands replicated instances or replaces distinct canonical entities with aggregate nodes.
 
-## Supporting Context Views
+## Resource, Network, And Scope Views
 
 - Every source `requires` and `network_attachment` relationship appears at least once.
 - Networks, resources, and actors without memory access remain discoverable.
-- Supporting views are secondary and are not chosen as the default.
+- These views are secondary and are not chosen as the default.
+- Resource diagrams are titled as processor or data-mover resource requirements.
+- Network diagrams are titled as network attachments.
+- Uncovered component diagrams name their owning architecture scope.
+- Scope-only diagrams state that they show architecture scopes without components.
 
 ## Gallery Behavior
 

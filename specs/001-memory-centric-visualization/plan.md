@@ -6,7 +6,7 @@
 
 ## Summary
 
-Refactor the generated architecture explorer around one unified memory hierarchy-and-access diagram. Retain the existing `mlar.visualization.v1` document and Rust exporter: the current contract already contains stable top-level memory IDs, scope hierarchy and replication, recursive array/bank details, and directional read/write relationships. The adapter places canonical memories and recursive layers by hierarchy level, with each directly connected processor/data mover between its source and destination memory columns whenever the complete projection fits within 12 primary nodes. Access is drawn as unlabeled source memory → actor → destination memory arrows. Deterministic overflow pages are created only for larger models and resource/network context remains secondary. Preserve canonical source IDs, exact access semantics, complete source coverage, English-only output, and Archify as the sole diagram renderer.
+Refactor the generated architecture explorer around one unified memory hierarchy-and-access diagram. Retain the existing `mlar.visualization.v1` document and Rust exporter: the current contract already contains stable top-level memory IDs, scope hierarchy and replication, recursive array/bank details, and directional read/write relationships. The adapter places canonical memories and recursive layers by hierarchy level, with each directly connected processor/data mover between its source and destination memory columns whenever the complete projection fits within 12 primary nodes. Access is drawn as unlabeled source memory → actor → destination memory arrows. Deterministic overflow pages are created only for larger models. Resource, network, and otherwise uncovered scope-owned information remains in purpose-specific secondary views. Generated Archify specifications override generic web-system legend labels with MLAR's `Memory`, `Processor`, and `Data Mover` roles. Preserve canonical source IDs, exact access semantics, complete source coverage, English-only output, and Archify as the sole diagram renderer.
 
 ## Technical Context
 
@@ -62,25 +62,27 @@ No constitution violations require justification.
 - Deduplicate each actor while including every directly connected canonical memory endpoint and every original directional relationship. Render those relationships as arrow-only source-memory → actor → destination-memory routes, without `read` or `write` text. Same-memory source/destination pairs remain two directional segments around one actor identity.
 - Only when the union exceeds 12 nodes, fall back to deterministic hierarchy windows and memory-anchored actor-unit overflow pages. Repeat stable context without aggregate placeholders or instance expansion.
 
-### 3. Preserve Supporting Context and Coverage
+### 3. Name Resource, Network, And Scope Views Precisely
 
-- Keep resource dependencies, network attachments, and components without memory access in secondary `supporting_context` views.
-- Chunk supporting views by unique nodes instead of emitting one relationship per page.
+- Keep the internal `supporting_context` section ID for bundle compatibility, but expose it as `Resources, networks, and scopes` in the gallery.
+- Title each secondary diagram according to its contents: processor/data-mover resources, network attachments, unconnected components in a named architecture scope, or scopes without components.
+- Chunk secondary resource/network/scope views by unique nodes instead of emitting one relationship per page.
 - Keep source relationship IDs separate from derived containment relationships so the conversion report continues to prove exact source coverage.
 - Fail generation when any source scope, component, or relationship is omitted or when references are invalid.
 
 ### 4. Make Gallery Navigation Memory-Centric
 
-- Order sections as memory hierarchy and access, additional memory-access overflow, then supporting context.
+- Order sections as memory hierarchy and access, additional memory-access overflow, then resources, networks, and scopes.
 - Default to the unified root memory hierarchy-and-access view.
 - Add canonical memory IDs, names, and scope paths to catalog entries and search text; retain scope filtering, URL hashes, keyboard navigation, independent diagram opening, and iframe embedding.
 - Add a memory filter only if it can be derived from the catalog without introducing a second renderer or duplicating architecture state.
+- Override the architecture renderer's present component-kind legend labels so the primary diagram reads `Memory`, `Processor`, and `Data Mover`. Explain in the diagram subtitle that arrows are processor/data-mover input/output paths and boundaries are architecture scopes.
 
 ### 5. Compatibility and Documentation
 
 - Accept every currently valid `mlar.visualization.v1` document without migration.
 - Do not modify `src/visualization/document.rs`, `src/lib.rs`, the v1 schema, or the tracked YAML unless implementation discovers a concrete missing datum. Any such discovery stops implementation for a compatibility decision rather than silently mutating v1.
-- Update canonical user documentation to describe the unified hierarchy/access diagram, exact endpoint semantics, overflow-only partitioning, and secondary context.
+- Update canonical user documentation to describe the unified hierarchy/access diagram, exact endpoint semantics, overflow-only partitioning, MLAR legend labels, and purpose-specific secondary views.
 - Update maintained Archify documentation sources only where their planner descriptions become inaccurate; use the mandated validate/deliver/visual-check workflow for each changed source.
 
 ## Project Structure

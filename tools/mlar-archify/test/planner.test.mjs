@@ -127,6 +127,21 @@ test('US1 plans root-first bounded memory hierarchy with stable structural detai
 
   const overview = hierarchy[0];
   assert.equal(overview.id, 'memory-hierarchy-1');
+  assert.deepEqual(overview.spec.meta.legend, {
+    mode: 'auto',
+    entries: {
+      backend: { label: 'Processor' },
+      database: { label: 'Memory' },
+      cloud: { label: 'Resource' },
+      messagebus: { label: 'Data Mover' },
+      external: { label: 'Network' },
+      frontend: { label: 'Architecture Scope' },
+    },
+  });
+  assert.equal(
+    overview.spec.meta.subtitle,
+    'Arrows show source memory → processor or data mover → destination memory; boundaries show architecture scopes.',
+  );
   assert.deepEqual(
     overview.memoryIds,
     ['memory-dram', 'memory-l1', 'memory-scratch', 'memory-shared-core', 'memory-shared-system'],
@@ -389,13 +404,34 @@ test('US2 gallery indexes all canonical memories in the unified route view', () 
 test('US3 preserves routes, supporting relationships, and complete canonical coverage', () => {
   const diagrams = planned();
   const supporting = diagrams.filter((diagram) => diagram.section === 'supporting_context');
-  assert.ok(supporting.some((diagram) => diagram.relationshipIds.includes(
+  const resourceView = supporting.find((diagram) => diagram.relationshipIds.includes(
     'relationship-copy-requires',
-  )));
-  assert.ok(supporting.some((diagram) => diagram.relationshipIds.includes(
+  ));
+  assert.equal(resourceView?.title, 'Data mover resources · copy');
+  assert.equal(
+    resourceView?.spec.meta.subtitle,
+    'Shared resources required by this data mover.',
+  );
+  const networkView = supporting.find((diagram) => diagram.relationshipIds.includes(
     'relationship-noc-attachment',
-  )));
-  assert.ok(supporting.some((diagram) => diagram.componentIds.includes('processor-orphan')));
+  ));
+  assert.equal(networkView?.title, 'Network attachments · noc');
+  assert.equal(
+    networkView?.spec.meta.subtitle,
+    'Memory regions attached to this architecture network.',
+  );
+  assert.equal(
+    networkView?.spec.components.find((component) => component.id === 'network-noc').type,
+    'external',
+  );
+  const orphanView = supporting.find(
+    (diagram) => diagram.componentIds.includes('processor-orphan'),
+  );
+  assert.equal(orphanView?.title, 'Unconnected components in scope · system');
+  assert.equal(
+    orphanView?.spec.meta.subtitle,
+    'Canonical components owned by this architecture scope with no displayed memory path, resource requirement, or network attachment.',
+  );
 
   assert.deepEqual(
     [...new Set(diagrams.flatMap((diagram) => diagram.componentIds))].sort(),
@@ -421,6 +457,29 @@ test('US3 preserves routes, supporting relationships, and complete canonical cov
     assert.ok(route.componentIds.includes('memory-dram'));
     assert.ok(route.componentIds.includes('memory-l1'));
   }
+});
+
+test('US3 names an uncovered architecture scope explicitly', () => {
+  const emptyScope = structuredClone(document);
+  emptyScope.scopes.push({
+    id: 'scope-empty',
+    name: 'empty cluster',
+    parent_scope: 'scope-system',
+    dimensions: [],
+    replication_factor: 1,
+  });
+  const scopeView = planned(emptyScope).find(
+    (diagram) => diagram.title === 'Architecture scopes without components · empty cluster',
+  );
+  assert.ok(scopeView);
+  assert.equal(
+    scopeView.spec.meta.subtitle,
+    'Architecture scopes not represented by a component or memory ownership boundary in another diagram.',
+  );
+  assert.deepEqual(
+    scopeView.spec.components.map(({ label, type }) => ({ label, type })),
+    [{ label: 'empty cluster', type: 'frontend' }],
+  );
 });
 
 test('US3 partitions dense supporting context by canonical source', () => {
@@ -466,6 +525,10 @@ test('US3 planning and catalog output are deterministic and memory-first', () =>
   assert.deepEqual(
     catalog.sections.map((section) => section.id),
     ['memory_hierarchy', 'memory_access', 'supporting_context', 'other'],
+  );
+  assert.equal(
+    catalog.sections.find((section) => section.id === 'supporting_context').label,
+    'Resources, networks, and scopes',
   );
   assert.equal(catalog.default_diagram_id, 'memory-hierarchy-1');
 });

@@ -21,11 +21,11 @@ Open `http://127.0.0.1:4173/`. When the full memory-centric projection fits
 within 12 nodes, the generated `index.html` starts with one diagram containing
 the hierarchy, recursive layers, processors/data movers, and access edges.
 Additional hierarchy/access views appear only as overflow for larger models;
-supporting context remains secondary. Search includes canonical memory names
-and IDs as well as scope paths; scope filtering, keyboard navigation, URL
-hashes, and independent diagram opening remain available. The application shell
-never redraws architecture data; it embeds the delivered Archify HTML so
-Archify remains the only diagram renderer.
+resource, network, and scope views remain secondary. Search includes canonical
+memory names and IDs as well as scope paths; scope filtering, keyboard
+navigation, URL hashes, and independent diagram opening remain available. The
+application shell never redraws architecture data; it embeds the delivered
+Archify HTML so Archify remains the only diagram renderer.
 
 The adapter uses the existing `mlar.visualization.v1` fields directly. A
 top-level `kind: memory` component is the canonical access endpoint. Recursive
@@ -36,7 +36,18 @@ create access. A read remains memory → actor, and a write remains actor →
 memory in the source contract, but the rendered edges omit those kind labels.
 The unified diagram includes each actor once, positioned between its source and
 destination memory columns, so routes read visually as source memory → actor →
-destination memory. The older memory-anchored packing remains only for overflow.
+destination memory. The primary legend says `Memory`, `Processor`, and
+`Data Mover`; its subtitle explains that arrows are input/output paths and
+boundaries are architecture scopes. The older memory-anchored packing remains
+only for overflow.
+
+The gallery's final section is named `Resources, networks, and scopes`.
+Individual diagrams say exactly what they contain: processor or data-mover
+resource requirements, network attachments, unconnected components in a named
+architecture scope, or architecture scopes without components. The stable
+manifest section ID remains `supporting_context` for generated-bundle
+compatibility; that implementation term is not shown as the reader-facing
+section name.
 
 Each diagram contains at most 12 primary nodes. Replicated architecture scopes
 retain dimension and replication-factor metadata but are never expanded. Distinct

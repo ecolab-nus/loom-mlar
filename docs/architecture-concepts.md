@@ -217,9 +217,13 @@ ownership, each memory's recursive region structure, connected processors/data
 movers, and exact directional routes. Canonical memories occupy hierarchy
 columns and each actor appears between its source and destination levels. The
 edges are intentionally unlabeled: arrowheads establish source memory → actor →
-destination memory. Larger models use overflow views. Neither scope nor
-structural containment implies access. Only source relationships establish
-connectivity. Consequently, connecting a processor to L1 does
+destination memory. The visible role legend says `Memory`, `Processor`, and
+`Data Mover`, while the subtitle explains that boundaries represent
+architecture scope ownership rather than access. Larger models use overflow
+views. Resource, network-attachment, and otherwise uncovered scope information
+appears in precisely titled secondary diagrams under `Resources, networks, and
+scopes`. Neither scope nor structural containment implies access. Only source
+relationships establish connectivity. Consequently, connecting a processor to L1 does
 not imply access to an ancestor DRAM, a descendant bank, or a same-named memory
 in another scope.
 

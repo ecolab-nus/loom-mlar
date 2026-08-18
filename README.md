@@ -89,10 +89,13 @@ show where each canonical memory belongs; recursive banks, directly connected
 compute processors and data movers appear in that same diagram. Actors sit
 between their source and destination memory levels, and arrowheads form
 source-memory → actor → destination-memory routes without `read`/`write` edge
-text. Larger models alone use overflow views. Resources,
-networks, and otherwise uncovered components remain available under supporting
-context. The gallery embeds standalone Archify artifacts and can be deployed to
-any static web host.
+text. The legend uses the MLAR names `Memory`, `Processor`, and `Data Mover`,
+and the subtitle distinguishes these I/O paths from architecture-scope
+boundaries. Larger models alone use overflow views. Resource requirements,
+network attachments, unconnected components in a named scope, and empty scopes
+remain available under `Resources, networks, and scopes`, with each diagram
+titled by its exact purpose. The gallery embeds standalone Archify artifacts
+and can be deployed to any static web host.
 
 The complete 2D mesh example in
 [`tests/2d_mesh/arch.rs`](tests/2d_mesh/arch.rs) demonstrates MLIR-backed

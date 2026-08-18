@@ -81,10 +81,13 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
 
 The converter validates `mlar.visualization.v1` and first attempts one combined
 memory hierarchy-and-access diagram. It creates hierarchy/access overflow only
-when the combined projection would exceed 12 nodes, then adds supporting
-context. Every diagram receives Archify showcase validation and delivery, and
-the adapter writes a manifest plus a loss report. Replicated scopes and memory
-arrays retain dimensions and instance counts but are not expanded. Open
+when the combined projection would exceed 12 nodes, then adds clearly titled
+resource, network, and architecture-scope views. The primary legend reads
+`Memory`, `Processor`, and `Data Mover`; its subtitle distinguishes actor I/O
+arrows from scope boundaries. Every diagram receives Archify showcase
+validation and delivery, and the adapter writes a manifest plus a loss report.
+Replicated scopes and memory arrays retain dimensions and instance counts but
+are not expanded. Open
 `http://127.0.0.1:4173/` after starting the server. Generated output under
 `visualization-output/` is intentionally ignored.
 

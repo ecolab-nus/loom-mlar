@@ -61,16 +61,16 @@
 - Collapse many actors into summary nodes: rejected because distinct source entities would become untraceable.
 - Allow oversized views: rejected because the 12-node limit is a compatibility and quality gate.
 
-## Decision 6: Keep Supporting Context Secondary but Complete
+## Decision 6: Keep Secondary Architecture Details Complete
 
-**Decision**: Preserve resource, network, and otherwise uncovered components in secondary supporting-context views, chunked by unique nodes. Keep source coverage accounting distinct from presentation-only containment edges.
+**Decision**: Preserve resource, network, and otherwise uncovered components in secondary views, chunked by unique nodes. Use the stable internal `supporting_context` section ID, but give the gallery and every diagram purpose-specific reader-facing names. Keep source coverage accounting distinct from presentation-only containment edges.
 
 **Rationale**: The feature is memory-centric, not memory-exclusive. Network and resource relationships explain movement constraints and every source component/relationship must remain discoverable.
 
 **Alternatives considered**:
 
 - Remove non-memory views: rejected because it would lose modeled information and fail completeness checks.
-- Show all supporting context on every memory page: rejected because it would crowd the primary views and frequently exceed the node cap.
+- Show all secondary details on every memory page: rejected because it would crowd the primary views and frequently exceed the node cap.
 
 ## Decision 7: Retain the Static Gallery and Archify Renderer Boundary
 
@@ -105,3 +105,15 @@
 - Keep actors beside the hierarchy with `read`/`write` labels: rejected because it obscures the memory-to-memory route and duplicates meaning already carried by arrow direction.
 - Add a direct memory-to-memory edge: rejected because it bypasses the processor/data mover identity and invents a source relationship that is not in the v1 document.
 - Change the Rust exporter to emit route objects: rejected because the existing paired directional relationships contain all required information.
+
+## Decision 10: Use MLAR Legend And View Names
+
+**Decision**: Override Archify's architecture-type legend labels with `Memory`, `Processor`, `Data Mover`, `Resource`, `Network`, and `Architecture Scope`. Use automatic legend visibility so only roles present in a diagram appear. Rename the gallery's secondary section to `Resources, networks, and scopes`, and name each secondary diagram after the relationship or scope membership it actually presents.
+
+**Rationale**: Archify's stable visual types are an implementation detail. Labels such as `Backend`, `Database`, `Message bus`, and `Supporting context` do not describe MLAR concepts and make scope ownership or processor I/O unnecessarily hard to interpret. A legend override and precise titles fix the wording without changing the renderer, source schema, or topology.
+
+**Alternatives considered**:
+
+- Change the vendored Archify type catalog: rejected because MLAR-specific language belongs in generated specifications and changing global defaults would affect unrelated diagrams.
+- Hide the legend: rejected because the three actor/memory roles are useful when named correctly.
+- Add separate processor-I/O diagrams for every actor: rejected because the unified view already shows those exact paths; a subtitle can explain them without duplicating diagrams.

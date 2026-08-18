@@ -140,6 +140,17 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 
 ---
 
+## Phase 9: Semantic Legend And Context Naming Follow-up
+
+**Purpose**: Replace generic Archify/web-system terminology with MLAR concepts and make every secondary view state exactly which architecture information it presents.
+
+- [X] T035 Add focused tests for `Memory`, `Processor`, and `Data Mover` legend labels, explicit processor/data-mover path guidance, purpose-specific resource/network titles, scope-owned unconnected-component titles, and the gallery's precise secondary-section label in `tools/mlar-archify/test/planner.test.mjs`
+- [X] T036 Implement MLAR legend overrides, architecture-scope/path guidance, and purpose-specific secondary view planning in `tools/mlar-archify/bin/mlar-archify.mjs` and `tools/mlar-archify/lib/gallery.mjs`
+- [X] T037 Update feature artifacts and canonical user documentation to define processor I/O paths, architecture scope boundaries, and secondary resource/network/scope views without the ambiguous reader-facing term `supporting context`
+- [X] T038 Rebuild and validate the representative bundle, confirm the rendered primary legend and secondary titles, rerun focused adapter and documentation checks, verify Rust/v1 compatibility boundaries remain unchanged, and record the evidence below
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -152,6 +163,7 @@ description: "Dependency-ordered implementation tasks for memory-centric visuali
 - **Polish (Phase 6)**: Starts after the selected story phases. T018, T019, and T020 can run in parallel; T021 follows relevant documentation edits; T022 follows T021; T023 and T024 can run in parallel; T025 follows the complete bundle; T026 is last.
 - **Unified follow-up (Phase 7)**: Starts after T026; T027 → T028 → T029 → T030.
 - **Actor-route follow-up (Phase 8)**: Starts after T030; T031 → T032 → T033 → T034.
+- **Semantic-label follow-up (Phase 9)**: Starts after T034; T035 → T036 → T037 → T038.
 
 ### User Story Dependencies
 
@@ -242,6 +254,7 @@ Task T016: Implement supporting-context gallery organization in tools/mlar-archi
 - T025 machine-assisted journey over the generated manifest/specifications: hierarchy identification took 0.044 ms and found DRAM, replicated `x=8 × y=8` L1, both scope boundaries, and the L1 bank layer; SC-003 access identification took 0.092 ms and found `matrix_lane` and `vector_lane`, each with read and write edges; SC-004 route tracing took 0.052 ms and found both DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM on the first query. These results validate the artifact paths and are under the 60-second target, but they do not establish the specified 90% human-evaluator rate; no human study or browser visual review was performed.
 - T030 follow-up: the rebuilt 2D mesh bundle has exactly one 9-node `memory_hierarchy` primary diagram, zero `memory_access` diagrams, all 10 canonical read/write relationships, both derived bank-containment relationships, and zero omitted source IDs. One machine-assisted query found hierarchy, both bank layers, both compute processors with read/write access, and both cross-level mover routes in that single diagram in 0.195 ms. All seven generated diagrams passed showcase validation/delivery; browser visual checks remain truthfully `skipped` because Chrome/Chromium is unavailable. Rust/v1 compatibility-boundary files retain zero diff.
 - T034 follow-up: the rebuilt 2D mesh primary specification places DRAM at column 0, all five connected processors/data movers at column 1, and L1 at column 2. It contains DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM with arrow-only access segments and zero access labels. All 14 adapter tests pass, all seven diagrams pass showcase validation/delivery with zero source omissions, and all seven browser visual checks remain `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, and the four focused Rust visualization tests pass; the Rust projection, public re-export, v1 schema, and tracked visualization YAML retain zero diff.
+- T038 follow-up: the final 2D mesh bundle contains the visible primary legend labels `Memory`, `Processor`, and `Data Mover`, with no `Backend`, `Database`, or `Message bus` text. Its six secondary diagrams are titled as three data-mover resource views, two processor resource views, and one `Unconnected components in scope · system` view; the gallery section is `Resources, networks, and scopes`. All 15 adapter tests pass, all seven diagrams pass showcase validation/delivery with zero source omissions, and all seven browser visual checks remain `skipped` because Chrome/Chromium is unavailable. Documentation typecheck/build, `cargo fmt --check`, and the four focused Rust visualization tests pass; the Rust projection, public re-export, v1 schema, tracked visualization YAML, and maintained documentation-diagram JSON sources retain zero diff.
 - Rust and v1 schema files are regression boundaries, not implementation targets.
 - Derived memory-layer IDs are presentation-only and cannot become processor/data-mover endpoints.
 - Scope containment communicates ownership only; it never creates read/write access.
