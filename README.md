@@ -85,8 +85,9 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
 
 The generated application opens on `System View`, one combined memory-centric
 diagram whenever the model fits the 12-node readability limit. Scope boundaries
-show where each canonical memory belongs; recursive banks, directly connected
-compute processors and data movers appear in that same diagram. Actors sit
+show where each canonical memory belongs: parent boundaries contain displayed
+child scopes, and sibling regions remain visually disjoint. Recursive banks,
+directly connected compute processors and data movers appear in that same diagram. Actors sit
 between their source and destination memory levels, and arrowheads form
 source-memory → actor → destination-memory routes without `read`/`write` edge
 text. The legend uses the MLAR names `Memory`, `Processor`, and `Data Mover`,

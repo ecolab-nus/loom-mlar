@@ -351,7 +351,9 @@ L1 → mover → DRAM can be read directly from arrowheads without `read`/`write
 edge text. Its legend names the node roles `Memory`, `Processor`, and
 `Data Mover`. The subtitle explains that arrows are processor/data-mover
 input/output paths, whereas structure `contains` edges and scope boundaries
-show hierarchy and ownership only and must not be interpreted as access.
+show hierarchy and ownership only and must not be interpreted as access. Parent
+scope boundaries contain displayed child scopes, while sibling scope regions
+occupy separate row bands instead of partially overlapping.
 Additional access pages are generated only when the combined diagram would
 exceed 12 nodes.
 

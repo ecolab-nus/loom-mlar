@@ -29,6 +29,7 @@ Expected coverage:
 - DRAM, L1, recursive banks, processors, and data movers share the same primary diagram;
 - forward and reverse data movers are positioned between DRAM and L1 and form unlabeled source memory → mover → destination memory routes;
 - the primary legend says `Memory`, `Processor`, and `Data Mover`, and its subtitle distinguishes processor/data-mover I/O arrows from architecture scope boundaries;
+- parent scope boundaries visibly contain child scopes, while sibling scope regions remain separated rather than partially overlapping;
 - duplicate display names remain distinct through canonical IDs and scope paths;
 - symbolic sizes retain expression text;
 - every memory, processor, and data mover has an exact one-hop `Component View`;

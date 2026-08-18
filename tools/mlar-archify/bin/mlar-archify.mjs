@@ -580,16 +580,72 @@ function scopeBoundariesForComponents(components, scopesById) {
   const componentIdsByScope = new Map();
   for (const component of components) {
     if (!component.scope) continue;
-    if (!componentIdsByScope.has(component.scope)) componentIdsByScope.set(component.scope, []);
-    componentIdsByScope.get(component.scope).push(component.id);
+    for (const scope of scopePath(component.scope, scopesById)) {
+      if (!componentIdsByScope.has(scope.id)) componentIdsByScope.set(scope.id, []);
+      componentIdsByScope.get(scope.id).push(component.id);
+    }
   }
-  return [...componentIdsByScope.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([scopeId, wraps]) => ({
+  const entries = [...componentIdsByScope.entries()].map(([scopeId, wraps]) => ({
+    scopeId,
+    wraps,
+    depth: scopePath(scopeId, scopesById).length - 1,
+  }));
+  const maximumDepth = Math.max(0, ...entries.map((entry) => entry.depth));
+  return entries
+    .sort((left, right) => left.depth - right.depth
+      || left.scopeId.localeCompare(right.scopeId))
+    .map(({ scopeId, wraps, depth }) => ({
       kind: 'region',
       label: scopeContextLabel(scopeId, scopesById),
       wraps: wraps.sort(),
+      pad: 24 + (maximumDepth - depth) * 16,
     }));
+}
+
+function separateSiblingScopeRows(components, scopesById) {
+  const placed = components.map((component) => ({ ...component }));
+  const childrenByScope = new Map();
+  for (const scope of scopesById.values()) {
+    if (!scope.parent_scope) continue;
+    if (!childrenByScope.has(scope.parent_scope)) childrenByScope.set(scope.parent_scope, []);
+    childrenByScope.get(scope.parent_scope).push(scope.id);
+  }
+  for (const children of childrenByScope.values()) children.sort();
+
+  const componentScopePaths = new Map(placed
+    .filter((component) => component.scope)
+    .map((component) => [
+      component.id,
+      new Set(scopePath(component.scope, scopesById).map((scope) => scope.id)),
+    ]));
+  const componentsInSubtree = (scopeId) => placed.filter(
+    (component) => componentScopePaths.get(component.id)?.has(scopeId),
+  );
+
+  const separateChildren = (scopeId) => {
+    const children = childrenByScope.get(scopeId) ?? [];
+    for (const childId of children) separateChildren(childId);
+
+    let previousMaximum = null;
+    for (const childId of children) {
+      const childComponents = componentsInSubtree(childId)
+        .filter((component) => Number.isInteger(component.row));
+      if (childComponents.length === 0) continue;
+      const minimum = Math.min(...childComponents.map((component) => component.row));
+      const maximum = Math.max(...childComponents.map((component) => component.row));
+      const requiredMinimum = previousMaximum === null ? minimum : previousMaximum + 2;
+      const shift = Math.max(0, requiredMinimum - minimum);
+      if (shift > 0) {
+        for (const component of childComponents) component.row += shift;
+      }
+      previousMaximum = maximum + shift;
+    }
+  };
+
+  for (const scope of scopesById.values()) {
+    if (!scope.parent_scope) separateChildren(scope.id);
+  }
+  return placed;
 }
 
 function unifiedMemoryDiagram(document, projection) {
@@ -600,7 +656,10 @@ function unifiedMemoryDiagram(document, projection) {
     connection_count: projection.actorIdsByMemory.get(memory.id)?.size ?? 0,
   }));
   const actorUnits = [...projection.accessByActor.values()]
-    .sort((left, right) => left.actor.id.localeCompare(right.actor.id));
+    .sort((left, right) =>
+      scopePath(right.actor.scope, projection.scopesById).length
+        - scopePath(left.actor.scope, projection.scopesById).length
+      || left.actor.id.localeCompare(right.actor.id));
   const derivedLayers = memories.flatMap(
     (memory) => projection.layersByMemory.get(memory.id).components,
   );
@@ -652,7 +711,8 @@ function unifiedMemoryDiagram(document, projection) {
     relationships.push(...unit.relationships);
   });
 
-  const boundaries = scopeBoundariesForComponents(components, projection.scopesById);
+  const placedComponents = separateSiblingScopeRows(components, projection.scopesById);
+  const boundaries = scopeBoundariesForComponents(placedComponents, projection.scopesById);
 
   return createDiagram({
     id: 'system-view-1',
@@ -660,7 +720,7 @@ function unifiedMemoryDiagram(document, projection) {
     subtitle: 'Arrows show source memory → processor or data mover → destination memory; boundaries show architecture scopes.',
     section: 'system_view',
     primaryScopeId: document.architecture.root_scope,
-    components,
+    components: placedComponents,
     relationships,
     boundaries,
     sourceScopeIds: scopeIdsForComponents(components, projection.scopesById),
@@ -678,8 +738,18 @@ function systemOverflowDiagrams(document, projection) {
     ? [[]]
     : chunks(memoryPresentations, MAX_COMPONENTS);
   for (const [chunkIndex, memoryChunk] of overviewChunks.entries()) {
+    const overviewColumns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(memoryChunk.length))));
     const components = memoryChunk.length > 0
-      ? memoryChunk
+      ? separateSiblingScopeRows(
+          [...memoryChunk]
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((memory, index) => ({
+              ...memory,
+              row: Math.floor(index / overviewColumns),
+              col: index % overviewColumns,
+            })),
+          projection.scopesById,
+        )
       : [{
           kind: 'scope',
           id: document.architecture.root_scope,
@@ -687,21 +757,8 @@ function systemOverflowDiagrams(document, projection) {
           dimensions: [],
           replication_factor: 1,
         }];
-    const scopeIds = new Set();
-    const boundaries = [];
-    const byScope = new Map();
-    for (const memory of memoryChunk) {
-      if (!byScope.has(memory.scope)) byScope.set(memory.scope, []);
-      byScope.get(memory.scope).push(memory.id);
-      for (const scope of scopePath(memory.scope, projection.scopesById)) scopeIds.add(scope.id);
-    }
-    for (const [scopeId, wraps] of [...byScope.entries()].sort()) {
-      boundaries.push({
-        kind: 'region',
-        label: scopeContextLabel(scopeId, projection.scopesById),
-        wraps,
-      });
-    }
+    const scopeIds = new Set(scopeIdsForComponents(components, projection.scopesById));
+    const boundaries = scopeBoundariesForComponents(components, projection.scopesById);
     if (memoryChunk.length === 0) scopeIds.add(document.architecture.root_scope);
     const suffix = overviewChunks.length > 1 ? ` · ${chunkIndex + 1}` : '';
     const diagram = createDiagram({

@@ -25,7 +25,7 @@ All authored section labels, titles, diagnostics, and navigation strings are Eng
 
 - When all canonical memories, recursive layers, and directly connected actors total at most 12 primary nodes, the planner emits exactly one primary view and no separate structure or access views.
 - Every canonical memory appears in the primary view, even when unconnected.
-- Scope boundaries and paths show ownership hierarchy.
+- Scope boundaries and paths show ownership hierarchy. Ancestor boundaries contain all displayed descendant components, and sibling scope regions use disjoint row bands; scope boxes never partially overlap.
 - Recursive array/bank structure is shown with deterministic derived layer IDs and `contains` connections.
 - Every directly connected processor and data mover appears in the same view, once per canonical actor identity.
 - The automatic role legend names present visual types `Memory`, `Processor`, and `Data Mover`, not `Database`, `Backend`, or `Message bus`.

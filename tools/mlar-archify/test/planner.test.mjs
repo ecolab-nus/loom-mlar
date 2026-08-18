@@ -153,6 +153,21 @@ test('US1 plans a bounded System View with stable structural detail', () => {
   assert.ok(overview.spec.boundaries.some(
     (boundary) => boundary.wraps.includes('processor-lane'),
   ));
+  const rootBoundary = overview.spec.boundaries.find(
+    (boundary) => boundary.label === 'system',
+  );
+  const childBoundary = overview.spec.boundaries.find(
+    (boundary) => boundary.label === 'system / core · 4 instances',
+  );
+  assert.ok(rootBoundary);
+  assert.ok(childBoundary);
+  assert.ok(childBoundary.wraps.every((componentId) => rootBoundary.wraps.includes(componentId)),
+    'a child scope boundary must be nested inside its ancestor boundary');
+  assert.deepEqual(
+    [...rootBoundary.wraps].sort(),
+    overview.spec.components.map((component) => component.id).sort(),
+    'the root scope boundary must contain every component shown in System View',
+  );
   assert.equal(
     overview.spec.components.find((component) => component.id === 'memory-scratch').tag,
     'unconnected',
@@ -183,6 +198,64 @@ test('US1 plans a bounded System View with stable structural detail', () => {
       && [connection.from, connection.to].every((id) =>
         ['memory-dram', 'memory-l1'].includes(id)),
   ), 'scope hierarchy must not imply DRAM/L1 access');
+});
+
+test('US1 gives sibling architecture scopes non-overlapping System View row bands', () => {
+  const siblings = structuredClone(document);
+  siblings.scopes = [
+    siblings.scopes[0],
+    {
+      id: 'scope-a',
+      name: 'a',
+      parent_scope: 'scope-system',
+      dimensions: [],
+      replication_factor: 1,
+    },
+    {
+      id: 'scope-b',
+      name: 'b',
+      parent_scope: 'scope-system',
+      dimensions: [],
+      replication_factor: 1,
+    },
+  ];
+  const arrayRegion = (name) => ({
+    kind: 'array',
+    name,
+    dimensions: [{ name: 'bank', size: concrete(2) }],
+    element: bank(`${name} bank`),
+    total_size_bytes: 2048,
+  });
+  siblings.components = [
+    memory({ id: 'memory-a', scope: 'scope-a', name: 'A', region: arrayRegion('A') }),
+    memory({ id: 'memory-b', scope: 'scope-b', name: 'B', region: arrayRegion('B') }),
+    actor('processor', 'processor-a', 'scope-a', 'processor a'),
+    actor('processor', 'processor-b', 'scope-b', 'processor b'),
+  ];
+  siblings.relationships = [
+    relationship('relationship-a-read', 'read', 'memory-a', 'processor-a'),
+    relationship('relationship-a-write', 'write', 'processor-a', 'memory-a'),
+    relationship('relationship-b-read', 'read', 'memory-b', 'processor-b'),
+    relationship('relationship-b-write', 'write', 'processor-b', 'memory-b'),
+  ];
+
+  const overview = planned(siblings).find((diagram) => diagram.id === 'system-view-1');
+  assert.ok(overview);
+  const componentsById = new Map(
+    overview.spec.components.map((component) => [component.id, component]),
+  );
+  const boundaryRange = (label) => {
+    const boundary = overview.spec.boundaries.find((candidate) => candidate.label === label);
+    assert.ok(boundary);
+    const rows = boundary.wraps.map((componentId) => componentsById.get(componentId).row);
+    return { minimum: Math.min(...rows), maximum: Math.max(...rows) };
+  };
+  const a = boundaryRange('system / a');
+  const b = boundaryRange('system / b');
+  assert.ok(
+    a.maximum + 1 < b.minimum || b.maximum + 1 < a.minimum,
+    'sibling scope boundaries must have a clear row between them',
+  );
 });
 
 test('US1 partitions a wide System View without expanding instances', () => {

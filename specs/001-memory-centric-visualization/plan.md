@@ -26,7 +26,7 @@ Refactor the generated architecture explorer around two concepts: a default `Sys
 
 **Constraints**: Preserve `mlar.visualization.v1`; do not change architecture, schedule, or MLIR semantics; never infer access from scope hierarchy; retain distinct canonical entities; keep replication as metadata; use Archify as the only renderer; English-only authored output; report unavailable browser validation as skipped
 
-**Scale/Scope**: Multi-level and replicated hardware models, using the 2D mesh fixture as the primary acceptance case (2 scopes, 17 components, 22 relationships); its 9 memory/layer/actor nodes fit one primary diagram, while larger models are partitioned rather than expanded or collapsed
+**Scale/Scope**: Multi-level and replicated hardware models, using the 2D mesh fixture as the primary acceptance case (2 scopes, 14 components, 22 relationships); its 9 memory/layer/actor nodes fit one primary diagram, while larger models are partitioned rather than expanded or collapsed
 
 ## Constitution Check
 
@@ -58,7 +58,7 @@ No constitution violations require justification.
 
 - Build one `system_view` diagram containing all canonical memories, recursive layer nodes, directly connected processors/data movers, derived `contains` connections, and original read/write relationships when the union contains at most 12 nodes.
 - Place canonical memories in hierarchy-depth columns, their recursive layers directly below them, and connected actors in the intervening column between their exact source and destination memories whenever those endpoints differ.
-- Show scope ownership with boundaries. Scope containment communicates placement only and MUST NOT create memory access edges.
+- Show scope ownership with hierarchical boundaries. Ancestors wrap all displayed descendant components with progressively larger padding, while sibling subtrees receive disjoint row bands so boundaries never partially overlap. Scope containment communicates placement only and MUST NOT create memory access edges.
 - Deduplicate each actor while including every directly connected canonical memory endpoint and every original directional relationship. Render those relationships as arrow-only source-memory → actor → destination-memory routes, without `read` or `write` text. Same-memory source/destination pairs remain two directional segments around one actor identity.
 - Only when the union exceeds 12 nodes, fall back to deterministic bounded System View windows. Exact routes remain available in the always-generated Component Views. Repeat stable context without aggregate placeholders or instance expansion.
 

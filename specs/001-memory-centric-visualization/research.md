@@ -129,3 +129,15 @@
 - Add a focus view only for actors: rejected because memory users and network attachments are equally important direct questions.
 - Recursively expand neighbors: rejected because it obscures the focus, duplicates the system graph, and can imply dependencies the anchor does not have.
 - Give resources and networks dedicated views: rejected because they have no additional modeled relationships beyond the direct neighborhoods that already expose them.
+
+## Decision 12: Make Scope Geometry Match Scope Hierarchy
+
+**Decision**: Build each scope boundary from every displayed component in that scope's subtree. Render ancestor boundaries with progressively larger padding so they contain child boundaries, and shift sibling subtrees into disjoint row bands before rendering.
+
+**Rationale**: Independent bounding boxes for a parent scope and its child can partially intersect when actors sit between memory columns. That shape looks like accidental overlap and obscures ownership. Nested ancestor boxes and separated siblings encode the existing `parent_scope` relation directly without adding nodes, edges, schema fields, or access semantics.
+
+**Alternatives considered**:
+
+- Remove scope boundaries: rejected because users still need ownership and replication context.
+- Put every scope in a separate diagram: rejected because it breaks the requested single System View and makes cross-scope memory routes harder to trace.
+- Add a second lane or grouping model to the Rust export: rejected because the existing scope tree contains all required information and the issue is presentation geometry only.

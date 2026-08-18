@@ -38,7 +38,9 @@ The unified diagram includes each actor once, positioned between its source and
 destination memory columns, so routes read visually as source memory → actor →
 destination memory. The primary legend says `Memory`, `Processor`, and
 `Data Mover`; its subtitle explains that arrows are input/output paths and
-boundaries are architecture scopes.
+boundaries are architecture scopes. Parent boundaries contain every displayed
+descendant-scope component, while sibling scope regions are assigned separate
+row bands so their boxes do not partially overlap.
 
 Each component view contains only its anchor, directly connected canonical
 neighbors, and their relationships. Processor/data-mover views include direct

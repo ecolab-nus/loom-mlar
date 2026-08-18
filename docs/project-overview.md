@@ -125,6 +125,8 @@ neighbors rather than focus anchors, and uncovered entities are grouped by
 owning architecture scope.
 The primary legend uses `Memory`, `Processor`, and `Data Mover`, while its
 subtitle distinguishes actor I/O arrows from architecture-scope boundaries.
+Ancestor boundaries contain displayed child scopes, and sibling regions occupy
+separate row bands so ownership boxes do not partially overlap.
 Vendored Archify validates and renders every view as standalone HTML, and
 `mlar-archify` assembles those artifacts into a static gallery without
 implementing a second renderer.

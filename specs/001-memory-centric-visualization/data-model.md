@@ -111,6 +111,8 @@ Validation rules:
 - Actors with different source and destination hierarchy levels occupy an intervening column, so the visual route is source memory → actor → destination memory.
 - Canonical `read`/`write` kinds determine arrow direction internally but are not repeated as edge labels.
 - A subtitle defines arrows as source-memory input → actor → destination-memory output and boundaries as architecture scopes.
+- Every ancestor scope boundary wraps the displayed components of its descendant scopes, with greater padding than deeper boundaries.
+- Sibling scope subtrees occupy disjoint row bands with at least one clear grid row, preventing partial boundary overlap.
 - Containment never implies access and remains separate from source coverage.
 
 ### System View Overflow Window
@@ -132,6 +134,7 @@ Validation rules:
 
 - At most 12 primary nodes.
 - Every canonical memory appears in at least one hierarchy window, including unconnected memories.
+- Scope boundaries retain ancestor containment and disjoint sibling row bands within each window.
 - Containment connections never enter the source relationship coverage set.
 - No aggregate or replicated-instance nodes are generated.
 

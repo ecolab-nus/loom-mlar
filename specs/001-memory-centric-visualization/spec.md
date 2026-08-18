@@ -109,6 +109,7 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **FR-025**: Memory component views MUST show every directly connected processor/data mover and any directly attached network; resource and network components MUST NOT receive dedicated component views by default.
 - **FR-026**: If a component view would exceed 12 primary nodes, it MUST split deterministically while repeating the canonical anchor and preserving every direct relationship across the resulting pages.
 - **FR-027**: Components not covered by `System View` or any component view MUST be grouped in a fallback component view titled with their owning architecture scope.
+- **FR-028**: Scope boundaries in a `System View` MUST preserve the architecture hierarchy without ambiguous partial overlap: an ancestor boundary MUST contain every displayed descendant-scope component, and displayed sibling-scope regions MUST occupy disjoint layout bands.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -117,7 +118,7 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **Compute Processor**: An executable architecture component that directly reads from and/or writes to one or more memory regions.
 - **Data Mover**: An executable architecture component with a source memory region and destination memory region, representing directed movement within or across hierarchy levels.
 - **Memory Access Connection**: One segment of an unlabeled directional route from source memory through a compute processor or data mover to destination memory.
-- **System View**: The default bounded presentation containing canonical memories, recursive structural layers, connected processors/data movers positioned between hierarchy levels, containment, exact source-to-destination routes, and architecture scope boundaries together.
+- **System View**: The default bounded presentation containing canonical memories, recursive structural layers, connected processors/data movers positioned between hierarchy levels, containment, exact source-to-destination routes, and hierarchically nested, non-partially-overlapping architecture scope boundaries together.
 - **Component View**: A bounded one-hop neighborhood anchored on one canonical memory, processor, or data mover and containing its direct source relationships, endpoint components, required resources, and ownership scope.
 - **Scope Fallback View**: A bounded component-view page that preserves otherwise uncovered canonical components and names their owning architecture scope.
 - **Semantic View**: A bounded primary or overflow presentation preserving canonical identities when the complete unified memory view cannot fit.
@@ -136,6 +137,7 @@ As a performance engineer, I want to follow a data-movement route between memory
 - **SC-008**: The representative 2D mesh sample produces exactly one `System View` containing DRAM, L1, both bank layers, and every directly connected processor/data mover positioned between DRAM and L1, including DRAM → `dram_l1_noc0` → L1 and L1 → `l1_dram_noc1` → DRAM.
 - **SC-009**: Every generated system diagram uses the visible legend labels `Memory`, `Processor`, and `Data Mover`; the gallery defaults to `System View` and groups all focused one-hop diagrams under `Component Views`.
 - **SC-010**: For every memory, processor, and data mover in the representative sample, automated comparison confirms that its component views collectively include 100% of its direct source relationships and zero transitive or inferred relationships.
+- **SC-011**: Automated scope-layout checks confirm that every displayed child-scope boundary is contained by each displayed ancestor boundary and that sibling-scope boundary row ranges have at least one clear grid row between them.
 
 ## Assumptions
 

@@ -128,7 +128,9 @@ view, those relationships become unlabeled source-memory → actor →
 destination-memory arrows, with actors occupying columns between memory levels.
 The generated legend renames Archify's generic visual types to the MLAR roles
 `Memory`, `Processor`, and `Data Mover`; a subtitle distinguishes those actor
-I/O arrows from architecture-scope boundaries. `Component Views` contains one
+I/O arrows from architecture-scope boundaries. Those boundaries follow the
+scope tree: ancestors contain displayed descendants and sibling regions use
+separate row bands. `Component Views` contains one
 exact one-hop view per memory, processor, and data mover. Required resources and
 network attachments appear as direct neighbors; they do not receive standalone
 focus views. Uncovered entities use owning-scope fallbacks.
