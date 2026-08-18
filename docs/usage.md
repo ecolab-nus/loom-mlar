@@ -126,3 +126,46 @@ networks, scopes, and their relationships into `mlar.visualization.v1` YAML.
 Definitions are folded into their placements, and aliases resolve to their
 backing memories rather than becoming independent nodes. Convert the result
 with `tools/mlar-archify`; no separate visualization architecture is required.
+
+## Render the visualization
+
+```bash
+npm ci --prefix tools/mlar-archify
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  architecture.visualization.yaml visualization-output/architecture
+node tools/mlar-archify/bin/mlar-archify.mjs serve \
+  visualization-output/architecture
+```
+
+Open `http://127.0.0.1:4173/` to use the generated architecture gallery. Its
+default `System View`, when the complete projection fits within 12 nodes, is one
+diagram that combines memory hierarchy, recursive layers, processors/data
+movers, and access edges. Search accepts memory names, canonical IDs, scope
+paths, and view titles. Scope filtering, previous/next navigation, deep links,
+and independent diagram opening are available without a backend.
+
+Use the primary diagram to answer who uses each exact memory. Compute processors
+and data movers use different node styles. Each actor is placed between its
+source and destination memory levels, with unlabeled arrows forming source
+memory → actor → destination memory. Thus DRAM → mover → L1 and the reverse
+L1 → mover → DRAM can be read directly from arrowheads without `read`/`write`
+edge text. Its legend names the node roles `Memory`, `Processor`, and
+`Data Mover`. The subtitle explains that arrows are processor/data-mover
+input/output paths, whereas structure `contains` edges and scope boundaries
+show hierarchy and ownership only and must not be interpreted as access.
+Additional access pages are generated only when the combined diagram would
+exceed 12 nodes.
+
+`Component Views` contains one exact one-hop diagram for every memory,
+processor, and data mover. An actor view combines its direct memory input/output
+with every resource it directly requires. A memory view combines its direct
+actors and network attachments. These views never add transitive neighbors.
+Resources and networks appear as neighbors rather than standalone focus views;
+otherwise uncovered entities are grouped by an explicitly named owning
+`Architecture Scope`.
+
+Replication such as an 8×8 mesh remains metadata on a scope; it does not create
+64 repeated nodes. The output manifest contains the source hash and Archify
+validation/delivery receipts, while the conversion report confirms that no
+scopes, components, or relationships were omitted and accounts for derived
+structural layers separately.

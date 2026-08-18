@@ -33,6 +33,54 @@ fn export_2d_mesh_visualization_yaml() {
         |component| matches!(component, VisualizationComponent::Memory { name, .. } if name == "DRAM")
     ));
     assert_eq!(document.components.len(), 11);
+    for resource_name in ["matrix_lane", "vector_lane", "noc0", "noc1"] {
+        let matching = document
+            .components
+            .iter()
+            .filter(|component| {
+                matches!(
+                    component,
+                    VisualizationComponent::Resource { name, .. } if name == resource_name
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            matching.len(),
+            1,
+            "resource '{resource_name}' should be exported once"
+        );
+    }
+    let scope_of = |name: &str| {
+        document
+            .scopes
+            .iter()
+            .find(|scope| scope.name == name)
+            .unwrap_or_else(|| panic!("scope '{name}' should be exported"))
+            .id
+            .as_str()
+    };
+    for (resource_name, scope_name) in [
+        ("matrix_lane", "x_y"),
+        ("vector_lane", "x_y"),
+        ("noc0", "system"),
+        ("noc1", "system"),
+    ] {
+        let component = document
+            .components
+            .iter()
+            .find(|component| {
+                matches!(
+                    component,
+                    VisualizationComponent::Resource { name, .. } if name == resource_name
+                )
+            })
+            .expect("resource should be exported");
+        assert_eq!(
+            component.scope(),
+            scope_of(scope_name),
+            "resource '{resource_name}' should belong to scope '{scope_name}'"
+        );
+    }
     assert!(
         document
             .relationships

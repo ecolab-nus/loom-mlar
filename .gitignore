@@ -32,3 +32,20 @@ tests/2d_mesh/bin/*
 
 # Generated Archify visualization bundles
 visualization-output/
+
+# Node/Rust build outputs and local environment files
+dist/
+build/
+release/
+*.rlib
+*.prof*
+*.log
+.env*
+
+# Editor and operating-system artifacts
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

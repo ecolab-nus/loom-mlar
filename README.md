@@ -50,7 +50,42 @@ Convert that YAML with the project-owned Archify adapter:
 npm ci --prefix tools/mlar-archify
 node tools/mlar-archify/bin/mlar-archify.mjs build \
   architecture.visualization.yaml visualization-output/architecture
+node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/architecture
 ```
+
+Open `http://127.0.0.1:4173/`. No Archify-specific fields need to be added to
+the Rust `Architecture` itself.
+
+To skip the Rust export step and inspect the larger tracked 2D mesh sample, run:
+
+```bash
+npm ci --prefix tools/mlar-archify
+node tools/mlar-archify/bin/mlar-archify.mjs build \
+  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  visualization-output/2d-mesh
+node tools/mlar-archify/bin/mlar-archify.mjs serve visualization-output/2d-mesh
+```
+
+The generated application opens on `System View`, one combined memory-centric
+diagram whenever the model fits the 12-node readability limit. Scope boundaries
+show where each canonical memory belongs; recursive banks, directly connected
+compute processors and data movers appear in that same diagram. Actors sit
+between their source and destination memory levels, and arrowheads form
+source-memory → actor → destination-memory routes without `read`/`write` edge
+text. The legend uses the MLAR names `Memory`, `Processor`, and `Data Mover`,
+and the subtitle distinguishes these I/O paths from architecture-scope
+boundaries. `Component Views` then provides one exact one-hop view for every
+memory, processor, and data mover. Processor/data-mover views include their
+direct memory endpoints and required resources; memory views include their
+direct actors and network attachments. Resources and networks are neighbors,
+not standalone focus views, and uncovered entities are grouped by owning
+architecture scope. The gallery embeds standalone Archify artifacts
+and can be deployed to any static web host.
+
+The complete 2D mesh package in
+[`tests/2d_mesh/processors`](tests/2d_mesh/processors) demonstrates Loom-backed
+processors, performance models, data movement, network resources, schedule
+evaluation, and the MLIR and visualization export formats.
 
 ## Documentation
 

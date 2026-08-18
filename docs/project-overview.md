@@ -114,10 +114,22 @@ node per hardware instance.
 ## 4. Build And Serve The Visualization
 
 The Node.js adapter validates the visualization YAML, checks its references,
-and plans bounded semantic views for systems, subsystems, memories, resources,
-and networks. Vendored Archify then validates and renders each view as a
-standalone HTML diagram. `mlar-archify` assembles those diagrams into a static
-gallery; it does not implement a second renderer.
+and derives a memory-first presentation without changing the v1 interchange
+contract. When it fits within 12 nodes, the default `System View` combines scope
+ownership, recursive memory structure, every connected processor/data mover,
+and exact source-memory → actor → destination-memory routes. Actors are placed
+between their endpoint memory levels, and arrow direction replaces
+`read`/`write` edge labels. Larger models use bounded overflow. `Component
+Views` provides one exact one-hop diagram per memory, processor, and data mover.
+Actor views include direct memory routes and required resources; memory views
+include direct actors and network attachments. Resources and networks are
+neighbors rather than focus anchors, and uncovered entities are grouped by
+owning architecture scope.
+The primary legend uses `Memory`, `Processor`, and `Data Mover`, while its
+subtitle distinguishes actor I/O arrows from architecture-scope boundaries.
+Vendored Archify validates and renders every view as standalone HTML, and
+`mlar-archify` assembles those artifacts into a static gallery without
+implementing a second renderer.
 
 From the repository root:
 
@@ -129,9 +141,9 @@ node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/system
 ```
 
-Open `http://127.0.0.1:4173/`. The generated directory is a complete static web
-application and can also be copied to a static web host; no application backend
-is required.
+Open `http://127.0.0.1:4173/`. The root `System View` is the default.
+The generated directory is a complete static web application and can also be
+copied to a static web host; no application backend is required.
 
 ## Artifact Responsibilities
 
