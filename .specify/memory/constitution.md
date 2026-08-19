@@ -1,10 +1,11 @@
 <!--
 Sync Impact Report
-- Version change: 1.4.0 -> 1.5.0
-- Modified principles: IV. Keep Structural Documentation Visual and Reproducible
-- Added principles: none
-- Modified sections: Core Principles (defined the specification-to-documentation lifecycle);
-  Development Workflow and Quality Gates (added completion and consolidation requirements)
+- Version change: 1.5.0 -> 1.6.0
+- Modified principles: none
+- Added principles: VIII. Treat Feature Specifications as Living Contracts
+- Modified sections: Development Workflow and Quality Gates (made the Living Spec artifact
+  sequence and implementation/convergence loop mandatory); Governance (added Living Spec
+  compliance review)
 - Added sections: none
 - Removed sections: none
 - Follow-up TODOs: none
@@ -142,6 +143,22 @@ general-purpose text tools. Rationale: textual file boundaries make system behav
 debuggable, reproducible, and independently consumable by architecture, compiler, and visualization
 tooling.
 
+### VIII. Treat Feature Specifications as Living Contracts
+Each active feature's `spec.md` MUST be the authoritative contract for intended behavior. Its
+`plan.md` and `tasks.md` are derived artifacts and MUST remain consistent with that contract. When
+intended behavior changes, contributors MUST revise the existing `spec.md` first through
+`speckit.clarify` or an explicit edit, then regenerate or manually revise `plan.md` and `tasks.md`
+in that order. Before replacing a derived artifact, contributors MUST preserve any implementation
+rationale or decision that remains relevant by carrying it forward explicitly into the revised
+artifact or another maintained decision record.
+
+Implementation MUST NOT resume until `speckit.analyze` finds no unresolved material inconsistency
+among the specification, plan, and tasks. After `speckit.implement`, contributors MUST review code
+and artifact diffs together and run `speckit.converge`. If convergence appends work to `tasks.md`,
+the implementation and convergence cycle MUST repeat until no required work remains. Rationale: a
+single behavioral contract with ordered, reviewable derivation prevents planning drift and makes
+the implemented result auditable against current intent.
+
 ## Engineering Constraints
 
 - The crate MUST target Rust edition 2024 and a compatible stable Rust toolchain.
@@ -160,25 +177,37 @@ tooling.
 
 ## Development Workflow and Quality Gates
 
-1. Read `README.md`, `docs/software-architecture.md`, `tests/2d_mesh/arch.rs`, and the directly
+1. Begin Living Spec work from a clean working tree or a dedicated branch whose relevant changes
+   are isolated, so generated and manual changes remain reviewable.
+2. Read `README.md`, `docs/software-architecture.md`, `tests/2d_mesh/arch.rs`, and the directly
    affected implementation before making broad architectural changes.
-2. Confirm any unclear or materially consequential design choice before editing. For an approved
-   change, use existing APIs and preserve the contracts defined by this constitution.
-3. Add or update focused coverage and documentation in the same change. Schema changes MUST update
-   Rust types, schema, tracked sample, adapter tests, and documentation as one compatibility unit.
-4. Run the narrowest relevant checks first, then broader checks warranted by risk. Rust work MUST
+3. Confirm any unclear or materially consequential design choice before editing. For an approved
+   behavior change, revise the existing `spec.md` first with `speckit.clarify` or an explicit edit.
+4. Run `speckit.plan` or manually revise `plan.md`, preserving relevant rationale, so the technical
+   approach derives from the revised specification.
+5. Run `speckit.tasks` or manually revise `tasks.md`, preserving relevant rationale, so the work
+   derives from the revised plan.
+6. Run `speckit.analyze` and resolve material gaps or contradictions among `spec.md`, `plan.md`, and
+   `tasks.md` before implementation resumes.
+7. Run `speckit.implement`, then review implementation and artifact diffs together. Use existing
+   APIs, preserve governed contracts, and add or update focused coverage and documentation in the
+   same change. Schema changes MUST update Rust types, schema, tracked sample, adapter tests, and
+   documentation as one compatibility unit.
+8. Run `speckit.converge` to assess the codebase against the feature artifacts. If it appends tasks,
+   repeat `speckit.implement` and `speckit.converge` until convergence reports no required work.
+9. Run the narrowest relevant checks first, then broader checks warranted by risk. Rust work MUST
    finish with formatting verification; visualization and docsite work MUST finish with their
    required Node, Archify, and Docusaurus checks.
-5. When documentation diagrams change, edit only the JSON source, then repeat Archify validation,
-   delivery, and visual checking. An exit code indicating a browser-based check was skipped MUST be
-   recorded as skipped.
-6. Before closing feature work, consolidate its durable specification content into the canonical
-   documentation. Preserve useful specification structure when it improves the maintained docs,
-   remove stale planning detail, and decide explicitly whether the completed feature directory is
-   removed, archived, or retained as a historical record.
-7. Inspect the final worktree and all task-related diffs. Explicitly distinguish expected tracked
-   sample rewrites, ignored generated output, pre-existing user changes, passed checks, and skipped
-   or blocked checks in the handoff.
+10. When documentation diagrams change, edit only the JSON source, then repeat Archify validation,
+    delivery, and visual checking. An exit code indicating a browser-based check was skipped MUST
+    be recorded as skipped.
+11. Before closing feature work, consolidate its durable specification content into the canonical
+    documentation. Preserve useful specification structure when it improves the maintained docs,
+    remove stale planning detail, and decide explicitly whether the completed feature directory is
+    removed, archived, or retained as a historical record.
+12. Inspect the final worktree and all task-related diffs. Explicitly distinguish expected tracked
+    sample rewrites, ignored generated output, pre-existing user changes, passed checks, and skipped
+    or blocked checks in the handoff.
 
 ## Governance
 
@@ -194,6 +223,8 @@ amendment takes effect. The amendment MUST update the Last Amended date and vers
 semantic versioning: MAJOR for incompatible governance changes or principle removals/redefinitions,
 MINOR for new principles or materially expanded obligations, and PATCH for non-semantic
 clarifications. Compliance review MUST occur when planning a feature, during code review, and before
-declaring implementation complete.
+declaring implementation complete. For Living Spec work, compliance review MUST verify that
+`spec.md` remains authoritative, derived artifacts match it, analysis precedes implementation, and
+the implementation/convergence loop has no required work remaining.
 
-**Version**: 1.5.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-17
+**Version**: 1.6.0 | **Ratified**: 2026-08-17 | **Last Amended**: 2026-08-18
