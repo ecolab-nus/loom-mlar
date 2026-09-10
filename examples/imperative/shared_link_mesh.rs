@@ -17,7 +17,7 @@ pub fn build() -> ExampleResult<Architecture> {
     Ok(Architecture::builder("link_system")
         .axis("x", 4)
         .axis("y", 4)
-        .memory_definition(MemoryDefinition::new("L1", ["x", "y"], 262_144, 64).with_banking(8))
+        .memory_definition(MemoryDefinition::new("L1", 262_144, 64).with_banking(8))
         .place_memory("L1", ["x", "y"])
         .resource(Resource::exclusive("x_links"))
         .resource(Resource::exclusive("y_links"))

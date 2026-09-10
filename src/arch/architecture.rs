@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use super::arch_yaml::ProcessorYaml;
 use super::axis::Axis;
 use super::memory::{
-    MemoryAlias, MemoryArray, MemoryDefinition, MemoryEndpoint, validate_region_selector,
+    MemoryArray, MemoryDefinition, MemoryEndpoint, validate_levels, validate_selection,
     validate_static_bank,
 };
 use super::network::NetworkTopology;
@@ -70,8 +70,6 @@ pub struct Architecture {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) memory_definitions: Vec<MemoryDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) memory_aliases: Vec<MemoryAlias>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) memories: Vec<MemoryArray>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) processor_definitions: Vec<ProcessorDefinition>,
@@ -92,8 +90,6 @@ struct ArchitectureData {
     axes: Vec<Axis>,
     #[serde(default)]
     memory_definitions: Vec<MemoryDefinition>,
-    #[serde(default)]
-    memory_aliases: Vec<MemoryAlias>,
     #[serde(default)]
     memories: Vec<MemoryArray>,
     #[serde(default)]
@@ -118,7 +114,6 @@ impl<'de> Deserialize<'de> for Architecture {
             name: data.name,
             axes: data.axes,
             memory_definitions: data.memory_definitions,
-            memory_aliases: data.memory_aliases,
             memories: data.memories,
             processor_definitions: data.processor_definitions,
             processors: data.processors,
@@ -156,10 +151,6 @@ impl Architecture {
         &self.memory_definitions
     }
 
-    pub fn memory_aliases(&self) -> &[MemoryAlias] {
-        &self.memory_aliases
-    }
-
     pub fn processor_definitions(&self) -> &[ProcessorDefinition] {
         &self.processor_definitions
     }
@@ -191,10 +182,6 @@ impl Architecture {
             .filter(move |memory| memory.definition == definition)
     }
 
-    pub fn memory_alias(&self, name: &str) -> Option<&MemoryAlias> {
-        self.memory_aliases.iter().find(|alias| alias.name == name)
-    }
-
     pub fn memory_definition(&self, memory: &MemoryArray) -> Option<&MemoryDefinition> {
         self.memory_definitions
             .iter()
@@ -202,11 +189,8 @@ impl Architecture {
     }
 
     pub fn connection_instances(&self, processor: &ProcessorArray) -> Vec<ConnectionInstance> {
-        let mut connection = processor.connection.clone();
-        resolve_memory_aliases(&mut connection, &self.memory_aliases)
-            .expect("canonical processor connection must resolve");
         resolve_connection_instances(
-            &connection,
+            &processor.connection,
             &processor.axes,
             &self.memories,
             &self.memory_definitions,
@@ -284,15 +268,9 @@ impl Architecture {
             )));
         }
         validate_memory_definitions(&self.memory_definitions)?;
-        validate_memory_aliases(&self.memory_aliases)?;
         validate_unique(
             self.memories.iter().map(|memory| memory.name.as_str()),
             "memory",
-        )?;
-        validate_memory_alias_targets(
-            &self.memory_aliases,
-            &self.memories,
-            &self.memory_definitions,
         )?;
         validate_unique(
             self.processor_definitions
@@ -333,14 +311,13 @@ impl Architecture {
                     kind: "memory definition",
                     name: memory.definition.clone(),
                 })?;
-            if memory.indices.len() != definition.indices.len() {
-                return Err(ArchitectureError::RankMismatch {
-                    object: format!("memory '{}'", memory.name),
-                    expected: definition.indices.len(),
-                    actual: memory.indices.len(),
-                });
-            }
-            validate_axes(&format!("memory '{}'", memory.name), &memory.indices, &axes)?;
+            let _ = definition;
+            validate_levels(memory).map_err(ArchitectureError::Invalid)?;
+            validate_axes(
+                &format!("memory '{}'", memory.name),
+                &memory.domain(),
+                &axes,
+            )?;
         }
         for definition in &self.processor_definitions {
             definition.validate().map_err(ArchitectureError::Invalid)?;
@@ -356,8 +333,7 @@ impl Architecture {
                     name: processor.definition.clone(),
                 });
             }
-            let mut connection = processor.connection.clone();
-            resolve_memory_aliases(&mut connection, &self.memory_aliases)?;
+            let connection = processor.connection.clone();
             validate_connection(&connection, &self.memories, &self.memory_definitions)?;
             validate_processor_memory_bindings(
                 &processor.name,
@@ -388,6 +364,13 @@ impl Architecture {
                 &network.dimensions,
                 &axes,
             )?;
+            for interface in &network.interfaces {
+                validate_endpoint_reference(
+                    &interface.endpoint,
+                    &self.memories,
+                    &self.memory_definitions,
+                )?;
+            }
         }
         validate_scopes(
             &self.scopes,
@@ -434,8 +417,7 @@ pub struct ArchitectureBuilder {
     name: String,
     dimensions: Vec<Axis>,
     memory_definitions: Vec<MemoryDefinition>,
-    memory_aliases: Vec<MemoryAlias>,
-    placements: Vec<(String, String, Vec<String>)>,
+    placements: Vec<(String, String, Vec<Vec<String>>)>,
     processor_definitions: Vec<ProcessorDefinition>,
     connections: Vec<(String, String, Connection)>,
     resources: Vec<Resource>,
@@ -453,7 +435,6 @@ impl ArchitectureBuilder {
             name: name.into(),
             dimensions: Vec::new(),
             memory_definitions: Vec::new(),
-            memory_aliases: Vec::new(),
             placements: Vec::new(),
             processor_definitions: Vec::new(),
             connections: Vec::new(),
@@ -475,36 +456,42 @@ impl ArchitectureBuilder {
         self
     }
 
-    pub fn memory_alias(mut self, alias: MemoryAlias) -> Self {
-        self.memory_aliases.push(alias);
-        self
-    }
-
+    /// Place a definition as one flat level over `dimensions`.
     pub fn place_memory(
-        mut self,
+        self,
         definition: impl Into<String>,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let definition = definition.into();
-        self.placements.push((
-            definition.clone(),
-            definition,
-            dimensions.into_iter().map(Into::into).collect(),
-        ));
-        self
+        self.place_memory_as(definition.clone(), definition, dimensions)
     }
 
+    /// Place a definition under `name` as one flat level over `dimensions`.
     pub fn place_memory_as(
-        mut self,
+        self,
         name: impl Into<String>,
         definition: impl Into<String>,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        self.placements.push((
-            name.into(),
-            definition.into(),
-            dimensions.into_iter().map(Into::into).collect(),
-        ));
+        let level = dimensions.into_iter().map(Into::into).collect::<Vec<_>>();
+        let levels = if level.is_empty() {
+            Vec::new()
+        } else {
+            vec![level]
+        };
+        self.place_memory_levels(name, definition, levels)
+    }
+
+    /// Place a definition under `name` over nested axis levels, outer to
+    /// inner. Each level becomes one `adl.memory.array`.
+    pub fn place_memory_levels(
+        mut self,
+        name: impl Into<String>,
+        definition: impl Into<String>,
+        levels: Vec<Vec<String>>,
+    ) -> Self {
+        self.placements
+            .push((name.into(), definition.into(), levels));
         self
     }
 
@@ -610,7 +597,6 @@ impl ArchitectureBuilder {
             )));
         }
         validate_memory_definitions(&self.memory_definitions)?;
-        validate_memory_aliases(&self.memory_aliases)?;
         validate_unique(
             self.processor_definitions
                 .iter()
@@ -638,30 +624,30 @@ impl ArchitectureBuilder {
                     kind: "memory definition",
                     name: definition_name.clone(),
                 })?;
-            if placement.len() != definition.indices.len() {
-                return Err(ArchitectureError::RankMismatch {
-                    object: format!("memory placement '{name}'"),
-                    expected: definition.indices.len(),
-                    actual: placement.len(),
-                });
-            }
-            let indices = placement
+            let _ = definition;
+            let levels = placement
                 .iter()
-                .map(|dimension| {
-                    dimension_map
-                        .get(dimension.as_str())
-                        .cloned()
-                        .ok_or_else(|| {
-                            ArchitectureError::Invalid(format!(
-                                "placement '{}' uses unknown dimension '{}'",
-                                name, dimension
-                            ))
+                .map(|level| {
+                    level
+                        .iter()
+                        .map(|dimension| {
+                            dimension_map
+                                .get(dimension.as_str())
+                                .cloned()
+                                .ok_or_else(|| {
+                                    ArchitectureError::Invalid(format!(
+                                        "placement '{}' uses unknown dimension '{}'",
+                                        name, dimension
+                                    ))
+                                })
                         })
+                        .collect::<Result<Vec<_>, _>>()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            memories.push(MemoryArray::new(name, definition_name, indices));
+            let memory = MemoryArray::new(name, definition_name, levels);
+            validate_levels(&memory).map_err(ArchitectureError::Invalid)?;
+            memories.push(memory);
         }
-        validate_memory_alias_targets(&self.memory_aliases, &memories, &self.memory_definitions)?;
 
         for definition in &self.processor_definitions {
             if definition.name.is_empty() {
@@ -712,7 +698,6 @@ impl ArchitectureBuilder {
                     &interface.endpoint,
                     &memories,
                     &self.memory_definitions,
-                    &self.memory_aliases,
                 )?;
             }
         }
@@ -735,8 +720,7 @@ impl ArchitectureBuilder {
                         definition_name
                     ))
                 })?;
-            let mut resolved_connection = connection.clone();
-            resolve_memory_aliases(&mut resolved_connection, &self.memory_aliases)?;
+            let resolved_connection = connection.clone();
             validate_connection(&resolved_connection, &memories, &self.memory_definitions)?;
             validate_processor_memory_bindings(
                 &name,
@@ -807,7 +791,6 @@ impl ArchitectureBuilder {
             name: self.name,
             axes: self.dimensions,
             memory_definitions: self.memory_definitions,
-            memory_aliases: self.memory_aliases,
             memories,
             processor_definitions: self.processor_definitions,
             processors,
@@ -822,12 +805,7 @@ fn validate_endpoint_reference(
     endpoint: &super::memory::MemoryEndpoint,
     memories: &[MemoryArray],
     definitions: &[MemoryDefinition],
-    aliases: &[MemoryAlias],
 ) -> Result<(), ArchitectureError> {
-    let endpoint = aliases
-        .iter()
-        .find(|alias| alias.name == endpoint.memory)
-        .map_or(endpoint, |alias| &alias.endpoint);
     let memory = memories
         .iter()
         .find(|memory| memory.name == endpoint.memory)
@@ -837,19 +815,11 @@ fn validate_endpoint_reference(
                 endpoint.memory
             ))
         })?;
-    if endpoint.indices.len() != memory.indices.len() {
-        return Err(ArchitectureError::Invalid(format!(
-            "network interface endpoint '{}' has {} indices; placed memory expects {}",
-            endpoint.memory,
-            endpoint.indices.len(),
-            memory.indices.len()
-        )));
-    }
     let definition = definitions
         .iter()
         .find(|definition| definition.name == memory.definition)
         .expect("placed memory definition was validated");
-    validate_region_selector(endpoint).map_err(ArchitectureError::Invalid)?;
+    validate_selection(endpoint, memory).map_err(ArchitectureError::Invalid)?;
     validate_static_bank(endpoint, definition).map_err(ArchitectureError::Invalid)
 }
 
@@ -883,54 +853,6 @@ fn validate_memory_definitions(definitions: &[MemoryDefinition]) -> Result<(), A
                 technology.kind, name, technology.name
             )));
         }
-    }
-    Ok(())
-}
-
-fn validate_memory_aliases(aliases: &[MemoryAlias]) -> Result<(), ArchitectureError> {
-    validate_unique(
-        aliases.iter().map(|alias| alias.name.as_str()),
-        "memory alias",
-    )
-}
-
-fn validate_memory_alias_targets(
-    aliases: &[MemoryAlias],
-    memories: &[MemoryArray],
-    definitions: &[MemoryDefinition],
-) -> Result<(), ArchitectureError> {
-    for alias in aliases {
-        if memories.iter().any(|memory| memory.name == alias.name) {
-            return Err(ArchitectureError::DuplicateName {
-                kind: "memory or alias",
-                name: alias.name.clone(),
-            });
-        }
-        let memory = memories
-            .iter()
-            .find(|memory| memory.name == alias.endpoint.memory)
-            .ok_or_else(|| ArchitectureError::UnknownReference {
-                owner: format!("memory alias '{}'", alias.name),
-                kind: "placed memory",
-                name: alias.endpoint.memory.clone(),
-            })?;
-        if alias.endpoint.indices.len() != memory.indices.len() {
-            return Err(ArchitectureError::RankMismatch {
-                object: format!("memory alias '{}'", alias.name),
-                expected: memory.indices.len(),
-                actual: alias.endpoint.indices.len(),
-            });
-        }
-        let definition = definitions
-            .iter()
-            .find(|definition| definition.name == memory.definition)
-            .ok_or_else(|| ArchitectureError::UnknownReference {
-                owner: format!("placed memory '{}'", memory.name),
-                kind: "memory definition",
-                name: memory.definition.clone(),
-            })?;
-        validate_region_selector(&alias.endpoint).map_err(ArchitectureError::Invalid)?;
-        validate_static_bank(&alias.endpoint, definition).map_err(ArchitectureError::Invalid)?;
     }
     Ok(())
 }
@@ -986,7 +908,7 @@ fn validate_scopes(
             &scope.memories,
             memories
                 .iter()
-                .map(|memory| (memory.name.as_str(), memory.indices.as_slice())),
+                .map(|memory| (memory.name.as_str(), memory.domain())),
             "memory",
         )?;
         validate_membership(
@@ -995,7 +917,7 @@ fn validate_scopes(
             &scope.processors,
             processors
                 .iter()
-                .map(|processor| (processor.name.as_str(), processor.axes.as_slice())),
+                .map(|processor| (processor.name.as_str(), processor.axes.clone())),
             "processor",
         )?;
         validate_membership(
@@ -1004,7 +926,7 @@ fn validate_scopes(
             &scope.networks,
             networks
                 .iter()
-                .map(|network| (network.name.as_str(), network.dimensions.as_slice())),
+                .map(|network| (network.name.as_str(), network.dimensions.clone())),
             "network",
         )?;
         validate_membership(
@@ -1013,7 +935,7 @@ fn validate_scopes(
             &scope.resources,
             resources
                 .iter()
-                .map(|resource| (resource.name.as_str(), resource.indices.as_slice())),
+                .map(|resource| (resource.name.as_str(), resource.indices.clone())),
             "resource",
         )?;
         resolved_domains.insert(scope.name.as_str(), scope_dimensions);
@@ -1057,7 +979,7 @@ fn validate_membership<'a>(
     scope: &str,
     scope_dimensions: &[Axis],
     members: &[String],
-    candidates: impl IntoIterator<Item = (&'a str, &'a [Axis])>,
+    candidates: impl IntoIterator<Item = (&'a str, Vec<Axis>)>,
     kind: &'static str,
 ) -> Result<(), ArchitectureError> {
     let candidates = candidates.into_iter().collect::<BTreeMap<_, _>>();
@@ -1070,7 +992,7 @@ fn validate_membership<'a>(
                     kind,
                     name: member.clone(),
                 })?;
-        if !domain_is_prefix(scope_dimensions, domain) {
+        if !domain_is_prefix(scope_dimensions, domain.as_slice()) {
             return Err(ArchitectureError::Invalid(format!(
                 "scope '{scope}' domain is not a prefix of {kind} '{member}' domain"
             )));
@@ -1118,24 +1040,6 @@ fn validate_unique<'a>(
     Ok(())
 }
 
-fn resolve_memory_aliases(
-    connection: &mut Connection,
-    aliases: &[MemoryAlias],
-) -> Result<(), ArchitectureError> {
-    for endpoint in connection.inputs.iter_mut().chain(&mut connection.outputs) {
-        if let Some(alias) = aliases.iter().find(|alias| alias.name == endpoint.memory) {
-            if !endpoint.indices.is_empty() || endpoint.bank.is_some() {
-                return Err(ArchitectureError::Invalid(format!(
-                    "memory alias '{}' cannot be further indexed",
-                    alias.name
-                )));
-            }
-            *endpoint = alias.endpoint.clone();
-        }
-    }
-    Ok(())
-}
-
 fn validate_connection(
     connection: &Connection,
     memories: &[MemoryArray],
@@ -1151,14 +1055,6 @@ fn validate_connection(
                     endpoint.memory
                 ))
             })?;
-        if endpoint.indices.len() != memory.indices.len() {
-            return Err(ArchitectureError::Invalid(format!(
-                "endpoint '{}' has {} indices; placed memory expects {}",
-                endpoint.memory,
-                endpoint.indices.len(),
-                memory.indices.len()
-            )));
-        }
         let definition = definitions
             .iter()
             .find(|definition| definition.name == memory.definition)
@@ -1168,7 +1064,7 @@ fn validate_connection(
                     memory.name, memory.definition
                 ))
             })?;
-        validate_region_selector(endpoint).map_err(ArchitectureError::Invalid)?;
+        validate_selection(endpoint, memory).map_err(ArchitectureError::Invalid)?;
         validate_static_bank(endpoint, definition).map_err(ArchitectureError::Invalid)?;
     }
     Ok(())
@@ -1328,22 +1224,26 @@ fn resolve_endpoint(
         .find(|memory| memory.name == endpoint.memory)
         .expect("connection was validated");
     let mut indices = Vec::new();
-    for (selector, domain) in endpoint.indices.iter().zip(&memory.indices) {
-        match selector {
-            super::memory::EndpointIndex::All => indices.push(ResolvedEndpointIndex::All),
-            super::memory::EndpointIndex::Expression(expression) => {
-                let value = expression.evaluate(values).ok_or_else(|| {
-                    ArchitectureError::Invalid(format!(
-                        "could not evaluate index for memory '{}'",
-                        endpoint.memory
-                    ))
-                })?;
-                if value < 0 || value >= domain.extent as i64 {
-                    return Ok(None);
+    for (selectors, axes) in endpoint.indices.iter().zip(memory.levels()) {
+        let mut group = Vec::with_capacity(selectors.len());
+        for (selector, axis) in selectors.iter().zip(axes) {
+            match selector {
+                super::memory::EndpointIndex::All => group.push(ResolvedEndpointIndex::All),
+                super::memory::EndpointIndex::Expression(expression) => {
+                    let value = expression.evaluate(values).ok_or_else(|| {
+                        ArchitectureError::Invalid(format!(
+                            "could not evaluate index for memory '{}'",
+                            endpoint.memory
+                        ))
+                    })?;
+                    if value < 0 || value >= axis.extent as i64 {
+                        return Ok(None);
+                    }
+                    group.push(ResolvedEndpointIndex::Index(value as u64));
                 }
-                indices.push(ResolvedEndpointIndex::Index(value as u64));
             }
         }
+        indices.push(group);
     }
     let definition = definitions
         .iter()

@@ -14,30 +14,26 @@ dma.loom
 
 ## Memory catalog
 
-`memory.yaml` defines logical memories and named selections:
+`memory.yaml` is a reusable catalog of logical memories. It names no axes, so
+the same catalog can serve several chips:
 
 ```yaml
 memories:
   DRAM:
-    indices: [channel]
     capacity: 1073741824
     word_size: 64
     technology: dram
 
   L1:
-    indices: [x, y]
     capacity: 65536
     word_size: 16
     banking: 8
-
-regions:
-  all_l1: "L1[:, :]"
 ```
 
 `capacity` is bytes per logical instance; `word_size` is the modeled access
 unit. Both must be positive, and capacity must be divisible by
-`word_size * banks`. A region is an alias and adds no storage. Banks are
-selected explicitly, for example `L1[x, y].bank[b]`.
+`word_size * banks`. Banks are selected explicitly, for example
+`L1[x, y].bank[b]`. Replication lives in `chip.yaml`, not here.
 
 Technology names are opaque. The loader assigns their numeric kinds in
 first-appearance order, so reordering the catalog can change exported ABI data.
@@ -77,13 +73,67 @@ processors:
     resources: [global_lock]
 ```
 
-A detailed memory placement can use a different instance name:
+A single-instance placement omits `domain`, and a memory placed without
+replication is a bare key:
+
+```yaml
+memories:
+  L1:
+processors:
+  vector_lane:
+    definition: vector_lane.yaml
+    inputs: ["L1"]
+    outputs: ["L1"]
+```
+
+### Memory levels
+
+A memory's `axes` list is a hierarchy. Scalar entries are one level's
+dimensions; a nested list starts the level below. Each level becomes one
+`adl.memory.array`, inner to outer:
+
+```yaml
+memories:
+  L1: [x, y]              # one 2-d array over x and y
+  L2: [cluster, [core]]   # per-cluster array holding per-core arrays
+```
+
+A nested list must be last in its level, and there may be at most one. All
+elements of a level share the same child structure.
+
+Each endpoint bracket group indexes one level, with one selector per dimension:
+
+| Endpoint | Selection |
+| --- | --- |
+| `L1` or `L1[:, :]` | The whole flat 2-d array |
+| `L1[x, y]` | One logical memory |
+| `L1[:, y]` | All x coordinates at one y coordinate |
+| `L2[cluster]` | The whole core array of one cluster |
+| `L2[cluster][core]` | One core's logical memory |
+| `L2[:][core]` | That core coordinate in every cluster |
+| `L2[cluster][:]` | Every core in one cluster |
+
+Stopping indexing selects the remaining subtree. A `:` selects every coordinate
+of its dimension; subsequent brackets traverse the next level under every
+selected parent. `L2[cluster, core]` is invalid for the nested declaration above.
+Bank selectors follow the leaf level, for example `L2[:][core].bank[b]`.
+
+ADL export supports whole-level handles. Dimension slices such as `L1[:, y]`
+and selections such as `L2[:][core]` are valid in MLAR but currently return
+`UnsupportedMemorySelection` during export.
+
+Level symbols in the exported ADL are the memory name suffixed with the axes
+that index it — `mem_L2`, `mem_L2__cluster`, `mem_L2__cluster_core` — so they
+depend on the axes alone and do not shift when the hierarchy is edited
+elsewhere.
+
+A detailed placement can name a different definition:
 
 ```yaml
 memories:
   scratch:
-    model: L1
-    dimensions: [x, y]
+    definition: L1
+    axes: [x, y]
 ```
 
 Every endpoint variable must appear in the placement's ordered `domain` and
@@ -111,7 +161,6 @@ dimensions:
 # memory.yaml
 memories:
   L1:
-    indices: [x]
     capacity: "X * 65536"
     word_size: 16
     banking: BANKS
@@ -224,7 +273,7 @@ networks:
         latency: "1"
     interfaces:
       - name: l1
-        endpoint: all_l1
+        endpoint: "L1[:, :]"
 
 scopes:
   - name: mesh
@@ -250,7 +299,7 @@ let architecture = Architecture::builder("example")
     .axis("x", 4)
     .axis("y", 4)
     .memory_definition(
-        MemoryDefinition::new("L1", ["x", "y"], 65_536, 16).with_banking(8),
+        MemoryDefinition::new("L1", 65_536, 16).with_banking(8),
     )
     .place_memory("L1", ["x", "y"])
     .processor_source_dir("path/to/package")

@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, de::Error as _};
 
 use super::PerformanceYaml;
 use super::architecture::{Architecture, ArchitectureBuilder};
-use super::memory::{Banking, MemoryAlias, MemoryDefinition, MemoryEndpoint, MemoryTechnology};
+use super::memory::{Banking, MemoryDefinition, MemoryEndpoint, MemoryTechnology};
 use super::network::{NetworkInterface, NetworkLink, NetworkTopology};
 use super::processor::{
     Connection, OperationModel, ProcessorDefinition, ProcessorSourceFormat, ProcessorType,
@@ -82,14 +82,83 @@ enum DimensionSizeYaml {
     Expression(String),
 }
 
+/// One element of an `axes:` list: a bare axis name, or a nested list that
+/// starts the level below. `[cluster, [core]]` is a per-cluster array holding
+/// per-core arrays; `[x, y]` is a single 2-d array.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum AxisSpecYaml {
+    Name(String),
+    Nested(Vec<AxisSpecYaml>),
+}
+
+impl AxisSpecYaml {
+    /// Flatten one `axes:` list into levels, outer to inner.
+    fn levels(specs: &[Self], memory: &str) -> Result<Vec<Vec<String>>, ArchLoadError> {
+        let mut level = Vec::new();
+        let mut nested = None;
+        for spec in specs {
+            match spec {
+                Self::Name(name) => {
+                    if nested.is_some() {
+                        return Err(ArchLoadError::Invalid(format!(
+                            "memory '{memory}': axis '{name}' follows a nested level; \
+                             a nested list must be last in its level"
+                        )));
+                    }
+                    level.push(name.clone());
+                }
+                Self::Nested(inner) => {
+                    if nested.is_some() {
+                        return Err(ArchLoadError::Invalid(format!(
+                            "memory '{memory}': a level may hold at most one nested level, \
+                             because adl.memory.array takes a single child"
+                        )));
+                    }
+                    nested = Some(inner);
+                }
+            }
+        }
+        if level.is_empty() {
+            return Err(ArchLoadError::Invalid(format!(
+                "memory '{memory}': a level must declare at least one axis"
+            )));
+        }
+        let mut levels = vec![level];
+        if let Some(inner) = nested {
+            levels.extend(Self::levels(inner, memory)?);
+        }
+        Ok(levels)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 enum MemoryPlacementYaml {
-    Direct(Vec<String>),
+    /// `L1:` — placed once, no replication.
+    Single,
+    Direct(Vec<AxisSpecYaml>),
     Detailed {
-        model: String,
-        dimensions: Vec<String>,
+        definition: String,
+        #[serde(default)]
+        axes: Vec<AxisSpecYaml>,
     },
+}
+
+impl MemoryPlacementYaml {
+    fn resolve(&self, name: &str) -> Result<(String, Vec<Vec<String>>), ArchLoadError> {
+        let (definition, specs) = match self {
+            Self::Single => (name.to_string(), [].as_slice()),
+            Self::Direct(specs) => (name.to_string(), specs.as_slice()),
+            Self::Detailed { definition, axes } => (definition.clone(), axes.as_slice()),
+        };
+        let levels = if specs.is_empty() {
+            Vec::new()
+        } else {
+            AxisSpecYaml::levels(specs, name)?
+        };
+        Ok((definition, levels))
+    }
 }
 
 fn default_memory_catalog_path() -> String {
@@ -220,8 +289,6 @@ struct ScopeYaml {
 struct MemoryCatalogYaml {
     #[serde(default)]
     memories: MemoryDefinitionsYaml,
-    #[serde(default, deserialize_with = "deserialize_memory_regions")]
-    regions: BTreeMap<String, MemoryEndpoint>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -249,28 +316,9 @@ impl<'de> Deserialize<'de> for MemoryDefinitionsYaml {
     }
 }
 
-fn deserialize_memory_regions<'de, D>(
-    deserializer: D,
-) -> Result<BTreeMap<String, MemoryEndpoint>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    BTreeMap::<String, String>::deserialize(deserializer)?
-        .into_iter()
-        .map(|(name, endpoint)| {
-            let endpoint = MemoryEndpoint::parse(&endpoint).map_err(|error| {
-                D::Error::custom(format!("invalid memory region '{name}': {error}"))
-            })?;
-            Ok((name, endpoint))
-        })
-        .collect()
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MemoryDefinitionYaml {
-    #[serde(default)]
-    indices: Vec<String>,
     capacity: ScalarExprYaml,
     word_size: ScalarExprYaml,
     #[serde(default)]
@@ -363,7 +411,7 @@ impl ChipYaml {
             .iter()
             .map(|(name, value)| (Sym::new(name), Expr::from(*value)))
             .collect::<Vec<_>>();
-        let (memory_definitions, aliases) = catalog_yaml.build(&declared, &substitutions)?;
+        let memory_definitions = catalog_yaml.build(&declared, &substitutions)?;
 
         let mut concrete_dimensions = BTreeMap::new();
         for (name, size) in &self.dimensions {
@@ -399,21 +447,12 @@ impl ChipYaml {
         for definition in memory_definitions {
             builder = builder.memory_definition(definition);
         }
-        for alias in aliases {
-            builder = builder.memory_alias(alias);
-        }
         for (name, size) in &concrete_dimensions {
             builder = builder.axis(name, *size);
         }
         for (name, placement) in &self.memories {
-            match placement {
-                MemoryPlacementYaml::Direct(dimensions) => {
-                    builder = builder.place_memory_as(name, name, dimensions.iter().cloned());
-                }
-                MemoryPlacementYaml::Detailed { model, dimensions } => {
-                    builder = builder.place_memory_as(name, model, dimensions.iter().cloned());
-                }
-            }
+            let (definition, levels) = placement.resolve(name)?;
+            builder = builder.place_memory_levels(name, definition, levels);
         }
         for resource in &self.resources {
             builder = builder.resource(resource.build());
@@ -589,8 +628,8 @@ impl MemoryCatalogYaml {
         self,
         declared: &std::collections::BTreeSet<String>,
         substitutions: &[(Sym, Expr)],
-    ) -> Result<(Vec<MemoryDefinition>, Vec<MemoryAlias>), ArchLoadError> {
-        let MemoryCatalogYaml { memories, regions } = self;
+    ) -> Result<Vec<MemoryDefinition>, ArchLoadError> {
+        let MemoryCatalogYaml { memories } = self;
         let mut technology_kinds = BTreeMap::<String, u64>::new();
         for (_, memory) in &memories.0 {
             if let Some(technology) = &memory.technology {
@@ -641,7 +680,6 @@ impl MemoryCatalogYaml {
                     .transpose()?;
                 Ok(MemoryDefinition {
                     name,
-                    indices: memory.indices,
                     capacity,
                     word_size,
                     technology,
@@ -650,11 +688,7 @@ impl MemoryCatalogYaml {
             })
             .collect::<Result<Vec<_>, _>>()?;
         definitions.sort_by(|left, right| left.name.cmp(&right.name));
-        let regions = regions
-            .into_iter()
-            .map(|(name, endpoint)| MemoryAlias::new(name, endpoint))
-            .collect();
-        Ok((definitions, regions))
+        Ok(definitions)
     }
 }
 
@@ -827,7 +861,7 @@ fn read_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, ArchLoadErr
 #[cfg(test)]
 mod tests {
     use super::{MemoryCatalogYaml, ProcessorPlacementYaml};
-    use crate::arch::{EndpointIndex, MemoryEndpoint, MemoryTechnology};
+    use crate::arch::{MemoryEndpoint, MemoryTechnology};
     use crate::{Expr, Sym};
 
     #[test]
@@ -853,36 +887,85 @@ outputs: ["L2[x floordiv 2, y floordiv 2]"]
     }
 
     #[test]
-    fn memory_region_values_deserialize_as_endpoints() {
-        let catalog: MemoryCatalogYaml = serde_yaml::from_str(
+    fn a_bare_placement_and_an_absent_domain_mean_one_instance() {
+        let chip: super::ChipYaml = serde_yaml::from_str(
             r#"
-regions:
-  all_l1: "L1[:, :]"
+name: single
+memories:
+  L1:
+processors:
+  lane:
+    definition: lane.yaml
+    inputs: ["L1"]
+    outputs: ["L1"]
 "#,
         )
-        .expect("memory catalog should deserialize");
+        .expect("chip should deserialize");
 
-        assert_eq!(
-            catalog.regions["all_l1"],
-            MemoryEndpoint {
-                memory: "L1".into(),
-                indices: vec![EndpointIndex::All, EndpointIndex::All],
-                bank: None,
-            }
-        );
+        let (definition, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
+        assert_eq!(definition, "L1");
+        assert!(levels.is_empty());
+        assert!(chip.processors.0[0].1.domain.is_empty());
     }
 
     #[test]
-    fn invalid_memory_region_endpoint_fails_deserialization() {
-        let error = serde_yaml::from_str::<MemoryCatalogYaml>(
+    fn nested_axes_become_levels_outer_to_inner() {
+        let chip: super::ChipYaml = serde_yaml::from_str(
             r#"
-regions:
-  all_l1: "L1[:,"
+name: nested
+memories:
+  L1: [cluster, [core]]
+  L2: [x, y]
+"#,
+        )
+        .expect("chip should deserialize");
+
+        let (definition, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
+        assert_eq!(definition, "L1");
+        assert_eq!(
+            levels,
+            vec![vec!["cluster".to_string()], vec!["core".to_string()]]
+        );
+
+        let (_, flat) = chip.memories["L2"].resolve("L2").expect("L2 levels");
+        assert_eq!(flat, vec![vec!["x".to_string(), "y".to_string()]]);
+    }
+
+    #[test]
+    fn a_nested_level_must_be_last_in_its_level() {
+        let chip: super::ChipYaml = serde_yaml::from_str(
+            r#"
+name: bad
+memories:
+  L1: [cluster, [core], extra]
+"#,
+        )
+        .expect("chip should deserialize");
+
+        let error = chip.memories["L1"]
+            .resolve("L1")
+            .expect_err("an axis after a nested level must be rejected");
+        assert!(error.to_string().contains("must be last in its level"));
+    }
+
+    #[test]
+    fn invalid_endpoint_fails_deserialization() {
+        let error = serde_yaml::from_str::<super::ChipYaml>(
+            r#"
+name: bad
+memories:
+  L1: [x]
+processors:
+  lane:
+    definition: lane.yaml
+    domain: [x]
+    inputs: ["L1[:,"]
+    outputs: ["L1[x]"]
 "#,
         )
         .expect_err("invalid endpoint must fail while deserializing");
 
-        assert!(error.to_string().contains("invalid memory region 'all_l1'"));
+        assert!(error.to_string().contains("memory indices must end with"));
     }
 
     #[test]
@@ -891,7 +974,6 @@ regions:
             r#"
 memories:
   L1:
-    indices: [x]
     technology: custom_local
     capacity: "X * 256"
     word_size: 16
@@ -900,7 +982,7 @@ memories:
         )
         .expect("symbolic memory geometry syntax");
         let declared = ["X".to_string()].into_iter().collect();
-        let (definitions, _) = catalog
+        let definitions = catalog
             .build(&declared, &[(Sym::new("X"), Expr::Const(4))])
             .expect("symbolic memory geometry should instantiate");
         let l1 = definitions
@@ -935,7 +1017,7 @@ memories:
 "#,
         )
         .expect("ordered memory catalog");
-        let (definitions, _) = catalog
+        let definitions = catalog
             .build(&Default::default(), &[])
             .expect("memory catalog should build");
 

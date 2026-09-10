@@ -27,10 +27,14 @@ for memory technologies and linking rules.
 
 ## Memory selection
 
-Placed memory arrays use positional endpoints:
+Placed memory arrays use one positional index group per hierarchy level:
 
-- `L1[x, y]`: whole logical instance at `(x, y)`;
-- `L1[:, :]`: all instances, normally named in `memory.yaml`;
+- `L1[x, y]`: whole logical instance in a flat `[x, y]` array;
+- `L1[:, y]`: all x coordinates at y within that level;
+- `L1`: the whole placed memory;
+- `L2[cluster]`: a core-array subtree for `[cluster, [core]]`;
+- `L2[cluster][core]`: one leaf of that hierarchy;
+- `L2[:][core]`: the selected core in every cluster;
 - `L1[x, y].bank[b]`: an explicit bank subresource.
 
 Endpoint expressions support `+`, `-`, constant multiplication, `floordiv`,
@@ -52,7 +56,7 @@ outputs distinguish those component kinds.
 ## Enumeration
 
 Definitions and placements are plain slices: `axes()`, `memory_definitions()`,
-`memories()`, `memory_aliases()`, `processor_definitions()`, `processors()`,
+`memories()`, `processor_definitions()`, `processors()`,
 `resources()`, `networks()`, `scopes()`. List the placements of one definition
 with:
 
@@ -71,7 +75,7 @@ let lanes = architecture
     .instances(&architecture);
 ```
 
-`MemoryArray::points()` is dense in `axes()` order with the last axis varying
+`MemoryArray::points()` is dense in flattened `domain()` order with the last axis varying
 fastest, and a rank-0 array yields one empty point. Processor instances are
 filtered instead: points whose endpoints fall out of range are absent.
 
@@ -118,13 +122,15 @@ std::fs::write("architecture.visualization.yaml", visualization)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-ADL export lowers prefix regions to nested memory-array handles and projects
-away pointwise affine relations and explicit bank selectors.
+ADL export lowers subtree selections to nested memory-array handles and projects
+away pointwise affine relations and explicit bank selectors. Slices without a
+whole-level handle, such as `L1[:, y]` or `L2[:][core]`, return
+`AdlExportError::UnsupportedMemorySelection`.
 
 Visualization export projects placed memories, processor arrays, resources,
 networks, scopes, and their relationships into `mlar.visualization.v1` YAML.
-Definitions are folded into their placements, and aliases resolve to their
-backing memories rather than becoming independent nodes. Convert the result
+Definitions are folded into their placements, and endpoint selections do not
+become independent nodes. Convert the result
 with `tools/mlar-archify`; no separate visualization architecture is required.
 
 ## Render the visualization

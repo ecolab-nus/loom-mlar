@@ -480,7 +480,8 @@ impl DocumentBuilder {
             let definition = architecture
                 .memory_definition(memory)
                 .expect("validated memory definition");
-            let scope = plan.memory_owner(memory.name(), memory.axes());
+            let domain = memory.domain();
+            let scope = plan.memory_owner(memory.name(), &domain);
             let id = stable_id(
                 "memory",
                 &[architecture.name().to_string(), memory.name().to_string()],
@@ -488,13 +489,13 @@ impl DocumentBuilder {
             self.register_id(&id)?;
             self.memory_ids
                 .insert(memory.name().to_string(), id.clone());
-            let owner_rank = plan.domain(scope).len().min(memory.axes().len());
-            let region = memory_region(memory.name(), definition, &memory.axes()[owner_rank..]);
+            let owner_rank = plan.domain(scope).len().min(domain.len());
+            let region = memory_region(memory.name(), definition, &domain[owner_rank..]);
             self.components.push(VisualizationComponent::Memory {
                 id,
                 scope: scope.to_string(),
                 name: memory.name().to_string(),
-                dimensions: memory_dimensions(memory.axes(), definition),
+                dimensions: memory_dimensions(&domain, definition),
                 total_size_bytes: memory_region_size(&region),
                 region,
             });
@@ -807,13 +808,10 @@ fn domain_is_prefix(prefix: &[Axis], domain: &[Axis]) -> bool {
 }
 
 fn resolve_endpoint_memory<'a>(
-    architecture: &'a Architecture,
+    _architecture: &'a Architecture,
     endpoint: &'a MemoryEndpoint,
 ) -> &'a str {
-    architecture
-        .memory_alias(&endpoint.memory)
-        .map(|alias| alias.endpoint.memory.as_str())
-        .unwrap_or(&endpoint.memory)
+    &endpoint.memory
 }
 
 fn memory_dimensions(axes: &[Axis], definition: &MemoryDefinition) -> Vec<VisualizationDimension> {
@@ -1026,12 +1024,7 @@ mod tests {
     #[test]
     fn exports_stable_normalized_document() {
         let architecture = Architecture::builder("core")
-            .memory_definition(MemoryDefinition::new(
-                "L1",
-                std::iter::empty::<&str>(),
-                1024,
-                16,
-            ))
+            .memory_definition(MemoryDefinition::new("L1", 1024, 16))
             .place_memory("L1", std::iter::empty::<&str>())
             .processor_definition(
                 ProcessorDefinition::new("lane", "", Vec::new()).with_type(ProcessorType::Compute),
@@ -1091,7 +1084,7 @@ mod tests {
             );
         let architecture = Architecture::builder("system")
             .axis("x", 4)
-            .memory_definition(MemoryDefinition::new("L1", ["x"], 1024, 16))
+            .memory_definition(MemoryDefinition::new("L1", 1024, 16))
             .place_memory("L1", ["x"])
             .network(network)
             .build()

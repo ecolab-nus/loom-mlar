@@ -23,19 +23,16 @@ processors:
     outputs: ["L1[x, y]"]
   dram_l1_noc0:
     definition: dram_l1_noc0.yaml
-    domain: []
     inputs: ["DRAM[:]"]
-    outputs: ["all_l1"]
+    outputs: ["L1[:, :]"]
     resources: [noc0]
   l1_l1_noc0:
     definition: l1_l1_noc0.yaml
-    domain: []
-    inputs: ["all_l1"]
-    outputs: ["all_l1"]
+    inputs: ["L1[:, :]"]
+    outputs: ["L1[:, :]"]
     resources: [noc0]
   l1_dram_noc1:
     definition: l1_dram_noc1.yaml
-    domain: []
-    inputs: ["all_l1"]
+    inputs: ["L1[:, :]"]
     outputs: ["DRAM[:]"]
     resources: [noc1]

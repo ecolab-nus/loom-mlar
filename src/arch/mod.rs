@@ -16,8 +16,7 @@ pub use arch_yaml::{ArchLoadError, ChipYaml, ProcessorYaml};
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureError};
 pub use axis::{Axis, EndpointParseError};
 pub use memory::{
-    Banking, EndpointIndex, MemoryAlias, MemoryArray, MemoryDefinition, MemoryEndpoint,
-    MemoryTechnology,
+    Banking, EndpointIndex, MemoryArray, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
 };
 pub use network::{NetworkEdge, NetworkInterface, NetworkLink, NetworkTopology};
 pub use perf::{FuncPerfModel, FuncPerfModelBuilder, PerfScenario, TimeCost};

@@ -39,6 +39,15 @@ pub enum AdlExportError {
         memory: String,
         reason: String,
     },
+    /// An owning scope requires a handle at a rank between memory levels.
+    UnalignedMemorySelection {
+        memory: String,
+        rank: usize,
+        boundaries: Vec<usize>,
+    },
+    UnsupportedMemorySelection {
+        memory: String,
+    },
     InvalidConnection {
         processor: String,
         reason: String,
@@ -103,12 +112,26 @@ impl std::fmt::Display for AdlExportError {
             Self::InvalidMemoryGeometry { memory, reason } => {
                 write!(f, "memory '{memory}' cannot be exported: {reason}")
             }
+            Self::UnalignedMemorySelection {
+                memory,
+                rank,
+                boundaries,
+            } => write!(
+                f,
+                "memory '{memory}' has no level starting at rank {rank}; its levels start at \
+                 {boundaries:?}. Bracket the axes to split there."
+            ),
             Self::InvalidConnection { processor, reason } => {
                 write!(
                     f,
                     "processor '{processor}' has an invalid connection: {reason}"
                 )
             }
+            Self::UnsupportedMemorySelection { memory } => write!(
+                f,
+                "memory '{memory}' selects a slice that the ADL exporter cannot represent \
+                 with a whole memory-level handle"
+            ),
             Self::SourceLowering { processor, reason } => {
                 write!(f, "failed to lower processor '{processor}': {reason}")
             }
@@ -263,15 +286,7 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
         let definition = architecture
             .memory_definition(memory)
             .expect("canonical architecture has valid memory definitions");
-        let mut prefix_lengths = scope_domains
-            .iter()
-            .filter(|domain| is_domain_prefix(domain, &memory.indices))
-            .map(Vec::len)
-            .collect::<Vec<_>>();
-        prefix_lengths.extend([0, memory.indices.len()]);
-        prefix_lengths.sort_unstable();
-        prefix_lengths.dedup();
-        emitter.emit_memory(&memory.name, definition, &memory.indices, &prefix_lengths)?;
+        emitter.emit_memory(memory, definition)?;
     }
     for resource in &architecture.resources {
         emitter.emit_resource(resource);
@@ -562,23 +577,18 @@ struct EmittedProcessor {
 }
 
 fn endpoint_base_memory<'a>(
-    architecture: &'a Architecture,
+    _architecture: &'a Architecture,
     endpoint: &'a crate::arch::MemoryEndpoint,
 ) -> &'a str {
-    architecture
-        .memory_alias(&endpoint.memory)
-        .map_or(endpoint.memory.as_str(), |region| {
-            region.endpoint.memory.as_str()
-        })
+    endpoint.memory.as_str()
 }
 
+/// Find a whole-level handle. Slices remain valid in MLAR but cannot lower
+/// unless all selectors after the first `:` also select entire levels.
 fn endpoint_selection_prefix(
     architecture: &Architecture,
     endpoint: &MemoryEndpoint,
 ) -> Result<usize, AdlExportError> {
-    let endpoint = architecture
-        .memory_alias(&endpoint.memory)
-        .map_or(endpoint, |region| &region.endpoint);
     let memory =
         architecture
             .memory(&endpoint.memory)
@@ -586,28 +596,29 @@ fn endpoint_selection_prefix(
                 processor: "<export>".into(),
                 reason: format!("unknown memory '{}'", endpoint.memory),
             })?;
-    let prefix = endpoint
-        .indices
-        .iter()
-        .take_while(|index| matches!(index, EndpointIndex::Expression(_)))
-        .count();
-    if endpoint.indices[prefix..]
-        .iter()
-        .any(|index| !matches!(index, EndpointIndex::All))
-    {
-        return Err(AdlExportError::InvalidConnection {
-            processor: "<export>".into(),
-            reason: format!(
-                "memory region '{}' is not an affine prefix followed by ':' selectors",
-                endpoint.memory
-            ),
-        });
+    let mut rank = 0;
+    let mut sliced = false;
+    for group in &endpoint.indices {
+        if group
+            .iter()
+            .any(|index| matches!(index, EndpointIndex::All))
+        {
+            sliced = true;
+        }
+        if sliced {
+            if group
+                .iter()
+                .any(|index| matches!(index, EndpointIndex::Expression(_)))
+            {
+                return Err(AdlExportError::UnsupportedMemorySelection {
+                    memory: memory.name().to_string(),
+                });
+            }
+        } else {
+            rank += group.len();
+        }
     }
-    Ok(if endpoint.indices.is_empty() {
-        memory.indices.len()
-    } else {
-        prefix
-    })
+    Ok(rank)
 }
 
 fn endpoint_memory_ssa<'a>(
@@ -666,9 +677,6 @@ fn endpoint_scope_extent(
     architecture: &Architecture,
     endpoint: &MemoryEndpoint,
 ) -> Result<Vec<u64>, AdlExportError> {
-    let endpoint = architecture
-        .memory_alias(&endpoint.memory)
-        .map_or(endpoint, |region| &region.endpoint);
     let memory =
         architecture
             .memory(&endpoint.memory)
@@ -677,7 +685,7 @@ fn endpoint_scope_extent(
                 reason: format!("unknown memory '{}'", endpoint.memory),
             })?;
     let prefix = endpoint_selection_prefix(architecture, endpoint)?;
-    Ok(memory.indices[prefix..]
+    Ok(memory.domain()[prefix..]
         .iter()
         .map(|dimension| dimension.extent)
         .collect())
@@ -836,7 +844,7 @@ fn emit_architecture_hierarchy(
         } else {
             scopes
                 .iter()
-                .position(|scope| scope.domain == memory.indices)
+                .position(|scope| scope.domain == memory.domain())
         };
         if let Some(owner) = owner
             && !explicit
@@ -863,8 +871,7 @@ fn emit_architecture_hierarchy(
                 let rank = architecture
                     .memory(memory)
                     .expect("owned memory exists")
-                    .indices
-                    .len();
+                    .rank();
                 emitter
                     .memory_level_ssa
                     .get(&(memory.clone(), rank))
@@ -896,13 +903,20 @@ fn emit_architecture_hierarchy(
             .zip(&memory_owners)
             .filter(|(_, owner)| **owner == Some(index))
             .map(|(memory, _)| {
+                // The scale attaches the memory level sitting at the scope's
+                // own rank, so a scope may only own a memory that brackets
+                // its axes there.
                 emitter
                     .memory_level_ssa
                     .get(&(memory.name.clone(), parent_len))
-                    .expect("scope memory level was emitted")
-                    .clone()
+                    .cloned()
+                    .ok_or_else(|| AdlExportError::UnalignedMemorySelection {
+                        memory: memory.name.clone(),
+                        rank: parent_len,
+                        boundaries: memory.boundaries(),
+                    })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         // The dialect permits at most one region per scale.
         let memory_clause = match region_memories.as_slice() {
             [] => String::new(),
@@ -1044,90 +1058,92 @@ impl Emitter {
         value
     }
 
+    /// Emit one memory bottom-up: bank, optional banking array, then one
+    /// `adl.memory.array` per authored level from inner to outer.
+    ///
+    /// Level symbols name the axes that index them (`mem_L1__cluster`), so
+    /// they depend on the axes alone and survive structural edits. Rank 0 is
+    /// the whole memory and keeps the bare name.
     fn emit_memory(
         &mut self,
-        name: &str,
+        memory: &crate::arch::MemoryArray,
         definition: &MemoryDefinition,
-        indices: &[crate::arch::Axis],
-        prefix_lengths: &[usize],
     ) -> Result<String, AdlExportError> {
         definition
             .validate()
             .map_err(|reason| AdlExportError::InvalidMemoryGeometry {
-                memory: name.into(),
+                memory: memory.name().into(),
                 reason,
             })?;
+        let name = memory.name();
         let bank_count = definition
             .banking
             .as_ref()
             .map_or(1, |banking| banking.banks);
         let blocks = definition.capacity / definition.word_size / bank_count;
-        let bank = self.next_ssa();
-        let bank_name = if bank_count == 1 && indices.is_empty() {
-            name.to_string()
+
+        let instance_symbol = memory
+            .level_symbol(memory.rank())
+            .expect("full rank is always a level boundary");
+        // With one bank the bank *is* the instance and takes its symbol;
+        // otherwise the banking array does and the bank sits below it.
+        let bank_symbol = if bank_count == 1 {
+            instance_symbol.clone()
         } else {
-            format!("{name}_bank")
+            memory.bank_symbol()
         };
+        let bank = self.next_ssa();
         writeln!(
             self.body,
             "{bank} = adl.memory.bank \"{}\", {{bsize = {}, nblk = {blocks}}}",
-            prefixed("mem", &bank_name),
+            prefixed("mem", &bank_symbol),
             definition.word_size
         )
         .unwrap();
+
         let mut current = bank;
-        let mut current_symbol = prefixed("mem", &bank_name);
         if bank_count > 1 {
-            let bank_dimension = self.emit_dimension(&format!("{name}_bank"), bank_count);
+            let bank_dimension = self.emit_dimension(&memory.bank_symbol(), bank_count);
             let array = self.next_ssa();
-            let array_name = name.to_string();
             writeln!(
                 self.body,
                 "{array} = adl.memory.array \"{}\", [{bank_dimension}] of {current}",
-                prefixed("mem", &array_name)
+                prefixed("mem", &instance_symbol)
             )
             .unwrap();
             current = array;
-            current_symbol = prefixed("mem", &array_name);
         }
-        let rank = indices.len();
-        self.memory_level_ssa
-            .insert((name.into(), rank), current.clone());
-        self.memory_level_symbol
-            .insert((name.into(), rank), current_symbol);
-        let mut current_prefix = rank;
-        let mut array_depth = 0;
-        for target_prefix in prefix_lengths.iter().rev().copied() {
-            if target_prefix >= current_prefix {
-                continue;
-            }
-            let dimensions = indices[target_prefix..current_prefix]
+        self.record_memory_level(name, memory.rank(), &current, &instance_symbol);
+
+        let mut rank = memory.rank();
+        for level in memory.levels().iter().rev() {
+            let dimensions = level
                 .iter()
-                .map(|index| self.emit_dimension(&index.name, index.extent))
+                .map(|axis| self.emit_dimension(axis.name(), axis.extent()))
                 .collect::<Vec<_>>();
+            rank -= level.len();
+            let symbol = memory
+                .level_symbol(rank)
+                .expect("level starts are boundaries");
             let array = self.next_ssa();
-            array_depth += 1;
-            let array_name = if bank_count == 1 && array_depth == 1 {
-                name.to_string()
-            } else {
-                format!("{}{name}", "array_".repeat(array_depth))
-            };
-            let symbol = prefixed("mem", &array_name);
             writeln!(
                 self.body,
                 "{array} = adl.memory.array \"{}\", [{}] of {current}",
-                symbol,
+                prefixed("mem", &symbol),
                 dimensions.join(", ")
             )
             .unwrap();
             current = array;
-            current_prefix = target_prefix;
-            self.memory_level_ssa
-                .insert((name.into(), current_prefix), current.clone());
-            self.memory_level_symbol
-                .insert((name.into(), current_prefix), symbol);
+            self.record_memory_level(name, rank, &current, &symbol);
         }
         Ok(current)
+    }
+
+    fn record_memory_level(&mut self, memory: &str, rank: usize, ssa: &str, symbol: &str) {
+        self.memory_level_ssa
+            .insert((memory.into(), rank), ssa.to_string());
+        self.memory_level_symbol
+            .insert((memory.into(), rank), prefixed("mem", symbol));
     }
 
     fn emit_resource(&mut self, resource: &Resource) -> String {

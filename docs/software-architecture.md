@@ -22,7 +22,7 @@ Loading and linking:
 
 1. resolves architecture parameters and validates memory geometry;
 2. parses processor sources and performance models;
-3. validates placement domains, aliases, and endpoint mappings;
+3. validates placement domains, hierarchical index groups, and endpoint mappings;
 4. resolves `@memory(name)` against connected technologies; and
 5. creates one processor array per named placement.
 
@@ -39,8 +39,10 @@ symbol is `@arch_system`; this does not alter the runtime architecture name.
 Memory technologies lower to numeric kinds assigned in first-appearance order.
 `@memory(name)` selects the kind associated with its connected memory.
 
-Memory definitions lower to `adl.memory.bank` and nested `adl.memory.array`
-operations. Prefix selections lower to the corresponding nested handle.
+Memory definitions lower to `adl.memory.bank`; placement levels lower to nested
+`adl.memory.array` operations. Subtree selections lower to the corresponding
+nested handle. Dimension slices without such a handle return
+`UnsupportedMemorySelection`, even though the canonical model supports them.
 
 The compatibility dialect cannot encode pointwise affine relations or explicit
 bank selectors. The runtime architecture retains both.
@@ -50,11 +52,16 @@ bank selectors. The runtime architecture retains both.
 `ProcessorDefinition` embeds source, making serialized architectures used by
 generated evaluator/query binaries self-contained.
 
+`MemoryEndpoint::indices` and `MemoryLocation::indices` contain one selector
+vector per traversed hierarchy level. Their serialized `indices` arrays are
+nested too; consumers of the previous flat endpoint representation must migrate.
+Omitted trailing levels retain subtree selection rather than adding indices.
+
 `src/visualization/document.rs` projects the canonical model into the stable
 `mlar.visualization.v1` contract consumed by `tools/mlar-archify`. It emits
-placements rather than reusable definitions, resolves aliases to backing
-memories, and infers replicated scopes from processor domains when explicit
-scopes are absent. This is a rendering projection, not an architecture
+placements rather than reusable definitions, projects selections onto their
+backing memories, and infers replicated scopes from processor domains when
+explicit scopes are absent. This is a rendering projection, not an architecture
 round-trip format.
 
 The JSON Schema in `schemas/` defines the external contract. The Node adapter

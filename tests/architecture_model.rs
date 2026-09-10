@@ -2,9 +2,9 @@ use std::path::Path;
 
 use mlar_rust::arch::{ChipYaml, EndpointIndex, ProcessorSelectionError, ProcessorYaml};
 use mlar_rust::{
-    AdlExportError, Architecture, Axis, Banking, Connection, MemoryAlias, MemoryDefinition,
-    MemoryEndpoint, MemoryTechnology, ProcessorDefinition, ProcessorSelector, ProcessorType,
-    ResolvedEndpointIndex, architecture_to_mlir, parse_loom_source,
+    AdlExportError, Architecture, Axis, Banking, Connection, MemoryDefinition, MemoryEndpoint,
+    MemoryTechnology, ProcessorDefinition, ProcessorSelector, ProcessorType, ResolvedEndpointIndex,
+    architecture_to_mlir, parse_loom_source,
 };
 
 #[test]
@@ -73,11 +73,11 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
         .unwrap();
     let ambiguous = Architecture::builder("ambiguous")
         .memory_definition(
-            MemoryDefinition::new("cache_a", std::iter::empty::<&str>(), 1024, 16)
+            MemoryDefinition::new("cache_a", 1024, 16)
                 .with_technology(MemoryTechnology::new("gcram", 0)),
         )
         .memory_definition(
-            MemoryDefinition::new("cache_b", std::iter::empty::<&str>(), 1024, 16)
+            MemoryDefinition::new("cache_b", 1024, 16)
                 .with_technology(MemoryTechnology::new("gcram", 0)),
         )
         .place_memory("cache_a", std::iter::empty::<&str>())
@@ -137,22 +137,9 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
         .axis("ly", 2)
         .axis("x", 4)
         .axis("y", 4)
-        .memory_definition(MemoryDefinition::new(
-            "DRAM",
-            ["channel"],
-            1_073_741_824,
-            64,
-        ))
-        .memory_definition(
-            MemoryDefinition::new("L1", ["row", "column"], 65_536, 16).with_banking(8),
-        )
-        .memory_definition(
-            MemoryDefinition::new("L2", ["row", "column"], 1_048_576, 64).with_banking(8),
-        )
-        .memory_alias(MemoryAlias::new(
-            "L1_all",
-            MemoryEndpoint::parse("L1[:, :]").unwrap(),
-        ))
+        .memory_definition(MemoryDefinition::new("DRAM", 1_073_741_824, 64))
+        .memory_definition(MemoryDefinition::new("L1", 65_536, 16).with_banking(8))
+        .memory_definition(MemoryDefinition::new("L2", 1_048_576, 64).with_banking(8))
         .place_memory("DRAM", ["channel"])
         .place_memory("L1", ["x", "y"])
         .place_memory("L2", ["lx", "ly"])
@@ -202,13 +189,15 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
 fn endpoint_parser_handles_full_affine_subset_and_bank_selection() {
     let endpoint = MemoryEndpoint::parse("L1[(x + 3) floordiv 2, y ceildiv 2].bank[(x + y) mod 8]")
         .expect("endpoint should parse");
-    assert_eq!(endpoint.indices.len(), 2);
+    assert_eq!(endpoint.indices.len(), 1);
+    assert_eq!(endpoint.indices[0].len(), 2);
     assert!(endpoint.bank.is_some());
     assert_eq!(
         MemoryEndpoint::parse("L1[:, :]")
             .unwrap()
             .indices
             .iter()
+            .flatten()
             .filter(|index| matches!(index, EndpointIndex::All))
             .count(),
         2
@@ -223,7 +212,7 @@ fn non_modular_out_of_bounds_points_are_dropped() {
         .expect("DMA definition");
     let architecture = Architecture::builder("drop_test")
         .axis("x", 4)
-        .memory_definition(MemoryDefinition::new("L1", ["i"], 1024, 16))
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
         .processor_definition(dma)
         .connect(
@@ -324,7 +313,7 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
 
     let shared = Architecture::builder("shared_definition")
         .axis("x", 2)
-        .memory_definition(MemoryDefinition::new("L1", ["row"], 4096, 64))
+        .memory_definition(MemoryDefinition::new("L1", 4096, 64))
         .place_memory_as("l1_a", "L1", ["x"])
         .place_memory_as("l1_b", "L1", ["x"])
         .build()
@@ -339,7 +328,7 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
     assert_eq!(shared.memories_of("l1_a").count(), 0);
 
     let scalar = Architecture::builder("scalar")
-        .memory_definition(MemoryDefinition::new("regs", Vec::<String>::new(), 256, 4))
+        .memory_definition(MemoryDefinition::new("regs", 256, 4))
         .place_memory("regs", Vec::<String>::new())
         .build()
         .unwrap();
@@ -354,7 +343,6 @@ fn memory_and_endpoint_validation_is_strict() {
     assert!(
         MemoryDefinition {
             name: "bad_word".into(),
-            indices: Vec::new(),
             capacity: 65,
             word_size: 16,
             technology: None,
@@ -366,7 +354,6 @@ fn memory_and_endpoint_validation_is_strict() {
     assert!(
         MemoryDefinition {
             name: "bad_banks".into(),
-            indices: Vec::new(),
             capacity: 64,
             word_size: 16,
             technology: None,
@@ -378,7 +365,7 @@ fn memory_and_endpoint_validation_is_strict() {
 
     let error = Architecture::builder("arity")
         .axis("x", 2)
-        .memory_definition(MemoryDefinition::new("L1", ["i"], 1024, 16))
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
         .processor_definition(
             ProcessorYaml::from_file(fixture_dir().join("dma.yaml"))
@@ -387,10 +374,14 @@ fn memory_and_endpoint_validation_is_strict() {
         )
         .connect(
             "dma",
-            Connection::new(["x"], vec![MemoryEndpoint::parse("L1").unwrap()], vec![]),
+            Connection::new(
+                ["x"],
+                vec![MemoryEndpoint::parse("L1[x, x]").unwrap()],
+                vec![],
+            ),
         )
         .build()
-        .expect_err("missing endpoint index must fail");
+        .expect_err("wrong group arity must fail");
     assert!(error.to_string().contains("expects 1"));
 }
 
@@ -474,40 +465,19 @@ fn canonical_architecture_rejects_processor_source_model_drift() {
 }
 
 #[test]
-fn memory_aliases_target_placed_memory_names_and_require_prefix_slices() {
+fn memory_selections_target_placed_memory_names() {
     Architecture::builder("renamed")
         .axis("x", 2)
         .axis("y", 2)
-        .memory_definition(MemoryDefinition::new("L1", ["x", "y"], 1024, 16))
-        .memory_alias(MemoryAlias::new(
-            "all_local",
-            MemoryEndpoint::parse("local_l1[:, :]").unwrap(),
-        ))
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory_as("local_l1", "L1", ["x", "y"])
-        .build()
-        .expect("alias should resolve against the placed name");
-
-    let error = Architecture::builder("mixed_slice")
-        .axis("x", 2)
-        .axis("y", 2)
-        .memory_definition(MemoryDefinition::new("L1", ["x", "y"], 1024, 16))
-        .place_memory("L1", ["x", "y"])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
-            Connection::new(
-                ["y"],
-                vec![MemoryEndpoint::parse("L1[:, y]").unwrap()],
-                Vec::new(),
-            ),
+            Connection::parse(["y"], ["local_l1[:, y]"], []).unwrap(),
         )
         .build()
-        .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("not an affine prefix followed by whole-axis selectors")
-    );
+        .expect("slice resolves against the placed name");
 }
 
 #[test]
@@ -515,15 +485,15 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
     let architecture = Architecture::builder("regions")
         .axis("x", 2)
         .axis("y", 3)
-        .memory_definition(MemoryDefinition::new("L1", ["row", "column"], 1024, 16))
-        .place_memory("L1", ["x", "y"])
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
+        .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["y".into()]])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect_as(
             "replicated_lane",
             "lane",
             Connection::new(
                 ["y", "x"],
-                vec![MemoryEndpoint::parse("L1[x, :]").unwrap()],
+                vec![MemoryEndpoint::parse("L1[x]").unwrap()],
                 Vec::new(),
             ),
         )
@@ -542,7 +512,7 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
         .unwrap();
     assert_eq!(
         instance.inputs[0].indices,
-        [ResolvedEndpointIndex::Index(1), ResolvedEndpointIndex::All]
+        [vec![ResolvedEndpointIndex::Index(1)]]
     );
 }
 
@@ -550,7 +520,7 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
 fn endpoint_variables_must_be_declared_in_the_connection_domain() {
     let error = Architecture::builder("domain")
         .axis("x", 2)
-        .memory_definition(MemoryDefinition::new("L1", ["row"], 1024, 16))
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
@@ -591,4 +561,80 @@ fn processor_load_failures_surface_at_build() {
         missing_file.contains("not_a_processor"),
         "expected the failing name, got: {missing_file}"
     );
+}
+
+/// One level per bracket group, emitted inner to outer, each symbol named for
+/// the axes that index it — so a symbol never encodes its depth.
+#[test]
+fn nested_memory_levels_emit_one_axis_named_array_each() {
+    let architecture = Architecture::builder("levels")
+        .axis("cluster", 2)
+        .axis("core", 4)
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
+        .place_memory_levels(
+            "L1",
+            "L1",
+            vec![vec!["cluster".into()], vec!["core".into()]],
+        )
+        .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
+        .connect(
+            "lane",
+            Connection::new(
+                ["cluster", "core"],
+                vec![MemoryEndpoint::parse("L1[cluster][core]").unwrap()],
+                vec![MemoryEndpoint::parse("L1[cluster][core]").unwrap()],
+            ),
+        )
+        .build()
+        .expect("nested levels build")
+        .with_processor_type("lane", Some(ProcessorType::Compute))
+        .expect("lane is a compute processor");
+
+    let l1 = architecture.memory("L1").expect("L1");
+    assert_eq!(l1.rank(), 2);
+    assert_eq!(l1.boundaries(), vec![0, 1, 2]);
+    assert_eq!(l1.level_symbol(0).as_deref(), Some("L1"));
+    assert_eq!(l1.level_symbol(1).as_deref(), Some("L1__cluster"));
+    assert_eq!(l1.level_symbol(2).as_deref(), Some("L1__cluster_core"));
+
+    let mlir = mlar_rust::architecture_to_mlir_unchecked(&architecture).expect("levels export");
+    assert!(mlir.contains(r#"adl.memory.array "mem_L1__cluster", ["#));
+    assert!(mlir.contains(r#"adl.memory.array "mem_L1", ["#));
+    // The leaf is one instance, so the bank carries the full-rank symbol.
+    assert!(mlir.contains(r#"adl.memory.bank "mem_L1__cluster_core""#));
+}
+
+/// A flat array allows dimension slices even when ADL has no slice handle.
+#[test]
+fn flat_dimension_slices_are_valid_but_not_lowerable_as_whole_levels() {
+    let architecture = Architecture::builder("slice")
+        .axis("cluster", 2)
+        .axis("core", 4)
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
+        .place_memory("L1", ["cluster", "core"])
+        .processor_definition(
+            ProcessorDefinition::new("dma", "", Vec::new()).with_type(ProcessorType::DataMover),
+        )
+        .connect(
+            "dma",
+            Connection::parse(["cluster"], ["L1[cluster, :]"], []).unwrap(),
+        )
+        .build()
+        .expect("slices do not require hierarchy boundaries");
+    assert!(matches!(
+        mlar_rust::architecture_to_mlir_unchecked(&architecture),
+        Err(AdlExportError::UnsupportedMemorySelection { .. })
+    ));
+}
+
+#[test]
+fn a_level_may_not_repeat_an_axis() {
+    let error = Architecture::builder("repeat")
+        .axis("x", 2)
+        .memory_definition(MemoryDefinition::new("L1", 1024, 16))
+        .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["x".into()]])
+        .build()
+        .expect_err("an axis may index a memory only once");
+
+    assert!(error.to_string().contains("repeats an axis"));
 }

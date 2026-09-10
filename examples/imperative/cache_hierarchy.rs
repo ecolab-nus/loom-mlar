@@ -1,10 +1,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use mlar_rust::{
-    Architecture, Connection, MemoryAlias, MemoryDefinition, MemoryEndpoint, Resource,
-    architecture_to_mlir,
-};
+use mlar_rust::{Architecture, Connection, MemoryDefinition, Resource, architecture_to_mlir};
 
 type ExampleResult<T> = Result<T, Box<dyn Error>>;
 
@@ -19,26 +16,15 @@ pub fn build() -> ExampleResult<Architecture> {
         .axis("cluster", 2)
         .axis("core", 4)
         .axis("dram_channel", 2)
-        .memory_definition(MemoryDefinition::new(
-            "DRAM",
-            ["dram_channel"],
-            134_217_728,
-            4096,
-        ))
-        .memory_definition(
-            MemoryDefinition::new("L1", ["cluster", "core"], 262_144, 64).with_banking(8),
-        )
-        .memory_definition(MemoryDefinition::new("L2", ["cluster"], 2_097_152, 64).with_banking(4))
-        .memory_alias(MemoryAlias::new(
-            "l1_cluster",
-            MemoryEndpoint::parse("L1[cluster, :]")?,
-        ))
-        .memory_alias(MemoryAlias::new(
-            "l2_clusters",
-            MemoryEndpoint::parse("L2[:]")?,
-        ))
+        .memory_definition(MemoryDefinition::new("DRAM", 134_217_728, 4096))
+        .memory_definition(MemoryDefinition::new("L1", 262_144, 64).with_banking(8))
+        .memory_definition(MemoryDefinition::new("L2", 2_097_152, 64).with_banking(4))
         .place_memory("DRAM", ["dram_channel"])
-        .place_memory("L1", ["cluster", "core"])
+        .place_memory_levels(
+            "L1",
+            "L1",
+            vec![vec!["cluster".into()], vec!["core".into()]],
+        )
         .place_memory("L2", ["cluster"])
         .resource(Resource::exclusive("memory_fabric"))
         .resource(Resource::exclusive("l2_fabric"))
@@ -48,22 +34,22 @@ pub fn build() -> ExampleResult<Architecture> {
             "core_lane",
             Connection::parse(
                 ["cluster", "core"],
-                ["L1[cluster, core]"],
-                ["L1[cluster, core]"],
+                ["L1[cluster][core]"],
+                ["L1[cluster][core]"],
             )?,
         )
         .connect(
             "dram_l2_dma",
-            Connection::parse([], ["DRAM[:]"], ["l2_clusters"])?.with_resources(["memory_fabric"]),
+            Connection::parse([], ["DRAM[:]"], ["L2[:]"])?.with_resources(["memory_fabric"]),
         )
         .connect(
             "l2_l1_dma",
-            Connection::parse(["cluster"], ["L2[cluster]"], ["l1_cluster"])?
+            Connection::parse(["cluster"], ["L2[cluster]"], ["L1[cluster]"])?
                 .with_resources(["memory_fabric", "l2_fabric"]),
         )
         .connect(
             "l1_l2_dma",
-            Connection::parse(["cluster"], ["l1_cluster"], ["L2[cluster]"])?
+            Connection::parse(["cluster"], ["L1[cluster]"], ["L2[cluster]"])?
                 .with_resources(["memory_fabric", "l2_fabric"]),
         )
         .build()?)

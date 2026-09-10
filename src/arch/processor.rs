@@ -388,7 +388,8 @@ fn parse_endpoints<'a>(
 pub struct MemoryLocation {
     pub memory: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub indices: Vec<ResolvedEndpointIndex>,
+    /// Resolved selectors per traversed level; omitted levels remain subtrees.
+    pub indices: Vec<Vec<ResolvedEndpointIndex>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bank: Option<u64>,
 }

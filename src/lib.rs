@@ -12,7 +12,7 @@ pub use abi::{arch_query, evaluator};
 // types remain under `arch`.
 pub use arch::{
     AdlExportError, Architecture, ArchitectureBuilder, ArchitectureError, Axis, Banking,
-    Connection, FuncPerfModel, MemoryAlias, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
+    Connection, FuncPerfModel, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
     NetworkInterface, NetworkLink, NetworkTopology, OperationModel, PerfScenario,
     ProcessorDefinition, ProcessorSelector, ProcessorSourceFormat, ProcessorType,
     ResolvedEndpointIndex, Resource, Scope, TimeCost, architecture_to_mlir,

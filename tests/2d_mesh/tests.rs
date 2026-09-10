@@ -5,9 +5,8 @@ use std::process::{Command, Stdio};
 
 use mlar_rust::arch::EndpointIndex;
 use mlar_rust::{
-    AdlExportError, Architecture, Connection, Expr, MemoryAlias, MemoryDefinition, MemoryEndpoint,
-    PerfScenario, Resource, Schedule, Sym, architecture_to_mlir, evaluate,
-    generate_evaluator_binary,
+    AdlExportError, Architecture, Connection, Expr, MemoryDefinition, PerfScenario, Resource,
+    Schedule, Sym, architecture_to_mlir, evaluate, generate_evaluator_binary,
 };
 
 fn processor_dir() -> std::path::PathBuf {
@@ -54,17 +53,8 @@ fn build_imperative() -> Architecture {
         .axis("dram_channel", 8)
         .axis("x", 8)
         .axis("y", 8)
-        .memory_definition(MemoryDefinition::new(
-            "DRAM",
-            ["dram_channel"],
-            1_610_612_736,
-            8192,
-        ))
-        .memory_definition(MemoryDefinition::new("L1", ["x", "y"], 1_398_784, 16).with_banking(16))
-        .memory_alias(MemoryAlias::new(
-            "all_l1",
-            MemoryEndpoint::parse("L1[:, :]").unwrap(),
-        ))
+        .memory_definition(MemoryDefinition::new("DRAM", 1_610_612_736, 8192))
+        .memory_definition(MemoryDefinition::new("L1", 1_398_784, 16).with_banking(16))
         .place_memory("DRAM", ["dram_channel"])
         .place_memory("L1", ["x", "y"])
         .resource(Resource::exclusive("noc0"))
@@ -87,19 +77,19 @@ fn build_imperative() -> Architecture {
         )
         .connect(
             "dram_l1_noc0",
-            Connection::parse([], ["DRAM[:]"], ["all_l1"])
+            Connection::parse([], ["DRAM[:]"], ["L1[:, :]"])
                 .unwrap()
                 .with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            Connection::parse([], ["all_l1"], ["all_l1"])
+            Connection::parse([], ["L1[:, :]"], ["L1[:, :]"])
                 .unwrap()
                 .with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            Connection::parse([], ["all_l1"], ["DRAM[:]"])
+            Connection::parse([], ["L1[:, :]"], ["DRAM[:]"])
                 .unwrap()
                 .with_resources(["noc1"]),
         )
@@ -125,13 +115,19 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
     assert_eq!(l1_definition.word_size, 16);
     assert_eq!(l1_definition.banking.as_ref().unwrap().banks, 16);
 
-    let all_l1 = architecture
-        .memory_alias("all_l1")
-        .expect("mesh-wide L1 alias");
-    assert_eq!(all_l1.endpoint.memory, "L1");
+    // The mesh-wide selection is an endpoint on the movers, not a named alias.
+    let mesh_wide = architecture
+        .processor_array("dram_l1_noc0")
+        .expect("dram_l1_noc0 array")
+        .connection()
+        .outputs
+        .first()
+        .expect("one output")
+        .clone();
+    assert_eq!(mesh_wide.memory, "L1");
     assert_eq!(
-        all_l1.endpoint.indices,
-        [EndpointIndex::All, EndpointIndex::All]
+        mesh_wide.indices,
+        [vec![EndpointIndex::All, EndpointIndex::All]]
     );
 
     assert_eq!(architecture.processor_definitions().len(), 5);
@@ -434,7 +430,6 @@ enum MemoryNode {
         blocks: u64,
     },
     Array {
-        name: String,
         dimensions: Vec<u64>,
         element: Box<MemoryNode>,
     },
@@ -444,8 +439,8 @@ enum MemoryNode {
 struct ProcessorContract {
     name: String,
     kind: String,
-    input: String,
-    output: String,
+    input: MemoryNode,
+    output: MemoryNode,
     resources: Vec<String>,
 }
 
@@ -468,6 +463,7 @@ fn adl_contract(mlir: &str) -> AdlContract {
         .to_string();
     let mut dimensions = BTreeMap::new();
     let mut memory_ssa = BTreeMap::new();
+    let mut memory_symbols = BTreeMap::new();
     let mut memories = Vec::new();
     let mut resource_ssa = BTreeMap::new();
     let mut resources = Vec::new();
@@ -480,9 +476,9 @@ fn adl_contract(mlir: &str) -> AdlContract {
             let block_size = field_u64(line, "bsize = ");
             let blocks = field_u64(line, "nblk = ");
             let node = MemoryNode::Bank { block_size, blocks };
+            memory_symbols.insert(quoted_name(line), node.clone());
             memory_ssa.insert(ssa_result(line), node);
         } else if line.contains(" = adl.memory.array ") {
-            let name = quoted_name(line);
             let dimensions_list = bracket_contents(line)
                 .split(',')
                 .filter(|value| !value.trim().is_empty())
@@ -496,10 +492,10 @@ fn adl_contract(mlir: &str) -> AdlContract {
                 .next()
                 .unwrap();
             let node = MemoryNode::Array {
-                name,
                 dimensions: dimensions_list,
                 element: Box::new(memory_ssa[element_ssa].clone()),
             };
+            memory_symbols.insert(quoted_name(line), node.clone());
             memory_ssa.insert(ssa_result(line), node.clone());
             memories.push(node);
         } else if line.contains(" = adl.resource.") {
@@ -546,8 +542,8 @@ fn adl_contract(mlir: &str) -> AdlContract {
             processors.push(ProcessorContract {
                 name,
                 kind,
-                input: memory_name(&memory_ssa[input_ssa]),
-                output: memory_name(&memory_ssa[output_ssa]),
+                input: memory_ssa[input_ssa].clone(),
+                output: memory_ssa[output_ssa].clone(),
                 resources: processor_resources,
             });
         }
@@ -557,7 +553,7 @@ fn adl_contract(mlir: &str) -> AdlContract {
     memories.sort();
     resources.sort();
     processors.sort();
-    let mut functions = function_contracts(mlir);
+    let mut functions = function_contracts(mlir, &memory_symbols);
     functions.sort();
     AdlContract {
         root_module,
@@ -571,7 +567,43 @@ fn adl_contract(mlir: &str) -> AdlContract {
     }
 }
 
-fn function_contracts(mlir: &str) -> Vec<FunctionContract> {
+/// Memory level symbols are axis-derived, so the oracle compares the memory
+/// each binding *names structurally* rather than how the exporter spells it.
+fn canonical_memory_symbols(text: &str, symbols: &BTreeMap<String, MemoryNode>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("@mem_") {
+        out.push_str(&rest[..at]);
+        rest = &rest[at + 1..];
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let (symbol, tail) = rest.split_at(end);
+        out.push('@');
+        out.push_str(&match symbols.get(symbol) {
+            Some(node) => memory_shape_token(node),
+            None => symbol.to_string(),
+        });
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
+fn memory_shape_token(node: &MemoryNode) -> String {
+    match node {
+        MemoryNode::Bank { block_size, blocks } => format!("bank({block_size},{blocks})"),
+        MemoryNode::Array {
+            dimensions,
+            element,
+        } => format!("array({dimensions:?},{})", memory_shape_token(element)),
+    }
+}
+
+fn function_contracts(
+    mlir: &str,
+    memory_symbols: &BTreeMap<String, MemoryNode>,
+) -> Vec<FunctionContract> {
     let mut contracts = Vec::new();
     let mut cursor = 0;
     while let Some(relative) = mlir[cursor..].find("func.func @") {
@@ -592,7 +624,10 @@ fn function_contracts(mlir: &str) -> Vec<FunctionContract> {
             .unwrap()
             .to_string();
         let mut shapes = selected_lines(body, "loom.bind_shape");
-        let mut bindings = selected_lines(body, "loom.bind_mem");
+        let mut bindings = selected_lines(body, "loom.bind_mem")
+            .iter()
+            .map(|line| canonical_memory_symbols(line, memory_symbols))
+            .collect::<Vec<_>>();
         shapes.sort();
         bindings.sort();
         let operation_start = ["linalg.", "loom.copy", "loom.gather"]
@@ -612,7 +647,10 @@ fn function_contracts(mlir: &str) -> Vec<FunctionContract> {
             symbols,
             shapes,
             bindings,
-            operation: no_whitespace(&body[operation_start..operation_end]),
+            operation: no_whitespace(&canonical_memory_symbols(
+                &body[operation_start..operation_end],
+                memory_symbols,
+            )),
         });
         cursor = closing + 1;
     }
@@ -674,11 +712,4 @@ fn quoted_name(line: &str) -> String {
 
 fn bracket_contents(line: &str) -> &str {
     line.split_once('[').unwrap().1.split_once(']').unwrap().0
-}
-
-fn memory_name(memory: &MemoryNode) -> String {
-    match memory {
-        MemoryNode::Bank { .. } => "<bank>".into(),
-        MemoryNode::Array { name, .. } => name.clone(),
-    }
 }

@@ -104,9 +104,12 @@ evaluation, and the MLIR and visualization export formats.
   and loom-dataflow exploration passes do not consume them.
 - Automatic address-to-bank mapping and bank-conflict inference are not
   implemented; bank selection is explicit.
+- Memory indexing follows declared levels: `L1[c][k]` traverses two levels,
+  while `L1[x, y]` indexes a flat 2D level. `:` selects all coordinates in a
+  dimension. Slices without a whole-level ADL handle are valid in MLAR but
+  cannot currently export to ADL.
 - Sequential schedule composition sums child costs; parallel composition takes
   their maximum. Both preserve guarded scenario alternatives.
 - Duplicate function implementations require `Schedule::PlacedFunc`.
-- Visualization is a projection of placed components. Memory aliases and exact
-  endpoint selectors resolve connectivity but are not emitted as separate
-  visualization nodes.
+- Visualization is a projection of placed components. Exact endpoint selectors
+  resolve connectivity but are not emitted as separate visualization nodes.

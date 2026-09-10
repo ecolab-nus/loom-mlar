@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use mlar_rust::arch::EndpointIndex;
+
 use mlar_rust::{
     AdlExportError, Architecture, Connection, MemoryDefinition, MemoryEndpoint,
     ProcessorDefinition, ProcessorType, Schedule, architecture_to_mlir, evaluate,
@@ -108,8 +110,8 @@ fn hierarchy_levels_lower_to_nested_scales() {
 fn sibling_memories_on_one_domain_still_exceed_a_single_scale() {
     let architecture = Architecture::builder("siblings")
         .axis("x", 2)
-        .memory_definition(MemoryDefinition::new("sram", ["x"], 1024, 16))
-        .memory_definition(MemoryDefinition::new("rram", ["x"], 1024, 16))
+        .memory_definition(MemoryDefinition::new("sram", 1024, 16))
+        .memory_definition(MemoryDefinition::new("rram", 1024, 16))
         .place_memory("sram", ["x"])
         .place_memory("rram", ["x"])
         .processor_definition(
@@ -234,7 +236,16 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
             .inputs
             .iter()
             .chain(&processor.connection().outputs)
-            .any(|endpoint| endpoint.memory == "all_l1")
+            .any(|endpoint| {
+                endpoint.memory == "L1"
+                    && endpoint.indices.len() == 1
+                    && endpoint.indices[0].len() == 2
+                    && endpoint
+                        .indices
+                        .iter()
+                        .flatten()
+                        .all(|index| matches!(index, EndpointIndex::All))
+            })
     }));
 
     let mlir = architecture_to_mlir(&architecture).expect("dual-NoC should export");
@@ -350,7 +361,7 @@ fn examples_match_pre_redesign_adl_contracts() {
     let noc0_gather = processor_line(&dual, "@proc_l1_l1_noc0");
     assert_eq!(resource_clause(noc0_load), resource_clause(noc0_gather));
     assert!(dual.contains("area: [%bcst_x, %bcst_y]"));
-    assert!(dual.contains("dst_mem_space @mem_array_L1 : 1"));
+    assert!(dual.contains("dst_mem_space @mem_L1 : 1"));
     assert!(dual.contains("loom.gather"));
 
     let mesh =

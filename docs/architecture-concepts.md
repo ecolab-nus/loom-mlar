@@ -3,10 +3,12 @@
 The canonical architecture is flat and indexed. Symbolic dimensions and memory
 geometry are resolved while loading; the resulting `Architecture` is concrete.
 
-- A `MemoryDefinition` describes rank, capacity, word size, optional banks, and
-  an optional technology.
-- A `MemoryArray` binds that rank to concrete chip dimensions.
-- A `MemoryAlias` names a selection and adds no storage.
+- A `MemoryDefinition` describes capacity, word size, optional banks, and an
+  optional technology. It names no axes and is reusable across chips.
+- A `MemoryArray` places a definition over `levels: Vec<Vec<Axis>>`, outer to
+  inner. Each level is one array; `[[x, y]]` is a single 2-d
+  array, `[[cluster], [core]]` nests per-core arrays inside per-cluster ones.
+  Each endpoint bracket group indexes one level; stopping selects a subtree.
 - A `ProcessorDefinition` owns operations, performance models, and resources.
 - A `ProcessorArray` is one connection-specific instantiation of a definition.
 - A `Connection` retains symbolic endpoints and an explicit ordered domain.
@@ -23,8 +25,17 @@ geometry are resolved while loading; the resulting `Architecture` is concrete.
 A processor placement references a reusable definition and creates one connected
 array. Several named placements may share a definition.
 
-`L1[x, y]` always means the whole logical memory at that coordinate. Banking is
-not inferred from addresses; only `.bank[b]` selects a bank.
+For a flat `[x, y]` placement, `L1[x, y]` selects one logical memory and
+`L1[:, y]` selects all x coordinates at y. For `[cluster, [core]]`,
+`L1[cluster]` selects a core array and `L1[cluster][core]` selects one logical
+memory. Each group must match its level's dimensionality. A `:` selects every
+coordinate of a dimension; `L1[:][core]` selects that core in every cluster.
+No brackets selects the whole placed memory.
+
+Banking is not inferred from addresses. `.bank[b]` selects a bank in each
+selected leaf memory and requires indexing every hierarchy level first.
+Symbolic endpoints and resolved locations retain their index groups and `:`
+selectors without expanding the selected memories.
 
 Compact Loom `@memory(name)` selects a uniquely matching connected memory
 technology. Declarative technologies receive numeric kinds in first-appearance
@@ -47,8 +58,9 @@ optional selectors.
 
 `architecture_to_visualization_yaml` lowers the canonical architecture to the
 versioned `mlar.visualization.v1` document consumed by `mlar-archify`.
-Placements become visible components, aliases resolve to their backing memory,
-and processor domains infer replicated scopes when explicit scopes are absent.
+Placements become visible components, endpoint selections reference those
+placements, and processor domains infer replicated scopes when explicit scopes
+are absent.
 The visualization document is intentionally lossy: it is a stable rendering
 input, not a second architecture representation or a round-trip format.
 

@@ -8,7 +8,7 @@ use mlar_rust::{
 use std::path::Path;
 
 fn memory_definition() -> MemoryDefinition {
-    MemoryDefinition::new("L1", ["x", "y"], 1024, 16)
+    MemoryDefinition::new("L1", 1024, 16)
 }
 
 fn connection(input: &str, output: &str) -> Connection {
