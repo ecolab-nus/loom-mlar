@@ -1,6 +1,0 @@
-func @l1_gather(
-  in src: f16[M, N],
-  out dst: f16[B, M, N]
-) {
-  loom.gather %src to %dst extent: [gather_x, gather_y]
-}

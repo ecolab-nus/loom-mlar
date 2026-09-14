@@ -1,18 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
-use super::arch_yaml::ProcessorYaml;
 use super::axis::Axis;
 use super::memory::{
-    MemoryArray, MemoryDefinition, MemoryEndpoint, validate_levels, validate_selection,
-    validate_static_bank,
+    MemoryArray, MemoryDefinition, MemoryEndpoint, validate_axes as validate_memory_axes,
+    validate_selection, validate_static_bank,
 };
 use super::network::NetworkTopology;
 use super::processor::{
     Connection, ConnectionInstance, MemoryLocation, ProcessorArray, ProcessorDefinition,
-    ProcessorSourceFormat, ProcessorType, ResolvedEndpointIndex, resolve_operand_memory_bindings,
+    ProcessorType, ResolvedEndpointIndex,
 };
 use super::resource::Resource;
 use super::scope::Scope;
@@ -84,6 +82,7 @@ pub struct Architecture {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ArchitectureData {
     name: String,
     #[serde(default, alias = "dimensions")]
@@ -312,7 +311,7 @@ impl Architecture {
                     name: memory.definition.clone(),
                 })?;
             let _ = definition;
-            validate_levels(memory).map_err(ArchitectureError::Invalid)?;
+            validate_memory_axes(memory).map_err(ArchitectureError::Invalid)?;
             validate_axes(
                 &format!("memory '{}'", memory.name),
                 &memory.domain(),
@@ -335,14 +334,6 @@ impl Architecture {
             }
             let connection = processor.connection.clone();
             validate_connection(&connection, &self.memories, &self.memory_definitions)?;
-            validate_processor_memory_bindings(
-                &processor.name,
-                self.processor_definition(&processor.definition)
-                    .expect("definition existence was checked"),
-                &connection,
-                &self.memories,
-                &self.memory_definitions,
-            )?;
             let domain = resolve_domain(&connection, &axes)?;
             resolve_connection_instances(
                 &connection,
@@ -417,16 +408,12 @@ pub struct ArchitectureBuilder {
     name: String,
     dimensions: Vec<Axis>,
     memory_definitions: Vec<MemoryDefinition>,
-    placements: Vec<(String, String, Vec<Vec<String>>)>,
+    placements: Vec<(String, String, Vec<String>)>,
     processor_definitions: Vec<ProcessorDefinition>,
     connections: Vec<(String, String, Connection)>,
     resources: Vec<Resource>,
     networks: Vec<NetworkTopology>,
     scopes: Vec<Scope>,
-    processor_source_dir: Option<PathBuf>,
-    /// Load failures from [`ArchitectureBuilder::processor`], reported by
-    /// [`ArchitectureBuilder::build`] so the chain itself stays infallible.
-    deferred_errors: Vec<String>,
 }
 
 impl ArchitectureBuilder {
@@ -441,8 +428,6 @@ impl ArchitectureBuilder {
             resources: Vec::new(),
             networks: Vec::new(),
             scopes: Vec::new(),
-            processor_source_dir: None,
-            deferred_errors: Vec::new(),
         }
     }
 
@@ -456,7 +441,7 @@ impl ArchitectureBuilder {
         self
     }
 
-    /// Place a definition as one flat level over `dimensions`.
+    /// Place a definition over ordered axes over `dimensions`.
     pub fn place_memory(
         self,
         definition: impl Into<String>,
@@ -466,73 +451,24 @@ impl ArchitectureBuilder {
         self.place_memory_as(definition.clone(), definition, dimensions)
     }
 
-    /// Place a definition under `name` as one flat level over `dimensions`.
+    /// Place a definition under `name` over ordered axes over `dimensions`.
     pub fn place_memory_as(
         self,
         name: impl Into<String>,
         definition: impl Into<String>,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        let level = dimensions.into_iter().map(Into::into).collect::<Vec<_>>();
-        let levels = if level.is_empty() {
-            Vec::new()
-        } else {
-            vec![level]
-        };
-        self.place_memory_levels(name, definition, levels)
-    }
-
-    /// Place a definition under `name` over nested axis levels, outer to
-    /// inner. Each level becomes one `adl.memory.array`.
-    pub fn place_memory_levels(
-        mut self,
-        name: impl Into<String>,
-        definition: impl Into<String>,
-        levels: Vec<Vec<String>>,
-    ) -> Self {
-        self.placements
-            .push((name.into(), definition.into(), levels));
-        self
+        let mut builder = self;
+        builder.placements.push((
+            name.into(),
+            definition.into(),
+            dimensions.into_iter().map(Into::into).collect(),
+        ));
+        builder
     }
 
     pub fn processor_definition(mut self, definition: ProcessorDefinition) -> Self {
         self.processor_definitions.push(definition);
-        self
-    }
-
-    /// Directory holding `<name>.yaml` processor packages for
-    /// [`ArchitectureBuilder::processor`].
-    pub fn processor_source_dir(mut self, directory: impl Into<PathBuf>) -> Self {
-        self.processor_source_dir = Some(directory.into());
-        self
-    }
-
-    /// Load and register `<name>.yaml` from the configured source directory.
-    /// Load failures are reported by [`ArchitectureBuilder::build`].
-    pub fn processor(mut self, name: impl AsRef<str>) -> Self {
-        let name = name.as_ref();
-        let Some(directory) = self.processor_source_dir.as_ref() else {
-            self.deferred_errors.push(format!(
-                "processor '{name}' needs a `processor_source_dir`; set one or pass a \
-                 built definition to `processor_definition`"
-            ));
-            return self;
-        };
-        let path = directory.join(format!("{name}.yaml"));
-        match ProcessorYaml::from_file(&path).and_then(|yaml| yaml.build_definition(&path)) {
-            Ok(definition) => self.processor_definitions.push(definition),
-            Err(error) => self
-                .deferred_errors
-                .push(format!("processor '{name}' ({}): {error}", path.display())),
-        }
-        self
-    }
-
-    /// [`ArchitectureBuilder::processor`] for several names in order.
-    pub fn processors(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
-        for name in names {
-            self = self.processor(name);
-        }
         self
     }
 
@@ -576,9 +512,6 @@ impl ArchitectureBuilder {
     }
 
     pub fn build(self) -> Result<Architecture, ArchitectureError> {
-        if !self.deferred_errors.is_empty() {
-            return Err(ArchitectureError::Invalid(self.deferred_errors.join("; ")));
-        }
         if self.name.is_empty() {
             return Err(ArchitectureError::Invalid(
                 "architecture name cannot be empty".into(),
@@ -625,27 +558,22 @@ impl ArchitectureBuilder {
                     name: definition_name.clone(),
                 })?;
             let _ = definition;
-            let levels = placement
+            let axes = placement
                 .iter()
-                .map(|level| {
-                    level
-                        .iter()
-                        .map(|dimension| {
-                            dimension_map
-                                .get(dimension.as_str())
-                                .cloned()
-                                .ok_or_else(|| {
-                                    ArchitectureError::Invalid(format!(
-                                        "placement '{}' uses unknown dimension '{}'",
-                                        name, dimension
-                                    ))
-                                })
+                .map(|dimension| {
+                    dimension_map
+                        .get(dimension.as_str())
+                        .cloned()
+                        .ok_or_else(|| {
+                            ArchitectureError::Invalid(format!(
+                                "placement '{}' uses unknown dimension '{}'",
+                                name, dimension
+                            ))
                         })
-                        .collect::<Result<Vec<_>, _>>()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let memory = MemoryArray::new(name, definition_name, levels);
-            validate_levels(&memory).map_err(ArchitectureError::Invalid)?;
+            let memory = MemoryArray::new(name, definition_name, axes);
+            validate_memory_axes(&memory).map_err(ArchitectureError::Invalid)?;
             memories.push(memory);
         }
 
@@ -722,13 +650,6 @@ impl ArchitectureBuilder {
                 })?;
             let resolved_connection = connection.clone();
             validate_connection(&resolved_connection, &memories, &self.memory_definitions)?;
-            validate_processor_memory_bindings(
-                &name,
-                definition,
-                &resolved_connection,
-                &memories,
-                &self.memory_definitions,
-            )?;
             let domain = resolve_domain(&resolved_connection, &dimension_map)?;
             resolve_connection_instances(
                 &resolved_connection,
@@ -883,6 +804,7 @@ fn validate_scopes(
 
     let mut resolved_domains = BTreeMap::new();
     for scope in scopes {
+        validate_unique(scope.axes.iter().map(String::as_str), "scope axis")?;
         let scope_dimensions = scope
             .axes
             .iter()
@@ -1070,67 +992,6 @@ fn validate_connection(
     Ok(())
 }
 
-fn validate_processor_memory_bindings(
-    processor: &str,
-    definition: &ProcessorDefinition,
-    connection: &Connection,
-    memories: &[MemoryArray],
-    definitions: &[MemoryDefinition],
-) -> Result<(), ArchitectureError> {
-    if !matches!(definition.source_format, ProcessorSourceFormat::CompactLoom) {
-        return Ok(());
-    }
-    let candidates = |endpoints: &[MemoryEndpoint]| {
-        endpoints
-            .iter()
-            .map(|endpoint| {
-                let memory = memories
-                    .iter()
-                    .find(|memory| memory.name == endpoint.memory)
-                    .expect("connection memories were validated");
-                let definition = definitions
-                    .iter()
-                    .find(|definition| definition.name == memory.definition)
-                    .expect("connection memory definitions were validated");
-                (endpoint.memory.clone(), definition.technology.clone())
-            })
-            .collect::<Vec<_>>()
-    };
-    let input_candidates = candidates(&connection.inputs);
-    let output_candidates = candidates(&connection.outputs);
-    for operation in &definition.functions {
-        let Some(details) = &operation.func.mlir_details else {
-            continue;
-        };
-        let requirements = details
-            .memref_memory_requirements
-            .iter()
-            .cloned()
-            .collect::<BTreeMap<_, _>>();
-        let operands = |names: &[String]| {
-            names
-                .iter()
-                .map(|name| (name.clone(), requirements.get(name).cloned()))
-                .collect::<Vec<_>>()
-        };
-        for (role, names, candidates) in [
-            ("input", &details.source_memrefs, &input_candidates),
-            ("output", &details.target_memrefs, &output_candidates),
-        ] {
-            resolve_operand_memory_bindings(
-                &operation.func.name,
-                role,
-                &operands(names),
-                candidates,
-            )
-            .map_err(|error| {
-                ArchitectureError::Invalid(format!("processor '{processor}': {error}"))
-            })?;
-        }
-    }
-    Ok(())
-}
-
 fn resolve_domain(
     connection: &Connection,
     dimensions: &BTreeMap<&str, Axis>,
@@ -1224,26 +1085,22 @@ fn resolve_endpoint(
         .find(|memory| memory.name == endpoint.memory)
         .expect("connection was validated");
     let mut indices = Vec::new();
-    for (selectors, axes) in endpoint.indices.iter().zip(memory.levels()) {
-        let mut group = Vec::with_capacity(selectors.len());
-        for (selector, axis) in selectors.iter().zip(axes) {
-            match selector {
-                super::memory::EndpointIndex::All => group.push(ResolvedEndpointIndex::All),
-                super::memory::EndpointIndex::Expression(expression) => {
-                    let value = expression.evaluate(values).ok_or_else(|| {
-                        ArchitectureError::Invalid(format!(
-                            "could not evaluate index for memory '{}'",
-                            endpoint.memory
-                        ))
-                    })?;
-                    if value < 0 || value >= axis.extent as i64 {
-                        return Ok(None);
-                    }
-                    group.push(ResolvedEndpointIndex::Index(value as u64));
+    for (selector, axis) in endpoint.indices.iter().zip(memory.axes()) {
+        match selector {
+            super::memory::EndpointIndex::All => indices.push(ResolvedEndpointIndex::All),
+            super::memory::EndpointIndex::Expression(expression) => {
+                let value = expression.evaluate(values).ok_or_else(|| {
+                    ArchitectureError::Invalid(format!(
+                        "could not evaluate index for memory '{}'",
+                        endpoint.memory
+                    ))
+                })?;
+                if value < 0 || value >= axis.extent as i64 {
+                    return Ok(None);
                 }
+                indices.push(ResolvedEndpointIndex::Index(value as u64));
             }
         }
-        indices.push(group);
     }
     let definition = definitions
         .iter()

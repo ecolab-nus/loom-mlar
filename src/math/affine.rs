@@ -41,6 +41,7 @@ impl From<EndpointParseError> for AffineError {
 
 /// A checked coordinate map over named architecture axes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AffineMap {
     source_axes: Vec<Axis>,
     target_axes: Vec<Axis>,
@@ -60,6 +61,21 @@ impl AffineMap {
             });
         }
         let source_names = source_axes.iter().map(Axis::name).collect::<BTreeSet<_>>();
+        if source_names.len() != source_axes.len()
+            || target_axes
+                .iter()
+                .map(Axis::name)
+                .collect::<BTreeSet<_>>()
+                .len()
+                != target_axes.len()
+        {
+            return Err(AffineError::InvalidMap(
+                "affine map axes must be unique".into(),
+            ));
+        }
+        for expression in &expressions {
+            expression.validate().map_err(AffineError::InvalidMap)?;
+        }
         for variable in expressions.iter().flat_map(AffineExpr::variables) {
             if !source_names.contains(variable.as_str()) {
                 return Err(AffineError::UnknownVariable(variable));

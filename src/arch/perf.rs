@@ -6,8 +6,22 @@ use crate::math::Sym;
 use crate::math::{ConstraintExpr, Expr};
 use crate::mlir::MlirFunc;
 
+pub fn validate_symbols(symbols: &[Sym]) -> Result<(), String> {
+    let mut names = HashSet::new();
+    for symbol in symbols {
+        if !matches!(Expr::parse(&symbol.0), Ok(Expr::Sym(parsed)) if parsed == *symbol) {
+            return Err(format!("invalid parameter name '{}'", symbol.0));
+        }
+        if !names.insert(symbol) {
+            return Err(format!("duplicate parameter '{}'", symbol.0));
+        }
+    }
+    Ok(())
+}
+
 /// Time cost associated with a [`PerfScenario`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum TimeCost {
     Throughput {
         fixed_latency: Expr,
@@ -20,6 +34,7 @@ pub enum TimeCost {
 
 /// A guarded performance alternative.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PerfScenario {
     /// Conditions under which this scenario applies.
     pub constraints: ConstraintExpr,
@@ -29,6 +44,7 @@ pub struct PerfScenario {
 
 /// Symbols, global constraints, and guarded costs for one function.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FuncPerfModel {
     /// Symbols used by constraints and costs.
     pub symbols: Vec<Sym>,
@@ -38,7 +54,7 @@ pub struct FuncPerfModel {
     pub scenarios: Vec<PerfScenario>,
 }
 
-/// Builder for [`FuncPerfModel`]; omitted symbols are inferred.
+/// Builder for [`FuncPerfModel`]; extra symbols must be declared explicitly.
 #[derive(Clone, Debug, Default)]
 pub struct FuncPerfModelBuilder {
     symbols: Option<Vec<Sym>>,
@@ -163,7 +179,9 @@ impl FuncPerfModel {
 
     /// Validate model and function-interface symbol use.
     pub fn validate_for_func(&self, func: &MlirFunc) -> Result<(), Vec<Sym>> {
-        self.validate_with_extra_symbols(func.shape_symbols())
+        let mut declared = func.shape_symbols();
+        declared.extend(func.symbols.iter().cloned());
+        self.validate_with_extra_symbols(declared)
     }
 
     /// Flatten one scenario to `fixed_latency + volume / throughput`.
@@ -188,9 +206,9 @@ impl FuncPerfModel {
         symbols
     }
 
-    fn validate_with_extra_symbols(&self, mut used: HashSet<Sym>) -> Result<(), Vec<Sym>> {
-        let declared: HashSet<Sym> = self.symbols.iter().cloned().collect();
-
+    fn validate_with_extra_symbols(&self, mut declared: HashSet<Sym>) -> Result<(), Vec<Sym>> {
+        declared.extend(self.symbols.iter().cloned());
+        let mut used = HashSet::new();
         used.extend(self.constraints.free_symbols());
         for scenario in &self.scenarios {
             scenario.time_cost.collect_symbols(&mut used);
@@ -208,7 +226,7 @@ impl FuncPerfModel {
 }
 
 impl FuncPerfModelBuilder {
-    /// Declare symbols explicitly instead of inferring them from expressions.
+    /// Declare symbols in addition to those on the function interface.
     pub fn symbols<I, S>(mut self, symbols: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -261,13 +279,10 @@ impl FuncPerfModelBuilder {
         self
     }
 
-    /// Build the performance model, inferring symbols when they were not
-    /// declared explicitly.
+    /// Build the model; symbol use is checked by `validate` or `validate_for_func`.
     pub fn build(self) -> FuncPerfModel {
         let constraints = self.constraints.unwrap_or(ConstraintExpr::True);
-        let symbols = self
-            .symbols
-            .unwrap_or_else(|| FuncPerfModel::infer_symbols(&constraints, &self.scenarios));
+        let symbols = self.symbols.unwrap_or_default();
 
         FuncPerfModel {
             symbols,
@@ -333,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_infers_symbols_and_defaults_true_constraints() {
+    fn test_builder_requires_declared_symbols_and_defaults_true_constraints() {
         let model = FuncPerfModel::builder()
             .throughput_scenario(TimeCost::throughput(
                 Expr::Const(1),
@@ -342,14 +357,17 @@ mod tests {
             ))
             .build();
 
-        assert_eq!(model.symbols, Sym::from_names(["M", "N", "T"]));
+        assert!(model.symbols.is_empty());
+        assert_eq!(
+            model.validate().unwrap_err(),
+            Sym::from_names(["M", "N", "T"])
+        );
         assert_eq!(model.constraints, ConstraintExpr::True);
         assert_eq!(model.scenarios[0].constraints, ConstraintExpr::True);
-        assert!(model.validate().is_ok());
     }
 
     #[test]
-    fn test_builder_infers_symbols_from_constraints_and_time_cost() {
+    fn test_builder_checks_symbols_in_constraints_and_time_cost() {
         let model = FuncPerfModel::builder()
             .constraints(ConstraintExpr::Ge(Expr::sym("M"), Expr::Const(32)))
             .scenario_with_constraints(
@@ -361,8 +379,11 @@ mod tests {
             )
             .build();
 
-        assert_eq!(model.symbols, Sym::from_names(["K", "M", "N", "TP"]));
-        assert!(model.validate().is_ok());
+        assert!(model.symbols.is_empty());
+        assert_eq!(
+            model.validate().unwrap_err(),
+            Sym::from_names(["K", "M", "N", "TP"])
+        );
     }
 
     #[test]
@@ -420,7 +441,6 @@ mod tests {
             sym_map: None,
         };
 
-        let err = model.validate_for_func(&op).unwrap_err();
-        assert_eq!(err, vec![Sym::new("L")]);
+        assert!(model.validate_for_func(&op).is_ok());
     }
 }

@@ -1,0 +1,34 @@
+{
+  "Sequential": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "vec_add_f16",
+            "symbols": ["L"],
+            "op_label": "example.vector.add",
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      },
+      {
+        "Func": {
+          "func": {
+            "name": "vec_mul_f16",
+            "symbols": ["L"],
+            "op_label": "example.vector.mul",
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

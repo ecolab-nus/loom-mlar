@@ -1,0 +1,4 @@
+writeback_l2:
+- latency: '12'
+  volume: L * 2
+  throughput: '32'

@@ -26,6 +26,7 @@ fn normalize_mlir_type(input: &str) -> String {
 
 /// Detailed interface metadata extracted from one MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirFuncDetails {
     /// Tensor argument names from the function signature, without `%`.
     pub tensor_args: Vec<String>,
@@ -35,7 +36,7 @@ pub struct MlirFuncDetails {
     /// Memref argument types from the function signature, normalized and keyed by argument name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_arg_types: Vec<(String, String)>,
-    /// Technology requirements declared by compact Loom operands.
+    /// Optional named memory technology requirements.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_memory_requirements: Vec<(String, String)>,
     /// Tensor operands used as outputs (from `outs(...)`), without `%`.
@@ -80,6 +81,7 @@ pub enum MlirOperationKind {
 
 /// Reference to one MLIR function and its shape-related interface metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirFunc {
     /// Function symbol name (e.g. `matmul_f16`).
     pub name: String,
@@ -92,7 +94,7 @@ pub struct MlirFunc {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op_label: Option<String>,
     /// Call-site metadata that MLAR preserves without interpreting.
-    #[serde(default, flatten)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra_metadata: BTreeMap<String, serde_json::Value>,
     /// Call-site bindings for this function's symbols.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,6 +103,7 @@ pub struct MlirFunc {
 
 /// Parsed MLIR module and its function interfaces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirModule {
     pub path: Option<String>,
     /// Module symbol name, when parsed from MLIR text (`module @name`).
@@ -445,9 +448,11 @@ mod tests {
             "name": "dram_to_l1_R_bcst",
             "symbols": [],
             "op_label": "loom.copy(%0, %1: 1)",
-            "read": "%0: 0",
-            "write": "%1: 1",
-            "future_metadata": {"preserve": true}
+            "extra_metadata": {
+                "read": "%0: 0",
+                "write": "%1: 1",
+                "future_metadata": {"preserve": true}
+            }
         });
 
         let func: MlirFunc = serde_json::from_value(input).unwrap();
@@ -455,8 +460,11 @@ mod tests {
         assert_eq!(func.extra_metadata["write"], "%1: 1");
 
         let output = serde_json::to_value(func).unwrap();
-        assert_eq!(output["read"], "%0: 0");
-        assert_eq!(output["write"], "%1: 1");
-        assert_eq!(output["future_metadata"]["preserve"], true);
+        assert_eq!(output["extra_metadata"]["read"], "%0: 0");
+        assert_eq!(output["extra_metadata"]["write"], "%1: 1");
+        assert_eq!(
+            output["extra_metadata"]["future_metadata"]["preserve"],
+            true
+        );
     }
 }

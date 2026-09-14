@@ -1,0 +1,37 @@
+{
+  "Sequential": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "dram_to_l1_S_f16",
+            "symbols": ["M", "N", "effective_bandwidth"],
+            "op_label": "example.load.dram_to_l1",
+            "sym_map": {
+              "entries": [
+                ["M", { "Sym": "BM" }],
+                ["N", { "Sym": "BN" }],
+                ["effective_bandwidth", { "Const": 1 }]
+              ]
+            }
+          }
+        }
+      },
+      {
+        "Func": {
+          "func": {
+            "name": "l1_to_dram_f16",
+            "symbols": ["M", "N"],
+            "op_label": "example.store.l1_to_dram",
+            "sym_map": {
+              "entries": [
+                ["M", { "Sym": "BM" }],
+                ["N", { "Sym": "BN" }]
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1029,7 +1029,14 @@ mod tests {
             .processor_definition(
                 ProcessorDefinition::new("lane", "", Vec::new()).with_type(ProcessorType::Compute),
             )
-            .connect("lane", Connection::parse([], ["L1"], ["L1"]).unwrap())
+            .connect(
+                "lane",
+                Connection::new(
+                    Vec::<String>::new(),
+                    vec![MemoryEndpoint::new("L1", vec![])],
+                    vec![MemoryEndpoint::new("L1", vec![])],
+                ),
+            )
             .build()
             .unwrap();
 
@@ -1079,8 +1086,11 @@ mod tests {
         let network = NetworkTopology::new("noc", vec![axis.clone()])
             .with_link(NetworkLink::new("east", map, Expr::Const(64)))
             .with_interface(
-                NetworkInterface::new("l1", MemoryEndpoint::parse("L1[:]").unwrap())
-                    .with_injection_bandwidth(Expr::Const(32)),
+                NetworkInterface::new(
+                    "l1",
+                    MemoryEndpoint::new("L1", vec![crate::arch::EndpointIndex::All]),
+                )
+                .with_injection_bandwidth(Expr::Const(32)),
             );
         let architecture = Architecture::builder("system")
             .axis("x", 4)

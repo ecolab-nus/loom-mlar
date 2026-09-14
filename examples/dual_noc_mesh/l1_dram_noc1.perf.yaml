@@ -1,0 +1,4 @@
+l1_to_dram_f16:
+- latency: '454'
+  volume: M * N * 2
+  throughput: '150'

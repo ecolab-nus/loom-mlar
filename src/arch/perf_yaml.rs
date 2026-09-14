@@ -1,28 +1,38 @@
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::de::{Error, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 
-use super::perf::{FuncPerfModel, PerfScenario, TimeCost};
+use crate::arch::perf::{FuncPerfModel, PerfScenario, TimeCost};
 use crate::math::Sym;
 use crate::math::{ConstraintExpr, Expr, ParseError};
 use crate::mlir::{MlirFunc, MlirModule};
 
 /// Flat declarative performance alternatives keyed by operation name.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(transparent)]
 pub struct PerformanceYaml {
-    #[serde(flatten)]
+    #[serde(deserialize_with = "unique_map")]
     functions: BTreeMap<String, Vec<PerfAlternativeYaml>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PerfAlternativeYaml {
-    #[serde(default)]
-    constraint: Option<String>,
-    latency: String,
-    volume: String,
-    throughput: String,
+#[serde(untagged, deny_unknown_fields)]
+enum PerfAlternativeYaml {
+    Throughput {
+        #[serde(default)]
+        constraint: Option<String>,
+        latency: String,
+        volume: String,
+        throughput: String,
+    },
+    Expression {
+        #[serde(default)]
+        constraint: Option<String>,
+        expression: String,
+    },
 }
 
 #[derive(Debug)]
@@ -59,6 +69,7 @@ impl PerformanceYaml {
 
     /// Build the performance model for one MLIR function.
     pub fn model_for_func(&self, func: &MlirFunc) -> Result<FuncPerfModel, PerfYamlError> {
+        crate::arch::perf::validate_symbols(&func.symbols).map_err(PerfYamlError::InvalidModel)?;
         let alternatives = self
             .functions
             .get(&func.name)
@@ -75,13 +86,14 @@ impl PerformanceYaml {
             .enumerate()
             .map(|(index, alternative)| alternative.to_scenario(&format!("{}[{index}]", func.name)))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut model = FuncPerfModel::builder().scenarios(scenarios).build();
-        for symbol in &func.symbols {
-            if !model.symbols.contains(symbol) {
-                model.symbols.push(symbol.clone());
-            }
-        }
-        model.symbols.sort();
+        let mut symbols = func.shape_symbols();
+        symbols.extend(func.symbols.iter().cloned());
+        let mut symbols = symbols.into_iter().collect::<Vec<_>>();
+        symbols.sort();
+        let model = FuncPerfModel::builder()
+            .symbols(symbols)
+            .scenarios(scenarios)
+            .build();
 
         model
             .validate_for_func(func)
@@ -97,6 +109,19 @@ impl PerformanceYaml {
         &self,
         module: &MlirModule,
     ) -> Result<Vec<FuncPerfModel>, PerfYamlError> {
+        let source_names = module
+            .functions
+            .iter()
+            .map(|func| func.name.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let perf_names = self
+            .function_names()
+            .collect::<std::collections::BTreeSet<_>>();
+        if source_names != perf_names {
+            return Err(PerfYamlError::InvalidModel(format!(
+                "function names do not match source: source={source_names:?}, performance={perf_names:?}"
+            )));
+        }
         module
             .functions
             .iter()
@@ -104,25 +129,40 @@ impl PerformanceYaml {
             .collect()
     }
 
-    pub(crate) fn function_names(&self) -> impl Iterator<Item = &str> {
+    fn function_names(&self) -> impl Iterator<Item = &str> {
         self.functions.keys().map(String::as_str)
     }
 }
 
 impl PerfAlternativeYaml {
     fn to_scenario(&self, label: &str) -> Result<PerfScenario, PerfYamlError> {
-        let constraint = match self.constraint.as_deref() {
+        let (constraint, time_cost) = match self {
+            Self::Throughput {
+                constraint,
+                latency,
+                volume,
+                throughput,
+            } => (
+                constraint,
+                TimeCost::throughput(
+                    parse_expr(&format!("{label}.latency"), latency)?,
+                    parse_expr(&format!("{label}.volume"), volume)?,
+                    parse_expr(&format!("{label}.throughput"), throughput)?,
+                ),
+            ),
+            Self::Expression {
+                constraint,
+                expression,
+            } => (
+                constraint,
+                TimeCost::Expression(parse_expr(&format!("{label}.expression"), expression)?),
+            ),
+        };
+        let constraint = match constraint.as_deref() {
             Some(constraint) => parse_constraint(&format!("{label}.constraint"), constraint)?,
             None => ConstraintExpr::True,
         };
-        Ok(PerfScenario::with_constraints(
-            constraint,
-            TimeCost::throughput(
-                parse_expr(&format!("{label}.latency"), &self.latency)?,
-                parse_expr(&format!("{label}.volume"), &self.volume)?,
-                parse_expr(&format!("{label}.throughput"), &self.throughput)?,
-            ),
-        ))
+        Ok(PerfScenario::with_constraints(constraint, time_cost))
     }
 }
 
@@ -179,6 +219,32 @@ impl std::error::Error for PerfYamlError {
             | PerfYamlError::Validation { .. } => None,
         }
     }
+}
+
+fn unique_map<'de, D, V>(deserializer: D) -> Result<BTreeMap<String, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    struct UniqueMap<V>(PhantomData<V>);
+    impl<'de, V: Deserialize<'de>> Visitor<'de> for UniqueMap<V> {
+        type Value = BTreeMap<String, V>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a mapping with unique names")
+        }
+
+        fn visit_map<M: MapAccess<'de>>(self, mut access: M) -> Result<Self::Value, M::Error> {
+            let mut values = BTreeMap::new();
+            while let Some((name, value)) = access.next_entry::<String, V>()? {
+                if values.insert(name.clone(), value).is_some() {
+                    return Err(M::Error::custom(format!("duplicate name '{name}'")));
+                }
+            }
+            Ok(values)
+        }
+    }
+    deserializer.deserialize_map(UniqueMap(PhantomData))
 }
 
 #[cfg(test)]
@@ -245,6 +311,84 @@ add:
     }
 
     #[test]
+    fn preserves_expression_and_guard_without_evaluation() {
+        let spec = PerformanceYaml::from_yaml_str(
+            "copy:\n  - constraint: 'L > 1024'\n    expression: '18 + L / 64'\n  - expression: 'L'\n",
+        ).unwrap();
+        let model = spec
+            .model_for_func(&MlirFunc::with_symbols("copy", Sym::from_names(["L"])))
+            .unwrap();
+        assert_eq!(
+            model.scenarios[0].constraints,
+            ConstraintExpr::parse("L > 1024").unwrap()
+        );
+        assert_eq!(
+            model.scenarios[0].time_cost.as_expression(),
+            Some(&Expr::parse("18 + L / 64").unwrap())
+        );
+        assert_eq!(model.scenarios[1].constraints, ConstraintExpr::True);
+        let canonical = serde_json::to_value(&model).unwrap();
+        let restored: FuncPerfModel = serde_json::from_value(canonical.clone()).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), canonical);
+    }
+
+    #[test]
+    fn rejects_ambiguous_incomplete_unknown_and_duplicate_cost_fields() {
+        for fields in [
+            "expression: 'L'\n    latency: '0'\n    volume: 'L'\n    throughput: '1'",
+            "expression: 'L'\n    latency: '0'",
+            "latency: '0'\n    volume: 'L'",
+            "expression: 'L'\n    expresion: 'L'",
+            "expression: 'L'\n    expression: '2'",
+            "latency: '0'\n    latency: '1'\n    volume: 'L'\n    throughput: '1'",
+        ] {
+            assert!(
+                PerformanceYaml::from_yaml_str(&format!("copy:\n  - {fields}\n")).is_err(),
+                "{fields}"
+            );
+        }
+        assert!(PerformanceYaml::from_yaml_str("copy: []\ncopy: []\n").is_err());
+    }
+
+    #[test]
+    fn validates_expression_symbols_and_syntax() {
+        let func = MlirFunc::with_symbols("copy", Sym::from_names(["L"]));
+        for expression in ["bandwidth", "L *"] {
+            let spec =
+                PerformanceYaml::from_yaml_str(&format!("copy:\n  - expression: '{expression}'\n"))
+                    .unwrap();
+            assert!(spec.model_for_func(&func).is_err(), "{expression}");
+        }
+    }
+
+    #[test]
+    fn native_mlir_and_yaml_require_matching_function_names() {
+        let source = include_str!("../../examples/single_core/vector_lane.mlir");
+        let yaml = include_str!("../../examples/single_core/vector_lane.perf.yaml");
+        let definition =
+            crate::ProcessorDefinition::from_mlir_source_with_perf_yaml("lane", source, yaml)
+                .unwrap();
+        assert!(
+            definition.operations()[0].perf.scenarios[1]
+                .time_cost
+                .as_expression()
+                .is_some()
+        );
+        for invalid in [
+            yaml.replace("vector_add:", "misspelled:"),
+            format!("{yaml}extra:\n  - expression: '1'\n"),
+            "vector_add: []\n".into(),
+        ] {
+            assert!(
+                crate::ProcessorDefinition::from_mlir_source_with_perf_yaml(
+                    "lane", source, &invalid
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn rejects_the_nested_legacy_shape() {
         let error = PerformanceYaml::from_yaml_str(
             r#"
@@ -254,6 +398,6 @@ functions:
 "#,
         )
         .expect_err("legacy nesting must fail");
-        assert!(error.to_string().contains("sequence"));
+        assert!(matches!(error, PerfYamlError::Yaml(_)));
     }
 }

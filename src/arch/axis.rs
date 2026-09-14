@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// One named, zero-based architecture axis.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Axis {
     pub(crate) name: String,
     pub(crate) extent: u64,
@@ -58,6 +59,25 @@ pub enum AffineExpr {
 }
 
 impl AffineExpr {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Constant(_) | Self::Variable(_) => Ok(()),
+            Self::Add(lhs, rhs) | Self::Sub(lhs, rhs) => {
+                lhs.validate()?;
+                rhs.validate()
+            }
+            Self::Mul(_, expression) => expression.validate(),
+            Self::FloorDiv(expression, divisor)
+            | Self::CeilDiv(expression, divisor)
+            | Self::Mod(expression, divisor) => {
+                if *divisor <= 0 {
+                    return Err("affine divisors must be positive constants".into());
+                }
+                expression.validate()
+            }
+        }
+    }
+
     pub fn parse(input: &str) -> Result<Self, EndpointParseError> {
         ExpressionParser::new(input).parse()
     }

@@ -1,0 +1,15 @@
+func @load_l1(
+  in src: f16[L],
+  out dst: f16[L]
+) {
+  loom.copy %src to %dst
+}
+
+func @load_l1_broadcast(
+  in src: f16[L],
+  out dst: f16[L]
+) {
+  %bcst_x = loom.sym @bcst_x : index
+  %bcst_y = loom.sym @bcst_y : index
+  loom.broadcast %src to %dst extent: [bcst_x, bcst_y]
+}

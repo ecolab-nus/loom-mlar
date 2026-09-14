@@ -10,7 +10,7 @@ The adapter and its generated gallery use English exclusively.
 ```bash
 npm ci --prefix tools/mlar-archify
 node tools/mlar-archify/bin/mlar-archify.mjs build \
-  tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  syntax_sugar/tests/2d_mesh/2d_mesh_torus.visualization.yaml \
   visualization-output/2d-mesh
 
 node tools/mlar-archify/bin/mlar-archify.mjs serve \

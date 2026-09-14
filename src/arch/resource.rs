@@ -4,6 +4,7 @@ use super::axis::Axis;
 
 /// An intrinsic or shared resource, optionally indexed like its processor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Resource {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

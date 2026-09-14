@@ -1,0 +1,4 @@
+load_l2:
+- latency: '80'
+  volume: L * 2
+  throughput: '16'

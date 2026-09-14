@@ -1,0 +1,4 @@
+elementwise_add:
+- latency: '2'
+  volume: L
+  throughput: '32'

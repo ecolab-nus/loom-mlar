@@ -5,6 +5,7 @@ use crate::math::{Expr, Sym};
 use crate::mlir::MlirFunc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Schedule {
     Parallel {
         schedules: Vec<Schedule>,
@@ -31,6 +32,7 @@ pub enum Schedule {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProcessorTarget {
     pub array: String,
     /// Empty selects the array as a whole. Otherwise selector rank must match
@@ -60,6 +62,7 @@ impl ProcessorTarget {
 
 /// Maps MLIR symbols to symbolic expressions.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SymbolicMapping {
     pub entries: Vec<(Sym, Expr)>,
 }

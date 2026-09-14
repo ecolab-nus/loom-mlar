@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::architecture::Architecture;
-use super::axis::{Axis, EndpointParseError};
-use super::memory::{MemoryEndpoint, MemoryTechnology};
+use super::axis::Axis;
+use super::memory::MemoryEndpoint;
 use super::perf::FuncPerfModel;
 use super::resource::Resource;
 use crate::mlir::MlirFunc;
@@ -16,16 +16,9 @@ pub enum ProcessorType {
     DataMover,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessorSourceFormat {
-    #[default]
-    CompactLoom,
-    Mlir,
-}
-
 /// One parsed function and its performance model.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OperationModel {
     pub func: MlirFunc,
     pub perf: FuncPerfModel,
@@ -37,6 +30,8 @@ impl OperationModel {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        super::perf::validate_symbols(&self.perf.symbols)?;
+        super::perf::validate_symbols(&self.func.symbols)?;
         self.perf.validate_for_func(&self.func).map_err(|symbols| {
             format!(
                 "function '{}' performance model uses undeclared symbols: {:?}",
@@ -46,112 +41,15 @@ impl OperationModel {
     }
 }
 
-pub(crate) fn resolve_operand_memory_bindings(
-    function: &str,
-    role: &str,
-    operands: &[(String, Option<String>)],
-    memories: &[(String, Option<MemoryTechnology>)],
-) -> Result<Vec<usize>, String> {
-    if !operands.iter().any(|(_, technology)| technology.is_some()) {
-        return match (operands.len(), memories.len()) {
-            (0, 0) => Ok(Vec::new()),
-            (operand_count, memory_count) if operand_count == memory_count => {
-                Ok((0..memory_count).collect())
-            }
-            (operand_count, 1) if operand_count > 0 => Ok(vec![0; operand_count]),
-            (operand_count, memory_count) => Err(format!(
-                "function '{function}' declares {operand_count} {role}s but its connection has \
-                 {memory_count}; use one shared memory handle or one handle per operand"
-            )),
-        };
-    }
-    if operands.is_empty() && memories.is_empty() {
-        return Ok(Vec::new());
-    }
-    if memories.len() == 1 {
-        for (operand, required) in operands {
-            if let Some(required) = required
-                && memories[0].1.as_ref().map(|technology| &technology.name) != Some(required)
-            {
-                return Err(format!(
-                    "function '{function}' {role} '{operand}' requires {required}, but connected memory '{}' is {}",
-                    memories[0].0,
-                    memories[0]
-                        .1
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "untyped".into())
-                ));
-            }
-        }
-        return Ok(vec![0; operands.len()]);
-    }
-    if operands.len() != memories.len() {
-        return Err(format!(
-            "function '{function}' declares {} {role}s but its placement connects {} memories",
-            operands.len(),
-            memories.len()
-        ));
-    }
-
-    let mut assignments = vec![None; operands.len()];
-    let mut used = vec![false; memories.len()];
-    for (operand_index, (operand, required)) in operands.iter().enumerate() {
-        let Some(required) = required else {
-            continue;
-        };
-        let compatible = memories
-            .iter()
-            .enumerate()
-            .filter(|(index, (_, technology))| {
-                !used[*index]
-                    && technology.as_ref().map(|technology| &technology.name) == Some(required)
-            })
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
-        match compatible.as_slice() {
-            [memory_index] => {
-                assignments[operand_index] = Some(*memory_index);
-                used[*memory_index] = true;
-            }
-            [] => {
-                return Err(format!(
-                    "function '{function}' {role} '{operand}' requires {required}, but no connected memory has that technology"
-                ));
-            }
-            _ => {
-                return Err(format!(
-                    "function '{function}' {role} '{operand}' requires {required}, but multiple connected memories match"
-                ));
-            }
-        }
-    }
-    let mut remaining = used
-        .iter()
-        .enumerate()
-        .filter_map(|(index, used)| (!used).then_some(index));
-    for assignment in assignments
-        .iter_mut()
-        .filter(|assignment| assignment.is_none())
-    {
-        *assignment = remaining.next();
-    }
-    Ok(assignments
-        .into_iter()
-        .map(|assignment| assignment.expect("cardinality was checked"))
-        .collect())
-}
-
 /// Reusable processor functionality and performance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProcessorDefinition {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) processor_type: Option<ProcessorType>,
-    /// Compact Loom source, embedded so serialized architectures remain self-contained.
+    /// Native processor MLIR, embedded in canonical artifacts.
     pub(crate) source: String,
-    #[serde(default, skip_serializing_if = "is_compact_source")]
-    pub(crate) source_format: ProcessorSourceFormat,
     pub(crate) functions: Vec<OperationModel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) resources: Vec<Resource>,
@@ -167,7 +65,6 @@ impl ProcessorDefinition {
             name: name.into(),
             processor_type: None,
             source: source.into(),
-            source_format: ProcessorSourceFormat::CompactLoom,
             functions,
             resources: Vec::new(),
         }
@@ -180,10 +77,14 @@ impl ProcessorDefinition {
     ) -> Result<Self, String> {
         let source = source.into();
         let module = crate::mlir::MlirModule::from_mlir_source(&source)?;
-        let mut performance = performance
-            .into_iter()
-            .map(|(name, model)| (name.into(), model))
-            .collect::<BTreeMap<_, _>>();
+        let mut models = BTreeMap::new();
+        for (name, model) in performance {
+            let name = name.into();
+            if models.insert(name.clone(), model).is_some() {
+                return Err(format!("duplicate performance model for function '{name}'"));
+            }
+        }
+        let mut performance = models;
         let functions = module
             .functions
             .into_iter()
@@ -207,14 +108,41 @@ impl ProcessorDefinition {
             name: name.into(),
             processor_type: None,
             source,
-            source_format: ProcessorSourceFormat::Mlir,
             functions,
             resources: Vec::new(),
         })
     }
 
+    /// Construct native functionality with matching declarative performance alternatives.
+    pub fn from_mlir_source_with_perf_yaml(
+        name: impl Into<String>,
+        source: impl Into<String>,
+        performance_yaml: &str,
+    ) -> Result<Self, String> {
+        let source = source.into();
+        let module = crate::mlir::MlirModule::from_mlir_source(&source)?;
+        let performance = super::perf_yaml::PerformanceYaml::from_yaml_str(performance_yaml)
+            .map_err(|error| error.to_string())?
+            .models_for_module(&module)
+            .map_err(|error| error.to_string())?;
+        let functions = module
+            .functions
+            .into_iter()
+            .zip(performance)
+            .map(|(func, perf)| OperationModel::new(func, perf))
+            .collect();
+        let definition = Self::new(name, source, functions);
+        definition.validate()?;
+        Ok(definition)
+    }
+
     pub fn with_type(mut self, processor_type: ProcessorType) -> Self {
         self.processor_type = Some(processor_type);
+        self
+    }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
         self
     }
 
@@ -228,10 +156,6 @@ impl ProcessorDefinition {
 
     pub fn source(&self) -> &str {
         &self.source
-    }
-
-    pub fn source_format(&self) -> &ProcessorSourceFormat {
-        &self.source_format
     }
 
     pub fn operations(&self) -> &[OperationModel] {
@@ -253,25 +177,29 @@ impl ProcessorDefinition {
             .find(|function| function.func.name == name)
     }
 
-    pub(crate) fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
+        let mut names = BTreeSet::new();
         for function in &self.functions {
+            if !names.insert(&function.func.name) {
+                return Err(format!(
+                    "processor definition '{}' has duplicate function '{}'",
+                    self.name, function.func.name
+                ));
+            }
             function.validate()?;
         }
         if self.source.trim().is_empty() {
             return Ok(());
         }
 
-        let parsed = match self.source_format {
-            ProcessorSourceFormat::CompactLoom => {
-                crate::mlir::parse_loom_source(&self.source).map_err(|error| error.to_string())?
+        let parsed = crate::mlir::MlirModule::from_mlir_source(&self.source)?;
+        let mut parsed_by_name = BTreeMap::new();
+        for function in parsed.functions {
+            let name = function.name.clone();
+            if parsed_by_name.insert(name.clone(), function).is_some() {
+                return Err(format!("duplicate source function '{name}'"));
             }
-            ProcessorSourceFormat::Mlir => crate::mlir::MlirModule::from_mlir_source(&self.source)?,
-        };
-        let parsed_by_name = parsed
-            .functions
-            .into_iter()
-            .map(|function| (function.name.clone(), function))
-            .collect::<BTreeMap<_, _>>();
+        }
         let canonical_names = self
             .functions
             .iter()
@@ -318,11 +246,8 @@ impl ProcessorDefinition {
     }
 }
 
-fn is_compact_source(format: &ProcessorSourceFormat) -> bool {
-    matches!(format, ProcessorSourceFormat::CompactLoom)
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Connection {
     /// Ordered architecture axes that index this processor placement.
     pub domain: Vec<String>,
@@ -348,19 +273,6 @@ impl Connection {
         }
     }
 
-    /// Build a connection from endpoint strings, as the declarative loader does.
-    pub fn parse<'a>(
-        domain: impl IntoIterator<Item = &'a str>,
-        inputs: impl IntoIterator<Item = &'a str>,
-        outputs: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Self, EndpointParseError> {
-        Ok(Self::new(
-            domain,
-            parse_endpoints(inputs)?,
-            parse_endpoints(outputs)?,
-        ))
-    }
-
     pub fn with_resources(
         mut self,
         resources: impl IntoIterator<Item = impl Into<String>>,
@@ -378,18 +290,13 @@ impl Connection {
     }
 }
 
-fn parse_endpoints<'a>(
-    endpoints: impl IntoIterator<Item = &'a str>,
-) -> Result<Vec<MemoryEndpoint>, EndpointParseError> {
-    endpoints.into_iter().map(MemoryEndpoint::parse).collect()
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryLocation {
     pub memory: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    /// Resolved selectors per traversed level; omitted levels remain subtrees.
-    pub indices: Vec<Vec<ResolvedEndpointIndex>>,
+    /// One resolved selector per memory axis.
+    pub indices: Vec<ResolvedEndpointIndex>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bank: Option<u64>,
 }
@@ -402,6 +309,7 @@ pub enum ResolvedEndpointIndex {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectionInstance {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub variables: BTreeMap<String, u64>,
@@ -413,6 +321,7 @@ pub struct ConnectionInstance {
 
 /// One connection-specific array of a reusable processor definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProcessorArray {
     pub(crate) name: String,
     pub(crate) definition: String,

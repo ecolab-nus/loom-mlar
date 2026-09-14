@@ -5,11 +5,9 @@ geometry are resolved while loading; the resulting `Architecture` is concrete.
 
 - A `MemoryDefinition` describes capacity, word size, optional banks, and an
   optional technology. It names no axes and is reusable across chips.
-- A `MemoryArray` places a definition over `levels: Vec<Vec<Axis>>`, outer to
-  inner. Each level is one array; `[[x, y]]` is a single 2-d
-  array, `[[cluster], [core]]` nests per-core arrays inside per-cluster ones.
-  Each endpoint bracket group indexes one level; stopping selects a subtree.
-- A `ProcessorDefinition` owns operations, performance models, and resources.
+- A `MemoryArray` places a definition over ordered `axes: Vec<Axis>`. Axes are
+  independent dimensions; flat storage remains multidimensional.
+- A `ProcessorDefinition` owns native MLIR, operations, performance models, and resources.
 - A `ProcessorArray` is one connection-specific instantiation of a definition.
 - A `Connection` retains symbolic endpoints and an explicit ordered domain.
   Endpoint variables must belong to it; unused axes express replication.
@@ -25,17 +23,18 @@ geometry are resolved while loading; the resulting `Architecture` is concrete.
 A processor placement references a reusable definition and creates one connected
 array. Several named placements may share a definition.
 
-For a flat `[x, y]` placement, `L1[x, y]` selects one logical memory and
-`L1[:, y]` selects all x coordinates at y. For `[cluster, [core]]`,
-`L1[cluster]` selects a core array and `L1[cluster][core]` selects one logical
-memory. Each group must match its level's dimensionality. A `:` selects every
-coordinate of a dimension; `L1[:][core]` selects that core in every cluster.
-No brackets selects the whole placed memory.
+Core endpoints contain exactly one `All` or affine-expression selector per axis.
+Their Cartesian product selects memory leaves at each processor placement point.
+Bank selectors apply independently to each selected leaf. Resolved locations
+retain `All` or numeric indices without expanding the selected leaves.
 
-Banking is not inferred from addresses. `.bank[b]` selects a bank in each
-selected leaf memory and requires indexing every hierarchy level first.
-Symbolic endpoints and resolved locations retain their index groups and `:`
-selectors without expanding the selected memories.
+In `syntax_sugar`, `[x, y]` is one flat level and `[cluster, [core]]` groups
+hierarchical brackets. `M[:][k]` lowers to `[All, Expr(k)]` and `M[c]` to
+`[Expr(c), All]`; no brackets lowers to all `All`. Missing coordinates inside a
+level are errors; omitted trailing levels expand to `All`. Grouping changes
+addressing notation only. It introduces no storage capacity or access semantics.
+Authoring `.bank[b]` follows all authored levels; core banking has no bracket-depth
+requirement beyond full-rank selectors. See [the package template](../TEMPLATE.md).
 
 Compact Loom `@memory(name)` selects a uniquely matching connected memory
 technology. Declarative technologies receive numeric kinds in first-appearance

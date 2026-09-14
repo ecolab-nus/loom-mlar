@@ -1,18 +1,16 @@
-use mlar_rust::arch::ChipYaml;
 use mlar_rust::{
     AffineExpr, AffineMap, Architecture, Axis, Connection, Expr, FuncPerfModel, MemoryDefinition,
-    MemoryEndpoint, MlirFunc, NetworkInterface, NetworkLink, NetworkTopology, OperationModel,
-    PerfScenario, ProcessorDefinition, ProcessorSelector, ProcessorTarget, Resource, Schedule,
-    Scope, TimeCost, evaluate,
+    MlirFunc, NetworkInterface, NetworkLink, NetworkTopology, OperationModel, PerfScenario,
+    ProcessorDefinition, ProcessorSelector, ProcessorTarget, Resource, Schedule, Scope, TimeCost,
+    evaluate,
 };
-use std::path::Path;
 
 fn memory_definition() -> MemoryDefinition {
     MemoryDefinition::new("L1", 1024, 16)
 }
 
 fn connection(input: &str, output: &str) -> Connection {
-    Connection::parse(["x", "y"], [input], [output]).unwrap()
+    Connection::new(["x", "y"], vec![endpoint(input)], vec![endpoint(output)])
 }
 
 fn function(name: &str, latency: i64) -> OperationModel {
@@ -38,71 +36,6 @@ fn definition(name: &str, function_name: &str, latency: i64) -> ProcessorDefinit
 }
 
 #[test]
-fn declarative_package_supports_parameters_networks_and_scopes() {
-    let source = r#"
-name: declarative_mesh
-parameters: [X, Y]
-dimensions:
-  channel: 2
-  lx: 2
-  ly: 2
-  x: X
-  y: "Y * 2"
-memories:
-  DRAM: [channel]
-  L1: [x, y]
-  L2: [lx, ly]
-networks:
-  - name: torus
-    dimensions: [x, y]
-    resources:
-      - name: east_links
-    links:
-      - name: east
-        map: "[x, y] -> [x, y]: ((x + 1) mod X, y)"
-        bandwidth: "Y * 32"
-        resource: east_links
-    interfaces:
-      - name: l1
-        endpoint: "L1[:, :]"
-scopes:
-  - name: mesh
-    dimensions: [x, y]
-    memories: [L1]
-    processors: [matrix_lane]
-    networks: [torus]
-processors:
-  matrix_lane:
-    definition: matrix_lane.yaml
-    domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L1[x, y]"]
-"#;
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/indexed-affine");
-    let chip = ChipYaml::from_yaml_str(source).expect("parameterized YAML syntax");
-    let architecture = chip
-        .build_with_bindings(&fixture, [("X", 4), ("Y", 2)])
-        .expect("parameterized package should build");
-
-    assert_eq!(architecture.axis("y").unwrap().extent(), 4);
-    assert_eq!(
-        architecture.networks()[0].links[0]
-            .map
-            .apply(&[3, 1])
-            .unwrap(),
-        [0, 1]
-    );
-    assert_eq!(
-        architecture.networks()[0].links[0].bandwidth.eval_const(),
-        Some(64)
-    );
-    assert_eq!(architecture.scopes()[0].name(), "mesh");
-    let mlir = mlar_rust::architecture_to_mlir(&architecture)
-        .expect("explicit scope should drive valid ADL lowering");
-    assert!(mlir.contains("adl.arch.scale \"arch_mesh\""));
-}
-
-#[test]
 fn explicit_network_and_scope_survive_canonical_construction() {
     let x = Axis::new("x", 4);
     let y = Axis::new("y", 4);
@@ -123,10 +56,7 @@ fn explicit_network_and_scope_survive_canonical_construction() {
             Resource::exclusive("noc0.east").indexed(vec![Axis::new("x", 4), Axis::new("y", 4)]),
         )
         .with_link(NetworkLink::new("east", east, Expr::Const(64)).with_resource("noc0.east"))
-        .with_interface(NetworkInterface::new(
-            "l1",
-            MemoryEndpoint::parse("L1[:, :]").unwrap(),
-        ));
+        .with_interface(NetworkInterface::new("l1", endpoint("L1[:, :]")));
 
     let architecture = Architecture::builder("mesh")
         .axis("x", 4)
@@ -266,10 +196,6 @@ module @lane {
     let definition = ProcessorDefinition::from_mlir_source("lane", source, [("add", perf)])
         .expect("raw MLIR should parse");
     assert_eq!(definition.operations()[0].func.name, "add");
-    assert!(matches!(
-        definition.source_format(),
-        mlar_rust::ProcessorSourceFormat::Mlir
-    ));
 
     let architecture = Architecture::builder("raw_mlir")
         .axis("x", 1)
@@ -284,4 +210,24 @@ module @lane {
         .expect("raw MLIR architecture should export");
     assert!(exported.contains("module @proc_lane"));
     assert!(exported.contains("loom.bind_mem %src, @mem_L1"));
+}
+
+fn endpoint(text: &str) -> mlar_rust::MemoryEndpoint {
+    let (name, selectors) = text.split_once('[').unwrap();
+    mlar_rust::MemoryEndpoint::new(
+        name,
+        selectors
+            .trim_end_matches(']')
+            .split(',')
+            .map(|selector| {
+                if selector.trim() == ":" {
+                    mlar_rust::arch::EndpointIndex::All
+                } else {
+                    mlar_rust::arch::EndpointIndex::Expression(
+                        mlar_rust::AffineExpr::parse(selector.trim()).unwrap(),
+                    )
+                }
+            })
+            .collect(),
+    )
 }

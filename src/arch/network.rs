@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use super::axis::axis_points;
 use super::{Axis, MemoryEndpoint, Resource};
-use crate::math::{AffineMap, Expr};
+use crate::math::{AffineMap, Expr, Sym};
 
 /// A homogeneous family of directed physical links.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NetworkLink {
     pub name: String,
     pub map: AffineMap,
@@ -42,6 +43,7 @@ impl NetworkLink {
 
 /// Attachment between a network and an architectural memory selection.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NetworkInterface {
     pub name: String,
     pub endpoint: MemoryEndpoint,
@@ -74,9 +76,13 @@ impl NetworkInterface {
 
 /// Explicit indexed network topology retained alongside processor connections.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NetworkTopology {
     pub name: String,
     pub dimensions: Vec<Axis>,
+    /// Runtime parameters available to link and interface cost expressions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<Sym>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<NetworkLink>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -86,6 +92,7 @@ pub struct NetworkTopology {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NetworkEdge {
     pub link: String,
     pub source: Vec<u64>,
@@ -101,6 +108,7 @@ impl NetworkTopology {
         Self {
             name: name.into(),
             dimensions,
+            parameters: Vec::new(),
             links: Vec::new(),
             interfaces: Vec::new(),
             resources: Vec::new(),
@@ -109,6 +117,11 @@ impl NetworkTopology {
 
     pub fn with_link(mut self, link: NetworkLink) -> Self {
         self.links.push(link);
+        self
+    }
+
+    pub fn with_parameters(mut self, parameters: impl IntoIterator<Item = impl Into<Sym>>) -> Self {
+        self.parameters = parameters.into_iter().map(Into::into).collect();
         self
     }
 
@@ -237,7 +250,59 @@ impl NetworkTopology {
             .iter()
             .map(|dimension| (dimension.name.as_str(), dimension.extent))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let validate_expression = |owner: &str, expression: &Expr| -> Result<(), String> {
+            for symbol in expression.symbols() {
+                if !dimensions.contains_key(symbol.0.as_str()) && !self.parameters.contains(&symbol)
+                {
+                    return Err(format!(
+                        "network '{}' {owner} uses undeclared symbol '{}'",
+                        self.name, symbol.0
+                    ));
+                }
+            }
+            Ok(())
+        };
+        super::perf::validate_symbols(&self.parameters)?;
+        for parameter in &self.parameters {
+            if dimensions.contains_key(parameter.0.as_str()) {
+                return Err(format!(
+                    "network '{}' parameter '{}' conflicts with an axis",
+                    self.name, parameter.0
+                ));
+            }
+        }
+        for interface in &self.interfaces {
+            for variable in interface.endpoint.variables() {
+                if !dimensions.contains_key(variable.as_str()) {
+                    return Err(format!(
+                        "network '{}' interface '{}' uses undeclared axis '{variable}'",
+                        self.name, interface.name
+                    ));
+                }
+            }
+            for (field, expression) in [
+                ("injection bandwidth", &interface.injection_bandwidth),
+                ("ejection bandwidth", &interface.ejection_bandwidth),
+            ] {
+                if let Some(expression) = expression {
+                    validate_expression(
+                        &format!("interface '{}' {field}", interface.name),
+                        expression,
+                    )?;
+                }
+            }
+        }
         for link in &self.links {
+            AffineMap::new(
+                link.map.source_axes(),
+                link.map.target_axes(),
+                link.map.expressions().to_vec(),
+            )
+            .map_err(|error| format!("network '{}' link '{}': {error}", self.name, link.name))?;
+            validate_expression(&format!("link '{}' bandwidth", link.name), &link.bandwidth)?;
+            if let Some(latency) = &link.latency {
+                validate_expression(&format!("link '{}' latency", link.name), latency)?;
+            }
             if link.map.source_axes().len() != self.dimensions.len()
                 || link.map.target_axes().len() != self.dimensions.len()
                 || link.map.expressions().len() != self.dimensions.len()

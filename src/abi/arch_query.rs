@@ -78,6 +78,8 @@ name = "{name}"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+
 [dependencies]
 mlar-rust = {{ path = {mlar_path} }}
 serde_json = "1.0"

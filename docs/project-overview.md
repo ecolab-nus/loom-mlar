@@ -10,7 +10,7 @@ produce the artifacts they need.
 
 <ArchifyDiagram
   src="/diagrams/project-overview/"
-  title="MLAR project overview"
+  title="MLAR project overview (revision snapshot)"
   description="Follow one architecture model through Rust compilation, MLIR export, binary generation, and the Node-based visualization pipeline."
 />
 
@@ -20,9 +20,9 @@ The concrete, validated `Architecture` is the shared source model. It can
 describe:
 
 - reusable memory and processor definitions plus named indexed placements,
-- affine memory endpoints, aliases, resources, networks, and explicit scopes,
-- processor functionality parsed from compact Loom or full MLIR, and
-- symbolic performance scenarios built with Rust APIs or loaded from YAML.
+- flat memory axes, affine endpoints, resources, networks, and explicit scopes,
+- native processor MLIR (compact Loom is lowered in `syntax_sugar`), and
+- symbolic performance scenarios built with core Rust APIs or the core performance YAML loader.
 
 Functional descriptions and performance models have different jobs. The
 functional MLIR says what processor operations are available and how their

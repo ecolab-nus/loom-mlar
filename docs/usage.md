@@ -5,14 +5,14 @@ Start from the complete, copyable [architecture template](../TEMPLATE.md).
 Load a package with:
 
 ```rust
-let architecture = mlar_rust::archs::load_arch("path/to/package")?;
+let architecture = mlar_syntax_sugar::archs::load_arch("path/to/package")?;
 ```
 
 For symbolic hardware geometry, declare parameters in `chip.yaml` and bind
 them while loading:
 
 ```rust
-let architecture = mlar_rust::archs::load_arch_with_bindings(
+let architecture = mlar_syntax_sugar::archs::load_arch_with_bindings(
     "path/to/package",
     [("X", 8), ("Y", 8), ("BANKS", 16)],
 )?;
@@ -21,13 +21,51 @@ let architecture = mlar_rust::archs::load_arch_with_bindings(
 Axis-extent, memory-capacity, word-size, and bank-count expressions may reference
 those parameters. The resulting `Architecture` is concrete.
 
-Both loaders return the same concrete `Architecture` produced by
-`ArchitectureBuilder`. See [Architecture Semantics](architecture-concepts.md)
+Both optional frontend loaders return the same concrete core `Architecture`.
+Core `Architecture::builder` accepts explicit records and native processor MLIR;
+`mlar_syntax_sugar::ArchitectureBuilder` adds package loading and bracket syntax. See [Architecture Semantics](architecture-concepts.md)
 for memory technologies and linking rules.
+
+## Direct core input
+
+Use `Architecture::builder` with explicit `MemoryEndpoint::new` selectors and
+`ProcessorDefinition::from_mlir_source` for native MLIR and canonical models, or
+`from_mlir_source_with_perf_yaml` for native MLIR with performance YAML. Start with
+`examples/flat_native.rs`, or use the [core architecture examples](../examples/README.md)
+corresponding to all five syntax-sugar packages:
+
+```bash
+cargo run -p mlar-rust --example flat_native
+cargo run -p mlar-rust --example dual_noc_mesh
+cargo test -p mlar-rust --test 2d_mesh
+cargo test -p mlar-syntax-sugar --test example_architectures core_
+```
+
+The comparisons require identical canonical models, including native processor
+source and performance alternatives, and identical ADL exports where supported.
+`cache_hierarchy` prints canonical JSON because its partial L1 selections cannot
+export through ADL.
+
+Translate an optional package into canonical JSON:
+
+```bash
+cargo run -p mlar-syntax-sugar --bin translate -- path/to/package /tmp/core.json
+```
+
+Load it using core only:
+
+```rust
+let bytes = std::fs::read("/tmp/core.json")?;
+let architecture: mlar_rust::Architecture = serde_json::from_slice(&bytes)?;
+```
+
+Core deserialization validates the artifact. Native sources are embedded;
+visualization YAML is a rendering projection and cannot replace this artifact.
 
 ## Memory selection
 
-Placed memory arrays use one positional index group per hierarchy level:
+The optional frontend uses one positional index group per authored hierarchy level.
+Core stores one full-rank flat selector vector instead:
 
 - `L1[x, y]`: whole logical instance in a flat `[x, y]` array;
 - `L1[:, y]`: all x coordinates at y within that level;
@@ -44,10 +82,18 @@ replication. Out-of-range point mappings are dropped.
 
 ## Processors and performance
 
-One processor YAML references compact Loom source and embeds all function
-performance models. Each function maps directly to a non-empty list of flat
-`constraint`, `latency`, `volume`, and `throughput` alternatives; `constraint`
-is optional.
+Core examples pair native processor `.mlir` with `<processor>.perf.yaml`.
+The core `PerformanceYaml` loader constructs canonical symbolic models. Each
+function maps to a non-empty list of alternatives: either `latency`, `volume`,
+and `throughput`, or a single `expression`. `constraint` is optional for both.
+
+Syntax-sugar processor YAML references compact Loom or native MLIR source and
+embeds the same function mapping under `performance`.
+
+Performance symbols must come from buffer shapes or explicit function
+declarations such as `%bandwidth = loom.sym @bandwidth : index`.
+Unknown fields, duplicate declarations, unresolved references, and malformed
+expressions are errors. See [performance YAML](perf-yaml.md) for symbol scope.
 
 `type` is optional for runtime construction and schedule evaluation. ADL and
 visualization export require `type: compute` or `type: data_mover` because both
@@ -122,10 +168,11 @@ std::fs::write("architecture.visualization.yaml", visualization)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-ADL export lowers subtree selections to nested memory-array handles and projects
-away pointwise affine relations and explicit bank selectors. Slices without a
-whole-level handle, such as `L1[:, y]` or `L2[:][core]`, return
-`AdlExportError::UnsupportedMemorySelection`.
+ADL emits flat multidimensional memory arrays. Whole-array and fully indexed
+routes are supported, with existing projections of affine relations and bank
+selectors. Partial rows/columns, including `L2[cluster]` after hierarchy lowering,
+return `AdlExportError::UnsupportedMemorySelection`. The cache-hierarchy example
+loads/evaluates but cannot export these slices with the current dialect.
 
 Visualization export projects placed memories, processor arrays, resources,
 networks, scopes, and their relationships into `mlar.visualization.v1` YAML.

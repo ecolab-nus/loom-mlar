@@ -13,6 +13,7 @@ use super::{comma_sep, ssa_ref, symbol_ref};
 
 /// Relationship extracted from `loom.bind_shape` in an MLIR function body.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirTensorSymbolBinding {
     /// Tensor SSA argument name, without `%`.
     pub tensor: String,
@@ -22,6 +23,7 @@ pub struct MlirTensorSymbolBinding {
 
 /// Relationship extracted from `loom.bind_shape` for memref operands.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirMemrefSymbolBinding {
     /// Memref SSA argument name, without `%`.
     pub memref: String,
@@ -32,6 +34,7 @@ pub struct MlirMemrefSymbolBinding {
 /// Relationship extracted from `loom.bind_mem` — associates a memref argument
 /// with a named memory region.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirMemRegionBinding {
     /// Memref SSA argument name, without `%`.
     pub memref: String,
@@ -44,6 +47,7 @@ pub struct MlirMemRegionBinding {
 /// Syntax:
 /// `loom.copy %src, %dst src_mem_space @SrcRegion[:kind] dst_mem_space @DstRegion[:kind], area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirCopyOp {
     /// Source memref SSA name, without `%`.
     pub src: String,
@@ -93,6 +97,7 @@ impl MlirCopyOp {
 /// Syntax:
 /// `loom.gather %src, %dst src_mem_space @SrcRegion dst_mem_space @DstRegion area: [d0, @sym, ...] : type to type`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MlirGatherOp {
     /// Source memref SSA name, without `%`.
     pub src: String,

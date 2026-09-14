@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Explicit ownership level in the otherwise flat canonical architecture.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Scope {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

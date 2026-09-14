@@ -1,0 +1,35 @@
+func @dram_to_l1_S_f16(
+  in dram_src: f16[M, N],
+  out l1_dst: f16[M, N]
+) {
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
+  loom.copy %dram_src to %l1_dst
+}
+
+func @dram_to_l1_S_bcst(
+  in dram_src: f16[M, N],
+  out l1_dst: f16[M, N]
+) {
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
+  %bcst_x = loom.sym @bcst_x : index
+  %bcst_y = loom.sym @bcst_y : index
+  loom.broadcast %dram_src to %l1_dst extent: [bcst_x, bcst_y]
+}
+
+func @dram_to_l1_R_f16(
+  in dram_src: f16[M, N],
+  out l1_dst: f16[M, N]
+) {
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
+  loom.copy %dram_src to %l1_dst dst_space: 1
+}
+
+func @dram_to_l1_R_bcst(
+  in dram_src: f16[M, N],
+  out l1_dst: f16[M, N]
+) {
+  %effective_bandwidth = loom.sym @effective_bandwidth : index
+  %bcst_x = loom.sym @bcst_x : index
+  %bcst_y = loom.sym @bcst_y : index
+  loom.broadcast %dram_src to %l1_dst dst_space: 1 extent: [bcst_x, bcst_y]
+}

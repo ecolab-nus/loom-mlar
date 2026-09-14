@@ -14,6 +14,7 @@ use super::parse::ParseError;
 /// let c: ConstraintExpr = "(M >= 256 || N >= 256) && divisible(K, 16)".parse().unwrap();
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum ConstraintExpr {
     /// Always true
     True,

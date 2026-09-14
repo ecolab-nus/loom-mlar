@@ -1,6 +1,5 @@
 pub mod abi;
 pub mod arch;
-pub mod archs;
 pub mod math;
 pub mod mlir;
 pub mod schedule;
@@ -8,20 +7,19 @@ pub mod visualization;
 
 pub use abi::{arch_query, evaluator};
 
-// Common architecture authoring surface. Derived/query and loader-specific
-// types remain under `arch`.
+// Common core model surface. Derived/query types remain under `arch`.
 pub use arch::{
     AdlExportError, Architecture, ArchitectureBuilder, ArchitectureError, Axis, Banking,
-    Connection, FuncPerfModel, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
-    NetworkInterface, NetworkLink, NetworkTopology, OperationModel, PerfScenario,
-    ProcessorDefinition, ProcessorSelector, ProcessorSourceFormat, ProcessorType,
-    ResolvedEndpointIndex, Resource, Scope, TimeCost, architecture_to_mlir,
-    architecture_to_mlir_unchecked, mlir_validators_available,
+    Connection, EndpointIndex, FuncPerfModel, MemoryArray, MemoryDefinition, MemoryEndpoint,
+    MemoryLocation, MemoryTechnology, NetworkInterface, NetworkLink, NetworkTopology,
+    OperationModel, PerfScenario, PerfYamlError, PerformanceYaml, ProcessorDefinition,
+    ProcessorSelector, ProcessorType, ResolvedEndpointIndex, Resource, Scope, TimeCost,
+    architecture_to_mlir, architecture_to_mlir_unchecked, mlir_validators_available,
 };
 
 // Re-export commonly used math types
 pub use math::{AffineError, AffineExpr, AffineMap, ConstraintExpr, Expr, ParseError, Sym};
-pub use mlir::{LoomParseError, MlirFunc, MlirModule, parse_loom_source};
+pub use mlir::{MlirFunc, MlirModule};
 pub use schedule::{ProcessorTarget, Schedule, SymbolicMapping, evaluate};
 
 pub use visualization::document::{

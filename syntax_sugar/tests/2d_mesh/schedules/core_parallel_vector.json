@@ -1,0 +1,34 @@
+{
+  "Parallel": {
+    "schedules": [
+      {
+        "Func": {
+          "func": {
+            "name": "vec_add_f16",
+            "symbols": ["L"],
+            "op_label": "example.parallel.vector.add",
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      },
+      {
+        "Func": {
+          "func": {
+            "name": "vec_exp_f16",
+            "symbols": ["L"],
+            "op_label": "example.parallel.vector.exp",
+            "sym_map": {
+              "entries": [
+                ["L", { "Mul": [{ "Sym": "BM" }, { "Sym": "BN" }] }]
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -25,6 +25,7 @@ pub struct Sym(pub String);
 /// let e: Expr = "min(M, 1024) + N".parse().unwrap();
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Expr {
     Const(Const),
     Sym(Sym),
