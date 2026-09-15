@@ -5,14 +5,14 @@ Start from the complete, copyable [architecture template](../TEMPLATE.md).
 Load a package with:
 
 ```rust
-let architecture = mlar_syntax_sugar::archs::load_arch("path/to/package")?;
+let architecture = mlar_frontend::archs::load_arch("path/to/package")?;
 ```
 
 For symbolic hardware geometry, declare parameters in `chip.yaml` and bind
 them while loading:
 
 ```rust
-let architecture = mlar_syntax_sugar::archs::load_arch_with_bindings(
+let architecture = mlar_frontend::archs::load_arch_with_bindings(
     "path/to/package",
     [("X", 8), ("Y", 8), ("BANKS", 16)],
 )?;
@@ -23,7 +23,7 @@ those parameters. The resulting `Architecture` is concrete.
 
 Both optional frontend loaders return the same concrete core `Architecture`.
 Core `Architecture::builder` accepts explicit records and native processor MLIR;
-`mlar_syntax_sugar::ArchitectureBuilder` adds package loading and bracket syntax. See [Architecture Semantics](architecture-concepts.md)
+`mlar_frontend::ArchitectureBuilder` adds package loading and bracket syntax. See [Architecture Semantics](architecture-concepts.md)
 for memory technologies and linking rules.
 
 ## Direct core input
@@ -32,13 +32,13 @@ Use `Architecture::builder` with explicit `MemoryEndpoint::new` selectors and
 `ProcessorDefinition::from_mlir_source` for native MLIR and canonical models, or
 `from_mlir_source_with_perf_yaml` for native MLIR with performance YAML. Start with
 `examples/flat_native.rs`, or use the [core architecture examples](../examples/README.md)
-corresponding to all five syntax-sugar packages:
+corresponding to all five frontend packages:
 
 ```bash
 cargo run -p mlar-rust --example flat_native
 cargo run -p mlar-rust --example dual_noc_mesh
 cargo test -p mlar-rust --test 2d_mesh
-cargo test -p mlar-syntax-sugar --test example_architectures core_
+cargo test -p mlar-frontend --test example_architectures core_
 ```
 
 The comparisons require identical canonical models, including native processor
@@ -49,7 +49,7 @@ export through ADL.
 Translate an optional package into canonical JSON:
 
 ```bash
-cargo run -p mlar-syntax-sugar --bin translate -- path/to/package /tmp/core.json
+cargo run -p mlar-frontend --bin translate -- path/to/package /tmp/core.json
 ```
 
 Load it using core only:
@@ -87,7 +87,7 @@ The core `PerformanceYaml` loader constructs canonical symbolic models. Each
 function maps to a non-empty list of alternatives: either `latency`, `volume`,
 and `throughput`, or a single `expression`. `constraint` is optional for both.
 
-Syntax-sugar processor YAML references compact Loom or native MLIR source and
+Frontend processor YAML references compact Loom or native MLIR source and
 embeds the same function mapping under `performance`.
 
 Performance symbols must come from buffer shapes or explicit function

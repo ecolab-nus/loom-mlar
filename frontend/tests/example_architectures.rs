@@ -1,6 +1,6 @@
-use mlar_syntax_sugar::Connection;
-use mlar_syntax_sugar::ProcessorDefinition;
-use mlar_syntax_sugar::selection::MemoryEndpoint;
+use mlar_frontend::Connection;
+use mlar_frontend::ProcessorDefinition;
+use mlar_frontend::selection::MemoryEndpoint;
 use std::path::{Path, PathBuf};
 
 use mlar_rust::arch::EndpointIndex;
@@ -59,7 +59,7 @@ fn all_architecture_examples_load_and_export() {
         "dual-noc-mesh",
         "shared-link-mesh",
     ] {
-        let architecture = mlar_syntax_sugar::archs::load_arch(example_dir(name))
+        let architecture = mlar_frontend::archs::load_arch(example_dir(name))
             .unwrap_or_else(|error| panic!("example '{name}' should load: {error}"));
         if LOWERABLE.contains(&name) {
             let mlir = architecture_to_mlir(&architecture)
@@ -87,7 +87,7 @@ fn all_architecture_examples_load_and_export() {
 
 #[test]
 fn hierarchy_normalizes_to_flat_memory_and_reports_unsupported_adl_slice() {
-    let architecture = mlar_syntax_sugar::load_arch(example_dir("cache-hierarchy")).unwrap();
+    let architecture = mlar_frontend::load_arch(example_dir("cache-hierarchy")).unwrap();
     assert_eq!(architecture.memory("L1").unwrap().rank(), 2);
     assert!(matches!(
         architecture_to_mlir(&architecture),
@@ -98,7 +98,7 @@ fn hierarchy_normalizes_to_flat_memory_and_reports_unsupported_adl_slice() {
 // Sibling memories cannot share the dialect's single region slot.
 #[test]
 fn sibling_memories_on_one_domain_still_exceed_a_single_scale() {
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("siblings")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("siblings")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("sram", 1024, 16))
         .memory_definition(MemoryDefinition::new("rram", 1024, 16))
@@ -144,36 +144,36 @@ fn imperative_examples_match_their_declarative_packages() {
 }
 
 #[test]
-fn core_single_core_matches_syntax_sugar() {
+fn core_single_core_matches_frontend() {
     assert_core_matches("single-core", core_single_core::build().unwrap());
 }
 
 #[test]
-fn core_cache_hierarchy_matches_syntax_sugar() {
+fn core_cache_hierarchy_matches_frontend() {
     assert_core_matches("cache-hierarchy", core_cache_hierarchy::build().unwrap());
 }
 
 #[test]
-fn core_mesh_torus_matches_syntax_sugar() {
+fn core_mesh_torus_matches_frontend() {
     assert_core_matches("mesh-torus", core_mesh_torus::build().unwrap());
 }
 
 #[test]
-fn core_dual_noc_mesh_matches_syntax_sugar() {
+fn core_dual_noc_mesh_matches_frontend() {
     assert_core_matches("dual-noc-mesh", core_dual_noc_mesh::build().unwrap());
 }
 
 #[test]
-fn core_shared_link_mesh_matches_syntax_sugar() {
+fn core_shared_link_mesh_matches_frontend() {
     assert_core_matches("shared-link-mesh", core_shared_link_mesh::build().unwrap());
 }
 
 fn assert_core_matches(name: &str, core: Architecture) {
-    let lowered = mlar_syntax_sugar::load_arch(example_dir(name)).unwrap();
+    let lowered = mlar_frontend::load_arch(example_dir(name)).unwrap();
     assert_eq!(
         serde_json::to_value(&core).unwrap(),
         serde_json::to_value(&lowered).unwrap(),
-        "{name}: core construction differs from syntax-sugar lowering"
+        "{name}: core construction differs from frontend lowering"
     );
     if LOWERABLE.contains(&name) {
         assert_eq!(
@@ -197,7 +197,7 @@ fn assert_core_matches(name: &str, core: Architecture) {
 // Named placements may share one definition.
 #[test]
 fn one_definition_can_back_several_named_placements() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(example_dir("shared-link-mesh"))
+    let architecture = mlar_frontend::archs::load_arch(example_dir("shared-link-mesh"))
         .expect("shared-link-mesh should load");
 
     let links = architecture
@@ -219,7 +219,7 @@ fn one_definition_can_back_several_named_placements() {
 }
 
 fn assert_imperative_matches(name: &str, imperative: Architecture) {
-    let declarative = mlar_syntax_sugar::archs::load_arch(example_dir(name))
+    let declarative = mlar_frontend::archs::load_arch(example_dir(name))
         .unwrap_or_else(|error| panic!("declarative example '{name}' should load: {error}"));
     assert_eq!(
         serde_json::to_value(&declarative).unwrap(),
@@ -237,7 +237,7 @@ fn assert_imperative_matches(name: &str, imperative: Architecture) {
 
 #[test]
 fn examples_use_the_canonical_model() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(example_dir("dual-noc-mesh"))
+    let architecture = mlar_frontend::archs::load_arch(example_dir("dual-noc-mesh"))
         .expect("dual-NoC example should load");
     assert!(!architecture.memories().is_empty());
     assert!(!architecture.processor_definitions().is_empty());
@@ -252,7 +252,7 @@ fn examples_use_the_canonical_model() {
 
 #[test]
 fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(example_dir("dual-noc-mesh"))
+    let architecture = mlar_frontend::archs::load_arch(example_dir("dual-noc-mesh"))
         .expect("dual-NoC example should load");
     let noc_processors = architecture
         .processors()
@@ -295,7 +295,7 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
 
 #[test]
 fn mesh_torus_retains_queryable_wraparound_links() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(example_dir("mesh-torus"))
+    let architecture = mlar_frontend::archs::load_arch(example_dir("mesh-torus"))
         .expect("mesh-torus example should load");
     let torus = architecture
         .networks()
@@ -374,7 +374,7 @@ fn examples_match_pre_redesign_adl_contracts() {
     ];
 
     for (name, banks, functions, processors, scales, arrays) in contracts {
-        let architecture = mlar_syntax_sugar::archs::load_arch(example_dir(name)).unwrap();
+        let architecture = mlar_frontend::archs::load_arch(example_dir(name)).unwrap();
         let mlir = architecture_to_mlir(&architecture).unwrap();
         for bank in banks {
             assert!(
@@ -394,7 +394,7 @@ fn examples_match_pre_redesign_adl_contracts() {
     }
 
     let dual = architecture_to_mlir(
-        &mlar_syntax_sugar::archs::load_arch(example_dir("dual-noc-mesh")).unwrap(),
+        &mlar_frontend::archs::load_arch(example_dir("dual-noc-mesh")).unwrap(),
     )
     .unwrap();
     let noc0_load = processor_line(&dual, "@proc_dram_l1_noc0");
@@ -404,10 +404,9 @@ fn examples_match_pre_redesign_adl_contracts() {
     assert!(dual.contains("dst_mem_space @mem_L1 : 1"));
     assert!(dual.contains("loom.gather"));
 
-    let mesh = architecture_to_mlir(
-        &mlar_syntax_sugar::archs::load_arch(example_dir("mesh-torus")).unwrap(),
-    )
-    .unwrap();
+    let mesh =
+        architecture_to_mlir(&mlar_frontend::archs::load_arch(example_dir("mesh-torus")).unwrap())
+            .unwrap();
     assert!(mesh.contains("area: [%bcst_x, %bcst_y]"));
 }
 

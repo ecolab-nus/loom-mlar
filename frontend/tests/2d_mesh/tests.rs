@@ -1,4 +1,4 @@
-use mlar_syntax_sugar::Connection;
+use mlar_frontend::Connection;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
@@ -18,7 +18,7 @@ fn processor_dir() -> std::path::PathBuf {
 }
 
 fn load() -> mlar_rust::Architecture {
-    mlar_syntax_sugar::archs::load_arch(processor_dir())
+    mlar_frontend::archs::load_arch(processor_dir())
         .expect("redesigned 2D mesh package should load")
 }
 
@@ -54,7 +54,7 @@ fn node_scenarios(schedule: &Schedule) -> &[PerfScenario] {
 }
 
 fn build_imperative() -> Architecture {
-    mlar_syntax_sugar::ArchitectureBuilder::new("system")
+    mlar_frontend::ArchitectureBuilder::new("system")
         .axis("dram_channel", 8)
         .axis("x", 8)
         .axis("y", 8)

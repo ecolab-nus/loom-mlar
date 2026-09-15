@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("usage: cargo run --example inspect_arch -- <architecture-dir>".into());
     }
 
-    let arch = mlar_syntax_sugar::archs::load_arch(&dir)?;
+    let arch = mlar_frontend::archs::load_arch(&dir)?;
     print_scope(&arch, 0);
 
     let mlir = architecture_to_mlir(&arch)?;

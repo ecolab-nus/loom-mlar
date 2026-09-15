@@ -10,6 +10,6 @@ fn run() -> Result<(), String> {
     if args.len() != 2 {
         return Err("usage: translate <package-dir> <core.json>".into());
     }
-    let architecture = mlar_syntax_sugar::load_arch(&args[0]).map_err(|error| error.to_string())?;
-    mlar_syntax_sugar::write_artifact(&architecture, &args[1])
+    let architecture = mlar_frontend::load_arch(&args[0]).map_err(|error| error.to_string())?;
+    mlar_frontend::write_artifact(&architecture, &args[1])
 }

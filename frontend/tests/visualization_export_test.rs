@@ -5,7 +5,7 @@ use mlar_rust::*;
 
 #[test]
 fn export_2d_mesh_visualization_yaml() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(
+    let architecture = mlar_frontend::archs::load_arch(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/processors"),
     )
     .expect("redesigned 2D mesh package should load");

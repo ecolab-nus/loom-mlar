@@ -28,7 +28,7 @@ Their Cartesian product selects memory leaves at each processor placement point.
 Bank selectors apply independently to each selected leaf. Resolved locations
 retain `All` or numeric indices without expanding the selected leaves.
 
-In `syntax_sugar`, `[x, y]` is one flat level and `[cluster, [core]]` groups
+In `mlar-frontend`, `[x, y]` is one flat level and `[cluster, [core]]` groups
 hierarchical brackets. `M[:][k]` lowers to `[All, Expr(k)]` and `M[c]` to
 `[Expr(c), All]`; no brackets lowers to all `All`. Missing coordinates inside a
 level are errors; omitted trailing levels expand to `All`. Grouping changes

@@ -1,12 +1,12 @@
 # Imperative Architecture Examples
 
 These build the [declarative examples](../declarative) with
-`mlar_syntax_sugar::ArchitectureBuilder`, reusing their processor YAML/Loom files:
+`mlar_frontend::ArchitectureBuilder`, reusing their processor YAML/Loom files:
 
 ```bash
-cargo run -p mlar-syntax-sugar --example imperative_dual_noc_mesh
-cargo run -p mlar-syntax-sugar --example imperative_cache_hierarchy
-cargo run -p mlar-syntax-sugar --example imperative_shared_link_mesh
+cargo run -p mlar-frontend --example imperative_dual_noc_mesh
+cargo run -p mlar-frontend --example imperative_cache_hierarchy
+cargo run -p mlar-frontend --example imperative_shared_link_mesh
 ```
 
 Integration tests compare each result and export with its declarative

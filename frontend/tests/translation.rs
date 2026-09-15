@@ -1,5 +1,5 @@
+use mlar_frontend::{ArchitectureBuilder, Connection, ProcessorDefinition, parse_loom_source};
 use mlar_rust::{FuncPerfModel, MemoryDefinition, OperationModel};
-use mlar_syntax_sugar::{ArchitectureBuilder, Connection, ProcessorDefinition, parse_loom_source};
 
 fn definition(source: &str) -> ProcessorDefinition {
     let module = parse_loom_source(source).unwrap();
@@ -137,7 +137,7 @@ fn differing_selected_extents_specialize_bodies_but_identical_contexts_reuse() {
     );
     assert!(column.source().contains("area: [3]"), "{}", column.source());
     let path = std::env::temp_dir().join(format!("mlar-artifact-{}.json", std::process::id()));
-    mlar_syntax_sugar::write_artifact(&architecture, &path).unwrap();
+    mlar_frontend::write_artifact(&architecture, &path).unwrap();
     let decoded: mlar_rust::Architecture =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(path).unwrap();

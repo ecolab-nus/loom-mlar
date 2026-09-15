@@ -1,14 +1,14 @@
-use mlar_syntax_sugar::Connection;
-use mlar_syntax_sugar::ProcessorDefinition;
-use mlar_syntax_sugar::selection::MemoryEndpoint;
+use mlar_frontend::Connection;
+use mlar_frontend::ProcessorDefinition;
+use mlar_frontend::selection::MemoryEndpoint;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use mlar_frontend::{ChipYaml, PerformanceYaml, ProcessorYaml};
 use mlar_rust::{
     AffineExpr, AffineMap, Architecture, Axis, Expr, FuncPerfModel, MemoryDefinition, MlirFunc,
     NetworkInterface, NetworkLink, NetworkTopology, OperationModel, Sym,
 };
-use mlar_syntax_sugar::{ChipYaml, PerformanceYaml, ProcessorYaml};
 
 struct Package(PathBuf);
 impl Package {
@@ -52,7 +52,7 @@ fn nested_authoring_objects_reject_unknown_fields() {
         "name: test\nmemories: {L1: null}\n",
         "memories:\n  L1:\n    capacity: 1024\n    word_size: 16\n    banking: {banks: 2, interleaving: 64}\n",
     );
-    assert!(mlar_syntax_sugar::archs::load_arch(&package.0).is_err());
+    assert!(mlar_frontend::archs::load_arch(&package.0).is_err());
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn network() -> NetworkTopology {
 #[test]
 fn network_symbols_and_interface_axes_are_checked() {
     let builder = || {
-        mlar_syntax_sugar::ArchitectureBuilder::new("network")
+        mlar_frontend::ArchitectureBuilder::new("network")
             .axis("x", 2)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
             .place_memory("L1", ["x"])
@@ -177,7 +177,7 @@ fn network_symbols_and_interface_axes_are_checked() {
 
 #[test]
 fn canonical_objects_reject_unknown_fields_and_invalid_affine_nodes() {
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("canonical")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("canonical")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
@@ -235,7 +235,7 @@ fn malformed_expressions_unknown_references_and_bad_groups_fail() {
     .unwrap();
     assert!(spec.model_for_func(&function).is_err());
     for endpoint in ["Missing[x]", "L1[xx]", "L1[x, x]", "L1[x][x]"] {
-        let result = mlar_syntax_sugar::ArchitectureBuilder::new("bad")
+        let result = mlar_frontend::ArchitectureBuilder::new("bad")
             .axis("x", 2)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
             .place_memory("L1", ["x"])

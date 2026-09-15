@@ -14,8 +14,8 @@ Inspect packages or export supported selections. `cache-hierarchy` loads and
 evaluates, but its partial L1 selections cannot export through current ADL:
 
 ```bash
-cargo run -p mlar-syntax-sugar --example inspect_arch -- syntax_sugar/examples/declarative/mesh-torus
-cargo run -p mlar-syntax-sugar --bin export_platform -- syntax_sugar/examples/declarative/mesh-torus
+cargo run -p mlar-frontend --example inspect_arch -- frontend/examples/declarative/mesh-torus
+cargo run -p mlar-frontend --bin export_platform -- frontend/examples/declarative/mesh-torus
 ```
 
 Equivalent Rust constructions live in [../imperative](../imperative).

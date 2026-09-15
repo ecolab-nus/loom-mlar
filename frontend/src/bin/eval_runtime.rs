@@ -4,7 +4,7 @@
 fn main() {
     let default_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/2d_mesh/processors");
     let dir = std::env::var("LOOM_ARCH_DIR").unwrap_or_else(|_| default_dir.to_string());
-    let arch = match mlar_syntax_sugar::archs::load_arch(&dir) {
+    let arch = match mlar_frontend::archs::load_arch(&dir) {
         Ok(arch) => arch,
         Err(error) => {
             eprintln!("{error}");

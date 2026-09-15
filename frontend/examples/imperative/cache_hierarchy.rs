@@ -1,4 +1,4 @@
-use mlar_syntax_sugar::Connection;
+use mlar_frontend::Connection;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +13,7 @@ fn architecture_dir(name: &str) -> PathBuf {
 }
 
 pub fn build() -> ExampleResult<Architecture> {
-    Ok(mlar_syntax_sugar::ArchitectureBuilder::new("cache_system")
+    Ok(mlar_frontend::ArchitectureBuilder::new("cache_system")
         .axis("cluster", 2)
         .axis("core", 4)
         .axis("dram_channel", 2)

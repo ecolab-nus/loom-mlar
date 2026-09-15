@@ -3,10 +3,10 @@
 `mlar-rust::PerformanceYaml` parses this format using the core `Expr` and
 `ConstraintExpr` parsers. It constructs canonical `FuncPerfModel` records without
 evaluating costs. Core examples pair `<processor>.mlir` with
-`<processor>.perf.yaml`; the optional syntax-sugar frontend uses the same loader.
+`<processor>.perf.yaml`; the optional frontend uses the same loader.
 
 Standalone performance files are keyed directly by MLIR function name. Each
-value is a non-empty list of alternatives. Syntax-sugar processor YAML embeds
+value is a non-empty list of alternatives. Frontend processor YAML embeds
 the same mapping under `performance`:
 
 ```yaml

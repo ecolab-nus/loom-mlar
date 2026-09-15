@@ -11,5 +11,9 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 
 [workspace]
-members = ["syntax_sugar"]
+members = ["frontend"]
 resolver = "3"
+
+[[test]]
+name = "2d_mesh"
+path = "tests/2d_mesh/main.rs"

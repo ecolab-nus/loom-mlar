@@ -1,14 +1,14 @@
+use mlar_frontend::Connection;
+use mlar_frontend::ProcessorDefinition;
+use mlar_frontend::selection::MemoryEndpoint;
 use mlar_rust::arch::{ArchitectureError, EndpointIndex};
 use mlar_rust::{
     AdlExportError, Architecture, MemoryDefinition, NetworkInterface, NetworkTopology,
     ProcessorType, ResolvedEndpointIndex, architecture_to_mlir_unchecked,
 };
-use mlar_syntax_sugar::Connection;
-use mlar_syntax_sugar::ProcessorDefinition;
-use mlar_syntax_sugar::selection::MemoryEndpoint;
 
 fn architecture(endpoints: &[&str]) -> Result<Architecture, ArchitectureError> {
-    mlar_syntax_sugar::ArchitectureBuilder::new("hierarchical")
+    mlar_frontend::ArchitectureBuilder::new("hierarchical")
         .axis("x", 2)
         .axis("y", 3)
         .axis("core", 4)
@@ -204,7 +204,7 @@ fn hierarchical_endpoints_round_trip_and_revalidate() {
 #[test]
 fn network_interfaces_use_the_same_hierarchical_validation() {
     let builder = |endpoint| {
-        mlar_syntax_sugar::ArchitectureBuilder::new("network")
+        mlar_frontend::ArchitectureBuilder::new("network")
             .axis("x", 2)
             .axis("core", 4)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))

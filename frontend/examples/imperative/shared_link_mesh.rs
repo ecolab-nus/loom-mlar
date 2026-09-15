@@ -1,4 +1,4 @@
-use mlar_syntax_sugar::Connection;
+use mlar_frontend::Connection;
 // One definition placed under four names with `connect_as`.
 
 use std::error::Error;
@@ -15,7 +15,7 @@ fn architecture_dir(name: &str) -> PathBuf {
 }
 
 pub fn build() -> ExampleResult<Architecture> {
-    Ok(mlar_syntax_sugar::ArchitectureBuilder::new("link_system")
+    Ok(mlar_frontend::ArchitectureBuilder::new("link_system")
         .axis("x", 4)
         .axis("y", 4)
         .memory_definition(MemoryDefinition::new("L1", 262_144, 64).with_banking(8))

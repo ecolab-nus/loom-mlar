@@ -1,4 +1,4 @@
-use mlar_syntax_sugar::ChipYaml;
+use mlar_frontend::ChipYaml;
 use std::path::Path;
 #[test]
 fn declarative_package_supports_parameters_networks_and_scopes() {

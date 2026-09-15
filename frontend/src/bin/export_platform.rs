@@ -21,7 +21,7 @@ fn run() -> Result<(), String> {
         return Err("usage: export_platform <arch-dir> [output.mlir]".to_string());
     }
 
-    let arch = mlar_syntax_sugar::archs::load_arch(&dir).map_err(|error| error.to_string())?;
+    let arch = mlar_frontend::archs::load_arch(&dir).map_err(|error| error.to_string())?;
     let mlir = mlar_rust::architecture_to_mlir(&arch).map_err(|error| error.to_string())?;
     // No route-syntax lowering: mlar's `from %src to %dst` is what loom-dataflow's
     // ADLDialect processor parser now expects (see lib/adl-dialect/IR/ADLDialect.cpp).

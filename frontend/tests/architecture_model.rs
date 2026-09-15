@@ -1,15 +1,15 @@
-use mlar_syntax_sugar::Connection;
-use mlar_syntax_sugar::ProcessorDefinition;
-use mlar_syntax_sugar::parse_loom_source;
-use mlar_syntax_sugar::selection::MemoryEndpoint;
+use mlar_frontend::Connection;
+use mlar_frontend::ProcessorDefinition;
+use mlar_frontend::parse_loom_source;
+use mlar_frontend::selection::MemoryEndpoint;
 use std::path::Path;
 
+use mlar_frontend::{ChipYaml, ProcessorYaml};
 use mlar_rust::arch::{EndpointIndex, ProcessorSelectionError};
 use mlar_rust::{
     AdlExportError, Architecture, Axis, Banking, MemoryDefinition, MemoryTechnology,
     ProcessorSelector, ProcessorType, ResolvedEndpointIndex, architecture_to_mlir,
 };
-use mlar_syntax_sugar::{ChipYaml, ProcessorYaml};
 
 #[test]
 fn chip_yaml_uses_named_processor_placements() {
@@ -51,7 +51,7 @@ fn fixture_dir() -> std::path::PathBuf {
 #[test]
 fn operand_memory_requirements_bind_distinct_connected_technologies() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typed-memory");
-    let architecture = mlar_syntax_sugar::archs::load_arch(&dir).expect("typed-memory fixture");
+    let architecture = mlar_frontend::archs::load_arch(&dir).expect("typed-memory fixture");
     assert_eq!(
         architecture
             .memory_definition(architecture.memory("L1_gcram").unwrap())
@@ -75,7 +75,7 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
     let definition = ProcessorYaml::from_file(dir.join("mixed_lane.yaml"))
         .and_then(|yaml| yaml.build_definition(dir.join("mixed_lane.yaml")))
         .unwrap();
-    let ambiguous = mlar_syntax_sugar::ArchitectureBuilder::new("ambiguous")
+    let ambiguous = mlar_frontend::ArchitectureBuilder::new("ambiguous")
         .memory_definition(
             MemoryDefinition::new("cache_a", 1024, 16)
                 .with_technology(MemoryTechnology::new("gcram", 0)),
@@ -109,7 +109,7 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
 #[test]
 fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
     let dir = fixture_dir();
-    let descriptive = mlar_syntax_sugar::archs::load_arch(&dir).expect("fixture should load");
+    let descriptive = mlar_frontend::archs::load_arch(&dir).expect("fixture should load");
     let matrix = ProcessorYaml::from_file(dir.join("matrix_lane.yaml"))
         .and_then(|yaml| yaml.build_definition(dir.join("matrix_lane.yaml")))
         .expect("matrix definition");
@@ -135,7 +135,7 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
                 .collect(),
         )
     };
-    let imperative = mlar_syntax_sugar::ArchitectureBuilder::new("mesh_system")
+    let imperative = mlar_frontend::ArchitectureBuilder::new("mesh_system")
         .axis("channel", 2)
         .axis("lx", 2)
         .axis("ly", 2)
@@ -214,7 +214,7 @@ fn non_modular_out_of_bounds_points_are_dropped() {
     let dma = ProcessorYaml::from_file(dir.join("dma.yaml"))
         .and_then(|yaml| yaml.build_definition(dir.join("dma.yaml")))
         .expect("DMA definition");
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("drop_test")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("drop_test")
         .axis("x", 4)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
@@ -252,7 +252,7 @@ fn non_modular_out_of_bounds_points_are_dropped() {
 fn processor_array_selection_is_uniform_for_all_subset_and_point_queries() {
     use ProcessorSelector::{All, Index};
 
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir()).unwrap();
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
     let lanes = architecture.processor_array("matrix_lane").unwrap();
 
     let all = lanes.select(&architecture, [All, All]).unwrap();
@@ -295,7 +295,7 @@ fn processor_array_selection_is_uniform_for_all_subset_and_point_queries() {
 
 #[test]
 fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir()).unwrap();
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
 
     assert_eq!(
         architecture
@@ -315,7 +315,7 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
     assert_eq!(points[4], [1, 0]);
     assert_eq!(points.last().unwrap(), &[3, 3]);
 
-    let shared = mlar_syntax_sugar::ArchitectureBuilder::new("shared_definition")
+    let shared = mlar_frontend::ArchitectureBuilder::new("shared_definition")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 4096, 64))
         .place_memory_as("l1_a", "L1", ["x"])
@@ -331,7 +331,7 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
     );
     assert_eq!(shared.memories_of("l1_a").count(), 0);
 
-    let scalar = mlar_syntax_sugar::ArchitectureBuilder::new("scalar")
+    let scalar = mlar_frontend::ArchitectureBuilder::new("scalar")
         .memory_definition(MemoryDefinition::new("regs", 256, 4))
         .place_memory("regs", Vec::<String>::new())
         .build()
@@ -367,7 +367,7 @@ fn memory_and_endpoint_validation_is_strict() {
         .is_err()
     );
 
-    let error = mlar_syntax_sugar::ArchitectureBuilder::new("arity")
+    let error = mlar_frontend::ArchitectureBuilder::new("arity")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
@@ -410,7 +410,7 @@ func @add(
 
 #[test]
 fn incompatible_type_hints_fail_the_whole_export() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir())
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir())
         .unwrap()
         .with_processor_type("dma", Some(ProcessorType::Compute))
         .unwrap();
@@ -419,7 +419,7 @@ fn incompatible_type_hints_fail_the_whole_export() {
         Err(AdlExportError::ComputeContainsMovement { .. })
     ));
 
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir())
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir())
         .unwrap()
         .with_processor_type("matrix_lane", Some(ProcessorType::DataMover))
         .unwrap();
@@ -431,7 +431,7 @@ fn incompatible_type_hints_fail_the_whole_export() {
 
 #[test]
 fn canonical_architecture_json_round_trips_for_abi_use() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir()).unwrap();
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
     let json = serde_json::to_string(&architecture).unwrap();
     let decoded: Architecture = serde_json::from_str(&json).unwrap();
     assert_eq!(
@@ -442,7 +442,7 @@ fn canonical_architecture_json_round_trips_for_abi_use() {
 
 #[test]
 fn canonical_architecture_json_omits_instances_and_rejects_inconsistent_axes() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir()).unwrap();
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
     let mut json = serde_json::to_value(&architecture).unwrap();
     assert!(json["processors"][0].get("instances").is_none());
     json["processors"][0]["axes"] = serde_json::json!([]);
@@ -456,7 +456,7 @@ fn canonical_architecture_json_omits_instances_and_rejects_inconsistent_axes() {
 
 #[test]
 fn canonical_architecture_rejects_processor_source_model_drift() {
-    let architecture = mlar_syntax_sugar::archs::load_arch(fixture_dir()).unwrap();
+    let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
     let mut json = serde_json::to_value(&architecture).unwrap();
     json["processor_definitions"][0]["functions"][0]["func"]["name"] =
         serde_json::json!("not_in_source");
@@ -470,7 +470,7 @@ fn canonical_architecture_rejects_processor_source_model_drift() {
 
 #[test]
 fn memory_selections_target_placed_memory_names() {
-    mlar_syntax_sugar::ArchitectureBuilder::new("renamed")
+    mlar_frontend::ArchitectureBuilder::new("renamed")
         .axis("x", 2)
         .axis("y", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
@@ -486,7 +486,7 @@ fn memory_selections_target_placed_memory_names() {
 
 #[test]
 fn connection_domain_order_and_resolved_regions_are_explicit() {
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("regions")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("regions")
         .axis("x", 2)
         .axis("y", 3)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
@@ -522,7 +522,7 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
 
 #[test]
 fn endpoint_variables_must_be_declared_in_the_connection_domain() {
-    let error = mlar_syntax_sugar::ArchitectureBuilder::new("domain")
+    let error = mlar_frontend::ArchitectureBuilder::new("domain")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory("L1", ["x"])
@@ -543,7 +543,7 @@ fn endpoint_variables_must_be_declared_in_the_connection_domain() {
 // Builder load failures are deferred until `build`.
 #[test]
 fn processor_load_failures_surface_at_build() {
-    let missing_dir = mlar_syntax_sugar::ArchitectureBuilder::new("no_dir")
+    let missing_dir = mlar_frontend::ArchitectureBuilder::new("no_dir")
         .processor("lane")
         .build()
         .unwrap_err()
@@ -553,7 +553,7 @@ fn processor_load_failures_surface_at_build() {
         "expected a source-directory hint, got: {missing_dir}"
     );
 
-    let missing_file = mlar_syntax_sugar::ArchitectureBuilder::new("no_file")
+    let missing_file = mlar_frontend::ArchitectureBuilder::new("no_file")
         .processor_source_dir(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/processors"),
         )
@@ -571,7 +571,7 @@ fn processor_load_failures_surface_at_build() {
 /// the axes that index it — so a symbol never encodes its depth.
 #[test]
 fn nested_memory_levels_emit_one_axis_named_array_each() {
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("levels")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("levels")
         .axis("cluster", 2)
         .axis("core", 4)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
@@ -612,7 +612,7 @@ fn nested_memory_levels_emit_one_axis_named_array_each() {
 /// A flat array allows dimension slices even when ADL has no slice handle.
 #[test]
 fn flat_dimension_slices_are_valid_but_not_lowerable_as_whole_levels() {
-    let architecture = mlar_syntax_sugar::ArchitectureBuilder::new("slice")
+    let architecture = mlar_frontend::ArchitectureBuilder::new("slice")
         .axis("cluster", 2)
         .axis("core", 4)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
@@ -634,7 +634,7 @@ fn flat_dimension_slices_are_valid_but_not_lowerable_as_whole_levels() {
 
 #[test]
 fn a_level_may_not_repeat_an_axis() {
-    let error = mlar_syntax_sugar::ArchitectureBuilder::new("repeat")
+    let error = mlar_frontend::ArchitectureBuilder::new("repeat")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
         .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["x".into()]])

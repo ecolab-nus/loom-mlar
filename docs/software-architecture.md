@@ -2,7 +2,7 @@
 
 ## Canonical flow
 
-`syntax_sugar/` parses YAML and compact Loom, resolves parameters and hierarchical
+`frontend/` parses YAML and compact Loom, resolves parameters and hierarchical
 brackets, binds connected technologies/extents, and lowers processor bodies to
 native MLIR. It returns a validated core `Architecture`. Direct core inputs use
 explicit records, native MLIR, and performance YAML; an all-MLIR architecture
@@ -76,7 +76,7 @@ flattened metadata representation must migrate.
 `MemoryArray::axes` is flat. `MemoryEndpoint::indices` and
 `MemoryLocation::indices` are full-rank flat selector vectors. Migrate previous
 nested serialized arrays directly; no dual-format loader is provided. Core JSON
-loads validate semantic invariants. `syntax_sugar::write_artifact` writes that
+loads validate semantic invariants. `mlar_frontend::write_artifact` writes that
 same JSON, with embedded native processor MLIR.
 
 `src/visualization/document.rs` projects the canonical model into the stable

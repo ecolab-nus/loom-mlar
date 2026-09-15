@@ -43,18 +43,18 @@ cargo test --workspace -- --nocapture
 Some 2D mesh tests generate files for inspection and visualization:
 
 ```bash
-cargo test -p mlar-syntax-sugar --test 2d_mesh declarative_imperative_and_pre_redesign_golden_agree
-cargo test -p mlar-syntax-sugar --test visualization_export_test
+cargo test -p mlar-frontend --test 2d_mesh declarative_imperative_and_pre_redesign_golden_agree
+cargo test -p mlar-frontend --test visualization_export_test
 ```
 
 Native core regression tests run with `cargo test -p mlar-rust --test 2d_mesh`.
-Generated outputs use `tests/2d_mesh/` and `syntax_sugar/tests/2d_mesh/`.
+Generated outputs use `tests/2d_mesh/` and `frontend/tests/2d_mesh/`.
 
 The evaluator/query binary generation tests compile temporary Cargo projects and
 copy binaries into the corresponding `tests/2d_mesh/bin/` directory:
 
 ```bash
-cargo test -p mlar-syntax-sugar --test 2d_mesh test_generate_system_evaluator_binary
+cargo test -p mlar-frontend --test 2d_mesh test_generate_system_evaluator_binary
 ```
 
 ## Build Archify Visualizations
@@ -72,7 +72,7 @@ Check the vendored Archify installation and render the tracked 2D mesh sample:
 ```text
 node tools/archify/bin/archify.mjs doctor
 node tools/mlar-archify/bin/mlar-archify.mjs build \
-  syntax_sugar/tests/2d_mesh/2d_mesh_torus.visualization.yaml \
+  frontend/tests/2d_mesh/2d_mesh_torus.visualization.yaml \
   visualization-output/2d-mesh
 node tools/mlar-archify/bin/mlar-archify.mjs serve \
   visualization-output/2d-mesh
@@ -137,7 +137,7 @@ use mlar_rust::*;
 
 Native processor MLIR and performance YAML load through `mlar-rust` alone;
 YAML architecture packages and compact `.loom` translation use the optional
-`mlar-syntax-sugar` workspace crate.
+`mlar-frontend` workspace crate.
 
 This crate does not currently publish a CLI entry point. External tools can
 call generated evaluator/query binaries through the `abi` helpers described in

@@ -1,4 +1,7 @@
-# Architecture Package Reference
+# Frontend Package Reference
+
+This optional frontend lives in `frontend/` (`mlar-frontend`). It lowers
+packages into flat core records and native processor MLIR before ADL export.
 
 An architecture package contains a chip description, a memory catalog, and one
 YAML/source pair per processor definition:
@@ -88,9 +91,8 @@ processors:
 
 ### Memory levels
 
-A memory's `axes` list is a hierarchy. Scalar entries are one level's
-dimensions; a nested list starts the level below. Each level becomes one
-`adl.memory.array`, inner to outer:
+In authoring, scalar entries share a flat level; a nested list starts the level
+below. Grouping is syntax sugar and lowers to one ordered flat core axis list:
 
 ```yaml
 memories:
@@ -118,14 +120,11 @@ of its dimension; subsequent brackets traverse the next level under every
 selected parent. `L2[cluster, core]` is invalid for the nested declaration above.
 Bank selectors follow the leaf level, for example `L2[:][core].bank[b]`.
 
-ADL export supports whole-level handles. Dimension slices such as `L1[:, y]`
-and selections such as `L2[:][core]` are valid in MLAR but currently return
-`UnsupportedMemorySelection` during export.
-
-Level symbols in the exported ADL are the memory name suffixed with the axes
-that index it — `mem_L2`, `mem_L2__cluster`, `mem_L2__cluster_core` — so they
-depend on the axes alone and do not shift when the hierarchy is edited
-elsewhere.
+Core stores one full-rank selector vector: `L2[cluster]` becomes
+`[Expr(cluster), All]`, while `L2[:][core]` becomes `[All, Expr(core)]`.
+ADL emits one logical memory array for all axes and supports whole-array or
+fully indexed leaf-template handles. Partial selections return
+`UnsupportedMemorySelection`; exported logical hierarchy is never reconstructed.
 
 A detailed placement can name a different definition:
 
@@ -169,7 +168,7 @@ memories:
 Bind every parameter when loading:
 
 ```rust
-let architecture = mlar_rust::archs::load_arch_with_bindings(
+let architecture = mlar_frontend::archs::load_arch_with_bindings(
     "path/to/package",
     [("X", 8), ("BANKS", 16)],
 )?;
@@ -202,7 +201,9 @@ performance:
 `type` is optional at runtime. ADL export requires `compute` for `linalg.*`
 operations and `data_mover` for movement operations. Performance entries must
 match the source's function names. See [docs/perf-yaml.md](docs/perf-yaml.md)
-for expression semantics.
+for throughput/expression alternatives and symbol semantics. Core examples use
+standalone performance YAML alongside native `.mlir`; both use the same core
+loader.
 
 ## Compact Loom source
 
@@ -257,10 +258,19 @@ Buffer dimensions are symbolic. `@space(n)` adds a numeric memory space and
 `@memory(name)` requires a uniquely matching connected memory technology.
 Collectives may provide `extent: [...]`; otherwise broadcast uses its connected
 output region and gather uses its connected input region.
+Each extent entry is an integer literal or a declared symbol. Shape dimensions
+declare symbols; additional extent or performance parameters use
+`%name = loom.sym @name : index` inside the function. Declarations must be
+unique and use the same SSA and symbol name. Performance expressions do not
+implicitly declare symbols; see [performance YAML](docs/perf-yaml.md).
 
 ## Networks and scopes
 
 Networks and scopes are optional:
+
+Network cost expressions may use network dimension names and runtime symbols
+declared in the network's `parameters: [...]` list. Architecture parameters are
+bound during loading; runtime network parameters remain symbolic.
 
 ```yaml
 networks:
@@ -291,11 +301,12 @@ record flat ownership and optional parentage.
 The builder produces the same canonical model:
 
 ```rust
-use mlar_rust::{Architecture, Connection, MemoryDefinition};
+use mlar_rust::MemoryDefinition;
+use mlar_frontend::{ArchitectureBuilder, Connection};
 
 let connection = Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"])?;
 
-let architecture = Architecture::builder("example")
+let architecture = ArchitectureBuilder::new("example")
     .axis("x", 4)
     .axis("y", 4)
     .memory_definition(
@@ -317,4 +328,4 @@ several named placements.
 `architecture_to_mlir` validates the result and fails the whole export on an
 unsupported or inconsistently typed processor. The compatibility dialect does
 not represent pointwise affine endpoint relations or explicit bank selectors;
-the runtime model and visualization JSON retain them.
+the runtime model retains them; visualization is a backing-memory projection.

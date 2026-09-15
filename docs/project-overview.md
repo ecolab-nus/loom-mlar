@@ -21,7 +21,7 @@ describe:
 
 - reusable memory and processor definitions plus named indexed placements,
 - flat memory axes, affine endpoints, resources, networks, and explicit scopes,
-- native processor MLIR (compact Loom is lowered in `syntax_sugar`), and
+- native processor MLIR (compact Loom is lowered in `frontend/`), and
 - symbolic performance scenarios built with core Rust APIs or the core performance YAML loader.
 
 Functional descriptions and performance models have different jobs. The
