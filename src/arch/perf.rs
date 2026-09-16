@@ -437,6 +437,8 @@ mod tests {
                 operations: vec![],
             }),
             op_label: None,
+            read: None,
+            write: None,
             extra_metadata: Default::default(),
             sym_map: None,
         };

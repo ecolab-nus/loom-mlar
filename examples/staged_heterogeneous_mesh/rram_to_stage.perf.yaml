@@ -1,0 +1,4 @@
+load_rram_f16:
+- expression: '8 + (2 * K * N + 7) / 8'
+load_rram_f16_broadcast:
+- expression: '8 + (2 * K * N * bcst_x * bcst_y + 7) / 8'

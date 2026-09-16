@@ -93,6 +93,12 @@ pub struct MlirFunc {
     /// Optional source MLIR operation label for a scheduled call site.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op_label: Option<String>,
+    /// Opaque semicolon-separated read accesses emitted by loom-dataflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read: Option<String>,
+    /// Opaque semicolon-separated write accesses emitted by loom-dataflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write: Option<String>,
     /// Call-site metadata that MLAR preserves without interpreting.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra_metadata: BTreeMap<String, serde_json::Value>,
@@ -202,6 +208,8 @@ impl MlirFunc {
             symbols: vec![],
             mlir_details: None,
             op_label: None,
+            read: None,
+            write: None,
             extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
@@ -215,6 +223,8 @@ impl MlirFunc {
             symbols,
             mlir_details: None,
             op_label: None,
+            read: None,
+            write: None,
             extra_metadata: BTreeMap::new(),
             sym_map: None,
         }
@@ -421,6 +431,8 @@ impl MlirFunc {
                 operations,
             }),
             op_label: None,
+            read: None,
+            write: None,
             extra_metadata: BTreeMap::new(),
             sym_map: None,
         })
@@ -466,5 +478,20 @@ mod tests {
             output["extra_metadata"]["future_metadata"]["preserve"],
             true
         );
+    }
+
+    #[test]
+    fn dataflow_access_metadata_survives_serde_round_trip() {
+        let input = serde_json::json!({
+            "name": "matmul",
+            "symbols": [],
+            "read": "%0: 2;%1: 2",
+            "write": "%2: 2"
+        });
+
+        let func: MlirFunc = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(func.read.as_deref(), Some("%0: 2;%1: 2"));
+        assert_eq!(func.write.as_deref(), Some("%2: 2"));
+        assert_eq!(serde_json::to_value(func).unwrap(), input);
     }
 }

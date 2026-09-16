@@ -54,13 +54,6 @@ pub enum AdlExportError {
         processor: String,
         reason: String,
     },
-    /// A scope owns more memory regions than its single `adl.arch.scale` can
-    /// carry. The dialect could hold them as nested scales; this exporter does
-    /// not emit that shape.
-    MultipleMemoryRegions {
-        scope: String,
-        count: usize,
-    },
     /// The architecture module was rejected by `adl-opt`.
     InvalidAdl {
         program: PathBuf,
@@ -128,11 +121,6 @@ impl std::fmt::Display for AdlExportError {
             Self::SourceLowering { processor, reason } => {
                 write!(f, "failed to lower processor '{processor}': {reason}")
             }
-            Self::MultipleMemoryRegions { scope, count } => write!(
-                f,
-                "scope '{scope}' owns {count} memory regions, but this exporter gives \
-                 each scope one `adl.arch.scale`, which carries at most one region"
-            ),
             Self::InvalidAdl { program, stderr } => write!(
                 f,
                 "exported architecture was rejected by '{}':\n{stderr}",
@@ -783,6 +771,7 @@ fn emit_architecture_hierarchy(
     }
 
     let mut outputs = vec![None; scopes.len()];
+    let mut carried_memories = vec![Vec::<String>::new(); scopes.len()];
     let mut order = (0..scopes.len()).collect::<Vec<_>>();
     order.sort_by_key(|index| std::cmp::Reverse(scopes[*index].domain.len()));
     for index in order {
@@ -792,7 +781,7 @@ fn emit_architecture_hierarchy(
             .map(|child| outputs[*child].clone().expect("child scope was emitted"))
             .collect::<Vec<_>>();
         architecture_values.extend(scopes[index].processors.iter().cloned());
-        let memories = scopes[index]
+        let mut memories = scopes[index]
             .memories
             .iter()
             .map(|memory| {
@@ -807,6 +796,9 @@ fn emit_architecture_hierarchy(
                     .clone()
             })
             .collect::<Vec<_>>();
+        for child in &scopes[index].children {
+            memories.extend(carried_memories[*child].iter().cloned());
+        }
         let scope_name = scopes[index].name.clone();
         let element = emitter.next_ssa();
         writeln!(
@@ -841,15 +833,15 @@ fn emit_architecture_hierarchy(
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        // The dialect permits at most one region per scale.
+        // A scale can attach one memory directly. With sibling memories, keep
+        // the single spatial scale and carry every aggregate array in the
+        // enclosing composition instead.
         let memory_clause = match region_memories.as_slice() {
             [] => String::new(),
             [region] => format!(", mem_region {region}"),
-            regions => {
-                return Err(AdlExportError::MultipleMemoryRegions {
-                    scope: scope_name,
-                    count: regions.len(),
-                });
+            _ => {
+                carried_memories[index] = region_memories;
+                String::new()
             }
         };
         let scaled = emitter.next_ssa();
@@ -879,7 +871,7 @@ fn emit_architecture_hierarchy(
             })
             .map(|processor| processor.ssa.clone()),
     );
-    let root_memories = architecture
+    let mut root_memories = architecture
         .memories
         .iter()
         .zip(memory_owners)
@@ -892,6 +884,11 @@ fn emit_architecture_hierarchy(
                 .clone()
         })
         .collect::<Vec<_>>();
+    for (index, scope) in scopes.iter().enumerate() {
+        if scope.parent.is_none() {
+            root_memories.extend(carried_memories[index].iter().cloned());
+        }
+    }
     let root = emitter.next_ssa();
     writeln!(
         emitter.body,

@@ -95,9 +95,8 @@ fn hierarchy_normalizes_to_flat_memory_and_reports_unsupported_adl_slice() {
     ));
 }
 
-// Sibling memories cannot share the dialect's single region slot.
 #[test]
-fn sibling_memories_on_one_domain_still_exceed_a_single_scale() {
+fn sibling_memories_share_one_scale_via_the_enclosing_composition() {
     let architecture = mlar_frontend::ArchitectureBuilder::new("siblings")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("sram", 1024, 16))
@@ -118,13 +117,33 @@ fn sibling_memories_on_one_domain_still_exceed_a_single_scale() {
         .build()
         .expect("sibling architecture is valid in the runtime model");
 
-    match architecture_to_mlir(&architecture) {
-        Err(AdlExportError::MultipleMemoryRegions { scope, count }) => {
-            assert_eq!(scope, "x");
-            assert_eq!(count, 2);
-        }
-        other => panic!("expected a multi-region rejection, got {other:?}"),
-    }
+    let mlir = architecture_to_mlir(&architecture).expect("sibling memories should export");
+    let sram = mlir
+        .lines()
+        .find(|line| line.contains("adl.memory.array \"mem_sram\""))
+        .unwrap()
+        .trim()
+        .split(" = ")
+        .next()
+        .unwrap();
+    let rram = mlir
+        .lines()
+        .find(|line| line.contains("adl.memory.array \"mem_rram\""))
+        .unwrap()
+        .trim()
+        .split(" = ")
+        .next()
+        .unwrap();
+    let scale = mlir
+        .lines()
+        .find(|line| line.contains("adl.arch.scale \"arch_x\""))
+        .unwrap();
+    let root = mlir
+        .lines()
+        .find(|line| line.contains("adl.arch.compose \"arch_siblings\""))
+        .unwrap();
+    assert!(!scale.contains("mem_region"));
+    assert!(root.contains(&format!("mem[{sram}, {rram}]")), "{root}");
 }
 
 #[test]

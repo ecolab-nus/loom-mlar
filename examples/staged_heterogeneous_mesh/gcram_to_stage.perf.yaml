@@ -1,0 +1,4 @@
+load_gcram_f16:
+- expression: '8 + (2 * M * K + 15) / 16'
+load_gcram_f16_broadcast:
+- expression: '8 + (2 * M * K * bcst_x * bcst_y + 15) / 16'
