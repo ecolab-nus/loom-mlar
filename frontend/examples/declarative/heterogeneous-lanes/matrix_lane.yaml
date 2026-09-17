@@ -1,0 +1,16 @@
+name: matrix_lane
+type: compute
+functions:
+  matmul_mixed:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings:
+      lhs: activations
+      rhs: weights
+      out: result
+performance:
+  matmul_mixed:
+  - latency: '8'
+    volume: 2 * M * N * K
+    throughput: '512'

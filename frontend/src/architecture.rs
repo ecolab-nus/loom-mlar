@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Deserializer, de::Error as _};
+use serde::{Deserialize, Deserializer, de::Error as _, de::MapAccess, de::SeqAccess, de::Visitor};
 
 use super::PerformanceYaml;
 use crate::ArchitectureBuilder;
-use crate::parse_loom_source;
+use crate::builder::FunctionProvider;
+use crate::native::{NativeSourceIndex, compose_module};
 use crate::selection::MemoryEndpoint;
-use crate::{Connection, ProcessorDefinition, ProcessorSourceFormat};
+use crate::templates::{self, FunctionSpec};
+use crate::{Connection, NamedPort, ProcessorDefinition};
 use mlar_rust::Architecture;
 use mlar_rust::arch::network::{NetworkInterface, NetworkLink, NetworkTopology};
 use mlar_rust::arch::resource::Resource;
@@ -175,15 +177,15 @@ struct ProcessorPlacementYaml {
     #[serde(
         default,
         alias = "ins",
-        deserialize_with = "deserialize_memory_endpoints"
+        deserialize_with = "deserialize_named_memory_endpoints"
     )]
-    inputs: Vec<MemoryEndpoint>,
+    inputs: Vec<NamedPort>,
     #[serde(
         default,
         alias = "outs",
-        deserialize_with = "deserialize_memory_endpoints"
+        deserialize_with = "deserialize_named_memory_endpoints"
     )]
-    outputs: Vec<MemoryEndpoint>,
+    outputs: Vec<NamedPort>,
     #[serde(default)]
     resources: Vec<String>,
 }
@@ -213,14 +215,61 @@ impl<'de> Deserialize<'de> for ProcessorPlacementsYaml {
     }
 }
 
-fn deserialize_memory_endpoints<'de, D>(deserializer: D) -> Result<Vec<MemoryEndpoint>, D::Error>
+fn deserialize_named_memory_endpoints<'de, D>(deserializer: D) -> Result<Vec<NamedPort>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Vec::<String>::deserialize(deserializer)?
-        .into_iter()
-        .map(|endpoint| MemoryEndpoint::parse(&endpoint).map_err(D::Error::custom))
-        .collect()
+    struct NamedPortsVisitor;
+
+    impl<'de> Visitor<'de> for NamedPortsVisitor {
+        type Value = Vec<NamedPort>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .write_str("a list of memory endpoints or a mapping from port aliases to endpoints")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut ports = Vec::new();
+            let mut names = std::collections::BTreeSet::new();
+            while let Some(endpoint) = seq.next_element::<String>()? {
+                let endpoint = MemoryEndpoint::parse(&endpoint).map_err(A::Error::custom)?;
+                let name = endpoint.memory.clone();
+                if !names.insert(name.clone()) {
+                    return Err(A::Error::custom(format!(
+                        "duplicate processor port '{name}'; use explicit aliases for multiple endpoints of the same memory"
+                    )));
+                }
+                ports.push(NamedPort::new(name, endpoint));
+            }
+            Ok(ports)
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut ports = Vec::new();
+            let mut names = std::collections::BTreeSet::new();
+            while let Some((name, endpoint)) = map.next_entry::<String, String>()? {
+                if !names.insert(name.clone()) {
+                    return Err(A::Error::custom(format!(
+                        "duplicate processor port '{name}'"
+                    )));
+                }
+                ports.push(NamedPort::new(
+                    name,
+                    MemoryEndpoint::parse(&endpoint).map_err(A::Error::custom)?,
+                ));
+            }
+            Ok(ports)
+        }
+    }
+
+    deserializer.deserialize_any(NamedPortsVisitor)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -351,7 +400,8 @@ pub struct ProcessorYaml {
     name: Option<String>,
     #[serde(default, rename = "type")]
     processor_type: Option<ProcessorType>,
-    source: String,
+    #[serde(deserialize_with = "super::yaml::unique_entries")]
+    functions: Vec<(String, FunctionSpec)>,
     #[serde(default)]
     resources: Vec<ResourceYaml>,
     #[serde(default)]
@@ -368,6 +418,18 @@ impl ChipYaml {
 
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ArchLoadError> {
         read_yaml(path.as_ref())
+    }
+
+    pub(crate) fn processor_definition_paths(&self, directory: &Path) -> Vec<PathBuf> {
+        let mut paths = self
+            .processors
+            .0
+            .iter()
+            .map(|(_, placement)| directory.join(&placement.definition))
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths.dedup();
+        paths
     }
 
     pub fn build(&self, artifact_dir: impl AsRef<Path>) -> Result<Architecture, ArchLoadError> {
@@ -474,6 +536,8 @@ impl ChipYaml {
         }
 
         let mut loaded_definitions = BTreeMap::<String, String>::new();
+        let native_sources =
+            NativeSourceIndex::load(artifact_dir).map_err(ArchLoadError::Invalid)?;
         let mut placements = Vec::new();
         for (placement_name, placement) in &self.processors.0 {
             let definition_name = if let Some(name) = loaded_definitions.get(&placement.definition)
@@ -482,7 +546,8 @@ impl ChipYaml {
             } else {
                 let path = artifact_dir.join(&placement.definition);
                 let processor_yaml = ProcessorYaml::from_file(&path)?;
-                let definition = processor_yaml.build_definition(&path)?;
+                let definition =
+                    processor_yaml.build_definition_with_index(&path, &native_sources)?;
                 let name = definition.name.clone();
                 builder = builder.processor_definition(definition);
                 loaded_definitions.insert(placement.definition.clone(), name.clone());
@@ -770,30 +835,64 @@ impl ProcessorYaml {
         let base_dir = processor_yaml_path
             .parent()
             .unwrap_or_else(|| Path::new("."));
-        let source_path = base_dir.join(&self.source);
-        let source = read_text(&source_path)?;
-        let source_format = match source_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-        {
-            Some("loom") => ProcessorSourceFormat::CompactLoom,
-            Some("mlir") => ProcessorSourceFormat::Mlir,
-            _ => {
-                return Err(ArchLoadError::Invalid(format!(
-                    "{} must have a .loom or .mlir extension",
-                    source_path.display()
-                )));
-            }
-        };
-        let module = match source_format {
-            ProcessorSourceFormat::CompactLoom => parse_loom_source(&source).map_err(|error| {
-                ArchLoadError::Invalid(format!("{}: {error}", source_path.display()))
-            })?,
-            ProcessorSourceFormat::Mlir => mlar_rust::mlir::MlirModule::from_mlir_source(&source)
-                .map_err(|error| {
-                ArchLoadError::Invalid(format!("{}: {error}", source_path.display()))
-            })?,
-        };
+        let index = NativeSourceIndex::load(base_dir).map_err(ArchLoadError::Invalid)?;
+        self.build_definition_with_index(processor_yaml_path, &index)
+    }
+
+    pub(crate) fn build_definition_with_index(
+        &self,
+        processor_yaml_path: &Path,
+        index: &NativeSourceIndex,
+    ) -> Result<ProcessorDefinition, ArchLoadError> {
+        if self.functions.is_empty() {
+            return Err(ArchLoadError::Invalid(format!(
+                "{} must define at least one function",
+                processor_yaml_path.display()
+            )));
+        }
+        let mut providers = Vec::new();
+        let mut blocks = Vec::new();
+        for (exposed_name, function) in &self.functions {
+            let provider = if templates::is_registered(&function.source) {
+                let block = templates::emit_preview(exposed_name, function).map_err(|error| {
+                    ArchLoadError::Invalid(format!(
+                        "{} function '{exposed_name}': {error}",
+                        processor_yaml_path.display()
+                    ))
+                })?;
+                blocks.push(block);
+                FunctionProvider::Template(function.clone())
+            } else {
+                if has_template_parameters(function) {
+                    return Err(ArchLoadError::Invalid(format!(
+                        "{} function '{exposed_name}' supplies template parameters to native source '{}'",
+                        processor_yaml_path.display(),
+                        function.source
+                    )));
+                }
+                if exposed_name != &function.source {
+                    return Err(ArchLoadError::Invalid(format!(
+                        "{} function '{exposed_name}' aliases native source '{}'; native aliases are unsupported",
+                        processor_yaml_path.display(),
+                        function.source
+                    )));
+                }
+                let native = index.get(&function.source).ok_or_else(|| {
+                    ArchLoadError::Invalid(format!(
+                        "{} function '{exposed_name}' has unknown source '{}'",
+                        processor_yaml_path.display(),
+                        function.source
+                    ))
+                })?;
+                blocks.push(native.block.clone());
+                FunctionProvider::Native(native.clone())
+            };
+            providers.push((exposed_name.clone(), provider));
+        }
+        let source = compose_module(blocks);
+        let module = mlar_rust::mlir::MlirModule::from_mlir_source(&source).map_err(|error| {
+            ArchLoadError::Invalid(format!("{}: {error}", processor_yaml_path.display()))
+        })?;
         let spec = self.performance.as_ref().ok_or_else(|| {
             ArchLoadError::Invalid(format!(
                 "{} must define `performance`",
@@ -829,16 +928,24 @@ impl ProcessorYaml {
             name,
             processor_type: self.processor_type.clone(),
             source,
-            source_format,
             functions,
             resources: self.resources.iter().map(ResourceYaml::build).collect(),
+            providers: Some(providers),
         })
     }
 }
 
+fn has_template_parameters(function: &FunctionSpec) -> bool {
+    function.element_type.is_some()
+        || !function.dimensions.is_empty()
+        || !function.symbols.is_empty()
+        || !function.bindings.is_empty()
+        || function.extent.is_some()
+}
+
 impl ProcessorPlacementYaml {
     fn build(&self) -> Connection {
-        Connection::new(
+        Connection::named(
             self.domain.iter().cloned(),
             self.inputs.clone(),
             self.outputs.clone(),
@@ -884,19 +991,27 @@ mod tests {
             r#"
 definition: lane.yaml
 domain: [x, y]
-inputs: ["L1[x, y]"]
-outputs: ["L2[x floordiv 2, y floordiv 2]"]
+inputs: {data: "L1[x, y]"}
+outputs: {result: "L2[x floordiv 2, y floordiv 2]"}
 "#,
         )
         .expect("connection should deserialize");
 
         assert_eq!(
-            connection.inputs,
-            [MemoryEndpoint::parse("L1[x, y]").unwrap()]
+            connection
+                .inputs
+                .iter()
+                .map(|port| &port.endpoint)
+                .collect::<Vec<_>>(),
+            [&MemoryEndpoint::parse("L1[x, y]").unwrap()]
         );
         assert_eq!(
-            connection.outputs,
-            [MemoryEndpoint::parse("L2[x floordiv 2, y floordiv 2]").unwrap()]
+            connection
+                .outputs
+                .iter()
+                .map(|port| &port.endpoint)
+                .collect::<Vec<_>>(),
+            [&MemoryEndpoint::parse("L2[x floordiv 2, y floordiv 2]").unwrap()]
         );
     }
 
@@ -910,8 +1025,8 @@ memories:
 processors:
   lane:
     definition: lane.yaml
-    inputs: ["L1"]
-    outputs: ["L1"]
+    inputs: {data: "L1"}
+    outputs: {result: "L1"}
 "#,
         )
         .expect("chip should deserialize");
@@ -973,13 +1088,71 @@ processors:
   lane:
     definition: lane.yaml
     domain: [x]
-    inputs: ["L1[:,"]
-    outputs: ["L1[x]"]
+    inputs: {data: "L1[:,"}
+    outputs: {result: "L1[x]"}
 "#,
         )
         .expect_err("invalid endpoint must fail while deserializing");
 
         assert!(error.to_string().contains("memory indices must end with"));
+    }
+
+    #[test]
+    fn endpoint_lists_derive_names_and_preserve_order() {
+        let placement: super::ProcessorPlacementYaml = serde_yaml::from_str(
+            "definition: lane.yaml\ninputs: ['R[x]', 'S[x]']\noutputs: ['R[x]']\n",
+        )
+        .unwrap();
+        assert_eq!(
+            placement
+                .inputs
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            ["R", "S"]
+        );
+        assert_eq!(placement.outputs[0].name, "R");
+        assert_eq!(
+            placement.inputs[0].endpoint,
+            super::MemoryEndpoint::parse("R[x]").unwrap()
+        );
+    }
+
+    #[test]
+    fn repeated_memory_endpoints_require_aliases() {
+        for endpoints in ["['L1[x]', 'L1[x + 1]']", "['L1[x]', 'L1[x]']"] {
+            let error = serde_yaml::from_str::<super::ProcessorPlacementYaml>(&format!(
+                "definition: lane.yaml\ninputs: {endpoints}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("use explicit aliases"),
+                "{error}"
+            );
+        }
+        let placement: super::ProcessorPlacementYaml = serde_yaml::from_str(
+            "definition: lane.yaml\ninputs: {local: 'L1[x]', neighbor: 'L1[x + 1]'}\n",
+        )
+        .unwrap();
+        assert_eq!(placement.inputs[0].name, "local");
+        assert_eq!(placement.inputs[1].name, "neighbor");
+    }
+
+    #[test]
+    fn duplicate_processor_ports_fail_deserialization() {
+        let error = serde_yaml::from_str::<super::ChipYaml>(
+            r#"
+name: bad
+processors:
+  lane:
+    definition: lane.yaml
+    inputs:
+      data: L1
+      data: L2
+"#,
+        )
+        .expect_err("duplicate ports must be rejected");
+        assert!(error.to_string().contains("duplicate"), "{error}");
     }
 
     #[test]

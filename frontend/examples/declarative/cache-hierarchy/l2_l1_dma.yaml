@@ -1,6 +1,10 @@
 name: l2_l1_dma
 type: data_mover
-source: l2_l1_dma.loom
+functions:
+  load_l1:
+    source: copy
+    element_type: f16
+    dimensions: [L]
 performance:
   load_l1:
   - latency: '12'

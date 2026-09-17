@@ -47,7 +47,7 @@ fn nested_authoring_objects_reject_unknown_fields() {
             "{extra}"
         );
     }
-    assert!(ProcessorYaml::from_yaml_str("source: lane.loom\nperformnace: {}\n").is_err());
+    assert!(ProcessorYaml::from_yaml_str("functions: {}\nperformnace: {}\n").is_err());
     let package = Package::new(
         "name: test\nmemories: {L1: null}\n",
         "memories:\n  L1:\n    capacity: 1024\n    word_size: 16\n    banking: {banks: 2, interleaving: 64}\n",

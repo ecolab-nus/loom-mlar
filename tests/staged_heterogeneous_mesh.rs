@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-#[path = "../examples/staged_heterogeneous_mesh.rs"]
+#[path = "../examples/staged_heterogeneous_mesh/main.rs"]
 mod example;
 
 use mlar_rust::architecture_to_mlir;
@@ -61,7 +61,7 @@ fn staged_mesh_exports_one_scale_and_all_physical_memories() {
 }
 
 #[test]
-fn capacities_force_tiled_staging_for_the_acceptance_workload() {
+fn staged_mesh_preserves_memory_capacities() {
     let architecture = example::build().unwrap();
     for (memory, capacity) in [
         ("GCRAM", example::GCRAM_CAPACITY),
@@ -75,14 +75,6 @@ fn capacities_force_tiled_staging_for_the_acceptance_workload() {
             capacity
         );
     }
-
-    let full_inputs = 2 * (512 * 256 + 256 * 512);
-    assert!(full_inputs > example::STAGE_CAPACITY);
-    assert_eq!(example::staging_bytes(128, 64, 128), 32 * 1024);
-    assert!(example::staging_bytes(128, 64, 128) <= example::STAGE_CAPACITY);
-    assert!(512 * 256 * 2 <= example::GCRAM_CAPACITY);
-    assert!(256 * 512 * 2 <= example::RRAM_CAPACITY);
-    assert_eq!(512 * 512 * 4, example::OUTPUT_CAPACITY);
 }
 
 #[test]

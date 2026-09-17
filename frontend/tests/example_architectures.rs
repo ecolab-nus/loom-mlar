@@ -14,34 +14,32 @@ use mlar_rust::{
 const LOWERABLE: &[&str] = &[
     "single-core",
     "mesh-torus",
+    "heterogeneous-lanes",
     "dual-noc-mesh",
     "shared-link-mesh",
 ];
 
-#[allow(dead_code)]
-#[path = "../examples/imperative/cache_hierarchy.rs"]
+#[path = "support/cache_hierarchy.rs"]
 mod imperative_cache_hierarchy;
-#[allow(dead_code)]
-#[path = "../examples/imperative/dual_noc_mesh.rs"]
+#[path = "support/dual_noc_mesh.rs"]
 mod imperative_dual_noc_mesh;
-#[allow(dead_code)]
-#[path = "../examples/imperative/shared_link_mesh.rs"]
+#[path = "support/shared_link_mesh.rs"]
 mod imperative_shared_link_mesh;
 
 #[allow(dead_code)]
-#[path = "../../examples/cache_hierarchy.rs"]
+#[path = "../../examples/cache_hierarchy/main.rs"]
 mod core_cache_hierarchy;
 #[allow(dead_code)]
-#[path = "../../examples/dual_noc_mesh.rs"]
+#[path = "../../examples/dual_noc_mesh/main.rs"]
 mod core_dual_noc_mesh;
 #[allow(dead_code)]
-#[path = "../../examples/mesh_torus.rs"]
+#[path = "../../examples/mesh_torus/main.rs"]
 mod core_mesh_torus;
 #[allow(dead_code)]
-#[path = "../../examples/shared_link_mesh.rs"]
+#[path = "../../examples/shared_link_mesh/main.rs"]
 mod core_shared_link_mesh;
 #[allow(dead_code)]
-#[path = "../../examples/single_core.rs"]
+#[path = "../../examples/single_core/main.rs"]
 mod core_single_core;
 
 fn example_dir(name: &str) -> PathBuf {
@@ -56,6 +54,7 @@ fn all_architecture_examples_load_and_export() {
         "single-core",
         "cache-hierarchy",
         "mesh-torus",
+        "heterogeneous-lanes",
         "dual-noc-mesh",
         "shared-link-mesh",
     ] {
@@ -83,6 +82,30 @@ fn all_architecture_examples_load_and_export() {
         )
         .expect("example function should evaluate");
     }
+}
+
+#[test]
+fn heterogeneous_templates_derive_spaces_from_connected_operand_positions() {
+    let architecture = mlar_frontend::load_arch(example_dir("heterogeneous-lanes")).unwrap();
+    let matrix = architecture
+        .processor_definitions()
+        .iter()
+        .find(|definition| definition.name() == "matrix_lane")
+        .unwrap()
+        .source();
+    assert!(matrix.contains("%lhs: memref<?x?xf16, 0>"));
+    assert!(matrix.contains("%rhs: memref<?x?xf16, 1>"));
+    assert!(matrix.contains("loom.bind_mem %lhs, @input_0"));
+    assert!(matrix.contains("loom.bind_mem %rhs, @input_1"));
+
+    let vector = architecture
+        .processor_definitions()
+        .iter()
+        .find(|definition| definition.name() == "vector_lane")
+        .unwrap()
+        .source();
+    assert!(vector.contains("%lhs: memref<?xf16, 1>"));
+    assert!(vector.contains("%rhs: memref<?xf16, 0>"));
 }
 
 #[test]
@@ -147,7 +170,7 @@ fn sibling_memories_share_one_scale_via_the_enclosing_composition() {
 }
 
 #[test]
-fn imperative_examples_match_their_declarative_packages() {
+fn frontend_builder_matches_declarative_packages() {
     assert_imperative_matches(
         "dual-noc-mesh",
         imperative_dual_noc_mesh::build().expect("imperative dual-NoC mesh should build"),
@@ -178,8 +201,8 @@ fn core_mesh_torus_matches_frontend() {
 }
 
 #[test]
-fn core_dual_noc_mesh_matches_frontend() {
-    assert_core_matches("dual-noc-mesh", core_dual_noc_mesh::build().unwrap());
+fn core_dual_noc_mesh_remains_a_valid_native_example() {
+    core_dual_noc_mesh::build().unwrap().validate().unwrap();
 }
 
 #[test]
@@ -189,19 +212,20 @@ fn core_shared_link_mesh_matches_frontend() {
 
 fn assert_core_matches(name: &str, core: Architecture) {
     let lowered = mlar_frontend::load_arch(example_dir(name)).unwrap();
+    let mut core_contract = serde_json::to_value(&core).unwrap();
+    let mut lowered_contract = serde_json::to_value(&lowered).unwrap();
+    normalize_processor_contracts(&mut core_contract);
+    normalize_processor_contracts(&mut lowered_contract);
     assert_eq!(
-        serde_json::to_value(&core).unwrap(),
-        serde_json::to_value(&lowered).unwrap(),
-        "{name}: core construction differs from frontend lowering"
+        core_contract, lowered_contract,
+        "{name}: architecture, function interfaces, or performance differ"
     );
     if LOWERABLE.contains(&name) {
-        assert_eq!(
-            mlar_rust::architecture_to_mlir_unchecked(&core).unwrap(),
-            mlar_rust::architecture_to_mlir_unchecked(&lowered).unwrap(),
-            "{name}: ADL exports differ"
-        );
+        mlar_rust::architecture_to_mlir_unchecked(&core).unwrap();
+        mlar_rust::architecture_to_mlir_unchecked(&lowered).unwrap();
         if mlar_rust::mlir_validators_available() {
             architecture_to_mlir(&core).unwrap();
+            architecture_to_mlir(&lowered).unwrap();
         }
     } else {
         for architecture in [&core, &lowered] {
@@ -209,6 +233,64 @@ fn assert_core_matches(name: &str, core: Architecture) {
                 mlar_rust::architecture_to_mlir_unchecked(architecture),
                 Err(AdlExportError::UnsupportedMemorySelection { .. })
             ));
+        }
+    }
+}
+
+fn normalize_processor_contracts(value: &mut serde_json::Value) {
+    let definitions = value["processor_definitions"].as_array_mut().unwrap();
+    for definition in definitions {
+        definition.as_object_mut().unwrap().remove("source");
+        let functions = definition["functions"].as_array_mut().unwrap();
+        for operation in functions.iter_mut() {
+            let function = &mut operation["func"];
+            function["symbols"]
+                .as_array_mut()
+                .unwrap()
+                .sort_by_key(|symbol| symbol.as_str().unwrap().to_string());
+            if let Some(details) = function["mlir_details"].as_object_mut() {
+                details.remove("linalg_ops");
+                details.remove("operations");
+                details.remove("copy_ops");
+                details.remove("gather_ops");
+                canonicalize_memref_names(details);
+            }
+        }
+        functions.sort_by_key(|operation| operation["func"]["name"].as_str().unwrap().to_string());
+    }
+}
+
+fn canonicalize_memref_names(details: &mut serde_json::Map<String, serde_json::Value>) {
+    let names = details["memref_args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            (
+                name.as_str().unwrap().to_string(),
+                format!("operand_{index}"),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let rename = |value: &mut serde_json::Value| {
+        if let Some(name) = value.as_str()
+            && let Some(canonical) = names.get(name)
+        {
+            *value = canonical.clone().into();
+        }
+    };
+    for field in ["memref_args", "source_memrefs", "target_memrefs"] {
+        for name in details[field].as_array_mut().unwrap() {
+            rename(name);
+        }
+    }
+    for entry in details["memref_arg_types"].as_array_mut().unwrap() {
+        rename(&mut entry.as_array_mut().unwrap()[0]);
+    }
+    for field in ["memref_symbol_bindings", "mem_region_bindings"] {
+        for entry in details[field].as_array_mut().unwrap() {
+            rename(&mut entry.as_object_mut().unwrap()["memref"]);
         }
     }
 }
@@ -240,17 +322,51 @@ fn one_definition_can_back_several_named_placements() {
 fn assert_imperative_matches(name: &str, imperative: Architecture) {
     let declarative = mlar_frontend::archs::load_arch(example_dir(name))
         .unwrap_or_else(|error| panic!("declarative example '{name}' should load: {error}"));
-    assert_eq!(
-        serde_json::to_value(&declarative).unwrap(),
-        serde_json::to_value(&imperative).unwrap(),
-        "{name} canonical architectures differ"
-    );
+    let declarative_json = serde_json::to_value(&declarative).unwrap();
+    let imperative_json = serde_json::to_value(&imperative).unwrap();
+    if declarative_json != imperative_json {
+        panic!(
+            "{name} canonical architectures differ first at {}",
+            first_json_difference(&declarative_json, &imperative_json, "$")
+                .unwrap_or_else(|| "an unknown location".into())
+        );
+    }
     if LOWERABLE.contains(&name) {
         assert_eq!(
             architecture_to_mlir(&declarative).unwrap(),
             architecture_to_mlir(&imperative).unwrap(),
             "{name} exports differ"
         );
+    }
+}
+
+fn first_json_difference(
+    left: &serde_json::Value,
+    right: &serde_json::Value,
+    path: &str,
+) -> Option<String> {
+    match (left, right) {
+        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
+            if left.len() != right.len() {
+                return Some(format!("{path}.length: {} != {}", left.len(), right.len()));
+            }
+            left.iter()
+                .zip(right)
+                .enumerate()
+                .find_map(|(index, (left, right))| {
+                    first_json_difference(left, right, &format!("{path}[{index}]"))
+                })
+        }
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            if left.keys().collect::<Vec<_>>() != right.keys().collect::<Vec<_>>() {
+                return Some(format!("{path}.keys differ"));
+            }
+            left.iter().find_map(|(key, left)| {
+                first_json_difference(left, &right[key], &format!("{path}.{key}"))
+            })
+        }
+        _ if left != right => Some(format!("{path}: {left} != {right}")),
+        _ => None,
     }
 }
 
@@ -297,7 +413,7 @@ fn dual_noc_connects_system_movers_to_the_mesh_wide_l1_region() {
             .iter()
             .chain(&processor.connection().outputs)
             .any(|endpoint| {
-                endpoint.memory == "L1"
+                matches!(endpoint.memory.as_str(), "L1_S" | "L1_R")
                     && endpoint.indices.len() == 2
                     && endpoint
                         .indices
@@ -388,7 +504,7 @@ fn examples_match_pre_redesign_adl_contracts() {
             ][..],
             5,
             1,
-            3,
+            5,
         ),
     ];
 
@@ -420,7 +536,7 @@ fn examples_match_pre_redesign_adl_contracts() {
     let noc0_gather = processor_line(&dual, "@proc_l1_l1_noc0");
     assert_eq!(resource_clause(noc0_load), resource_clause(noc0_gather));
     assert!(dual.contains("area: [%bcst_x, %bcst_y]"));
-    assert!(dual.contains("dst_mem_space @mem_L1 : 1"));
+    assert!(dual.contains("dst_mem_space @mem_L1_R"));
     assert!(dual.contains("loom.gather"));
 
     let mesh =

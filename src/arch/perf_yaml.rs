@@ -364,7 +364,14 @@ add:
     #[test]
     fn native_mlir_and_yaml_require_matching_function_names() {
         let source = include_str!("../../examples/single_core/vector_lane.mlir");
-        let yaml = include_str!("../../examples/single_core/vector_lane.perf.yaml");
+        let yaml = r#"vector_add:
+  - constraint: (L > 0) && (L <= 1024)
+    latency: '2'
+    volume: L
+    throughput: '32'
+  - constraint: (L > 0) && (L > 1024)
+    expression: 18 + L / 64
+"#;
         let definition =
             crate::ProcessorDefinition::from_mlir_source_with_perf_yaml("lane", source, yaml)
                 .unwrap();

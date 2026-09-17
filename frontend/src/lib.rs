@@ -2,15 +2,21 @@
 mod architecture;
 pub mod archs;
 mod builder;
-pub mod compact;
+mod emission;
+mod native;
 pub mod selection;
+mod templates;
 mod yaml;
 
 pub use architecture::{ArchLoadError, ChipYaml, ProcessorYaml};
 pub use archs::{load_arch, load_arch_with_bindings};
-pub use builder::{ArchitectureBuilder, Connection, ProcessorDefinition, ProcessorSourceFormat};
-pub use compact::{LoomMemoryBinding, LoomParseError, lower_loom_source, parse_loom_source};
+pub use builder::{ArchitectureBuilder, Connection, NamedPort, ProcessorDefinition};
+pub use emission::emit_processor_sources;
 pub use mlar_rust::{PerfYamlError, PerformanceYaml};
+
+pub fn registered_templates() -> impl Iterator<Item = &'static str> {
+    templates::registered_names()
+}
 
 pub fn write_artifact(
     architecture: &mlar_rust::Architecture,

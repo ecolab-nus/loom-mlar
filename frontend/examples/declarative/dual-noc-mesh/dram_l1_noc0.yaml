@@ -1,6 +1,10 @@
 name: dram_l1_noc0
 type: data_mover
-source: dram_l1_noc0.loom
+functions:
+  dram_to_l1_S_f16: {source: dram_to_l1_S_f16}
+  dram_to_l1_S_bcst: {source: dram_to_l1_S_bcst}
+  dram_to_l1_R_f16: {source: dram_to_l1_R_f16}
+  dram_to_l1_R_bcst: {source: dram_to_l1_R_bcst}
 performance:
   dram_to_l1_S_f16:
   - latency: '454'

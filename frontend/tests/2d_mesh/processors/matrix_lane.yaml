@@ -1,6 +1,19 @@
 name: matrix_lane
 type: compute
-source: matrix_lane.loom
+functions:
+  matmul_SS_f16: {source: matmul_SS_f16}
+  matmul_SR_f16: {source: matmul_SR_f16}
+  matmul_RS_f16: {source: matmul_RS_f16}
+  matmul_RR_f16: {source: matmul_RR_f16}
+  batch_matmul_SS_f16: {source: batch_matmul_SS_f16}
+  batch_matmul_SR_f16: {source: batch_matmul_SR_f16}
+  batch_matmul_RS_f16: {source: batch_matmul_RS_f16}
+  batch_matmul_RR_f16: {source: batch_matmul_RR_f16}
+  vec_vsum_f16: {source: vec_vsum_f16}
+  vec_vmax_f16: {source: vec_vmax_f16}
+  vec_max1_f16: {source: vec_max1_f16}
+  elementwise_add_f16: {source: elementwise_add_f16}
+  elementwise_mul_f16: {source: elementwise_mul_f16}
 resources:
 - name: matrix_lane
 performance:

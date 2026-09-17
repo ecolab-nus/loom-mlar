@@ -1,25 +1,37 @@
-use mlar_frontend::{ArchitectureBuilder, Connection, ProcessorDefinition, parse_loom_source};
-use mlar_rust::{FuncPerfModel, MemoryDefinition, OperationModel};
+use mlar_frontend::{ArchitectureBuilder, Connection, ProcessorDefinition, ProcessorYaml};
+use mlar_rust::MemoryDefinition;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-fn definition(source: &str) -> ProcessorDefinition {
-    let module = parse_loom_source(source).unwrap();
-    ProcessorDefinition::new(
-        "broadcast",
-        source,
-        module
-            .functions
-            .into_iter()
-            .map(|func| {
-                OperationModel::new(
-                    func,
-                    FuncPerfModel::builder()
-                        .symbols(["L"])
-                        .simple_time_cost(1_i64.into(), mlar_rust::Expr::sym("L"), 32_i64.into())
-                        .build(),
-                )
-            })
-            .collect(),
-    )
+struct Package(PathBuf);
+
+impl Package {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "mlar-translation-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn write(&self, name: &str, contents: &str) -> PathBuf {
+        let path = self.0.join(name);
+        std::fs::write(&path, contents).unwrap();
+        path
+    }
+}
+
+impl Drop for Package {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.0).unwrap();
+    }
+}
+
+fn definition(path: &Path) -> Result<ProcessorDefinition, mlar_frontend::ArchLoadError> {
+    ProcessorYaml::from_file(path)?.build_definition(path)
 }
 
 #[test]
@@ -56,114 +68,42 @@ fn hierarchy_and_flat_authoring_produce_identical_canonical_selections() {
         serde_json::to_value(make(true)).unwrap(),
         serde_json::to_value(make(false)).unwrap()
     );
-    let direct = mlar_rust::Architecture::builder("same")
-        .axis("cluster", 2)
-        .axis("core", 3)
-        .memory_definition(MemoryDefinition::new("M", 1024, 16).with_banking(2))
-        .place_memory("M", ["cluster", "core"])
-        .processor_definition(mlar_rust::ProcessorDefinition::new("lane", "", vec![]))
-        .connect(
-            "lane",
-            mlar_rust::Connection::new(
-                ["core"],
-                vec![
-                    mlar_rust::MemoryEndpoint::new(
-                        "M",
-                        vec![
-                            mlar_rust::arch::EndpointIndex::All,
-                            mlar_rust::arch::EndpointIndex::Expression(
-                                mlar_rust::AffineExpr::variable("core"),
-                            ),
-                        ],
-                    )
-                    .with_bank(mlar_rust::AffineExpr::constant(1)),
-                ],
-                vec![],
-            ),
-        )
-        .build()
-        .unwrap();
-    assert_eq!(
-        serde_json::to_value(direct).unwrap(),
-        serde_json::to_value(make(true)).unwrap()
-    );
 }
 
 #[test]
-fn differing_selected_extents_specialize_bodies_but_identical_contexts_reuse() {
-    let source = "func @bcst(in src: f16[L], out dst: f16[L]) {\n loom.broadcast %src to %dst\n}";
+fn explicit_collective_extent_is_independent_of_selected_memory_axes() {
+    let package = Package::new();
+    let yaml = package.write(
+        "broadcast.yaml",
+        r#"
+name: broadcast_lane
+type: data_mover
+functions:
+  send:
+    source: broadcast
+    element_type: f16
+    dimensions: [L]
+    symbols: [copies_x, copies_y]
+    extent: [copies_x, copies_y]
+performance:
+  send:
+  - expression: L
+"#,
+    );
     let architecture = ArchitectureBuilder::new("contexts")
         .axis("x", 2)
         .axis("y", 3)
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
         .place_memory("M", ["x", "y"])
-        .processor_definition(definition(source))
+        .processor_definition(definition(&yaml).unwrap())
         .connect_as(
             "whole",
-            "broadcast",
-            Connection::parse([], ["M"], ["M"]).unwrap(),
-        )
-        .connect_as(
-            "same",
-            "broadcast",
+            "broadcast_lane",
             Connection::parse([], ["M"], ["M"]).unwrap(),
         )
         .connect_as(
             "column",
-            "broadcast",
-            Connection::parse(["x"], ["M[x, :]"], ["M[x, :]"]).unwrap(),
-        )
-        .build()
-        .unwrap();
-    assert_eq!(architecture.processor_definitions().len(), 2);
-    assert_eq!(
-        architecture.processors()[0].definition_name(),
-        architecture.processors()[1].definition_name()
-    );
-    assert_ne!(
-        architecture.processors()[0].definition_name(),
-        architecture.processors()[2].definition_name()
-    );
-    let whole = architecture
-        .processor_definition(architecture.processors()[0].definition_name())
-        .unwrap();
-    let column = architecture
-        .processor_definition(architecture.processors()[2].definition_name())
-        .unwrap();
-    assert!(
-        whole.source().contains("area: [2, 3]"),
-        "{}",
-        whole.source()
-    );
-    assert!(column.source().contains("area: [3]"), "{}", column.source());
-    let path = std::env::temp_dir().join(format!("mlar-artifact-{}.json", std::process::id()));
-    mlar_frontend::write_artifact(&architecture, &path).unwrap();
-    let decoded: mlar_rust::Architecture =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    std::fs::remove_file(path).unwrap();
-    assert_eq!(
-        serde_json::to_value(decoded).unwrap(),
-        serde_json::to_value(architecture).unwrap()
-    );
-}
-
-#[test]
-fn explicit_symbolic_extent_stays_symbolic_and_reuses_across_contexts() {
-    let source = "func @bcst(in src: f16[L], out dst: f16[L]) {\n %k = loom.sym @k : index\n loom.broadcast %src to %dst extent: [k]\n}";
-    let architecture = ArchitectureBuilder::new("symbolic")
-        .axis("x", 2)
-        .axis("y", 3)
-        .memory_definition(MemoryDefinition::new("M", 1024, 16))
-        .place_memory("M", ["x", "y"])
-        .processor_definition(definition(source))
-        .connect_as(
-            "whole",
-            "broadcast",
-            Connection::parse([], ["M"], ["M"]).unwrap(),
-        )
-        .connect_as(
-            "column",
-            "broadcast",
+            "broadcast_lane",
             Connection::parse(["x"], ["M[x, :]"], ["M[x, :]"]).unwrap(),
         )
         .build()
@@ -172,29 +112,263 @@ fn explicit_symbolic_extent_stays_symbolic_and_reuses_across_contexts() {
     assert!(
         architecture.processor_definitions()[0]
             .source()
-            .contains("area: [%k]")
+            .contains("area: [%copies_x, %copies_y]")
     );
 }
 
 #[test]
-fn inconsistent_authoring_metadata_is_rejected_before_lowering() {
-    let source = "func @bcst(in src: f16[L], out dst: f16[L]) {\n loom.broadcast %src to %dst\n}";
-    let mut function = parse_loom_source(source).unwrap().functions.remove(0);
-    function.symbols.push(mlar_rust::Sym::new("undeclared"));
-    let model = FuncPerfModel::builder()
-        .symbols(["L"])
-        .simple_time_cost(1_i64.into(), mlar_rust::Expr::sym("L"), 32_i64.into())
-        .build();
-    let error = ArchitectureBuilder::new("bad")
+fn multiple_connections_require_explicit_operand_bindings() {
+    let package = Package::new();
+    let yaml = package.write(
+        "lane.yaml",
+        r#"
+functions:
+  matmul:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+performance:
+  matmul:
+  - expression: M * N * K
+"#,
+    );
+    let error = ArchitectureBuilder::new("ambiguous")
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
         .place_memory("M", Vec::<String>::new())
-        .processor_definition(ProcessorDefinition::new(
-            "broadcast",
-            source,
-            vec![OperationModel::new(function, model)],
-        ))
-        .connect("broadcast", Connection::parse([], ["M"], ["M"]).unwrap())
+        .processor_definition(definition(&yaml).unwrap())
+        .connect("lane", Connection::parse([], ["M", "M"], ["M"]).unwrap())
         .build()
         .unwrap_err();
-    assert!(error.to_string().contains("metadata disagrees"));
+    assert!(error.to_string().contains("explicit input binding"));
 }
+
+#[test]
+fn named_bindings_reject_unknown_ports_and_side_mismatches() {
+    for (binding, expected) in [
+        ("lhs: missing", "unknown input port 'missing'"),
+        ("lhs: M", "unknown input port 'M'"),
+        ("lhs: result", "unknown input port 'result'"),
+    ] {
+        let package = Package::new();
+        let yaml = package.write(
+            "lane.yaml",
+            &format!(
+                "functions:\n  matmul:\n    source: matmul_accumulate\n    element_type: f16\n    dimensions: [M, N, K]\n    bindings:\n      {binding}\n      rhs: data\n      out: result\nperformance:\n  matmul: [{{expression: M * N * K}}]\n"
+            ),
+        );
+        let definition = definition(&yaml).unwrap();
+        let error = ArchitectureBuilder::new("bad_binding")
+            .memory_definition(MemoryDefinition::new("M", 1024, 16))
+            .place_memory("M", Vec::<String>::new())
+            .processor_definition(definition)
+            .connect(
+                "lane",
+                Connection::parse_named([], [("data", "M")], [("result", "M")]).unwrap(),
+            )
+            .build()
+            .unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+}
+
+#[test]
+fn template_and_native_functions_compose_in_one_processor() {
+    let package = Package::new();
+    package.write(
+        "custom.mlir",
+        r#"
+module @processor {
+  func.func @custom_mul(%lhs: memref<?xf16>, %rhs: memref<?xf16>, %out: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %lhs, [%L] : memref<?xf16>
+    loom.bind_shape %rhs, [%L] : memref<?xf16>
+    loom.bind_shape %out, [%L] : memref<?xf16>
+    loom.bind_mem %lhs, @input_0 : memref<?xf16>
+    loom.bind_mem %rhs, @input_0 : memref<?xf16>
+    loom.bind_mem %out, @output_0 : memref<?xf16>
+    linalg.mul ins(%lhs, %rhs : memref<?xf16>, memref<?xf16>) outs(%out : memref<?xf16>)
+    return
+  }
+}
+"#,
+    );
+    let yaml = package.write(
+        "lane.yaml",
+        r#"
+functions:
+  add:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [L]
+  custom_mul: {source: custom_mul}
+performance:
+  add: [{expression: L}]
+  custom_mul: [{expression: L}]
+"#,
+    );
+    let architecture = ArchitectureBuilder::new("mixed")
+        .memory_definition(MemoryDefinition::new("M", 1024, 16))
+        .place_memory("M", Vec::<String>::new())
+        .processor_definition(definition(&yaml).unwrap())
+        .connect("lane", Connection::parse([], ["M"], ["M"]).unwrap())
+        .build()
+        .unwrap();
+    let source = architecture.processor_definitions()[0].source();
+    assert!(source.contains("func.func @add"));
+    assert!(source.contains("func.func @custom_mul"));
+    assert!(source.find("func.func @add").unwrap() < source.find("func.func @custom_mul").unwrap());
+}
+
+#[test]
+fn native_sources_reject_reserved_names_aliases_and_external_dependencies() {
+    let reserved = Package::new();
+    reserved.write("reserved.mlir", "module { func.func @copy() { return } }");
+    let yaml = reserved.write(
+        "lane.yaml",
+        "functions:\n  add: {source: elementwise_add, element_type: f16, dimensions: [L]}\nperformance:\n  add: [{expression: L}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("reserved")
+    );
+
+    let aliased = Package::new();
+    aliased.write("native.mlir", "module { func.func @native() { return } }");
+    let yaml = aliased.write(
+        "lane.yaml",
+        "functions:\n  alias: {source: native}\nperformance:\n  alias: [{expression: '1'}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("aliases")
+    );
+
+    let dependent = Package::new();
+    dependent.write(
+        "native.mlir",
+        "module { func.func @native() { func.call @helper() : () -> () return } }",
+    );
+    let yaml = dependent.write(
+        "lane.yaml",
+        "functions:\n  native: {source: native}\nperformance:\n  native: [{expression: '1'}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("self-contained")
+    );
+}
+
+#[test]
+fn discovery_rejects_duplicates_malformed_files_and_native_template_fields() {
+    let duplicate = Package::new();
+    duplicate.write("a.mlir", "module { func.func @native() { return } }");
+    duplicate.write("b.mlir", "module { func.func @native() { return } }");
+    let yaml = duplicate.write(
+        "lane.yaml",
+        "functions:\n  native: {source: native}\nperformance:\n  native: [{expression: '1'}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate")
+    );
+
+    let malformed = Package::new();
+    malformed.write("unused.mlir", "module { func.func @unused() { return }");
+    let yaml = malformed.write(
+        "lane.yaml",
+        "functions:\n  add: {source: elementwise_add, element_type: f16, dimensions: [L]}\nperformance:\n  add: [{expression: L}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("unbalanced")
+    );
+
+    let fields = Package::new();
+    fields.write("native.mlir", "module { func.func @native() { return } }");
+    let yaml = fields.write(
+        "lane.yaml",
+        "functions:\n  native: {source: native, element_type: f16}\nperformance:\n  native: [{expression: '1'}]\n",
+    );
+    assert!(
+        definition(&yaml)
+            .unwrap_err()
+            .to_string()
+            .contains("template parameters")
+    );
+}
+
+#[test]
+fn missing_sources_and_function_performance_mismatches_are_errors() {
+    let package = Package::new();
+    let missing = package.write(
+        "missing.yaml",
+        "functions:\n  absent: {source: absent}\nperformance:\n  absent: [{expression: '1'}]\n",
+    );
+    assert!(
+        definition(&missing)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown source")
+    );
+
+    let mismatch = package.write(
+        "mismatch.yaml",
+        "functions:\n  add: {source: elementwise_add, element_type: f16, dimensions: [L]}\nperformance:\n  other: [{expression: L}]\n",
+    );
+    assert!(
+        definition(&mismatch)
+            .unwrap_err()
+            .to_string()
+            .contains("function names do not match")
+    );
+}
+
+#[test]
+fn resolved_processor_emission_writes_mlir_and_provenance_outside_package() {
+    let package = Package::new();
+    package.write(
+        "chip.yaml",
+        "name: emit\nmemories: {M: null}\nprocessors:\n  lane:\n    definition: lane.yaml\n    inputs: {data: M}\n    outputs: {result: M}\n",
+    );
+    package.write(
+        "memory.yaml",
+        "memories:\n  M: {capacity: 1024, word_size: 16}\n",
+    );
+    package.write(
+        "lane.yaml",
+        "functions:\n  add: {source: elementwise_add, element_type: f16, dimensions: [L]}\nperformance:\n  add: [{expression: L}]\n",
+    );
+    let output = std::env::temp_dir().join(format!(
+        "mlar-emission-{}-{}",
+        std::process::id(),
+        NEXT_OUTPUT.fetch_add(1, Ordering::Relaxed)
+    ));
+    mlar_frontend::emit_processor_sources(&package.0, &output).unwrap();
+    assert!(
+        std::fs::read_to_string(output.join("lane.mlir"))
+            .unwrap()
+            .contains("func.func @add")
+    );
+    assert!(
+        std::fs::read_to_string(output.join("manifest.yaml"))
+            .unwrap()
+            .contains("name: elementwise_add")
+    );
+    std::fs::remove_dir_all(&output).unwrap();
+
+    let error =
+        mlar_frontend::emit_processor_sources(&package.0, package.0.join("generated")).unwrap_err();
+    assert!(error.to_string().contains("outside the source package"));
+}
+
+static NEXT_OUTPUT: AtomicU64 = AtomicU64::new(0);

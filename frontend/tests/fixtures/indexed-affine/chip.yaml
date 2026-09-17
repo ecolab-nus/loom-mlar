@@ -14,20 +14,20 @@ processors:
   matrix_lane:
     definition: matrix_lane.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]", "L1[x, y]"]
-    outputs: ["L1[x, y]"]
+    inputs: {lhs: "L1[x, y]", rhs: "L1[x, y]"}
+    outputs: {result: "L1[x, y]"}
   l1_to_l2:
     definition: dma.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L2[x floordiv 2, y floordiv 2]"]
+    inputs: {src: "L1[x, y]"}
+    outputs: {dst: "L2[x floordiv 2, y floordiv 2]"}
   east_dma:
     definition: dma.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L1[(x + 1) mod 4, y]"]
+    inputs: {src: "L1[x, y]"}
+    outputs: {dst: "L1[(x + 1) mod 4, y]"}
   dram_to_l1:
     definition: dma.yaml
     domain: [x, y]
-    inputs: ["DRAM[x mod 2]"]
-    outputs: ["L1[x, y].bank[(x + y) mod 8]"]
+    inputs: {src: "DRAM[x mod 2]"}
+    outputs: {dst: "L1[x, y].bank[(x + y) mod 8]"}

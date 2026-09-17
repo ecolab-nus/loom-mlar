@@ -1,6 +1,10 @@
 name: vector_lane
 type: compute
-source: vector_lane.loom
+functions:
+  vector_add:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [L]
 resources:
 - name: vector_pipeline
 - name: vector_lane

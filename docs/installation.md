@@ -136,7 +136,7 @@ use mlar_rust::*;
 ```
 
 Native processor MLIR and performance YAML load through `mlar-rust` alone;
-YAML architecture packages and compact `.loom` translation use the optional
+YAML architecture packages, registered templates, and native source discovery use the optional
 `mlar-frontend` workspace crate.
 
 This crate does not currently publish a CLI entry point. External tools can

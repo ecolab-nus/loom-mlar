@@ -1,6 +1,71 @@
 name: matrix_lane
 type: compute
-source: matrix_lane.loom
+functions:
+  matmul_SS_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: L1_S, rhs: L1_S, out: L1_S}
+  matmul_SR_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: L1_S, rhs: L1_R, out: L1_S}
+  matmul_RS_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: L1_R, rhs: L1_S, out: L1_S}
+  matmul_RR_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: L1_R, rhs: L1_R, out: L1_S}
+  batch_matmul_SS_f16:
+    source: batch_matmul_accumulate
+    element_type: f16
+    dimensions: [B, M, N, K]
+    bindings: {lhs: L1_S, rhs: L1_S, out: L1_S}
+  batch_matmul_SR_f16:
+    source: batch_matmul_accumulate
+    element_type: f16
+    dimensions: [B, M, N, K]
+    bindings: {lhs: L1_S, rhs: L1_R, out: L1_S}
+  batch_matmul_RS_f16:
+    source: batch_matmul_accumulate
+    element_type: f16
+    dimensions: [B, M, N, K]
+    bindings: {lhs: L1_R, rhs: L1_S, out: L1_S}
+  batch_matmul_RR_f16:
+    source: batch_matmul_accumulate
+    element_type: f16
+    dimensions: [B, M, N, K]
+    bindings: {lhs: L1_R, rhs: L1_R, out: L1_S}
+  vec_vsum_f16:
+    source: reduce_last_sum
+    element_type: f16
+    dimensions: [P, R]
+    bindings: {input: L1_S, out: L1_S}
+  vec_vmax_f16:
+    source: reduce_last_max
+    element_type: f16
+    dimensions: [P, R]
+    bindings: {input: L1_S, out: L1_S}
+  vec_max1_f16:
+    source: elementwise_max
+    element_type: f16
+    dimensions: [L]
+    bindings: {lhs: L1_S, rhs: L1_S, out: L1_S}
+  elementwise_add_f16:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [M, N]
+    bindings: {lhs: L1_S, rhs: L1_S, out: L1_S}
+  elementwise_mul_f16:
+    source: elementwise_mul
+    element_type: f16
+    dimensions: [M, N]
+    bindings: {lhs: L1_S, rhs: L1_S, out: L1_S}
 resources:
 - name: matrix_lane
 performance:

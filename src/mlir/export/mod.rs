@@ -446,7 +446,41 @@ fn bind_raw_mlir_side(
     if regions.is_empty() && handles.is_empty() {
         return Ok(());
     }
-    let assignments = if handles.len() == 1 {
+    let indexed = regions
+        .iter()
+        .map(|region| {
+            region
+                .strip_prefix(&format!("{side}_"))
+                .and_then(|index| index.parse::<usize>().ok())
+        })
+        .collect::<Option<Vec<_>>>();
+    if indexed.is_none()
+        && regions
+            .iter()
+            .any(|region| region.starts_with("input_") || region.starts_with("output_"))
+    {
+        return Err(format!(
+            "MLIR function '{function}' has a connection-index binding on the wrong side or with an invalid index: {regions:?}"
+        ));
+    }
+    let assignments = if let Some(indices) = indexed {
+        regions
+            .into_iter()
+            .zip(indices)
+            .map(|(region, index)| {
+                handles
+                    .get(index)
+                    .cloned()
+                    .map(|handle| (region.clone(), handle))
+                    .ok_or_else(|| {
+                        format!(
+                            "MLIR function '{function}' binds @{region} to {side} {index}, but the architecture supplies {} {side} handles",
+                            handles.len()
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else if handles.len() == 1 {
         regions
             .into_iter()
             .map(|region| (region, handles[0].clone()))

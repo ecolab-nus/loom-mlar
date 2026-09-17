@@ -1,6 +1,10 @@
 name: matrix_lane
 type: compute
-source: matrix_lane.loom
+functions:
+  matmul:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
 resources:
 - name: matrix_pipeline
 - name: matrix_lane

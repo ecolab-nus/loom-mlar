@@ -48,15 +48,15 @@ processors:
   matrix_lane:
     definition: matrix_lane.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L1[x, y]"]
+    inputs: {data: "L1[x, y]"}
+    outputs: {result: "L1[x, y]"}
   dram_l1_dma:
     definition: dram_l1_dma.yaml
-    inputs: ["DRAM[:]"]
-    outputs: ["L1[:, :]"]
+    inputs: {src: "DRAM[:]"}
+    outputs: {dst: "L1[:, :]"}
     resources: [noc_ingress]
   l1_dram_dma:
     definition: l1_dram_dma.yaml
-    inputs: ["L1[:, :]"]
-    outputs: ["DRAM[:]"]
+    inputs: {src: "L1[:, :]"}
+    outputs: {dst: "DRAM[:]"}
     resources: [noc_egress]

@@ -1,6 +1,17 @@
 name: vector_lane
 type: compute
-source: vector_lane.loom
+functions:
+  vec_max_f16: {source: vec_max_f16}
+  vec_exp_f16: {source: vec_exp_f16}
+  vec_sum_f16: {source: vec_sum_f16}
+  vec_add_f16: {source: vec_add_f16}
+  vec_mul_f16: {source: vec_mul_f16}
+  vec_div_f16: {source: vec_div_f16}
+  vec_sub_f16: {source: vec_sub_f16}
+  vec_powf_f16: {source: vec_powf_f16}
+  vec_cmpf_ogt_f16: {source: vec_cmpf_ogt_f16}
+  vec_select_f16: {source: vec_select_f16}
+  vec_log_f16: {source: vec_log_f16}
 resources:
 - name: vector_lane
 performance:

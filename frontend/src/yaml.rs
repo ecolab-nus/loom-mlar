@@ -29,3 +29,31 @@ where
     }
     deserializer.deserialize_map(UniqueMap(PhantomData))
 }
+
+pub(super) fn unique_entries<'de, D, V>(deserializer: D) -> Result<Vec<(String, V)>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    struct UniqueEntries<V>(PhantomData<V>);
+    impl<'de, V: Deserialize<'de>> Visitor<'de> for UniqueEntries<V> {
+        type Value = Vec<(String, V)>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a mapping with unique names")
+        }
+
+        fn visit_map<M: MapAccess<'de>>(self, mut access: M) -> Result<Self::Value, M::Error> {
+            let mut names = std::collections::BTreeSet::new();
+            let mut values = Vec::new();
+            while let Some((name, value)) = access.next_entry::<String, V>()? {
+                if !names.insert(name.clone()) {
+                    return Err(M::Error::custom(format!("duplicate name '{name}'")));
+                }
+                values.push((name, value));
+            }
+            Ok(values)
+        }
+    }
+    deserializer.deserialize_map(UniqueEntries(PhantomData))
+}

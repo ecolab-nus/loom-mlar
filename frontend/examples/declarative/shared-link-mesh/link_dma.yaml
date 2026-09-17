@@ -1,6 +1,10 @@
 name: link_dma
 type: data_mover
-source: link_dma.loom
+functions:
+  link_copy:
+    source: copy
+    element_type: f16
+    dimensions: [L]
 performance:
   link_copy:
   - latency: '24'

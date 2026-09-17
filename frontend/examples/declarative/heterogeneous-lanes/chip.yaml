@@ -1,0 +1,14 @@
+name: system
+memories:
+  GCRAM:
+  RRAM:
+  OUTPUT:
+processors:
+  matrix_lane:
+    definition: matrix_lane.yaml
+    inputs: {activations: GCRAM, weights: RRAM}
+    outputs: {result: OUTPUT}
+  vector_lane:
+    definition: vector_lane.yaml
+    inputs: {activations: GCRAM, weights: RRAM}
+    outputs: {result: OUTPUT}

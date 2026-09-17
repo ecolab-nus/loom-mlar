@@ -1,6 +1,10 @@
 name: l1_l2_dma
 type: data_mover
-source: l1_l2_dma.loom
+functions:
+  writeback_l2:
+    source: copy
+    element_type: f16
+    dimensions: [L]
 performance:
   writeback_l2:
   - latency: '12'

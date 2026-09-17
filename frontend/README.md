@@ -1,8 +1,7 @@
 # MLAR frontend
 
-`mlar-frontend` provides a compact way to author an MLAR architecture. It loads
-a directory of YAML and `.loom` files and returns an
-`mlar_rust::Architecture`.
+`mlar-frontend` loads an architecture package from YAML, registered operation
+templates, and optional native MLIR into an `mlar_rust::Architecture`.
 
 ## Quick start
 
@@ -15,11 +14,17 @@ cargo run -p mlar-frontend --bin translate -- \
   frontend/examples/declarative/single-core /tmp/single-core.json
 cargo run -p mlar-frontend --bin export_platform -- \
   frontend/examples/declarative/single-core /tmp/single-core.mlir
+cargo run -p mlar-frontend --bin emit_processors -- \
+  frontend/examples/declarative/single-core /tmp/single-core-processors
 ```
 
 The inspect example and ADL export require the `adl-opt` and `loom-opt`
 validators described in the [installation guide](../docs/installation.md);
 JSON translation does not.
+
+`emit_processors` creates one final processor module per resolved core
+definition and a `manifest.yaml` that records each function's template or native
+file. The output directory must be new and outside the source package.
 
 From Rust:
 
@@ -30,15 +35,15 @@ let architecture = mlar_frontend::load_arch("path/to/package")?;
 
 ## Package layout
 
-A package contains the chip description, a memory catalog, and a YAML/source
-pair for each processor or data mover:
+A package contains the chip description, a memory catalog, processor YAML, and
+optional native MLIR files:
 
 ```text
 package/
 ├── chip.yaml
 ├── memory.yaml
 ├── vector_lane.yaml
-└── vector_lane.loom
+└── custom.mlir
 ```
 
 ### `memory.yaml`
@@ -74,8 +79,8 @@ processors:
   vector_lane:
     definition: vector_lane.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L1[x, y]"]
+    inputs: {data: "L1[x, y]"}
+    outputs: {result: "L1[x, y]"}
 ```
 
 Omit `domain` for a single processor instance. A processor's domain variables
@@ -97,12 +102,16 @@ constant multiplication, `floordiv`, `ceildiv`, `mod`, and `%`.
 
 ### Processor YAML
 
-Name the source, component type, resources, and performance alternatives:
+Map each exposed function to a registered template or a native function:
 
 ```yaml
 name: vector_lane
 type: compute
-source: vector_lane.loom
+functions:
+  vector_add:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [L]
 
 resources:
   - name: vector_pipeline
@@ -118,56 +127,31 @@ performance:
 ```
 
 Use `type: compute` for compute operations and `type: data_mover` for movement
-operations. Each performance key must name a function in the source file. See
+operations. Each performance key must match a `functions` key. See
 the [performance YAML reference](../docs/perf-yaml.md) for expression and symbol
-rules. Native `.mlir` files may be used instead of `.loom` files.
+rules. The complete [package reference](../TEMPLATE.md) documents every template
+signature, named operand bindings, collective extents, and native discovery.
 
-## Compact `.loom` syntax
+Placement endpoints may be lists, such as `inputs: ["L1_S[x, y]", "L1_R[x, y]"]`,
+which name ports `L1_S` and `L1_R`. Template bindings use strings, such as
+`bindings: {lhs: L1_S, rhs: L1_R, out: L1_S}`; each operand's template contract
+determines whether it selects an input or output. Use alias maps such as
+`inputs: {local: "L1[x, y]", neighbor: "L1[x + 1, y]"}` for multiple connections
+to one memory or for reusable processor definitions. Names must be unique on
+each side, and explicit aliases replace memory-derived names.
 
-A `.loom` file contains one or more functions. Arguments specify direction,
-element type, symbolic shape, and optionally a memory binding:
+Registered sources cover matmul, batch matmul, common vector operations,
+last-dimension sum/max reductions, copy, broadcast, and gather. Their exact
+names are documented in the package reference and reserved from handwritten MLIR.
+Broadcast and gather require an explicit two-dimensional `extent: [X, Y]`;
+native `loom.broadcast` is a tensor-shape operation and is not used for physical
+broadcast.
 
-```text
-func @vector_add(
-  in lhs: f16[L],
-  in rhs: f16[L],
-  out result: f16[L]
-) {
-  linalg.add ins(%lhs, %rhs) outs(%result)
-}
-```
-
-Supported bodies are named `linalg` operations, `linalg.generic` regions, and
-the movement operations `loom.copy`, `loom.broadcast`, and `loom.gather`:
-
-```text
-func @copy(
-  in src: f16[M, N],
-  out dst: f16[M, N]
-) {
-  loom.copy %src to %dst
-}
-```
-
-Shapes declare symbols such as `L`, `M`, and `N`. Declare additional symbols
-inside the function when performance expressions or collective extents need
-them:
-
-```text
-%copies = loom.sym @copies : index
-```
-
-Add `@space(1)` to select a numbered connected memory space, or
-`@memory(sram)` to bind an argument by memory technology. Broadcast and gather
-may specify an extent:
-
-```text
-loom.broadcast %src to %dst extent: [copies]
-```
-
-For `linalg.generic`, write the usual `indexing_maps`, `iterator_types`, block,
-and `linalg.yield`; argument declarations provide the buffer types used by
-`ins(...)` and `outs(...)`.
+Native `.mlir` files are discovered directly beside the YAML. A native source
+name must equal the exposed function name. Functions use `@input_N` and
+`@output_N` bindings in authored port order and must be self-contained within
+one `func.func`. Native MLIR memory spaces remain explicitly authored; the
+frontend does not specialize or rewrite native function types.
 
 ## Parameters and generation
 

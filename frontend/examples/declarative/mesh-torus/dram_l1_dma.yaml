@@ -1,6 +1,16 @@
 name: dram_l1_dma
 type: data_mover
-source: dram_l1_dma.loom
+functions:
+  load_l1:
+    source: copy
+    element_type: f16
+    dimensions: [L]
+  load_l1_broadcast:
+    source: broadcast
+    element_type: f16
+    dimensions: [L]
+    symbols: [bcst_x, bcst_y]
+    extent: [bcst_x, bcst_y]
 performance:
   load_l1:
   - latency: '100'

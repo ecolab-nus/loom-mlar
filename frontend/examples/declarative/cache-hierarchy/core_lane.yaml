@@ -1,6 +1,10 @@
 name: core_lane
 type: compute
-source: core_lane.loom
+functions:
+  elementwise_add:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [L]
 resources:
 - name: core_pipeline
 - name: core_lane

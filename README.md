@@ -9,8 +9,8 @@ There are two ways to construct the same `mlar_rust::Architecture`:
 
 - use `mlar-rust` directly for explicit construction in Rust with native
   processor MLIR;
-- use `mlar-frontend` for a shorter YAML package format and compact `.loom`
-  processor definitions.
+- use `mlar-frontend` for a shorter YAML package format with registered
+  operation templates and directory-local native MLIR.
 
 ## Use the Rust API
 
@@ -31,7 +31,7 @@ let architecture = Architecture::builder("example")
 
 Processor definitions combine native MLIR with a performance model. Connections
 map processor inputs and outputs to memory selections. See
-[`examples/flat_native.rs`](examples/flat_native.rs) for a complete small
+[`examples/flat_native/main.rs`](examples/flat_native/main.rs) for a complete small
 example and [`examples/`](examples/README.md) for larger architectures.
 
 Run the examples and core tests from the repository root:
@@ -39,20 +39,25 @@ Run the examples and core tests from the repository root:
 ```bash
 cargo run -p mlar-rust --example flat_native
 cargo run -p mlar-rust --example dual_noc_mesh
+cargo run -p mlar-rust --example staged_heterogeneous_mesh
 cargo test -p mlar-rust --test 2d_mesh
 ```
+
+The [staged heterogeneous mesh](examples/staged_heterogeneous_mesh/README.md)
+demonstrates GCRAM and RRAM inputs copied into a much smaller shared staging
+SRAM before matrix compute, with a distinct SRAM output region.
 
 ## Use the frontend syntax
 
 The frontend describes the architecture in `chip.yaml` and `memory.yaml`, with
-one YAML and `.loom` pair for each processor definition:
+one YAML file per processor definition and optional native `.mlir` files:
 
 ```text
 my-architecture/
 ├── chip.yaml
 ├── memory.yaml
 ├── matrix_lane.yaml
-└── matrix_lane.loom
+└── custom.mlir
 ```
 
 Load a package from Rust:
@@ -71,7 +76,7 @@ cargo run -p mlar-frontend --bin export_platform -- \
   path/to/my-architecture /tmp/platform.mlir
 ```
 
-See the [frontend README](frontend/README.md) for the YAML and `.loom` syntax,
+See the [frontend README](frontend/README.md) for templates and native discovery,
 and [`frontend/examples/declarative/`](frontend/examples/declarative/README.md)
 for complete packages.
 

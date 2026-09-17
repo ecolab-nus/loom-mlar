@@ -1,6 +1,5 @@
 use mlar_frontend::Connection;
 use mlar_frontend::ProcessorDefinition;
-use mlar_frontend::parse_loom_source;
 use mlar_frontend::selection::MemoryEndpoint;
 use std::path::Path;
 
@@ -22,8 +21,8 @@ processors:
   lane:
     definition: lane.yaml
     domain: [x]
-    inputs: ["L1[x]"]
-    outputs: ["L1[x]"]
+    inputs: {data: "L1[x]"}
+    outputs: {result: "L1[x]"}
 "#,
     )
     .expect("current chip syntax");
@@ -49,7 +48,7 @@ fn fixture_dir() -> std::path::PathBuf {
 }
 
 #[test]
-fn operand_memory_requirements_bind_distinct_connected_technologies() {
+fn named_operand_ports_bind_distinct_connected_technologies() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typed-memory");
     let architecture = mlar_frontend::archs::load_arch(&dir).expect("typed-memory fixture");
     assert_eq!(
@@ -75,7 +74,7 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
     let definition = ProcessorYaml::from_file(dir.join("mixed_lane.yaml"))
         .and_then(|yaml| yaml.build_definition(dir.join("mixed_lane.yaml")))
         .unwrap();
-    let ambiguous = mlar_frontend::ArchitectureBuilder::new("ambiguous")
+    let named = mlar_frontend::ArchitectureBuilder::new("named")
         .memory_definition(
             MemoryDefinition::new("cache_a", 1024, 16)
                 .with_technology(MemoryTechnology::new("gcram", 0)),
@@ -89,21 +88,18 @@ fn operand_memory_requirements_bind_distinct_connected_technologies() {
         .processor_definition(definition)
         .connect(
             "mixed_lane",
-            Connection::new(
-                std::iter::empty::<&str>(),
-                ["cache_a", "cache_b"]
-                    .map(|memory| MemoryEndpoint::parse(memory).unwrap())
-                    .to_vec(),
-                vec![MemoryEndpoint::parse("cache_a").unwrap()],
-            ),
+            Connection::parse_named(
+                [],
+                [("rram", "cache_a"), ("gcram", "cache_b")],
+                [("result", "cache_a")],
+            )
+            .unwrap(),
         )
         .build()
-        .unwrap_err();
-    assert!(
-        ambiguous
-            .to_string()
-            .contains("multiple connected memories match")
-    );
+        .expect("named ports do not depend on technology uniqueness");
+    let mlir = architecture_to_mlir(&named).unwrap();
+    assert!(mlir.contains("loom.bind_mem %lhs, @mem_cache_b"));
+    assert!(mlir.contains("loom.bind_mem %rhs, @mem_cache_a"));
 }
 
 #[test]
@@ -123,17 +119,22 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
     );
 
     let connection = |domain: &[&str], inputs: &[&str], outputs: &[&str]| {
-        Connection::new(
+        let input_names = if inputs.len() == 2 {
+            vec!["lhs", "rhs"]
+        } else {
+            vec!["src"]
+        };
+        let output_names = if inputs.len() == 2 {
+            vec!["result"]
+        } else {
+            vec!["dst"]
+        };
+        Connection::parse_named(
             domain.iter().copied(),
-            inputs
-                .iter()
-                .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
-                .collect(),
-            outputs
-                .iter()
-                .map(|endpoint| MemoryEndpoint::parse(endpoint).unwrap())
-                .collect(),
+            input_names.into_iter().zip(inputs.iter().copied()),
+            output_names.into_iter().zip(outputs.iter().copied()),
         )
+        .unwrap()
     };
     let imperative = mlar_frontend::ArchitectureBuilder::new("mesh_system")
         .axis("channel", 2)
@@ -390,19 +391,14 @@ fn memory_and_endpoint_validation_is_strict() {
 }
 
 #[test]
-fn compact_loom_records_symbolic_shapes_and_roles() {
-    let source = r#"
-func @add(
-  in lhs: f16[M, N],
-  in rhs: f16[M, N],
-  out out: f16[M, N]
-) {
-  linalg.add ins(%lhs, %rhs) outs(%out)
-}
-"#;
-    let module = parse_loom_source(source).expect("compact source should parse");
-    let details = module.functions[0].mlir_details.as_ref().unwrap();
-    assert_eq!(module.functions[0].symbols.len(), 2);
+fn templates_record_symbolic_shapes_and_roles() {
+    let path = fixture_dir().join("matrix_lane.yaml");
+    let definition = ProcessorYaml::from_file(&path)
+        .and_then(|yaml| yaml.build_definition(&path))
+        .expect("template definition should build");
+    let function = &definition.functions()[0].func;
+    let details = function.mlir_details.as_ref().unwrap();
+    assert_eq!(function.symbols.len(), 3);
     assert_eq!(details.source_memrefs, ["lhs", "rhs"]);
     assert_eq!(details.target_memrefs, ["out"]);
     assert_eq!(details.memref_symbol_bindings.len(), 3);

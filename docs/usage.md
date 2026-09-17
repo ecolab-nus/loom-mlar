@@ -31,7 +31,7 @@ for memory technologies and linking rules.
 Use `Architecture::builder` with explicit `MemoryEndpoint::new` selectors and
 `ProcessorDefinition::from_mlir_source` for native MLIR and canonical models, or
 `from_mlir_source_with_perf_yaml` for native MLIR with performance YAML. Start with
-`examples/flat_native.rs`, or use the [core architecture examples](../examples/README.md)
+`examples/flat_native/main.rs`, or use the [core architecture examples](../examples/README.md)
 corresponding to all five frontend packages:
 
 ```bash
@@ -41,8 +41,8 @@ cargo test -p mlar-rust --test 2d_mesh
 cargo test -p mlar-frontend --test example_architectures core_
 ```
 
-The comparisons require identical canonical models, including native processor
-source and performance alternatives, and identical ADL exports where supported.
+The comparisons check architecture, function-interface, and performance
+contracts and validate both ADL exports where supported.
 `cache_hierarchy` prints canonical JSON because its partial L1 selections cannot
 export through ADL.
 
@@ -50,6 +50,13 @@ Translate an optional package into canonical JSON:
 
 ```bash
 cargo run -p mlar-frontend --bin translate -- path/to/package /tmp/core.json
+```
+
+Emit final processor MLIR and a template/native source manifest for inspection:
+
+```bash
+cargo run -p mlar-frontend --bin emit_processors -- \
+  path/to/package /tmp/resolved-processors
 ```
 
 Load it using core only:
@@ -82,16 +89,22 @@ replication. Out-of-range point mappings are dropped.
 
 ## Processors and performance
 
-Core examples pair native processor `.mlir` with `<processor>.perf.yaml`.
-The core `PerformanceYaml` loader constructs canonical symbolic models. Each
+Core examples construct architecture and performance models in Rust, using
+`FuncPerfModel::builder()` and `ProcessorDefinition::from_mlir_source` with native
+processor MLIR. See [core examples](../examples/README.md).
+
+The core also supports optional `<processor>.perf.yaml` files through the
+`PerformanceYaml` loader, which constructs canonical symbolic models. Each
 function maps to a non-empty list of alternatives: either `latency`, `volume`,
 and `throughput`, or a single `expression`. `constraint` is optional for both.
 
-Frontend processor YAML references compact Loom or native MLIR source and
-embeds the same function mapping under `performance`.
+Frontend processor YAML maps each exposed function to a registered template or
+a same-named native function discovered from adjacent `.mlir` files. It embeds
+the same function mapping under `performance`.
 
-Performance symbols must come from buffer shapes or explicit function
-declarations such as `%bandwidth = loom.sym @bandwidth : index`.
+Template performance symbols come from `dimensions` and explicit `symbols`.
+Native performance symbols come from `loom.bind_shape` and declarations such as
+`%bandwidth = loom.sym @bandwidth : index`.
 Unknown fields, duplicate declarations, unresolved references, and malformed
 expressions are errors. See [performance YAML](perf-yaml.md) for symbol scope.
 

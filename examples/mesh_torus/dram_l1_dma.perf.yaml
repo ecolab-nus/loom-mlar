@@ -1,8 +1,0 @@
-load_l1:
-- latency: '100'
-  volume: L * 2
-  throughput: '32'
-load_l1_broadcast:
-- latency: '100'
-  volume: L * 2
-  throughput: '32'

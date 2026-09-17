@@ -36,9 +36,10 @@ addressing notation only. It introduces no storage capacity or access semantics.
 Authoring `.bank[b]` follows all authored levels; core banking has no bracket-depth
 requirement beyond full-rank selectors. See [the package template](../TEMPLATE.md).
 
-Compact Loom `@memory(name)` selects a uniquely matching connected memory
-technology. Declarative technologies receive numeric kinds in first-appearance
-order in `memory.yaml`; catalog order is therefore ABI-significant.
+Frontend template `bindings` select a connected memory by input or output
+index; omitting a binding is valid only when that side has one endpoint.
+Declarative technologies receive numeric kinds in first-appearance order in
+`memory.yaml`; catalog order is therefore ABI-significant.
 
 Free connection variables must be declared chip dimensions. Non-modular
 out-of-bounds mappings are absent from the generated instances. `mod` wraps using

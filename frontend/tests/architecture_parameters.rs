@@ -38,8 +38,8 @@ processors:
   matrix_lane:
     definition: matrix_lane.yaml
     domain: [x, y]
-    inputs: ["L1[x, y]"]
-    outputs: ["L1[x, y]"]
+    inputs: {lhs: "L1[x, y]", rhs: "L1[x, y]"}
+    outputs: {result: "L1[x, y]"}
 "#;
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/indexed-affine");
     let chip = ChipYaml::from_yaml_str(source).expect("parameterized YAML syntax");

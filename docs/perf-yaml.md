@@ -67,21 +67,28 @@ The YAML function names must match the native module exactly. The resulting
 processor embeds canonical performance records and native source; consumers do
 not need the original YAML files.
 
-Declare additional parameters inside native MLIR using `loom.sym`. The compact
-frontend supports the corresponding shorthand:
+Declare additional parameters inside native MLIR using `loom.sym`:
 
 ```text
-func @copy(in src: f16[L], out dst: f16[L]) {
+func.func @copy(%src: memref<?xf16>, %dst: memref<?xf16>) {
+  %L = loom.sym @L : index
   %effective_bandwidth = loom.sym @effective_bandwidth : index
-  loom.copy %src to %dst
+  loom.bind_shape %src, [%L] : memref<?xf16>
+  loom.bind_shape %dst, [%L] : memref<?xf16>
+  loom.bind_mem %src, @input_0 : memref<?xf16>
+  loom.bind_mem %dst, @output_0 : memref<?xf16>
+  loom.copy %src, %dst src_mem_space @input_0 dst_mem_space @output_0,
+    area: [1, 1] : memref<?xf16> to memref<?xf16>
+  return
 }
 ```
 
-Here `L` comes from the buffer shapes; `effective_bandwidth` is an explicit
+Here `L` comes from `loom.bind_shape`; `effective_bandwidth` is an explicit
 symbol available to performance expressions. It has no built-in bandwidth
 semantics. The SSA name and symbol name must match, and declarations cannot
 repeat shape symbols or other declarations. Symbolic collective extents use
-the same declaration scope.
+the same declaration scope. In frontend templates, `dimensions` declares shape
+symbols and `symbols` declares the rest.
 
 In Rust, use `MlirFunc::with_symbols` or `FuncPerfModel::builder().symbols(...)`
 for additional symbols. Performance builders do not infer declarations from

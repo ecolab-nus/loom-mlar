@@ -1,0 +1,16 @@
+name: vector_lane
+type: compute
+functions:
+  maximum_mixed:
+    source: elementwise_max
+    element_type: f16
+    dimensions: [L]
+    bindings:
+      lhs: weights
+      rhs: activations
+      out: result
+performance:
+  maximum_mixed:
+  - latency: '1'
+    volume: L
+    throughput: '128'

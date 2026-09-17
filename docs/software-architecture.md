@@ -2,9 +2,9 @@
 
 ## Canonical flow
 
-`frontend/` parses YAML and compact Loom, resolves parameters and hierarchical
-brackets, binds connected technologies/extents, and lowers processor bodies to
-native MLIR. It returns a validated core `Architecture`. Direct core inputs use
+`frontend/` parses YAML, resolves registered templates and adjacent native MLIR,
+resolves parameters and hierarchical brackets, and binds named frontend ports
+and memory-space kinds. It returns a validated core `Architecture`. Direct core inputs use
 explicit records, native MLIR, and performance YAML; an all-MLIR architecture
 importer is deferred. `src/arch/perf_yaml.rs` parses performance alternatives
 with the core symbolic grammar; the frontend uses that same loader.
@@ -19,9 +19,10 @@ Loom/linalg/memref interface subset; it is not a full MLIR verifier.
 Loading and linking:
 
 1. resolves architecture parameters and validates memory geometry;
-2. parses processor sources and performance models;
+2. indexes native functions, rejects reserved-name collisions, and resolves each
+   declared function to a template or same-named native function;
 3. validates placement domains, hierarchical index groups, and endpoint mappings;
-4. resolves `@memory(name)` against connected technologies; and
+4. resolves template operand bindings against named connected ports; and
 5. creates one processor array per named placement.
 
 Authoring rejects unknown fields and duplicate mapping names. Performance
@@ -40,8 +41,12 @@ incompatible processor type returns `AdlExportError`. The exported top-level
 symbol is `@arch_system`; this does not alter the runtime architecture name.
 
 The frontend assigns technology kinds in catalog first-appearance order.
-Core retains explicit numeric kinds. Compact `@memory(name)` resolves against
-connected technologies before native MLIR enters core.
+Core retains explicit numeric kinds. A template operand's explicit connection
+named port selects the connected memory and its numeric technology kind.
+Endpoint lists derive port names from memory names; alias maps supply explicit
+names for reuse or multiple selections of one memory. Template bindings are
+strings resolved on the operand's declared input/output side, with no fallback
+to memory names or technologies. Port names must be unique within each side.
 
 Memory definitions lower to `adl.memory.bank`; each replicated memory emits one
 `adl.memory.array` containing all its axes. Banking may add a physical bank array.
@@ -55,14 +60,12 @@ are not consumed by current exploration passes. Scales support one memory region
 loom-dataflow hardware discovery requires exactly one scale. The cache-hierarchy
 example's partial L1 routes therefore load/evaluate but cannot currently export.
 
-Native `loom.bind_mem` declarations order distinct regions for each input/output
-side in connection order. Multiple operands may share a region. The frontend
-normalizes declaration order after technology-based operand matching; the native
-exporter links these ordered regions without reparsing compact syntax.
-Identical translated definitions reuse one core definition; differing native
-interfaces or bodies specialize it with a suffix. Omitted collective extents use
-the selected `All` axes in memory-axis order; explicit symbolic extents remain
-symbolic.
+Native `loom.bind_mem` regions named `@input_N` and `@output_N` link directly to
+the internal positions established by authored port order. Multiple operands may
+share a port. Templates infer a binding only when the relevant side has one port. Identical resolved
+definitions reuse one core definition; differing memory-space-specialized bodies
+receive a suffix. Broadcast and gather require explicit two-dimensional extents;
+copy uses `[1, 1]`.
 
 ## ABI and visualization
 

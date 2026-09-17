@@ -1,5 +1,13 @@
 type: compute
-source: mixed_lane.loom
+functions:
+  add_mixed:
+    source: elementwise_add
+    element_type: f16
+    dimensions: [L]
+    bindings:
+      lhs: gcram
+      rhs: rram
+      out: result
 performance:
   add_mixed:
     - latency: "1"

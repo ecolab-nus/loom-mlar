@@ -6,5 +6,5 @@ memories:
 processors:
   mixed_lane:
     definition: mixed_lane.yaml
-    inputs: [L1_rram, L1_gcram]
-    outputs: [L1_gcram]
+    inputs: {rram: L1_rram, gcram: L1_gcram}
+    outputs: {result: L1_gcram}

@@ -1,6 +1,7 @@
 name: l1_dram_noc1
 type: data_mover
-source: l1_dram_noc1.loom
+functions:
+  l1_to_dram_f16: {source: l1_to_dram_f16}
 performance:
   l1_to_dram_f16:
   - latency: '454'

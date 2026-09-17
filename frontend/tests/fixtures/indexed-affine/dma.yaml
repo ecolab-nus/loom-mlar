@@ -1,5 +1,9 @@
 type: data_mover
-source: dma.loom
+functions:
+  copy:
+    source: copy
+    element_type: f16
+    dimensions: [L]
 resources:
 - name: link
 performance:

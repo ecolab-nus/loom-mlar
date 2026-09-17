@@ -16,15 +16,3 @@ path = "tests/2d_mesh/main.rs"
 [[example]]
 name = "inspect_arch"
 path = "examples/declarative/inspect_arch.rs"
-
-[[example]]
-name = "imperative_dual_noc_mesh"
-path = "examples/imperative/dual_noc_mesh.rs"
-
-[[example]]
-name = "imperative_cache_hierarchy"
-path = "examples/imperative/cache_hierarchy.rs"
-
-[[example]]
-name = "imperative_shared_link_mesh"
-path = "examples/imperative/shared_link_mesh.rs"

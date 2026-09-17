@@ -1,6 +1,10 @@
 name: lane
 type: compute
-source: lane.loom
+functions:
+  matmul:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
 resources:
 - name: lane_pipeline
 performance:

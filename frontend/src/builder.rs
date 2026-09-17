@@ -1,15 +1,17 @@
-use crate::{LoomMemoryBinding, ProcessorYaml, lower_loom_source, selection::MemoryEndpoint};
+use crate::native::{NativeFunction, NativeSourceIndex, compose_module};
+use crate::templates::{self, FunctionSpec, ResolvedPort};
+use crate::{ProcessorYaml, selection::MemoryEndpoint};
 use mlar_rust::{
-    Architecture, ArchitectureError, Axis, MemoryDefinition, NetworkTopology, OperationModel,
+    Architecture, ArchitectureError, MemoryDefinition, NetworkTopology, OperationModel,
     ProcessorType, Resource, Scope,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ProcessorSourceFormat {
-    CompactLoom,
-    Mlir,
+#[derive(Clone, Debug)]
+pub(crate) enum FunctionProvider {
+    Template(FunctionSpec),
+    Native(NativeFunction),
 }
 
 #[derive(Clone, Debug)]
@@ -17,9 +19,9 @@ pub struct ProcessorDefinition {
     pub(crate) name: String,
     pub(crate) processor_type: Option<ProcessorType>,
     pub(crate) source: String,
-    pub(crate) source_format: ProcessorSourceFormat,
     pub(crate) functions: Vec<OperationModel>,
     pub(crate) resources: Vec<Resource>,
+    pub(crate) providers: Option<Vec<(String, FunctionProvider)>>,
 }
 impl ProcessorDefinition {
     pub fn new(
@@ -30,10 +32,10 @@ impl ProcessorDefinition {
         Self {
             name: name.into(),
             source: source.into(),
-            source_format: ProcessorSourceFormat::CompactLoom,
             functions,
             processor_type: None,
             resources: vec![],
+            providers: None,
         }
     }
     pub fn name(&self) -> &str {
@@ -51,9 +53,6 @@ impl ProcessorDefinition {
     pub fn processor_type(&self) -> Option<&ProcessorType> {
         self.processor_type.as_ref()
     }
-    pub fn source_format(&self) -> &ProcessorSourceFormat {
-        &self.source_format
-    }
     pub fn get_function(&self, name: &str) -> Option<&OperationModel> {
         self.functions.iter().find(|op| op.func.name == name)
     }
@@ -67,67 +66,34 @@ impl ProcessorDefinition {
     }
     fn lower(
         &self,
-        inputs: &[LoomMemoryBinding],
-        outputs: &[LoomMemoryBinding],
+        inputs: &[ResolvedPort],
+        outputs: &[ResolvedPort],
     ) -> Result<mlar_rust::ProcessorDefinition, String> {
-        let mut definition = if self.source.trim().is_empty()
-            || self.source_format == ProcessorSourceFormat::Mlir
-        {
-            mlar_rust::ProcessorDefinition::new(&self.name, &self.source, self.functions.clone())
+        let source = if let Some(providers) = &self.providers {
+            let blocks = providers
+                .iter()
+                .map(|(name, provider)| match provider {
+                    FunctionProvider::Template(spec) => {
+                        templates::emit(name, spec, inputs, outputs)
+                    }
+                    FunctionProvider::Native(function) => {
+                        validate_native_bindings(
+                            name,
+                            &function.block,
+                            inputs.len(),
+                            outputs.len(),
+                        )?;
+                        Ok(function.block.clone())
+                    }
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            compose_module(blocks)
         } else {
-            let parsed =
-                crate::parse_loom_source(&self.source).map_err(|error| error.to_string())?;
-            if parsed.functions.len() != self.functions.len() {
-                return Err(format!(
-                    "processor '{}' source functions disagree with its operation models",
-                    self.name
-                ));
-            }
-            for operation in &self.functions {
-                let function = parsed
-                    .functions
-                    .iter()
-                    .find(|function| function.name == operation.func.name)
-                    .ok_or_else(|| format!("unknown source function '{}'", operation.func.name))?;
-                operation.validate()?;
-                if operation.func.mlir_details != function.mlir_details
-                    || operation
-                        .func
-                        .symbols
-                        .iter()
-                        .collect::<std::collections::BTreeSet<_>>()
-                        != function
-                            .symbols
-                            .iter()
-                            .collect::<std::collections::BTreeSet<_>>()
-                {
-                    return Err(format!(
-                        "processor '{}' function '{}' metadata disagrees with its compact source",
-                        self.name, function.name
-                    ));
-                }
-                operation
-                    .perf
-                    .validate_for_func(function)
-                    .map_err(|symbols| {
-                        format!(
-                            "function '{}' performance uses undeclared symbols: {symbols:?}",
-                            function.name
-                        )
-                    })?;
-            }
-            let source = lower_loom_source(
-                &self.source,
-                "processor",
-                &self
-                    .functions
-                    .iter()
-                    .map(|op| (op.func.name.clone(), op.func.symbols.clone()))
-                    .collect(),
-                inputs,
-                outputs,
-            )
-            .map_err(|error| error.to_string())?;
+            self.source.clone()
+        };
+        let mut definition = if source.trim().is_empty() {
+            mlar_rust::ProcessorDefinition::new(&self.name, source, self.functions.clone())
+        } else {
             mlar_rust::ProcessorDefinition::from_mlir_source(
                 &self.name,
                 source,
@@ -144,15 +110,84 @@ impl ProcessorDefinition {
         Ok(definition)
     }
 }
+
+fn validate_native_bindings(
+    function_name: &str,
+    block: &str,
+    input_count: usize,
+    output_count: usize,
+) -> Result<(), String> {
+    let source = compose_module([block.to_string()]);
+    let module = mlar_rust::mlir::MlirModule::from_mlir_source(&source)?;
+    let details = module
+        .functions
+        .first()
+        .and_then(|function| function.mlir_details.as_ref())
+        .ok_or_else(|| format!("native function '{function_name}' has no parsed interface"))?;
+    for binding in &details.mem_region_bindings {
+        let is_input = details.source_memrefs.contains(&binding.memref);
+        let is_output = details.target_memrefs.contains(&binding.memref);
+        let (side, index, count) = if let Some(index) = binding.region.strip_prefix("input_") {
+            if !is_input || is_output {
+                return Err(format!(
+                    "native function '{function_name}' binds non-input '{}' to @{}",
+                    binding.memref, binding.region
+                ));
+            }
+            ("input", index, input_count)
+        } else if let Some(index) = binding.region.strip_prefix("output_") {
+            if !is_output || is_input {
+                return Err(format!(
+                    "native function '{function_name}' binds non-output '{}' to @{}",
+                    binding.memref, binding.region
+                ));
+            }
+            ("output", index, output_count)
+        } else {
+            return Err(format!(
+                "native function '{function_name}' binds '{}' to @{}; package functions must use @input_N or @output_N",
+                binding.memref, binding.region
+            ));
+        };
+        let index = index.parse::<usize>().map_err(|_| {
+            format!(
+                "native function '{function_name}' has invalid binding @{}",
+                binding.region
+            )
+        })?;
+        if index >= count {
+            return Err(format!(
+                "native function '{function_name}' binds '{}' to {side} {index}, but the connection has {count} {side}s",
+                binding.memref
+            ));
+        }
+    }
+    Ok(())
+}
 impl From<mlar_rust::ProcessorDefinition> for ProcessorDefinition {
     fn from(def: mlar_rust::ProcessorDefinition) -> Self {
         Self {
             name: def.name().into(),
             source: def.source().into(),
-            source_format: ProcessorSourceFormat::Mlir,
             functions: def.operations().to_vec(),
             resources: def.resources().to_vec(),
             processor_type: def.processor_type().cloned(),
+            providers: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NamedPort {
+    pub name: String,
+    pub endpoint: MemoryEndpoint,
+}
+
+impl NamedPort {
+    pub fn new(name: impl Into<String>, endpoint: MemoryEndpoint) -> Self {
+        Self {
+            name: name.into(),
+            endpoint,
         }
     }
 }
@@ -160,8 +195,8 @@ impl From<mlar_rust::ProcessorDefinition> for ProcessorDefinition {
 #[derive(Clone, Debug)]
 pub struct Connection {
     pub domain: Vec<String>,
-    pub inputs: Vec<MemoryEndpoint>,
-    pub outputs: Vec<MemoryEndpoint>,
+    pub inputs: Vec<NamedPort>,
+    pub outputs: Vec<NamedPort>,
     pub resources: Vec<String>,
 }
 impl Connection {
@@ -169,6 +204,26 @@ impl Connection {
         domain: impl IntoIterator<Item = impl Into<String>>,
         inputs: Vec<MemoryEndpoint>,
         outputs: Vec<MemoryEndpoint>,
+    ) -> Self {
+        Self {
+            domain: domain.into_iter().map(Into::into).collect(),
+            inputs: inputs
+                .into_iter()
+                .enumerate()
+                .map(|(index, endpoint)| NamedPort::new(format!("input_{index}"), endpoint))
+                .collect(),
+            outputs: outputs
+                .into_iter()
+                .enumerate()
+                .map(|(index, endpoint)| NamedPort::new(format!("output_{index}"), endpoint))
+                .collect(),
+            resources: vec![],
+        }
+    }
+    pub fn named(
+        domain: impl IntoIterator<Item = impl Into<String>>,
+        inputs: Vec<NamedPort>,
+        outputs: Vec<NamedPort>,
     ) -> Self {
         Self {
             domain: domain.into_iter().map(Into::into).collect(),
@@ -194,6 +249,27 @@ impl Connection {
                 .collect::<Result<_, _>>()?,
         ))
     }
+    pub fn parse_named<'a>(
+        domain: impl IntoIterator<Item = &'a str>,
+        inputs: impl IntoIterator<Item = (&'a str, &'a str)>,
+        outputs: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<Self, mlar_rust::arch::EndpointParseError> {
+        Ok(Self::named(
+            domain,
+            inputs
+                .into_iter()
+                .map(|(name, endpoint)| {
+                    MemoryEndpoint::parse(endpoint).map(|endpoint| NamedPort::new(name, endpoint))
+                })
+                .collect::<Result<_, _>>()?,
+            outputs
+                .into_iter()
+                .map(|(name, endpoint)| {
+                    MemoryEndpoint::parse(endpoint).map(|endpoint| NamedPort::new(name, endpoint))
+                })
+                .collect::<Result<_, _>>()?,
+        ))
+    }
     pub fn with_resources(
         mut self,
         resources: impl IntoIterator<Item = impl Into<String>>,
@@ -203,33 +279,32 @@ impl Connection {
     }
 }
 
-/// Authoring context; normalizes memory selections and lowers compact processors.
+/// Authoring context; normalizes memory selections and resolves processor sources.
 pub struct ArchitectureBuilder {
     core: mlar_rust::ArchitectureBuilder,
-    axes: BTreeMap<String, Axis>,
     memories: BTreeMap<String, (String, Vec<Vec<String>>)>,
     memory_definitions: BTreeMap<String, MemoryDefinition>,
     definitions: Vec<ProcessorDefinition>,
     connections: Vec<(String, String, Connection)>,
     directory: Option<PathBuf>,
+    native_sources: Option<NativeSourceIndex>,
     errors: Vec<String>,
 }
 impl ArchitectureBuilder {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             core: mlar_rust::ArchitectureBuilder::new(name),
-            axes: BTreeMap::new(),
             memories: BTreeMap::new(),
             memory_definitions: BTreeMap::new(),
             definitions: vec![],
             connections: vec![],
             directory: None,
+            native_sources: None,
             errors: vec![],
         }
     }
     pub fn axis(mut self, name: impl Into<String>, extent: u64) -> Self {
         let name = name.into();
-        self.axes.insert(name.clone(), Axis::new(&name, extent));
         self.core = self.core.axis(name, extent);
         self
     }
@@ -283,7 +358,12 @@ impl ArchitectureBuilder {
         self
     }
     pub fn processor_source_dir(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.directory = Some(dir.into());
+        let dir = dir.into();
+        match NativeSourceIndex::load(&dir) {
+            Ok(index) => self.native_sources = Some(index),
+            Err(error) => self.errors.push(error),
+        }
+        self.directory = Some(dir);
         self
     }
     pub fn processor(mut self, name: impl AsRef<str>) -> Self {
@@ -294,8 +374,16 @@ impl ArchitectureBuilder {
                 .push(format!("processor '{name}' needs a `processor_source_dir`")),
             Some(dir) => {
                 let path = dir.join(format!("{name}.yaml"));
-                match ProcessorYaml::from_file(&path).and_then(|yaml| yaml.build_definition(&path))
-                {
+                match ProcessorYaml::from_file(&path).and_then(|yaml| {
+                    yaml.build_definition_with_index(
+                        &path,
+                        self.native_sources.as_ref().ok_or_else(|| {
+                            crate::ArchLoadError::Invalid(
+                                "native source index is unavailable".into(),
+                            )
+                        })?,
+                    )
+                }) {
                     Ok(def) => self.definitions.push(def),
                     Err(error) => self.errors.push(error.to_string()),
                 }
@@ -345,37 +433,21 @@ impl ArchitectureBuilder {
             .ok_or_else(|| format!("unknown memory '{}'", endpoint.memory))?;
         endpoint.lower(levels)
     }
-    fn binding(
+    fn memory_space(
         &self,
         endpoint: &mlar_rust::arch::MemoryEndpoint,
-        symbol: String,
-    ) -> Result<LoomMemoryBinding, String> {
-        let (definition, levels) = &self.memories[&endpoint.memory];
-        let technology = self
+    ) -> Result<Option<u64>, String> {
+        let (definition, _) = self
+            .memories
+            .get(&endpoint.memory)
+            .ok_or_else(|| format!("unknown memory '{}'", endpoint.memory))?;
+        Ok(self
             .memory_definitions
             .get(definition)
             .ok_or_else(|| format!("unknown memory definition '{definition}'"))?
             .technology
-            .clone();
-        let scope_extent = endpoint
-            .indices
-            .iter()
-            .zip(levels.iter().flatten())
-            .filter_map(|(selector, axis)| {
-                matches!(selector, mlar_rust::arch::EndpointIndex::All).then_some(axis)
-            })
-            .map(|axis| {
-                self.axes
-                    .get(axis)
-                    .map(Axis::extent)
-                    .ok_or_else(|| format!("unknown axis '{axis}'"))
-            })
-            .collect::<Result<_, _>>()?;
-        Ok(LoomMemoryBinding {
-            symbol,
-            technology,
-            scope_extent,
-        })
+            .as_ref()
+            .map(|technology| technology.kind))
     }
     pub fn build(self) -> Result<Architecture, ArchitectureError> {
         self.translate().map_err(ArchitectureError::Invalid)
@@ -396,29 +468,39 @@ impl ArchitectureBuilder {
             let inputs = authored
                 .inputs
                 .iter()
-                .map(|ep| self.lower_endpoint(ep))
+                .map(|port| self.lower_endpoint(&port.endpoint))
                 .collect::<Result<Vec<_>, _>>()?;
             let outputs = authored
                 .outputs
                 .iter()
-                .map(|ep| self.lower_endpoint(ep))
+                .map(|port| self.lower_endpoint(&port.endpoint))
                 .collect::<Result<Vec<_>, _>>()?;
             let def = self
                 .definitions
                 .iter()
                 .find(|def| def.name == *definition)
                 .ok_or_else(|| format!("unknown processor definition '{definition}'"))?;
-            let input_bindings = inputs
+            validate_port_names(name, "input", &authored.inputs)?;
+            validate_port_names(name, "output", &authored.outputs)?;
+            let input_ports = authored
+                .inputs
                 .iter()
-                .enumerate()
-                .map(|(i, ep)| self.binding(ep, format!("input_{i}")))
+                .zip(&inputs)
+                .map(|(port, endpoint)| {
+                    self.memory_space(endpoint)
+                        .map(|space| ResolvedPort::new(&port.name, space))
+                })
                 .collect::<Result<Vec<_>, _>>()?;
-            let output_bindings = outputs
+            let output_ports = authored
+                .outputs
                 .iter()
-                .enumerate()
-                .map(|(i, ep)| self.binding(ep, format!("output_{i}")))
+                .zip(&outputs)
+                .map(|(port, endpoint)| {
+                    self.memory_space(endpoint)
+                        .map(|space| ResolvedPort::new(&port.name, space))
+                })
                 .collect::<Result<Vec<_>, _>>()?;
-            let lowered = def.lower(&input_bindings, &output_bindings)?;
+            let lowered = def.lower(&input_ports, &output_ports)?;
             let fingerprint = serde_json::to_string(&lowered).map_err(|error| error.to_string())?;
             let canonical_name = if let Some((_, name, _)) =
                 canonical.iter().find(|(fp, _, _)| *fp == fingerprint)
@@ -469,4 +551,26 @@ impl ArchitectureBuilder {
         }
         core.build().map_err(|error| error.to_string())
     }
+}
+
+fn validate_port_names(placement: &str, side: &str, ports: &[NamedPort]) -> Result<(), String> {
+    let mut names = std::collections::BTreeSet::new();
+    for port in ports {
+        let mut chars = port.name.chars();
+        if !matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
+            || !chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return Err(format!(
+                "processor placement '{placement}' has invalid {side} port name '{}'",
+                port.name
+            ));
+        }
+        if !names.insert(&port.name) {
+            return Err(format!(
+                "processor placement '{placement}' declares duplicate {side} port '{}'",
+                port.name
+            ));
+        }
+    }
+    Ok(())
 }

@@ -28,7 +28,7 @@
       "col": 0,
       "size": [190, 70],
       "sources": [
-        { "path": "tests/2d_mesh/processors/vector_lane.loom", "label": "Compact Loom source" }
+        { "path": "tests/2d_mesh/2d_mesh_torus.mlir", "label": "Generated native-function MLIR" }
       ]
     },
     {

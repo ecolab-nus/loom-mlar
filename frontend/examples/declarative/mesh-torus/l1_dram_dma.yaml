@@ -1,6 +1,10 @@
 name: l1_dram_dma
 type: data_mover
-source: l1_dram_dma.loom
+functions:
+  writeback_dram:
+    source: copy
+    element_type: f16
+    dimensions: [L]
 performance:
   writeback_dram:
   - latency: '100'

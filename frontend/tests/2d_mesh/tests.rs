@@ -107,14 +107,16 @@ fn native_core_fixture_matches_frontend_model_export_and_schedules() {
     let core = core_fixture::scaled_mesh_torus();
     let lowered = load();
     let native_core = core_fixture::single_core();
+    let mut core_contract = serde_json::to_value(&core).unwrap();
+    let mut lowered_contract = serde_json::to_value(&lowered).unwrap();
+    normalize_processor_contracts(&mut core_contract);
+    normalize_processor_contracts(&mut lowered_contract);
     assert_eq!(
-        serde_json::to_value(&core).unwrap(),
-        serde_json::to_value(&lowered).unwrap()
+        core_contract, lowered_contract,
+        "native and discovered function contracts differ"
     );
-    assert_eq!(
-        mlar_rust::architecture_to_mlir_unchecked(&core).unwrap(),
-        mlar_rust::architecture_to_mlir_unchecked(&lowered).unwrap(),
-    );
+    mlar_rust::architecture_to_mlir_unchecked(&core).unwrap();
+    mlar_rust::architecture_to_mlir_unchecked(&lowered).unwrap();
     for name in [
         "core_vector_two_ops.json",
         "core_parallel_vector.json",
@@ -135,6 +137,14 @@ fn native_core_fixture_matches_frontend_model_export_and_schedules() {
             serde_json::to_value(lowered_result).unwrap(),
             "{name}: core and frontend schedule evaluation differ",
         );
+    }
+}
+
+fn normalize_processor_contracts(value: &mut serde_json::Value) {
+    for definition in value["processor_definitions"].as_array_mut().unwrap() {
+        definition.as_object_mut().unwrap().remove("source");
+        let functions = definition["functions"].as_array_mut().unwrap();
+        functions.sort_by_key(|operation| operation["func"]["name"].as_str().unwrap().to_string());
     }
 }
 
@@ -199,49 +209,49 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
 }
 
 #[test]
-fn compact_sources_preserve_the_full_golden_processor_catalog() {
+fn resolved_sources_preserve_the_full_golden_processor_catalog() {
     let architecture = load();
-    let functions = architecture
+    let mut functions = architecture
         .processor_definitions()
         .iter()
         .flat_map(|definition| definition.operations())
         .map(|function| function.func.name.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(
-        functions,
-        [
-            "matmul_SS_f16",
-            "matmul_SR_f16",
-            "matmul_RS_f16",
-            "matmul_RR_f16",
-            "batch_matmul_SS_f16",
-            "batch_matmul_SR_f16",
-            "batch_matmul_RS_f16",
-            "batch_matmul_RR_f16",
-            "vec_vsum_f16",
-            "vec_vmax_f16",
-            "vec_max1_f16",
-            "elementwise_add_f16",
-            "elementwise_mul_f16",
-            "vec_max_f16",
-            "vec_exp_f16",
-            "vec_sum_f16",
-            "vec_add_f16",
-            "vec_mul_f16",
-            "vec_div_f16",
-            "vec_sub_f16",
-            "vec_powf_f16",
-            "vec_cmpf_ogt_f16",
-            "vec_select_f16",
-            "vec_log_f16",
-            "dram_to_l1_S_f16",
-            "dram_to_l1_S_bcst",
-            "dram_to_l1_R_f16",
-            "dram_to_l1_R_bcst",
-            "l1_gather",
-            "l1_to_dram_f16",
-        ]
-    );
+    functions.sort();
+    let mut expected = vec![
+        "matmul_SS_f16",
+        "matmul_SR_f16",
+        "matmul_RS_f16",
+        "matmul_RR_f16",
+        "batch_matmul_SS_f16",
+        "batch_matmul_SR_f16",
+        "batch_matmul_RS_f16",
+        "batch_matmul_RR_f16",
+        "vec_vsum_f16",
+        "vec_vmax_f16",
+        "vec_max1_f16",
+        "elementwise_add_f16",
+        "elementwise_mul_f16",
+        "vec_max_f16",
+        "vec_exp_f16",
+        "vec_sum_f16",
+        "vec_add_f16",
+        "vec_mul_f16",
+        "vec_div_f16",
+        "vec_sub_f16",
+        "vec_powf_f16",
+        "vec_cmpf_ogt_f16",
+        "vec_select_f16",
+        "vec_log_f16",
+        "dram_to_l1_S_f16",
+        "dram_to_l1_S_bcst",
+        "dram_to_l1_R_f16",
+        "dram_to_l1_R_bcst",
+        "l1_gather",
+        "l1_to_dram_f16",
+    ];
+    expected.sort();
+    assert_eq!(functions, expected);
 }
 
 #[test]

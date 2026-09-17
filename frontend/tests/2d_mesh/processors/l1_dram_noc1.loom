@@ -1,6 +1,0 @@
-func @l1_to_dram_f16(
-  in l1_src: f16[M, N],
-  out dram_dst: f16[M, N]
-) {
-  loom.copy %l1_src to %dram_dst
-}
