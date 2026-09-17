@@ -1,5 +1,5 @@
 use mlar_rust::{
-    AffineExpr, Architecture, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint, Resource,
+    Architecture, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint, Resource,
 };
 use std::error::Error;
 
@@ -23,82 +23,49 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
         .processor_definition(processors::l1_dram_noc1()?)
         .connect(
             "matrix_lane",
-            Connection::new(
-                ["x", "y"],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![
-                        EndpointIndex::Expression(AffineExpr::variable("x")),
-                        EndpointIndex::Expression(AffineExpr::variable("y")),
-                    ],
-                )],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![
-                        EndpointIndex::Expression(AffineExpr::variable("x")),
-                        EndpointIndex::Expression(AffineExpr::variable("y")),
-                    ],
-                )],
-            ),
+            Connection::new(["x", "y"])
+                .input("lhs", "L1")
+                .input("rhs", "L1")
+                .output("result", "L1"),
         )
         .connect(
             "vector_lane",
-            Connection::new(
-                ["x", "y"],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![
-                        EndpointIndex::Expression(AffineExpr::variable("x")),
-                        EndpointIndex::Expression(AffineExpr::variable("y")),
-                    ],
-                )],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![
-                        EndpointIndex::Expression(AffineExpr::variable("x")),
-                        EndpointIndex::Expression(AffineExpr::variable("y")),
-                    ],
-                )],
-            ),
+            Connection::new(["x", "y"])
+                .input("input", "L1")
+                .output("result", "L1"),
         )
         .connect(
             "dram_l1_noc0",
-            Connection::new(
-                Vec::<String>::new(),
-                vec![MemoryEndpoint::new("DRAM", vec![EndpointIndex::All])],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![EndpointIndex::All, EndpointIndex::All],
-                )],
-            )
-            .with_resources(["noc0"]),
+            Connection::new(Vec::<String>::new())
+                .input("src", MemoryEndpoint::new("DRAM", vec![EndpointIndex::All]))
+                .output(
+                    "dst",
+                    MemoryEndpoint::new("L1", vec![EndpointIndex::All, EndpointIndex::All]),
+                )
+                .with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            Connection::new(
-                Vec::<String>::new(),
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![EndpointIndex::All, EndpointIndex::All],
-                )],
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![EndpointIndex::All, EndpointIndex::All],
-                )],
-            )
-            .with_resources(["noc0"]),
+            Connection::new(Vec::<String>::new())
+                .input(
+                    "src",
+                    MemoryEndpoint::new("L1", vec![EndpointIndex::All, EndpointIndex::All]),
+                )
+                .output(
+                    "dst",
+                    MemoryEndpoint::new("L1", vec![EndpointIndex::All, EndpointIndex::All]),
+                )
+                .with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            Connection::new(
-                Vec::<String>::new(),
-                vec![MemoryEndpoint::new(
-                    "L1",
-                    vec![EndpointIndex::All, EndpointIndex::All],
-                )],
-                vec![MemoryEndpoint::new("DRAM", vec![EndpointIndex::All])],
-            )
-            .with_resources(["noc1"]),
+            Connection::new(Vec::<String>::new())
+                .input(
+                    "src",
+                    MemoryEndpoint::new("L1", vec![EndpointIndex::All, EndpointIndex::All]),
+                )
+                .output("dst", MemoryEndpoint::new("DRAM", vec![EndpointIndex::All]))
+                .with_resources(["noc1"]),
         )
         .build()?)
 }

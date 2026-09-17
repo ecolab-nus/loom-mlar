@@ -1,17 +1,10 @@
 use mlar_rust::{
-    AffineExpr, Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint,
-    Resource, Scope,
+    Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint, Resource,
+    Scope,
 };
 use std::error::Error;
 
 mod processors;
-
-fn local(memory: &str) -> MemoryEndpoint {
-    MemoryEndpoint::new(
-        memory,
-        vec![EndpointIndex::Expression(AffineExpr::variable("pipeline"))],
-    )
-}
 
 pub fn build() -> Result<Architecture, Box<dyn Error>> {
     let indexed = |name| Resource::exclusive(name).indexed(vec![Axis::new("pipeline", 2)]);
@@ -40,48 +33,39 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
         .processor_definition(processors::egress_dma()?)
         .connect(
             "ingress_dma",
-            Connection::new(
-                ["pipeline"],
-                vec![MemoryEndpoint::new("DRAM", vec![EndpointIndex::All])],
-                vec![local("INPUT")],
-            )
-            .with_resources(["ingress_link"]),
+            Connection::new(["pipeline"])
+                .input("src", MemoryEndpoint::new("DRAM", vec![EndpointIndex::All]))
+                .output("dst", "INPUT")
+                .with_resources(["ingress_link"]),
         )
         .connect(
             "matrix_stage",
-            Connection::new(
-                ["pipeline"],
-                vec![local("INPUT"), local("INPUT")],
-                vec![local("MATMUL_OUT")],
-            )
-            .with_resources(["matrix_stage"]),
+            Connection::new(["pipeline"])
+                .input("lhs", "INPUT")
+                .input("rhs", "INPUT")
+                .output("result", "MATMUL_OUT")
+                .with_resources(["matrix_stage"]),
         )
         .connect(
             "activation_stage",
-            Connection::new(
-                ["pipeline"],
-                vec![local("MATMUL_OUT")],
-                vec![local("ACTIVATION_OUT")],
-            )
-            .with_resources(["activation_stage"]),
+            Connection::new(["pipeline"])
+                .input("input", "MATMUL_OUT")
+                .output("result", "ACTIVATION_OUT")
+                .with_resources(["activation_stage"]),
         )
         .connect(
             "reduction_stage",
-            Connection::new(
-                ["pipeline"],
-                vec![local("ACTIVATION_OUT")],
-                vec![local("OUTPUT")],
-            )
-            .with_resources(["reduction_stage"]),
+            Connection::new(["pipeline"])
+                .input("input", "ACTIVATION_OUT")
+                .output("result", "OUTPUT")
+                .with_resources(["reduction_stage"]),
         )
         .connect(
             "egress_dma",
-            Connection::new(
-                ["pipeline"],
-                vec![local("OUTPUT")],
-                vec![MemoryEndpoint::new("DRAM", vec![EndpointIndex::All])],
-            )
-            .with_resources(["egress_link"]),
+            Connection::new(["pipeline"])
+                .input("src", "OUTPUT")
+                .output("dst", MemoryEndpoint::new("DRAM", vec![EndpointIndex::All]))
+                .with_resources(["egress_link"]),
         )
         .scope(
             Scope::new("pipeline", ["pipeline"])

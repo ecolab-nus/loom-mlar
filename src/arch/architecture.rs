@@ -4,8 +4,8 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 use super::axis::Axis;
 use super::memory::{
-    MemoryArray, MemoryDefinition, MemoryEndpoint, validate_axes as validate_memory_axes,
-    validate_selection, validate_static_bank,
+    EndpointIndex, MemoryArray, MemoryDefinition, MemoryEndpoint,
+    validate_axes as validate_memory_axes, validate_selection, validate_static_bank,
 };
 use super::network::NetworkTopology;
 use super::processor::{
@@ -14,6 +14,7 @@ use super::processor::{
 };
 use super::resource::Resource;
 use super::scope::Scope;
+use crate::math::AffineExpr;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArchitectureError {
@@ -334,6 +335,11 @@ impl Architecture {
             }
             let connection = processor.connection.clone();
             validate_connection(&connection, &self.memories, &self.memory_definitions)?;
+            validate_processor_ports(
+                self.processor_definition(&processor.definition)
+                    .expect("processor definition was checked"),
+                &connection,
+            )?;
             let domain = resolve_domain(&connection, &axes)?;
             resolve_connection_instances(
                 &connection,
@@ -637,7 +643,7 @@ impl ArchitectureBuilder {
             .collect::<BTreeMap<_, _>>();
         let mut processors = Vec::new();
         let mut resources = self.resources;
-        for (name, definition_name, connection) in self.connections {
+        for (name, definition_name, mut connection) in self.connections {
             let definition = self
                 .processor_definitions
                 .iter()
@@ -648,8 +654,10 @@ impl ArchitectureBuilder {
                         definition_name
                     ))
                 })?;
-            let resolved_connection = connection.clone();
+            resolve_implicit_endpoints(&mut connection, &memories)?;
+            let resolved_connection = connection;
             validate_connection(&resolved_connection, &memories, &self.memory_definitions)?;
+            validate_processor_ports(definition, &resolved_connection)?;
             let domain = resolve_domain(&resolved_connection, &dimension_map)?;
             resolve_connection_instances(
                 &resolved_connection,
@@ -667,7 +675,7 @@ impl ArchitectureBuilder {
                 })
                 .collect::<Vec<_>>();
             resources.extend(processor_resources.iter().cloned());
-            for resource_name in &connection.resources {
+            for resource_name in &resolved_connection.resources {
                 let resource = shared_resources.get(resource_name).ok_or_else(|| {
                     ArchitectureError::Invalid(format!(
                         "processor '{}' refers to unknown shared resource '{}'",
@@ -685,7 +693,7 @@ impl ArchitectureBuilder {
             processors.push(ProcessorArray {
                 name,
                 definition: definition_name,
-                connection,
+                connection: resolved_connection,
                 axes: domain,
                 resources: processor_resources,
             });
@@ -967,7 +975,35 @@ fn validate_connection(
     memories: &[MemoryArray],
     definitions: &[MemoryDefinition],
 ) -> Result<(), ArchitectureError> {
-    for endpoint in connection.inputs.iter().chain(&connection.outputs) {
+    validate_unique(
+        connection.inputs.iter().map(|port| port.name.as_str()),
+        "input port",
+    )?;
+    validate_unique(
+        connection.outputs.iter().map(|port| port.name.as_str()),
+        "output port",
+    )?;
+    for input in &connection.inputs {
+        if let Some(output) = connection
+            .outputs
+            .iter()
+            .find(|output| output.name == input.name)
+            && output.endpoint != input.endpoint
+        {
+            return Err(ArchitectureError::Invalid(format!(
+                "processor port '{}' is used as both input and output with different memory endpoints",
+                input.name
+            )));
+        }
+    }
+    for port in connection.inputs.iter().chain(&connection.outputs) {
+        if !valid_port_name(&port.name) {
+            return Err(ArchitectureError::Invalid(format!(
+                "invalid processor port name '{}'",
+                port.name
+            )));
+        }
+        let endpoint = &port.endpoint;
         let memory = memories
             .iter()
             .find(|memory| memory.name == endpoint.memory)
@@ -988,6 +1024,105 @@ fn validate_connection(
             })?;
         validate_selection(endpoint, memory).map_err(ArchitectureError::Invalid)?;
         validate_static_bank(endpoint, definition).map_err(ArchitectureError::Invalid)?;
+    }
+    Ok(())
+}
+
+fn valid_port_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    matches!(characters.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn resolve_implicit_endpoints(
+    connection: &mut Connection,
+    memories: &[MemoryArray],
+) -> Result<(), ArchitectureError> {
+    let domain = connection
+        .domain
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    for port in connection.inputs.iter_mut().chain(&mut connection.outputs) {
+        let endpoint = &mut port.endpoint;
+        let memory = memories
+            .iter()
+            .find(|memory| memory.name == endpoint.memory)
+            .ok_or_else(|| {
+                ArchitectureError::Invalid(format!(
+                    "connection port '{}' refers to unknown placed memory '{}'",
+                    port.name, endpoint.memory
+                ))
+            })?;
+        if endpoint.indices.is_empty() && memory.rank() > 0 {
+            let missing = memory
+                .axes()
+                .iter()
+                .filter(|axis| !domain.contains(axis.name()))
+                .map(Axis::name)
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                return Err(ArchitectureError::Invalid(format!(
+                    "connection port '{}' cannot infer a pointwise endpoint for memory '{}': axes {missing:?} are not in processor domain {:?}; use explicit selectors",
+                    port.name, endpoint.memory, connection.domain
+                )));
+            }
+            endpoint.indices = memory
+                .axes()
+                .iter()
+                .map(|axis| EndpointIndex::Expression(AffineExpr::variable(axis.name())))
+                .collect();
+        }
+    }
+    Ok(())
+}
+
+fn validate_processor_ports(
+    definition: &ProcessorDefinition,
+    connection: &Connection,
+) -> Result<(), ArchitectureError> {
+    let inputs = connection
+        .inputs
+        .iter()
+        .map(|port| port.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let outputs = connection
+        .outputs
+        .iter()
+        .map(|port| port.name.as_str())
+        .collect::<BTreeSet<_>>();
+    for function in &definition.functions {
+        let Some(details) = &function.func.mlir_details else {
+            continue;
+        };
+        for (side, memrefs, ports, other_ports) in [
+            ("input", &details.source_memrefs, &inputs, &outputs),
+            ("output", &details.target_memrefs, &outputs, &inputs),
+        ] {
+            for memref in memrefs {
+                let binding = details
+                    .mem_region_bindings
+                    .iter()
+                    .find(|binding| &binding.memref == memref)
+                    .ok_or_else(|| {
+                        ArchitectureError::Invalid(format!(
+                            "MLIR function '{}' {side} '%{memref}' has no loom.bind_mem",
+                            function.func.name
+                        ))
+                    })?;
+                if !ports.contains(binding.region.as_str()) {
+                    let reason = if other_ports.contains(binding.region.as_str()) {
+                        "is declared on the wrong side"
+                    } else {
+                        "is not declared by the connection"
+                    };
+                    return Err(ArchitectureError::Invalid(format!(
+                        "MLIR function '{}' binds {side} '%{memref}' to '@{}', which {reason}",
+                        function.func.name, binding.region
+                    )));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1051,13 +1186,17 @@ fn resolve_connection_instances(
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
         for symbolic in &connection.inputs {
-            let Some(endpoint) = resolve_endpoint(symbolic, &point, memories, definitions)? else {
+            let Some(endpoint) =
+                resolve_endpoint(&symbolic.endpoint, &point, memories, definitions)?
+            else {
                 continue 'point;
             };
             inputs.push(endpoint);
         }
         for symbolic in &connection.outputs {
-            let Some(endpoint) = resolve_endpoint(symbolic, &point, memories, definitions)? else {
+            let Some(endpoint) =
+                resolve_endpoint(&symbolic.endpoint, &point, memories, definitions)?
+            else {
                 continue 'point;
             };
             outputs.push(endpoint);

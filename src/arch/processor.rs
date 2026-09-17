@@ -248,29 +248,54 @@ impl ProcessorDefinition {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct MemoryPort {
+    /// Logical name referenced by `loom.bind_mem`.
+    pub name: String,
+    pub endpoint: MemoryEndpoint,
+}
+
+impl MemoryPort {
+    pub fn new(name: impl Into<String>, endpoint: impl Into<MemoryEndpoint>) -> Self {
+        Self {
+            name: name.into(),
+            endpoint: endpoint.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Connection {
     /// Ordered architecture axes that index this processor placement.
     pub domain: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub inputs: Vec<MemoryEndpoint>,
+    pub inputs: Vec<MemoryPort>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub outputs: Vec<MemoryEndpoint>,
+    pub outputs: Vec<MemoryPort>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<String>,
 }
 
 impl Connection {
-    pub fn new(
-        domain: impl IntoIterator<Item = impl Into<String>>,
-        inputs: Vec<MemoryEndpoint>,
-        outputs: Vec<MemoryEndpoint>,
-    ) -> Self {
+    pub fn new(domain: impl IntoIterator<Item = impl Into<String>>) -> Self {
         Self {
             domain: domain.into_iter().map(Into::into).collect(),
-            inputs,
-            outputs,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
             resources: Vec::new(),
         }
+    }
+
+    /// Add a named input. A bare memory endpoint is resolved pointwise from the domain.
+    pub fn input(mut self, name: impl Into<String>, endpoint: impl Into<MemoryEndpoint>) -> Self {
+        self.inputs.push(MemoryPort::new(name, endpoint));
+        self
+    }
+
+    /// Add a named output. A bare memory endpoint is resolved pointwise from the domain.
+    pub fn output(mut self, name: impl Into<String>, endpoint: impl Into<MemoryEndpoint>) -> Self {
+        self.outputs.push(MemoryPort::new(name, endpoint));
+        self
     }
 
     pub fn with_resources(
@@ -285,7 +310,7 @@ impl Connection {
         self.inputs
             .iter()
             .chain(&self.outputs)
-            .flat_map(MemoryEndpoint::variables)
+            .flat_map(|port| port.endpoint.variables())
             .collect()
     }
 }

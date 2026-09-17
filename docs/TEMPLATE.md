@@ -258,7 +258,7 @@ outputs: {result: OUTPUT}
 Names must be unique within each side; repeated memory names in a list require
 explicit aliases. Input and output sides may share a name. Alias maps replace
 memory-derived names; there is no fallback lookup by memory name or technology.
-Both forms preserve authored order for native `@input_N`/`@output_N` references.
+Template-generated and native MLIR use these names directly in `loom.bind_mem`.
 
 An omitted binding is inferred only when that side has exactly one port. Port
 names have no technology semantics. The connected memory's `technology`
@@ -273,7 +273,8 @@ functions:
   vector_reduce: {source: vector_reduce}
 ```
 
-Native functions use `@input_N` and `@output_N` in `loom.bind_mem`. They must be
+Native functions use the placement's input and output port names in
+`loom.bind_mem`. They must be
 self-contained: helper calls, globals, module-level aliases, and source-name
 aliases are rejected. Files may contain several functions; only requested ones
 are composed into a processor. Duplicate definitions, malformed discovered

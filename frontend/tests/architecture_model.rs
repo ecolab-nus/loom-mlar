@@ -222,11 +222,9 @@ fn non_modular_out_of_bounds_points_are_dropped() {
         .processor_definition(dma)
         .connect(
             "dma",
-            Connection::new(
-                ["x"],
-                vec![MemoryEndpoint::parse("L1[x]").unwrap()],
-                vec![MemoryEndpoint::parse("L1[x + 1]").unwrap()],
-            ),
+            Connection::new(["x"])
+                .input("src", MemoryEndpoint::parse("L1[x]").unwrap())
+                .output("dst", MemoryEndpoint::parse("L1[x + 1]").unwrap()),
         )
         .build()
         .expect("architecture should build");
@@ -379,11 +377,7 @@ fn memory_and_endpoint_validation_is_strict() {
         )
         .connect(
             "dma",
-            Connection::new(
-                ["x"],
-                vec![MemoryEndpoint::parse("L1[x, x]").unwrap()],
-                vec![],
-            ),
+            Connection::new(["x"]).input("src", MemoryEndpoint::parse("L1[x, x]").unwrap()),
         )
         .build()
         .expect_err("wrong group arity must fail");
@@ -491,11 +485,7 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
         .connect_as(
             "replicated_lane",
             "lane",
-            Connection::new(
-                ["y", "x"],
-                vec![MemoryEndpoint::parse("L1[x]").unwrap()],
-                Vec::new(),
-            ),
+            Connection::new(["y", "x"]).input("input", MemoryEndpoint::parse("L1[x]").unwrap()),
         )
         .build()
         .expect("explicit domain may include replication axes");
@@ -525,11 +515,8 @@ fn endpoint_variables_must_be_declared_in_the_connection_domain() {
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
-            Connection::new(
-                std::iter::empty::<&str>(),
-                vec![MemoryEndpoint::parse("L1[x]").unwrap()],
-                Vec::new(),
-            ),
+            Connection::new(std::iter::empty::<&str>())
+                .input("input", MemoryEndpoint::parse("L1[x]").unwrap()),
         )
         .build()
         .unwrap_err();
@@ -579,11 +566,12 @@ fn nested_memory_levels_emit_one_axis_named_array_each() {
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
-            Connection::new(
-                ["cluster", "core"],
-                vec![MemoryEndpoint::parse("L1[cluster][core]").unwrap()],
-                vec![MemoryEndpoint::parse("L1[cluster][core]").unwrap()],
-            ),
+            Connection::new(["cluster", "core"])
+                .input("input", MemoryEndpoint::parse("L1[cluster][core]").unwrap())
+                .output(
+                    "result",
+                    MemoryEndpoint::parse("L1[cluster][core]").unwrap(),
+                ),
         )
         .build()
         .expect("nested levels build")

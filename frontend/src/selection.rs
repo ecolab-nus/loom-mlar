@@ -138,7 +138,9 @@ impl MemoryEndpoint {
             ));
         }
         let mut indices = self.indices.iter().flatten().cloned().collect::<Vec<_>>();
-        indices.resize(levels.iter().map(Vec::len).sum(), EndpointIndex::All);
+        if !self.indices.is_empty() {
+            indices.resize(levels.iter().map(Vec::len).sum(), EndpointIndex::All);
+        }
         Ok(mlar_rust::arch::MemoryEndpoint {
             memory: self.memory.clone(),
             indices,

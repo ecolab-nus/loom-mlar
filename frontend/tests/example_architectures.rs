@@ -169,7 +169,10 @@ fn hierarchical_accelerator_preserves_cluster_and_pe_levels() {
         mlar_frontend::load_arch(example_dir("hierarchical-tensor-accelerator")).unwrap();
     let distribute = architecture.processor_array("cluster_pe_dma").unwrap();
     assert!(matches!(
-        distribute.connection().outputs[0].indices.as_slice(),
+        distribute.connection().outputs[0]
+            .endpoint
+            .indices
+            .as_slice(),
         [EndpointIndex::Expression(_), EndpointIndex::All]
     ));
     let pe_scope = architecture
@@ -197,8 +200,8 @@ fn spatial_pipeline_has_distinct_stage_boundaries() {
             .processor_array(processor)
             .unwrap()
             .connection();
-        assert_eq!(connection.inputs[0].memory, input);
-        assert_eq!(connection.outputs[0].memory, output);
+        assert_eq!(connection.inputs[0].endpoint.memory, input);
+        assert_eq!(connection.outputs[0].endpoint.memory, output);
     }
 }
 
@@ -223,6 +226,6 @@ fn heterogeneous_templates_remain_a_fixture() {
         .processor_definition("matrix_lane")
         .unwrap()
         .source();
-    assert!(source.contains("loom.bind_mem %lhs, @input_0"));
-    assert!(source.contains("loom.bind_mem %rhs, @input_1"));
+    assert!(source.contains("loom.bind_mem %lhs, @activations"));
+    assert!(source.contains("loom.bind_mem %rhs, @weights"));
 }

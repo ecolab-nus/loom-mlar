@@ -57,12 +57,14 @@ partial selections return `UnsupportedMemorySelection`.
 The compatibility dialect cannot encode pointwise affine relations or explicit
 bank selectors. These remain in core but are projected away on export. Networks
 are not consumed by current exploration passes. Scales support one memory region;
-loom-dataflow hardware discovery requires exactly one scale. The cache-hierarchy
-example's partial L1 routes therefore load/evaluate but cannot currently export.
+loom-dataflow hardware discovery requires exactly one scale. The hierarchical
+tensor accelerator's partial PE-SRAM routes therefore load/evaluate but cannot
+currently export.
 
-Native `loom.bind_mem` regions named `@input_N` and `@output_N` link directly to
-the internal positions established by authored port order. Multiple operands may
-share a port. Templates infer a binding only when the relevant side has one port. Identical resolved
+Native `loom.bind_mem` regions name logical connection ports such as `@lhs`,
+`@rhs`, and `@result`. Core and frontend connections map those names explicitly
+to memory endpoints; there is no positional or memory-name fallback. Multiple
+operands may share a port. Templates infer a binding only when the relevant side has one port. Identical resolved
 definitions reuse one core definition; differing memory-space-specialized bodies
 receive a suffix. Broadcast and gather require explicit two-dimensional extents;
 copy uses `[1, 1]`.

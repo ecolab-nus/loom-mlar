@@ -1,6 +1,5 @@
 use mlar_rust::{
-    AffineExpr, Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint,
-    MemoryTechnology, Resource, Scope,
+    Architecture, Axis, Connection, MemoryDefinition, MemoryTechnology, Resource, Scope,
 };
 use std::error::Error;
 
@@ -10,16 +9,6 @@ pub const GCRAM_CAPACITY: u64 = 16 * 1024 * 1024;
 pub const RRAM_CAPACITY: u64 = 16 * 1024 * 1024;
 pub const STAGE_CAPACITY: u64 = 64 * 1024;
 pub const OUTPUT_CAPACITY: u64 = 1024 * 1024;
-
-fn local(memory: &str) -> MemoryEndpoint {
-    MemoryEndpoint::new(
-        memory,
-        vec![
-            EndpointIndex::Expression(AffineExpr::variable("x")),
-            EndpointIndex::Expression(AffineExpr::variable("y")),
-        ],
-    )
-}
 
 pub fn build() -> Result<Architecture, Box<dyn Error>> {
     Ok(Architecture::builder("staged_heterogeneous_accelerator")
@@ -56,22 +45,25 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
         .processor_definition(processors::matrix_lane()?)
         .connect(
             "gcram_to_stage",
-            Connection::new(["x", "y"], vec![local("GCRAM")], vec![local("STAGE")])
+            Connection::new(["x", "y"])
+                .input("gcram", "GCRAM")
+                .output("stage", "STAGE")
                 .with_resources(["noc0", "stage_port"]),
         )
         .connect(
             "rram_to_stage",
-            Connection::new(["x", "y"], vec![local("RRAM")], vec![local("STAGE")])
+            Connection::new(["x", "y"])
+                .input("rram", "RRAM")
+                .output("stage", "STAGE")
                 .with_resources(["noc1", "stage_port"]),
         )
         .connect(
             "matrix_lane",
-            Connection::new(
-                ["x", "y"],
-                vec![local("STAGE"), local("STAGE")],
-                vec![local("OUTPUT")],
-            )
-            .with_resources(["stage_port", "matrix"]),
+            Connection::new(["x", "y"])
+                .input("stage_a", "STAGE")
+                .input("stage_b", "STAGE")
+                .output("result", "OUTPUT")
+                .with_resources(["stage_port", "matrix"]),
         )
         .scope(
             Scope::new("tile", ["x", "y"])

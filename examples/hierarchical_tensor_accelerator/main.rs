@@ -12,7 +12,6 @@ fn selected(memory: &str, indices: Vec<EndpointIndex>) -> MemoryEndpoint {
 
 pub fn build() -> Result<Architecture, Box<dyn Error>> {
     let cluster = EndpointIndex::Expression(AffineExpr::variable("cluster"));
-    let pe = EndpointIndex::Expression(AffineExpr::variable("pe"));
     Ok(Architecture::builder("hierarchical_tensor_accelerator")
         .axis("cluster", 2)
         .axis("dram_channel", 2)
@@ -38,57 +37,45 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
         .processor_definition(processors::cluster_dram_dma()?)
         .connect(
             "tensor_engine",
-            Connection::new(
-                ["cluster", "pe"],
-                vec![
-                    selected("PE_SRAM", vec![cluster.clone(), pe.clone()]),
-                    selected("PE_SRAM", vec![cluster.clone(), pe.clone()]),
-                ],
-                vec![selected("PE_SRAM", vec![cluster.clone(), pe.clone()])],
-            )
-            .with_resources(["pe_sram_port"]),
+            Connection::new(["cluster", "pe"])
+                .input("lhs", "PE_SRAM")
+                .input("rhs", "PE_SRAM")
+                .output("result", "PE_SRAM")
+                .with_resources(["pe_sram_port"]),
         )
         .connect(
             "dram_cluster_dma",
-            Connection::new(
-                Vec::<String>::new(),
-                vec![selected("DRAM", vec![EndpointIndex::All])],
-                vec![selected("CLUSTER_SRAM", vec![EndpointIndex::All])],
-            )
-            .with_resources(["dram_fabric"]),
+            Connection::new(Vec::<String>::new())
+                .input("src", selected("DRAM", vec![EndpointIndex::All]))
+                .output("dst", selected("CLUSTER_SRAM", vec![EndpointIndex::All]))
+                .with_resources(["dram_fabric"]),
         )
         .connect(
             "cluster_pe_dma",
-            Connection::new(
-                ["cluster"],
-                vec![selected("CLUSTER_SRAM", vec![cluster.clone()])],
-                vec![selected(
-                    "PE_SRAM",
-                    vec![cluster.clone(), EndpointIndex::All],
-                )],
-            )
-            .with_resources(["cluster_fabric"]),
+            Connection::new(["cluster"])
+                .input("src", selected("CLUSTER_SRAM", vec![cluster.clone()]))
+                .output(
+                    "dst",
+                    selected("PE_SRAM", vec![cluster.clone(), EndpointIndex::All]),
+                )
+                .with_resources(["cluster_fabric"]),
         )
         .connect(
             "pe_cluster_dma",
-            Connection::new(
-                ["cluster"],
-                vec![selected(
-                    "PE_SRAM",
-                    vec![cluster.clone(), EndpointIndex::All],
-                )],
-                vec![selected("CLUSTER_SRAM", vec![cluster.clone()])],
-            )
-            .with_resources(["cluster_fabric"]),
+            Connection::new(["cluster"])
+                .input(
+                    "src",
+                    selected("PE_SRAM", vec![cluster.clone(), EndpointIndex::All]),
+                )
+                .output("dst", selected("CLUSTER_SRAM", vec![cluster.clone()]))
+                .with_resources(["cluster_fabric"]),
         )
         .connect(
             "cluster_dram_dma",
-            Connection::new(
-                Vec::<String>::new(),
-                vec![selected("CLUSTER_SRAM", vec![EndpointIndex::All])],
-                vec![selected("DRAM", vec![EndpointIndex::All])],
-            )
-            .with_resources(["dram_fabric"]),
+            Connection::new(Vec::<String>::new())
+                .input("src", selected("CLUSTER_SRAM", vec![EndpointIndex::All]))
+                .output("dst", selected("DRAM", vec![EndpointIndex::All]))
+                .with_resources(["dram_fabric"]),
         )
         .scope(
             Scope::new("cluster", ["cluster"])

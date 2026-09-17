@@ -1,7 +1,10 @@
 name: l1_dram_noc1
 type: data_mover
 functions:
-  l1_to_dram_f16: {source: l1_to_dram_f16}
+  l1_to_dram_f16:
+    source: copy
+    element_type: f16
+    dimensions: [M, N]
 performance:
   l1_to_dram_f16:
   - latency: '40'

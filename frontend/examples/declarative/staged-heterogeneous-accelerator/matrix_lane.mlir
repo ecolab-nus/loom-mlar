@@ -6,9 +6,9 @@ module @processor {
     loom.bind_shape %A, [%M, %K] : memref<?x?xf16, 2>
     loom.bind_shape %B, [%K, %N] : memref<?x?xf16, 2>
     loom.bind_shape %C, [%M, %N] : memref<?x?xf32, 2>
-    loom.bind_mem %A, @input_0 : memref<?x?xf16, 2>
-    loom.bind_mem %B, @input_1 : memref<?x?xf16, 2>
-    loom.bind_mem %C, @output_0 : memref<?x?xf32, 2>
+    loom.bind_mem %A, @stage_a : memref<?x?xf16, 2>
+    loom.bind_mem %B, @stage_b : memref<?x?xf16, 2>
+    loom.bind_mem %C, @result : memref<?x?xf32, 2>
     linalg.matmul ins(%A, %B : memref<?x?xf16, 2>, memref<?x?xf16, 2>) outs(%C : memref<?x?xf32, 2>)
     return
   }

@@ -20,7 +20,7 @@ pub use network::{NetworkEdge, NetworkInterface, NetworkLink, NetworkTopology};
 pub use perf::{FuncPerfModel, FuncPerfModelBuilder, PerfScenario, TimeCost};
 pub use perf_yaml::{PerfYamlError, PerformanceYaml};
 pub use processor::{
-    Connection, ConnectionInstance, MemoryLocation, OperationModel, ProcessorArray,
+    Connection, ConnectionInstance, MemoryLocation, MemoryPort, OperationModel, ProcessorArray,
     ProcessorDefinition, ProcessorSelection, ProcessorSelectionError, ProcessorSelector,
     ProcessorType, ResolvedEndpointIndex,
 };

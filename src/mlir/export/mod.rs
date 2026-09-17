@@ -286,13 +286,19 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
             .connection
             .inputs
             .iter()
-            .map(|endpoint| endpoint_memory_symbol(&emitter, architecture, endpoint))
+            .map(|port| {
+                endpoint_memory_symbol(&emitter, architecture, &port.endpoint)
+                    .map(|symbol| (port.name.clone(), symbol))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let outputs = processor
             .connection
             .outputs
             .iter()
-            .map(|endpoint| endpoint_memory_symbol(&emitter, architecture, endpoint))
+            .map(|port| {
+                endpoint_memory_symbol(&emitter, architecture, &port.endpoint)
+                    .map(|symbol| (port.name.clone(), symbol))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let module_name = prefixed("proc", &processor.name);
         let module = lower_processor_source(definition, &module_name, &inputs, &outputs).map_err(
@@ -308,8 +314,8 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
             processor.connection.outputs.first(),
         ) {
             (Some(input), Some(output)) => {
-                let input = endpoint_memory_ssa(&emitter, architecture, input)?;
-                let output = endpoint_memory_ssa(&emitter, architecture, output)?;
+                let input = endpoint_memory_ssa(&emitter, architecture, &input.endpoint)?;
+                let output = endpoint_memory_ssa(&emitter, architecture, &output.endpoint)?;
                 format!("from {input} to {output}")
             }
             (None, None) => "[]".to_string(),
@@ -375,8 +381,8 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
 fn lower_processor_source(
     definition: &ProcessorDefinition,
     module_name: &str,
-    inputs: &[String],
-    outputs: &[String],
+    inputs: &[(String, String)],
+    outputs: &[(String, String)],
 ) -> Result<String, String> {
     let memory_symbols = raw_mlir_memory_symbols(definition, inputs, outputs)?;
     Ok(rewrite_raw_mlir_module(
@@ -388,8 +394,8 @@ fn lower_processor_source(
 
 fn raw_mlir_memory_symbols(
     definition: &ProcessorDefinition,
-    inputs: &[String],
-    outputs: &[String],
+    inputs: &[(String, String)],
+    outputs: &[(String, String)],
 ) -> Result<BTreeMap<String, String>, String> {
     let mut mappings = BTreeMap::new();
     for function in &definition.functions {
@@ -424,7 +430,7 @@ fn bind_raw_mlir_side(
     side: &str,
     memrefs: &[String],
     bindings: &[crate::mlir::MlirMemRegionBinding],
-    handles: &[String],
+    ports: &[(String, String)],
     mappings: &mut BTreeMap<String, String>,
 ) -> Result<(), String> {
     for memref in memrefs {
@@ -443,57 +449,23 @@ fn bind_raw_mlir_side(
             regions.push(binding.region.clone());
         }
     }
-    if regions.is_empty() && handles.is_empty() {
+    if regions.is_empty() && ports.is_empty() {
         return Ok(());
     }
-    let indexed = regions
-        .iter()
+    let assignments = regions
+        .into_iter()
         .map(|region| {
-            region
-                .strip_prefix(&format!("{side}_"))
-                .and_then(|index| index.parse::<usize>().ok())
+            ports
+                .iter()
+                .find(|(name, _)| name == &region)
+                .map(|(_, handle)| (region.clone(), handle.clone()))
+                .ok_or_else(|| {
+                    format!(
+                        "MLIR function '{function}' binds {side} memory '@{region}', but the connection has no {side} port named '{region}'"
+                    )
+                })
         })
-        .collect::<Option<Vec<_>>>();
-    if indexed.is_none()
-        && regions
-            .iter()
-            .any(|region| region.starts_with("input_") || region.starts_with("output_"))
-    {
-        return Err(format!(
-            "MLIR function '{function}' has a connection-index binding on the wrong side or with an invalid index: {regions:?}"
-        ));
-    }
-    let assignments = if let Some(indices) = indexed {
-        regions
-            .into_iter()
-            .zip(indices)
-            .map(|(region, index)| {
-                handles
-                    .get(index)
-                    .cloned()
-                    .map(|handle| (region.clone(), handle))
-                    .ok_or_else(|| {
-                        format!(
-                            "MLIR function '{function}' binds @{region} to {side} {index}, but the architecture supplies {} {side} handles",
-                            handles.len()
-                        )
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    } else if handles.len() == 1 {
-        regions
-            .into_iter()
-            .map(|region| (region, handles[0].clone()))
-            .collect::<Vec<_>>()
-    } else if handles.len() == regions.len() {
-        regions.into_iter().zip(handles.iter().cloned()).collect()
-    } else {
-        return Err(format!(
-            "MLIR function '{function}' has {} distinct {side} memory bindings but the architecture supplies {} handles",
-            regions.len(),
-            handles.len()
-        ));
-    };
+        .collect::<Result<Vec<_>, _>>()?;
     for (region, handle) in assignments {
         if let Some(previous) = mappings.insert(region.clone(), handle.clone())
             && previous != handle

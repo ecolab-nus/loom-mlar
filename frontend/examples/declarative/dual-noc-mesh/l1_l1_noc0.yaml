@@ -1,7 +1,12 @@
 name: l1_l1_noc0
 type: data_mover
 functions:
-  l1_gather_f16: {source: l1_gather_f16}
+  l1_gather_f16:
+    source: gather
+    element_type: f16
+    dimensions: [B, M, N]
+    symbols: [gather_x, gather_y]
+    extent: [gather_x, gather_y]
 performance:
   l1_gather_f16:
   - {latency: '12', volume: 2 * B * M * N, throughput: '64'}

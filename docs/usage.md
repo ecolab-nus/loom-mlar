@@ -21,6 +21,22 @@ let architecture = mlar_frontend::archs::load_arch_with_bindings(
 Axis-extent, memory-capacity, word-size, and bank-count expressions may reference
 those parameters. The resulting `Architecture` is concrete.
 
+Shared resources in `chip.yaml` can declare architecture dimensions:
+
+```yaml
+resources:
+  - name: stage_port
+    dimensions: [x, y]
+```
+
+This creates one exclusive resource per `(x, y)` instance. Omit `dimensions`
+for a global resource; add `capacity` for a quantitative resource. Dimension
+names must exist in the architecture and use its resolved extents.
+The [staged heterogeneous package](../frontend/examples/declarative/staged-heterogeneous-accelerator/chip.yaml)
+matches the core staged example. Its ADL export validates, but resource indices
+are not explicitly encoded in ADL; per-tile contention preservation remains
+unverified.
+
 Both optional frontend loaders return the same concrete core `Architecture`.
 Core `Architecture::builder` accepts explicit records and native processor MLIR;
 `mlar_frontend::ArchitectureBuilder` adds package loading and bracket syntax. See [Architecture Semantics](architecture-concepts.md)
@@ -28,23 +44,34 @@ for memory technologies and linking rules.
 
 ## Direct core input
 
-Use `Architecture::builder` with explicit `MemoryEndpoint::new` selectors and
+Use named `Connection` ports with bare memory names for pointwise routes and
+explicit `MemoryEndpoint::new` selectors for nonlocal routes. Use
 `ProcessorDefinition::from_mlir_source` for native MLIR and canonical models, or
-`from_mlir_source_with_perf_yaml` for native MLIR with performance YAML. Start with
-`examples/flat_native/main.rs`, or use the [core architecture examples](../examples/README.md)
-corresponding to all five frontend packages:
+`from_mlir_source_with_perf_yaml` for native MLIR with performance YAML. Use the
+[core accelerator examples](../examples/README.md) corresponding to the frontend
+packages:
+
+```rust
+Connection::new(["x", "y"])
+    .input("lhs", "L1_sram")
+    .input("rhs", "L1_rram")
+    .output("result", "OUTPUT")
+```
+
+Here each bare memory is resolved to `[x, y]`. A memory whose axes are not all
+present in the processor domain requires explicit selectors.
 
 ```bash
-cargo run -p mlar-rust --example flat_native
 cargo run -p mlar-rust --example dual_noc_mesh
+cargo run -p mlar-rust --example spatial_pipeline_accelerator
 cargo test -p mlar-rust --test 2d_mesh
 cargo test -p mlar-frontend --test example_architectures core_
 ```
 
 The comparisons check architecture, function-interface, and performance
-contracts and validate both ADL exports where supported.
-`cache_hierarchy` prints canonical JSON because its partial L1 selections cannot
-export through ADL.
+contracts and validate ADL exports where supported.
+`hierarchical_tensor_accelerator` prints canonical JSON because its partial PE
+subtree selections cannot export through ADL.
 
 Translate an optional package into canonical JSON:
 
@@ -89,10 +116,8 @@ replication. Out-of-range point mappings are dropped.
 
 ## Processors and performance
 
-Core examples construct architectures in Rust with native processor MLIR.
-`single_core` and `mesh_torus` load performance YAML through
-`ProcessorDefinition::from_mlir_source_with_perf_yaml`. Other examples use
-`FuncPerfModel::builder()` and `ProcessorDefinition::from_mlir_source`.
+Core examples construct architectures in Rust with native processor MLIR and
+`FuncPerfModel::builder()`.
 See [core examples](../examples/README.md).
 
 The core also supports optional `<processor>.perf.yaml` files through the
@@ -186,8 +211,8 @@ std::fs::write("architecture.visualization.yaml", visualization)?;
 ADL emits flat multidimensional memory arrays. Whole-array and fully indexed
 routes are supported, with existing projections of affine relations and bank
 selectors. Partial rows/columns, including `L2[cluster]` after hierarchy lowering,
-return `AdlExportError::UnsupportedMemorySelection`. The cache-hierarchy example
-loads/evaluates but cannot export these slices with the current dialect.
+return `AdlExportError::UnsupportedMemorySelection`. The hierarchical tensor
+accelerator loads and evaluates but cannot export these slices with the current dialect.
 
 Visualization export projects placed memories, processor arrays, resources,
 networks, scopes, and their relationships into `mlar.visualization.v1` YAML.

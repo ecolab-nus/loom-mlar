@@ -10,7 +10,9 @@ fn memory_definition() -> MemoryDefinition {
 }
 
 fn connection(input: &str, output: &str) -> Connection {
-    Connection::new(["x", "y"], vec![endpoint(input)], vec![endpoint(output)])
+    Connection::new(["x", "y"])
+        .input("input", endpoint(input))
+        .output("result", endpoint(output))
 }
 
 fn function(name: &str, latency: i64) -> OperationModel {
@@ -182,8 +184,8 @@ module @lane {
     %L = loom.sym @L : index
     loom.bind_shape %src, [%L] : memref<?xf16>
     loom.bind_shape %dst, [%L] : memref<?xf16>
-    loom.bind_mem %src, @L1 : memref<?xf16>
-    loom.bind_mem %dst, @L1 : memref<?xf16>
+    loom.bind_mem %src, @input : memref<?xf16>
+    loom.bind_mem %dst, @result : memref<?xf16>
     linalg.copy ins(%src : memref<?xf16>) outs(%dst : memref<?xf16>)
     return
   }
@@ -203,13 +205,81 @@ module @lane {
         .memory_definition(memory_definition())
         .place_memory("L1", ["x", "y"])
         .processor_definition(definition.with_type(mlar_rust::ProcessorType::Compute))
-        .connect("lane", connection("L1[x, y]", "L1[x, y]"))
+        .connect(
+            "lane",
+            Connection::new(["x", "y"])
+                .input("input", "L1")
+                .output("result", "L1"),
+        )
         .build()
         .expect("raw MLIR architecture should build");
+    let lane = architecture.processor_array("lane").unwrap();
+    assert_eq!(lane.connection().inputs[0].name, "input");
+    assert_eq!(lane.connection().inputs[0].endpoint.indices.len(), 2);
     let exported = mlar_rust::architecture_to_mlir(&architecture)
         .expect("raw MLIR architecture should export");
     assert!(exported.contains("module @proc_lane"));
     assert!(exported.contains("loom.bind_mem %src, @mem_L1"));
+}
+
+#[test]
+fn raw_mlir_regions_must_match_named_connection_ports() {
+    let source = r#"
+module @lane {
+  func.func @copy(%src: memref<?xf16>, %dst: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %src, [%L] : memref<?xf16>
+    loom.bind_shape %dst, [%L] : memref<?xf16>
+    loom.bind_mem %src, @DRAM : memref<?xf16>
+    loom.bind_mem %dst, @L1 : memref<?xf16>
+    linalg.copy ins(%src : memref<?xf16>) outs(%dst : memref<?xf16>)
+    return
+  }
+}
+"#;
+    let perf = FuncPerfModel::builder()
+        .symbols(["L"])
+        .simple_time_cost(Expr::Const(1), Expr::sym("L"), Expr::Const(32))
+        .build();
+    let definition = ProcessorDefinition::from_mlir_source("lane", source, [("copy", perf)])
+        .unwrap()
+        .with_type(mlar_rust::ProcessorType::DataMover);
+    let error = Architecture::builder("named_ports")
+        .memory_definition(memory_definition())
+        .place_memory("L1", Vec::<String>::new())
+        .processor_definition(definition)
+        .connect(
+            "lane",
+            Connection::new(Vec::<String>::new())
+                .input("src", "L1")
+                .output("dst", "L1"),
+        )
+        .build()
+        .unwrap_err();
+    assert!(error.to_string().contains("@DRAM"));
+    assert!(error.to_string().contains("not declared by the connection"));
+}
+
+#[test]
+fn one_port_name_cannot_hide_two_memory_endpoints() {
+    let error = Architecture::builder("ambiguous_port")
+        .memory_definition(MemoryDefinition::new("A", 1024, 16))
+        .memory_definition(MemoryDefinition::new("B", 1024, 16))
+        .place_memory("A", Vec::<String>::new())
+        .place_memory("B", Vec::<String>::new())
+        .processor_definition(
+            ProcessorDefinition::new("lane", "", Vec::new())
+                .with_type(mlar_rust::ProcessorType::Compute),
+        )
+        .connect(
+            "lane",
+            Connection::new(Vec::<String>::new())
+                .input("data", "A")
+                .output("data", "B"),
+        )
+        .build()
+        .unwrap_err();
+    assert!(error.to_string().contains("different memory endpoints"));
 }
 
 fn endpoint(text: &str) -> mlar_rust::MemoryEndpoint {

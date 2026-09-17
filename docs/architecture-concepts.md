@@ -30,14 +30,16 @@ retain `All` or numeric indices without expanding the selected leaves.
 
 In `mlar-frontend`, `[x, y]` is one flat level and `[cluster, [core]]` groups
 hierarchical brackets. `M[:][k]` lowers to `[All, Expr(k)]` and `M[c]` to
-`[Expr(c), All]`; no brackets lowers to all `All`. Missing coordinates inside a
+`[Expr(c), All]`; no brackets requests pointwise selection by matching every
+memory axis to a processor-domain axis of the same name. Use explicit `:`
+selectors for whole arrays. Missing coordinates inside a
 level are errors; omitted trailing levels expand to `All`. Grouping changes
 addressing notation only. It introduces no storage capacity or access semantics.
 Authoring `.bank[b]` follows all authored levels; core banking has no bracket-depth
 requirement beyond full-rank selectors. See [the package template](../TEMPLATE.md).
 
-Frontend template `bindings` select a connected memory by input or output
-index; omitting a binding is valid only when that side has one endpoint.
+Frontend template `bindings` select a named input or output port; omitting a
+binding is valid only when that side has one port.
 Declarative technologies receive numeric kinds in first-appearance order in
 `memory.yaml`; catalog order is therefore ABI-significant.
 

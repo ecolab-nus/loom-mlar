@@ -11,6 +11,10 @@ These packages mirror the four core Rust accelerator examples:
 - `spatial-pipeline-accelerator`: matrix, activation, and reduction engines with
   a physical intermediate buffer between each stage.
 
+Supported operations use the registered templates. Only dual-NoC ReLU and
+staged mixed-precision matmul retain native MLIR: the template registry has no
+ReLU operation and currently requires f16 accumulators for matmul.
+
 Inspect a lowerable package with:
 
 ```bash
@@ -21,5 +25,5 @@ cargo run -p mlar-frontend --example inspect_arch -- \
 The hierarchical package loads, evaluates, and translates to core JSON. Its
 cluster-subtree selections intentionally remain unsupported by ADL export.
 Shared resources may declare `dimensions` to instantiate one exclusive resource
-per accelerator coordinate. Native functions use positional `@input_N` and
-`@output_N` bindings; aliases in `chip.yaml` distinguish repeated-memory ports.
+per accelerator coordinate. Native functions use the port aliases declared in
+`chip.yaml` directly in `loom.bind_mem`.

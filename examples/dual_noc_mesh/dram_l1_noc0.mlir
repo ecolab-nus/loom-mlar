@@ -4,9 +4,9 @@ module @processor {
     %N = loom.sym @N : index
     loom.bind_shape %src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %src, @input_0 : memref<?x?xf16>
-    loom.bind_mem %dst, @output_0 : memref<?x?xf16>
-    loom.copy %src, %dst src_mem_space @input_0 dst_mem_space @output_0, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %src, @src : memref<?x?xf16>
+    loom.bind_mem %dst, @dst : memref<?x?xf16>
+    loom.copy %src, %dst src_mem_space @src dst_mem_space @dst, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
   func.func @dram_to_l1_broadcast_f16(%src: memref<?x?xf16>, %dst: memref<?x?xf16>) {
@@ -16,9 +16,9 @@ module @processor {
     %bcst_y = loom.sym @bcst_y : index
     loom.bind_shape %src, [%M, %N] : memref<?x?xf16>
     loom.bind_shape %dst, [%M, %N] : memref<?x?xf16>
-    loom.bind_mem %src, @input_0 : memref<?x?xf16>
-    loom.bind_mem %dst, @output_0 : memref<?x?xf16>
-    loom.copy %src, %dst src_mem_space @input_0 dst_mem_space @output_0, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
+    loom.bind_mem %src, @src : memref<?x?xf16>
+    loom.bind_mem %dst, @dst : memref<?x?xf16>
+    loom.copy %src, %dst src_mem_space @src dst_mem_space @dst, area: [%bcst_x, %bcst_y] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 }

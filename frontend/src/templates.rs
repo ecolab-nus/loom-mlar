@@ -622,15 +622,12 @@ fn resolve_binding(
             ));
         }
     };
-    let index = ports
-        .iter()
-        .position(|port| port.name == name)
-        .ok_or_else(|| {
-            format!("function '{function}' operand '{operand}' binds unknown {label} port '{name}'")
-        })?;
+    let port = ports.iter().find(|port| port.name == name).ok_or_else(|| {
+        format!("function '{function}' operand '{operand}' binds unknown {label} port '{name}'")
+    })?;
     Ok(ResolvedBinding {
-        symbol: format!("{label}_{index}"),
-        space: ports[index].space,
+        symbol: name.to_string(),
+        space: port.space,
     })
 }
 
@@ -763,8 +760,8 @@ mod tests {
         .unwrap();
         assert!(source.contains("%lhs: memref<?xf16, 0>"));
         assert!(source.contains("%rhs: memref<?xf16, 1>"));
-        assert!(source.contains("loom.bind_mem %lhs, @input_1"));
-        assert!(source.contains("loom.bind_mem %rhs, @input_0"));
+        assert!(source.contains("loom.bind_mem %lhs, @weights"));
+        assert!(source.contains("loom.bind_mem %rhs, @activations"));
     }
 
     #[test]
@@ -827,6 +824,6 @@ mod tests {
         assert!(gather.contains("%src: memref<?x?xf16, 1>"));
         assert!(gather.contains("%dst: memref<?x?x?xf16, 2>"));
         assert!(gather.contains("area: [%X, %Y]"));
-        assert!(!gather.contains("@input_0 : 1"));
+        assert!(!gather.contains("@src : 1"));
     }
 }

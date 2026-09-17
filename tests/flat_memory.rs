@@ -17,10 +17,9 @@ fn build(
         .processor_definition(ProcessorDefinition::new("lane", "", vec![]))
         .connect(
             "lane",
-            Connection::new(
-                ["core"],
-                vec![MemoryEndpoint::new("L1", indices).with_bank(AffineExpr::constant(1))],
-                vec![],
+            Connection::new(["core"]).input(
+                "input",
+                MemoryEndpoint::new("L1", indices).with_bank(AffineExpr::constant(1)),
             ),
         )
         .build()

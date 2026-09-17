@@ -74,27 +74,29 @@ fn build_imperative() -> Architecture {
         ])
         .connect(
             "matrix_lane",
-            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]).unwrap(),
+            Connection::parse_named(["x", "y"], [("data", "L1[x, y]")], [("result", "L1[x, y]")])
+                .unwrap(),
         )
         .connect(
             "vector_lane",
-            Connection::parse(["x", "y"], ["L1[x, y]"], ["L1[x, y]"]).unwrap(),
+            Connection::parse_named(["x", "y"], [("data", "L1[x, y]")], [("result", "L1[x, y]")])
+                .unwrap(),
         )
         .connect(
             "dram_l1_noc0",
-            Connection::parse([], ["DRAM[:]"], ["L1[:, :]"])
+            Connection::parse_named([], [("src", "DRAM[:]")], [("dst", "L1[:, :]")])
                 .unwrap()
                 .with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            Connection::parse([], ["L1[:, :]"], ["L1[:, :]"])
+            Connection::parse_named([], [("src", "L1[:, :]")], [("dst", "L1[:, :]")])
                 .unwrap()
                 .with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            Connection::parse([], ["L1[:, :]"], ["DRAM[:]"])
+            Connection::parse_named([], [("src", "L1[:, :]")], [("dst", "DRAM[:]")])
                 .unwrap()
                 .with_resources(["noc1"]),
         )
@@ -175,8 +177,11 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
         .first()
         .expect("one output")
         .clone();
-    assert_eq!(mesh_wide.memory, "L1");
-    assert_eq!(mesh_wide.indices, [EndpointIndex::All, EndpointIndex::All]);
+    assert_eq!(mesh_wide.endpoint.memory, "L1");
+    assert_eq!(
+        mesh_wide.endpoint.indices,
+        [EndpointIndex::All, EndpointIndex::All]
+    );
 
     assert_eq!(architecture.processor_definitions().len(), 5);
     assert_eq!(architecture.processors().len(), 5);

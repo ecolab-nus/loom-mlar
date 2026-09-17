@@ -196,6 +196,7 @@ pub enum EndpointIndex {
 #[serde(deny_unknown_fields)]
 pub struct MemoryEndpoint {
     pub memory: String,
+    /// Empty selectors request pointwise resolution when used in a processor connection.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub indices: Vec<EndpointIndex>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -229,6 +230,18 @@ impl MemoryEndpoint {
             variables.extend(bank.variables());
         }
         variables
+    }
+}
+
+impl From<&str> for MemoryEndpoint {
+    fn from(memory: &str) -> Self {
+        Self::new(memory, Vec::new())
+    }
+}
+
+impl From<String> for MemoryEndpoint {
+    fn from(memory: String) -> Self {
+        Self::new(memory, Vec::new())
     }
 }
 

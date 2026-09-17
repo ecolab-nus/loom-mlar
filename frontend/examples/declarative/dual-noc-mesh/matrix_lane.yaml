@@ -1,7 +1,11 @@
 name: matrix_lane
 type: compute
 functions:
-  matmul_f16: {source: matmul_f16}
+  matmul_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: lhs, rhs: rhs, out: result}
 resources:
 - name: matrix_pipeline
 performance:

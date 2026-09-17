@@ -560,7 +560,7 @@ impl DocumentBuilder {
             self.components.push(component);
 
             for endpoint in &processor.connection().inputs {
-                let memory = resolve_endpoint_memory(architecture, endpoint);
+                let memory = resolve_endpoint_memory(architecture, &endpoint.endpoint);
                 let memory_id = self.memory_ids.get(memory).ok_or_else(|| {
                     VisualizationExportError::MissingReference {
                         kind: "memory",
@@ -578,7 +578,7 @@ impl DocumentBuilder {
                 )?;
             }
             for endpoint in &processor.connection().outputs {
-                let memory = resolve_endpoint_memory(architecture, endpoint);
+                let memory = resolve_endpoint_memory(architecture, &endpoint.endpoint);
                 let memory_id = self.memory_ids.get(memory).ok_or_else(|| {
                     VisualizationExportError::MissingReference {
                         kind: "memory",
@@ -1031,11 +1031,9 @@ mod tests {
             )
             .connect(
                 "lane",
-                Connection::new(
-                    Vec::<String>::new(),
-                    vec![MemoryEndpoint::new("L1", vec![])],
-                    vec![MemoryEndpoint::new("L1", vec![])],
-                ),
+                Connection::new(Vec::<String>::new())
+                    .input("input", "L1")
+                    .output("result", "L1"),
             )
             .build()
             .unwrap();

@@ -1,8 +1,16 @@
 name: gcram_to_stage
 type: data_mover
 functions:
-  load_gcram_f16: {source: load_gcram_f16}
-  load_gcram_f16_broadcast: {source: load_gcram_f16_broadcast}
+  load_gcram_f16:
+    source: copy
+    element_type: f16
+    dimensions: [M, K]
+  load_gcram_f16_broadcast:
+    source: broadcast
+    element_type: f16
+    dimensions: [M, K]
+    symbols: [bcst_x, bcst_y]
+    extent: [bcst_x, bcst_y]
 performance:
   load_gcram_f16:
   - expression: "8 + (2 * M * K + 15) / 16"

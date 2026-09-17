@@ -99,7 +99,7 @@ performance:
         .connect_as(
             "whole",
             "broadcast_lane",
-            Connection::parse([], ["M"], ["M"]).unwrap(),
+            Connection::parse([], ["M[:, :]"], ["M[:, :]"]).unwrap(),
         )
         .connect_as(
             "column",
@@ -136,7 +136,11 @@ performance:
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
         .place_memory("M", Vec::<String>::new())
         .processor_definition(definition(&yaml).unwrap())
-        .connect("lane", Connection::parse([], ["M", "M"], ["M"]).unwrap())
+        .connect(
+            "lane",
+            Connection::parse_named([], [("left", "M"), ("right", "M")], [("result", "M")])
+                .unwrap(),
+        )
         .build()
         .unwrap_err();
     assert!(error.to_string().contains("explicit input binding"));
@@ -183,9 +187,9 @@ module @processor {
     loom.bind_shape %lhs, [%L] : memref<?xf16>
     loom.bind_shape %rhs, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %lhs, @input_0 : memref<?xf16>
-    loom.bind_mem %rhs, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %lhs, @data : memref<?xf16>
+    loom.bind_mem %rhs, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.mul ins(%lhs, %rhs : memref<?xf16>, memref<?xf16>) outs(%out : memref<?xf16>)
     return
   }
@@ -210,7 +214,10 @@ performance:
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
         .place_memory("M", Vec::<String>::new())
         .processor_definition(definition(&yaml).unwrap())
-        .connect("lane", Connection::parse([], ["M"], ["M"]).unwrap())
+        .connect(
+            "lane",
+            Connection::parse_named([], [("data", "M")], [("result", "M")]).unwrap(),
+        )
         .build()
         .unwrap();
     let source = architecture.processor_definitions()[0].source();

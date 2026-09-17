@@ -90,10 +90,13 @@ Memory endpoints use positional selectors:
 
 | Syntax | Meaning |
 | --- | --- |
-| `L1` | all instances |
+| `L1` | pointwise instance selected by matching processor-domain axes |
 | `L1[x, y]` | one instance |
 | `L1[:, y]` | every `x` at one `y` |
 | `L1[x, y].bank[b]` | one bank of an instance |
+
+A bare ranked memory is rejected unless every memory axis has a same-named
+processor-domain axis. Use explicit `:` selectors when selecting an array.
 
 Nested memory placement uses nested lists. For `L2: [cluster, [core]]`, select
 a cluster with `L2[cluster]`, a leaf with `L2[cluster][core]`, or the same core
@@ -148,8 +151,8 @@ native `loom.broadcast` is a tensor-shape operation and is not used for physical
 broadcast.
 
 Native `.mlir` files are discovered directly beside the YAML. A native source
-name must equal the exposed function name. Functions use `@input_N` and
-`@output_N` bindings in authored port order and must be self-contained within
+name must equal the exposed function name. Functions use the placement's named
+input and output ports in `loom.bind_mem` and must be self-contained within
 one `func.func`. Native MLIR memory spaces remain explicitly authored; the
 frontend does not specialize or rewrite native function types.
 

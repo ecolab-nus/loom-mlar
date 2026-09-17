@@ -3,8 +3,8 @@ module @processor {
     %L = loom.sym @L : index
     loom.bind_shape %input, [%L] : memref<?xf16>
     loom.bind_shape %output, [%L] : memref<?xf16>
-    loom.bind_mem %input, @input_0 : memref<?xf16>
-    loom.bind_mem %output, @output_0 : memref<?xf16>
+    loom.bind_mem %input, @input : memref<?xf16>
+    loom.bind_mem %output, @result : memref<?xf16>
     linalg.generic {
       indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
       iterator_types = ["parallel"]

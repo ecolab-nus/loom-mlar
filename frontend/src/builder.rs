@@ -77,12 +77,7 @@ impl ProcessorDefinition {
                         templates::emit(name, spec, inputs, outputs)
                     }
                     FunctionProvider::Native(function) => {
-                        validate_native_bindings(
-                            name,
-                            &function.block,
-                            inputs.len(),
-                            outputs.len(),
-                        )?;
+                        validate_native_bindings(name, &function.block, inputs, outputs)?;
                         Ok(function.block.clone())
                     }
                 })
@@ -114,8 +109,8 @@ impl ProcessorDefinition {
 fn validate_native_bindings(
     function_name: &str,
     block: &str,
-    input_count: usize,
-    output_count: usize,
+    inputs: &[ResolvedPort],
+    outputs: &[ResolvedPort],
 ) -> Result<(), String> {
     let source = compose_module([block.to_string()]);
     let module = mlar_rust::mlir::MlirModule::from_mlir_source(&source)?;
@@ -127,38 +122,20 @@ fn validate_native_bindings(
     for binding in &details.mem_region_bindings {
         let is_input = details.source_memrefs.contains(&binding.memref);
         let is_output = details.target_memrefs.contains(&binding.memref);
-        let (side, index, count) = if let Some(index) = binding.region.strip_prefix("input_") {
-            if !is_input || is_output {
-                return Err(format!(
-                    "native function '{function_name}' binds non-input '{}' to @{}",
-                    binding.memref, binding.region
-                ));
-            }
-            ("input", index, input_count)
-        } else if let Some(index) = binding.region.strip_prefix("output_") {
-            if !is_output || is_input {
-                return Err(format!(
-                    "native function '{function_name}' binds non-output '{}' to @{}",
-                    binding.memref, binding.region
-                ));
-            }
-            ("output", index, output_count)
+        let (side, ports) = if is_input && !is_output {
+            ("input", inputs)
+        } else if is_output && !is_input {
+            ("output", outputs)
         } else {
             return Err(format!(
-                "native function '{function_name}' binds '{}' to @{}; package functions must use @input_N or @output_N",
-                binding.memref, binding.region
+                "native function '{function_name}' has ambiguous memory direction for '{}'",
+                binding.memref,
             ));
         };
-        let index = index.parse::<usize>().map_err(|_| {
-            format!(
-                "native function '{function_name}' has invalid binding @{}",
-                binding.region
-            )
-        })?;
-        if index >= count {
+        if !ports.iter().any(|port| port.name == binding.region) {
             return Err(format!(
-                "native function '{function_name}' binds '{}' to {side} {index}, but the connection has {count} {side}s",
-                binding.memref
+                "native function '{function_name}' binds {side} '{}' to @{}, but the connection has no {side} port named '{}'",
+                binding.memref, binding.region, binding.region
             ));
         }
     }
@@ -200,25 +177,21 @@ pub struct Connection {
     pub resources: Vec<String>,
 }
 impl Connection {
-    pub fn new(
-        domain: impl IntoIterator<Item = impl Into<String>>,
-        inputs: Vec<MemoryEndpoint>,
-        outputs: Vec<MemoryEndpoint>,
-    ) -> Self {
+    pub fn new(domain: impl IntoIterator<Item = impl Into<String>>) -> Self {
         Self {
             domain: domain.into_iter().map(Into::into).collect(),
-            inputs: inputs
-                .into_iter()
-                .enumerate()
-                .map(|(index, endpoint)| NamedPort::new(format!("input_{index}"), endpoint))
-                .collect(),
-            outputs: outputs
-                .into_iter()
-                .enumerate()
-                .map(|(index, endpoint)| NamedPort::new(format!("output_{index}"), endpoint))
-                .collect(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
             resources: vec![],
         }
+    }
+    pub fn input(mut self, name: impl Into<String>, endpoint: MemoryEndpoint) -> Self {
+        self.inputs.push(NamedPort::new(name, endpoint));
+        self
+    }
+    pub fn output(mut self, name: impl Into<String>, endpoint: MemoryEndpoint) -> Self {
+        self.outputs.push(NamedPort::new(name, endpoint));
+        self
     }
     pub fn named(
         domain: impl IntoIterator<Item = impl Into<String>>,
@@ -237,17 +210,16 @@ impl Connection {
         inputs: impl IntoIterator<Item = &'a str>,
         outputs: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, mlar_rust::arch::EndpointParseError> {
-        Ok(Self::new(
-            domain,
-            inputs
-                .into_iter()
-                .map(MemoryEndpoint::parse)
-                .collect::<Result<_, _>>()?,
-            outputs
-                .into_iter()
-                .map(MemoryEndpoint::parse)
-                .collect::<Result<_, _>>()?,
-        ))
+        let mut connection = Self::new(domain);
+        for input in inputs {
+            let endpoint = MemoryEndpoint::parse(input)?;
+            connection = connection.input(endpoint.memory.clone(), endpoint);
+        }
+        for output in outputs {
+            let endpoint = MemoryEndpoint::parse(output)?;
+            connection = connection.output(endpoint.memory.clone(), endpoint);
+        }
+        Ok(connection)
     }
     pub fn parse_named<'a>(
         domain: impl IntoIterator<Item = &'a str>,
@@ -526,11 +498,17 @@ impl ArchitectureBuilder {
                 ));
                 canonical_name
             };
+            let mut connection = mlar_rust::Connection::new(authored.domain.clone());
+            for (port, endpoint) in authored.inputs.iter().zip(inputs) {
+                connection = connection.input(&port.name, endpoint);
+            }
+            for (port, endpoint) in authored.outputs.iter().zip(outputs) {
+                connection = connection.output(&port.name, endpoint);
+            }
             connections.push((
                 name.clone(),
                 canonical_name,
-                mlar_rust::Connection::new(authored.domain.clone(), inputs, outputs)
-                    .with_resources(authored.resources.clone()),
+                connection.with_resources(authored.resources.clone()),
             ));
         }
         for def in &self.definitions {

@@ -11,7 +11,7 @@ pub use abi::{arch_query, evaluator};
 pub use arch::{
     AdlExportError, Architecture, ArchitectureBuilder, ArchitectureError, Axis, Banking,
     Connection, EndpointIndex, FuncPerfModel, MemoryArray, MemoryDefinition, MemoryEndpoint,
-    MemoryLocation, MemoryTechnology, NetworkInterface, NetworkLink, NetworkTopology,
+    MemoryLocation, MemoryPort, MemoryTechnology, NetworkInterface, NetworkLink, NetworkTopology,
     OperationModel, PerfScenario, PerfYamlError, PerformanceYaml, ProcessorDefinition,
     ProcessorSelector, ProcessorType, ResolvedEndpointIndex, Resource, Scope, TimeCost,
     architecture_to_mlir, architecture_to_mlir_unchecked, mlir_validators_available,

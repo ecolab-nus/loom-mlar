@@ -184,7 +184,7 @@ fn canonical_objects_reject_unknown_fields_and_invalid_affine_nodes() {
         .processor_definition(ProcessorDefinition::new("lane", "", vec![]))
         .connect(
             "lane",
-            Connection::parse(["x"], ["L1[x]"], ["L1[x]"]).unwrap(),
+            Connection::parse_named(["x"], [("data", "L1[x]")], [("result", "L1[x]")]).unwrap(),
         )
         .build()
         .unwrap();
@@ -210,7 +210,7 @@ fn canonical_objects_reject_unknown_fields_and_invalid_affine_nodes() {
         assert!(error.contains("unknown field"), "{path}: {error}");
     }
     let mut json = original;
-    json["processors"][0]["connection"]["inputs"][0]["indices"][0] =
+    json["processors"][0]["connection"]["inputs"][0]["endpoint"]["indices"][0] =
         serde_json::json!({"expression": {"mod": [{"variable": "x"}, 0]}});
     let error = serde_json::from_value::<Architecture>(json)
         .unwrap_err()

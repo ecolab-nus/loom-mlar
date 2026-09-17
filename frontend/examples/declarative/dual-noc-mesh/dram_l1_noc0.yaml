@@ -1,8 +1,16 @@
 name: dram_l1_noc0
 type: data_mover
 functions:
-  dram_to_l1_f16: {source: dram_to_l1_f16}
-  dram_to_l1_broadcast_f16: {source: dram_to_l1_broadcast_f16}
+  dram_to_l1_f16:
+    source: copy
+    element_type: f16
+    dimensions: [M, N]
+  dram_to_l1_broadcast_f16:
+    source: broadcast
+    element_type: f16
+    dimensions: [M, N]
+    symbols: [bcst_x, bcst_y]
+    extent: [bcst_x, bcst_y]
 performance:
   dram_to_l1_f16:
   - {latency: '40', volume: 2 * M * N, throughput: '128'}

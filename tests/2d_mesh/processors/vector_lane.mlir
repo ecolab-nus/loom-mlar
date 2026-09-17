@@ -4,9 +4,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -27,8 +27,8 @@ module @processor {
     %L = loom.sym @L : index
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -47,8 +47,8 @@ module @processor {
   func.func @vec_sum_f16(%a: memref<?xf16>, %init: memref<f16>) {
     %L = loom.sym @L : index
     loom.bind_shape %a, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %init, @output_0 : memref<f16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %init, @result : memref<f16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -69,9 +69,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -93,9 +93,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -117,9 +117,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -141,9 +141,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -165,9 +165,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -189,9 +189,9 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xi1>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xi1>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xi1>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -214,10 +214,10 @@ module @processor {
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %b, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %cond, @input_0 : memref<?xi1>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %b, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %cond, @data : memref<?xi1>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %b, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,
@@ -239,8 +239,8 @@ module @processor {
     %L = loom.sym @L : index
     loom.bind_shape %a, [%L] : memref<?xf16>
     loom.bind_shape %out, [%L] : memref<?xf16>
-    loom.bind_mem %a, @input_0 : memref<?xf16>
-    loom.bind_mem %out, @output_0 : memref<?xf16>
+    loom.bind_mem %a, @data : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
     linalg.generic {
     indexing_maps = [
     affine_map<(d0) -> (d0)>,

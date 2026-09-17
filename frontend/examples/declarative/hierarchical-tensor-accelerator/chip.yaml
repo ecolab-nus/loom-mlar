@@ -18,29 +18,29 @@ processors:
     definition: tensor_engine.yaml
     domain: [cluster, pe]
     inputs: {lhs: "PE_SRAM[cluster][pe]", rhs: "PE_SRAM[cluster][pe]"}
-    outputs: {out: "PE_SRAM[cluster][pe]"}
+    outputs: {result: "PE_SRAM[cluster][pe]"}
     resources: [pe_sram_port]
   dram_cluster_dma:
     definition: dram_cluster_dma.yaml
-    inputs: ["DRAM[:]"]
-    outputs: ["CLUSTER_SRAM[:]"]
+    inputs: {src: "DRAM[:]"}
+    outputs: {dst: "CLUSTER_SRAM[:]"}
     resources: [dram_fabric]
   cluster_pe_dma:
     definition: cluster_pe_dma.yaml
     domain: [cluster]
-    inputs: ["CLUSTER_SRAM[cluster]"]
-    outputs: ["PE_SRAM[cluster]"]
+    inputs: {src: "CLUSTER_SRAM[cluster]"}
+    outputs: {dst: "PE_SRAM[cluster]"}
     resources: [cluster_fabric]
   pe_cluster_dma:
     definition: pe_cluster_dma.yaml
     domain: [cluster]
-    inputs: ["PE_SRAM[cluster]"]
-    outputs: ["CLUSTER_SRAM[cluster]"]
+    inputs: {src: "PE_SRAM[cluster]"}
+    outputs: {dst: "CLUSTER_SRAM[cluster]"}
     resources: [cluster_fabric]
   cluster_dram_dma:
     definition: cluster_dram_dma.yaml
-    inputs: ["CLUSTER_SRAM[:]"]
-    outputs: ["DRAM[:]"]
+    inputs: {src: "CLUSTER_SRAM[:]"}
+    outputs: {dst: "DRAM[:]"}
     resources: [dram_fabric]
 scopes:
 - name: cluster

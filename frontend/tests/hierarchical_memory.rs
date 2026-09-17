@@ -8,6 +8,13 @@ use mlar_rust::{
 };
 
 fn architecture(endpoints: &[&str]) -> Result<Architecture, ArchitectureError> {
+    let mut connection = Connection::new(["x", "y", "core"]);
+    for (index, endpoint) in endpoints.iter().enumerate() {
+        let endpoint = MemoryEndpoint::parse(endpoint).unwrap();
+        connection = connection
+            .input(format!("source_{index}"), endpoint.clone())
+            .output(format!("result_{index}"), endpoint);
+    }
     mlar_frontend::ArchitectureBuilder::new("hierarchical")
         .axis("x", 2)
         .axis("y", 3)
@@ -21,15 +28,7 @@ fn architecture(endpoints: &[&str]) -> Result<Architecture, ArchitectureError> {
         .processor_definition(
             ProcessorDefinition::new("lane", "", Vec::new()).with_type(ProcessorType::Compute),
         )
-        .connect(
-            "lane",
-            Connection::parse(
-                ["x", "y", "core"],
-                endpoints.iter().copied(),
-                endpoints.iter().copied(),
-            )
-            .unwrap(),
-        )
+        .connect("lane", connection)
         .build()
 }
 
@@ -86,7 +85,7 @@ fn resolution_preserves_subtrees_and_traverses_all_selected_parents() {
         })
         .unwrap();
     let expected = [
-        vec![All, All, All],
+        vec![Index(1), Index(2), Index(3)],
         vec![Index(1), Index(2), All],
         vec![Index(1), Index(2), Index(3)],
         vec![All, Index(2), Index(3)],
@@ -144,7 +143,7 @@ fn deeper_affine_indices_still_filter_bounds_and_wrap() {
 #[test]
 fn adl_lowers_subtrees_and_rejects_unrepresentable_slices() {
     for (endpoint, symbol) in [
-        ("L1", "mem_L1"),
+        ("L1", "mem_L1_instance"),
         ("L1[:, :]", "mem_L1"),
         ("L1[:, :][:]", "mem_L1"),
         ("L1[x, y][core]", "mem_L1_instance"),
@@ -194,7 +193,8 @@ fn hierarchical_endpoints_round_trip_and_revalidate() {
         decoded.processors()[0].instances(&decoded),
         architecture.processors()[0].instances(&architecture)
     );
-    json["processors"][0]["connection"]["inputs"][0]["indices"] = serde_json::json!(["all"]);
+    json["processors"][0]["connection"]["inputs"][0]["endpoint"]["indices"] =
+        serde_json::json!(["all"]);
     let error = serde_json::from_value::<Architecture>(json)
         .unwrap_err()
         .to_string();

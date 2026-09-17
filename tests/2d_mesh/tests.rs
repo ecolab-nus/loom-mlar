@@ -220,7 +220,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("A", "input_0"), ("B", "input_0"), ("C", "output_0")],
+        [("A", "data"), ("B", "data"), ("C", "result")],
     );
 
     let vec_module = MlirModule::from_mlir(VEC_LANE_MLIR).unwrap();
@@ -265,10 +265,10 @@ fn test_2d_mesh_torus_perf_models() {
     let noc0 = mesh.processor_definition("dram_l1_noc0").unwrap();
     let copy_mlir = fs::read_to_string(DRAM_L1_NOC0_MLIR).unwrap();
     for (name, expected_dst_kind) in [
-        ("dram_to_l1_S_f16", "dst_mem_space @output_0,"),
-        ("dram_to_l1_S_bcst", "dst_mem_space @output_0,"),
-        ("dram_to_l1_R_f16", "dst_mem_space @output_0 : 1,"),
-        ("dram_to_l1_R_bcst", "dst_mem_space @output_0 : 1,"),
+        ("dram_to_l1_S_f16", "dst_mem_space @dst,"),
+        ("dram_to_l1_S_bcst", "dst_mem_space @dst,"),
+        ("dram_to_l1_R_f16", "dst_mem_space @dst : 1,"),
+        ("dram_to_l1_R_bcst", "dst_mem_space @dst : 1,"),
     ] {
         assert!(noc0.get_function(name).is_some());
         assert!(
@@ -380,7 +380,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("dram_src", "input_0"), ("l1_dst", "output_0")]
+        [("dram_src", "src"), ("l1_dst", "dst")]
     );
 }
 

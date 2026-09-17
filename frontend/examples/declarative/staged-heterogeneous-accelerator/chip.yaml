@@ -33,7 +33,7 @@ processors:
     definition: matrix_lane.yaml
     domain: [x, y]
     inputs: {stage_a: "STAGE[x, y]", stage_b: "STAGE[x, y]"}
-    outputs: {output: "OUTPUT[x, y]"}
+    outputs: {result: "OUTPUT[x, y]"}
     resources: [stage_port, matrix]
 scopes:
 - name: tile

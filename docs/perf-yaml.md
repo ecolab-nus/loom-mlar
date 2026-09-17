@@ -75,9 +75,9 @@ func.func @copy(%src: memref<?xf16>, %dst: memref<?xf16>) {
   %effective_bandwidth = loom.sym @effective_bandwidth : index
   loom.bind_shape %src, [%L] : memref<?xf16>
   loom.bind_shape %dst, [%L] : memref<?xf16>
-  loom.bind_mem %src, @input_0 : memref<?xf16>
-  loom.bind_mem %dst, @output_0 : memref<?xf16>
-  loom.copy %src, %dst src_mem_space @input_0 dst_mem_space @output_0,
+  loom.bind_mem %src, @src : memref<?xf16>
+  loom.bind_mem %dst, @dst : memref<?xf16>
+  loom.copy %src, %dst src_mem_space @src dst_mem_space @dst,
     area: [1, 1] : memref<?xf16> to memref<?xf16>
   return
 }

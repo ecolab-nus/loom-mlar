@@ -86,10 +86,10 @@ fn processor_routes_keep_stage_and_output_physically_distinct() {
             .connection()
             .inputs
             .iter()
-            .map(|endpoint| endpoint.memory.as_str())
+            .map(|port| port.endpoint.memory.as_str())
             .collect::<Vec<_>>(),
         ["STAGE", "STAGE"]
     );
-    assert_eq!(matrix.connection().outputs[0].memory, "OUTPUT");
+    assert_eq!(matrix.connection().outputs[0].endpoint.memory, "OUTPUT");
     assert_eq!(matrix.connection().resources, ["stage_port", "matrix"]);
 }

@@ -18,32 +18,32 @@ processors:
   ingress_dma:
     definition: ingress_dma.yaml
     domain: [pipeline]
-    inputs: ["DRAM[:]"]
-    outputs: ["INPUT[pipeline]"]
+    inputs: {src: "DRAM[:]"}
+    outputs: {dst: "INPUT[pipeline]"}
     resources: [ingress_link]
   matrix_stage:
     definition: matrix_stage.yaml
     domain: [pipeline]
     inputs: {lhs: "INPUT[pipeline]", rhs: "INPUT[pipeline]"}
-    outputs: {out: "MATMUL_OUT[pipeline]"}
+    outputs: {result: "MATMUL_OUT[pipeline]"}
     resources: [matrix_stage]
   activation_stage:
     definition: activation_stage.yaml
     domain: [pipeline]
-    inputs: ["MATMUL_OUT[pipeline]"]
-    outputs: ["ACTIVATION_OUT[pipeline]"]
+    inputs: {input: "MATMUL_OUT[pipeline]"}
+    outputs: {result: "ACTIVATION_OUT[pipeline]"}
     resources: [activation_stage]
   reduction_stage:
     definition: reduction_stage.yaml
     domain: [pipeline]
-    inputs: ["ACTIVATION_OUT[pipeline]"]
-    outputs: ["OUTPUT[pipeline]"]
+    inputs: {input: "ACTIVATION_OUT[pipeline]"}
+    outputs: {result: "OUTPUT[pipeline]"}
     resources: [reduction_stage]
   egress_dma:
     definition: egress_dma.yaml
     domain: [pipeline]
-    inputs: ["OUTPUT[pipeline]"]
-    outputs: ["DRAM[:]"]
+    inputs: {src: "OUTPUT[pipeline]"}
+    outputs: {dst: "DRAM[:]"}
     resources: [egress_link]
 scopes:
 - name: pipeline
