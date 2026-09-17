@@ -89,9 +89,11 @@ replication. Out-of-range point mappings are dropped.
 
 ## Processors and performance
 
-Core examples construct architecture and performance models in Rust, using
-`FuncPerfModel::builder()` and `ProcessorDefinition::from_mlir_source` with native
-processor MLIR. See [core examples](../examples/README.md).
+Core examples construct architectures in Rust with native processor MLIR.
+`single_core` and `mesh_torus` load performance YAML through
+`ProcessorDefinition::from_mlir_source_with_perf_yaml`. Other examples use
+`FuncPerfModel::builder()` and `ProcessorDefinition::from_mlir_source`.
+See [core examples](../examples/README.md).
 
 The core also supports optional `<processor>.perf.yaml` files through the
 `PerformanceYaml` loader, which constructs canonical symbolic models. Each

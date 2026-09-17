@@ -2,8 +2,10 @@
 
 Each directory is one runnable example. Its `main.rs` constructs the architecture
 through `mlar-rust`. Where present, `processors.rs` loads the accompanying native
-processor `.mlir` and constructs performance models with the Rust API. Architecture
-and performance definitions use Rust only; processor operations remain native MLIR.
+processor `.mlir`. `single_core` and `mesh_torus` load adjacent `.perf.yaml` files
+with `ProcessorDefinition::from_mlir_source_with_perf_yaml`; the other examples
+construct performance models with the Rust API. Architecture construction uses
+Rust throughout. See the [performance YAML format](../docs/perf-yaml.md).
 
 | Example | Purpose |
 |---|---|
