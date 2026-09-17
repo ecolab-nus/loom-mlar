@@ -1,0 +1,56 @@
+name: hierarchical_tensor_accelerator
+dimensions:
+  dram_channel: 2
+  cluster: 2
+  pe: 4
+memories:
+  DRAM: [dram_channel]
+  CLUSTER_SRAM: [cluster]
+  PE_SRAM: [cluster, [pe]]
+resources:
+- name: dram_fabric
+- name: cluster_fabric
+  dimensions: [cluster]
+- name: pe_sram_port
+  dimensions: [cluster, pe]
+processors:
+  tensor_engine:
+    definition: tensor_engine.yaml
+    domain: [cluster, pe]
+    inputs: {lhs: "PE_SRAM[cluster][pe]", rhs: "PE_SRAM[cluster][pe]"}
+    outputs: {out: "PE_SRAM[cluster][pe]"}
+    resources: [pe_sram_port]
+  dram_cluster_dma:
+    definition: dram_cluster_dma.yaml
+    inputs: ["DRAM[:]"]
+    outputs: ["CLUSTER_SRAM[:]"]
+    resources: [dram_fabric]
+  cluster_pe_dma:
+    definition: cluster_pe_dma.yaml
+    domain: [cluster]
+    inputs: ["CLUSTER_SRAM[cluster]"]
+    outputs: ["PE_SRAM[cluster]"]
+    resources: [cluster_fabric]
+  pe_cluster_dma:
+    definition: pe_cluster_dma.yaml
+    domain: [cluster]
+    inputs: ["PE_SRAM[cluster]"]
+    outputs: ["CLUSTER_SRAM[cluster]"]
+    resources: [cluster_fabric]
+  cluster_dram_dma:
+    definition: cluster_dram_dma.yaml
+    inputs: ["CLUSTER_SRAM[:]"]
+    outputs: ["DRAM[:]"]
+    resources: [dram_fabric]
+scopes:
+- name: cluster
+  dimensions: [cluster]
+  memories: [CLUSTER_SRAM]
+  processors: [cluster_pe_dma, pe_cluster_dma]
+  resources: [cluster_fabric]
+- name: pe
+  parent: cluster
+  dimensions: [cluster, pe]
+  memories: [PE_SRAM]
+  processors: [tensor_engine]
+  resources: [pe_sram_port]

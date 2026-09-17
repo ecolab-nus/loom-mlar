@@ -64,3 +64,46 @@ processors:
         .expect("explicit scope should drive valid ADL lowering");
     assert!(mlir.contains("adl.arch.scale \"arch_mesh\""));
 }
+
+#[test]
+fn shared_resources_resolve_declared_dimensions_and_parameter_extents() {
+    let chip = ChipYaml::from_yaml_str(
+        r#"
+name: resources
+parameters: [X]
+dimensions: {x: X, y: 3}
+resources:
+- name: stage_port
+  dimensions: [y, x]
+- name: global_port
+- name: slots
+  capacity: 4
+  dimensions: [x]
+"#,
+    )
+    .unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typed-memory");
+    let architecture = chip.build_with_bindings(&fixture, [("X", 2)]).unwrap();
+    let resources = architecture.resources();
+    assert_eq!(
+        resources[0].axes(),
+        [mlar_rust::Axis::new("y", 3), mlar_rust::Axis::new("x", 2)]
+    );
+    assert!(resources[1].axes().is_empty());
+    assert_eq!(resources[2].capacity(), Some(4));
+    assert_eq!(resources[2].axes(), [mlar_rust::Axis::new("x", 2)]);
+}
+
+#[test]
+fn shared_resources_reject_unknown_dimensions() {
+    let chip = ChipYaml::from_yaml_str(
+        "name: resources\nresources:\n- name: stage_port\n  dimensions: [missing]\n",
+    )
+    .unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typed-memory");
+    let error = chip.build(&fixture).unwrap_err().to_string();
+    assert!(
+        error.contains("resource 'stage_port' uses unknown dimension 'missing'"),
+        "{error}"
+    );
+}

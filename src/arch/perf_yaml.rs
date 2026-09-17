@@ -363,8 +363,8 @@ add:
 
     #[test]
     fn native_mlir_and_yaml_require_matching_function_names() {
-        let source = include_str!("../../examples/single_core/vector_lane.mlir");
-        let yaml = r#"vector_add:
+        let source = include_str!("../../examples/dual_noc_mesh/vector_lane.mlir");
+        let yaml = r#"relu_f16:
   - constraint: (L > 0) && (L <= 1024)
     latency: '2'
     volume: L
@@ -382,9 +382,9 @@ add:
                 .is_some()
         );
         for invalid in [
-            yaml.replace("vector_add:", "misspelled:"),
+            yaml.replace("relu_f16:", "misspelled:"),
             format!("{yaml}extra:\n  - expression: '1'\n"),
-            "vector_add: []\n".into(),
+            "relu_f16: []\n".into(),
         ] {
             assert!(
                 crate::ProcessorDefinition::from_mlir_source_with_perf_yaml(

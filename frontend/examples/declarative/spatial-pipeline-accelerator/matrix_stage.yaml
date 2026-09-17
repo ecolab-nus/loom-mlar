@@ -1,0 +1,11 @@
+name: matrix_stage
+type: compute
+functions:
+  pipeline_matmul_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: lhs, rhs: rhs, out: out}
+performance:
+  pipeline_matmul_f16:
+  - {expression: 6 + (M * N * K + 255) / 256}

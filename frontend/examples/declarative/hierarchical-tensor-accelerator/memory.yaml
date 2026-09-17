@@ -1,0 +1,4 @@
+memories:
+  DRAM: {capacity: 536870912, word_size: 4096}
+  CLUSTER_SRAM: {capacity: 4194304, word_size: 64, banking: 8}
+  PE_SRAM: {capacity: 262144, word_size: 32, banking: 4}

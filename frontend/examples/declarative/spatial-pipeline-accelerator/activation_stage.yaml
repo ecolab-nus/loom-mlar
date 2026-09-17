@@ -1,0 +1,7 @@
+name: activation_stage
+type: compute
+functions:
+  pipeline_exp_f16: {source: elementwise_exp, element_type: f16, dimensions: [L]}
+performance:
+  pipeline_exp_f16:
+  - {expression: 3 + (L + 31) / 32}

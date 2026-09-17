@@ -1,9 +1,7 @@
 name: l1_l1_noc0
 type: data_mover
 functions:
-  l1_gather: {source: l1_gather}
+  l1_gather_f16: {source: l1_gather_f16}
 performance:
-  l1_gather:
-  - latency: '344'
-    volume: B * M * N * 2 * effective_bandwidth
-    throughput: '28'
+  l1_gather_f16:
+  - {latency: '12', volume: 2 * B * M * N, throughput: '64'}

@@ -1,0 +1,53 @@
+name: spatial_pipeline_accelerator
+dimensions:
+  dram_channel: 2
+  pipeline: 2
+memories:
+  DRAM: [dram_channel]
+  INPUT: [pipeline]
+  MATMUL_OUT: [pipeline]
+  ACTIVATION_OUT: [pipeline]
+  OUTPUT: [pipeline]
+resources:
+- {name: ingress_link, dimensions: [pipeline]}
+- {name: matrix_stage, dimensions: [pipeline]}
+- {name: activation_stage, dimensions: [pipeline]}
+- {name: reduction_stage, dimensions: [pipeline]}
+- {name: egress_link, dimensions: [pipeline]}
+processors:
+  ingress_dma:
+    definition: ingress_dma.yaml
+    domain: [pipeline]
+    inputs: ["DRAM[:]"]
+    outputs: ["INPUT[pipeline]"]
+    resources: [ingress_link]
+  matrix_stage:
+    definition: matrix_stage.yaml
+    domain: [pipeline]
+    inputs: {lhs: "INPUT[pipeline]", rhs: "INPUT[pipeline]"}
+    outputs: {out: "MATMUL_OUT[pipeline]"}
+    resources: [matrix_stage]
+  activation_stage:
+    definition: activation_stage.yaml
+    domain: [pipeline]
+    inputs: ["MATMUL_OUT[pipeline]"]
+    outputs: ["ACTIVATION_OUT[pipeline]"]
+    resources: [activation_stage]
+  reduction_stage:
+    definition: reduction_stage.yaml
+    domain: [pipeline]
+    inputs: ["ACTIVATION_OUT[pipeline]"]
+    outputs: ["OUTPUT[pipeline]"]
+    resources: [reduction_stage]
+  egress_dma:
+    definition: egress_dma.yaml
+    domain: [pipeline]
+    inputs: ["OUTPUT[pipeline]"]
+    outputs: ["DRAM[:]"]
+    resources: [egress_link]
+scopes:
+- name: pipeline
+  dimensions: [pipeline]
+  memories: [INPUT, MATMUL_OUT, ACTIVATION_OUT, OUTPUT]
+  processors: [ingress_dma, matrix_stage, activation_stage, reduction_stage, egress_dma]
+  resources: [ingress_link, matrix_stage, activation_stage, reduction_stage, egress_link]

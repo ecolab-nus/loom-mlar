@@ -1,7 +1,0 @@
-vector_add:
-  - constraint: "(L > 0) && (L <= 1024)"
-    latency: "2"
-    volume: L
-    throughput: "32"
-  - constraint: "(L > 0) && (L > 1024)"
-    expression: "18 + L / 64"

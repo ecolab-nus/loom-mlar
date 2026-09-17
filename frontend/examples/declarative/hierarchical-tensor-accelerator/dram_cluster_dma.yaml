@@ -1,0 +1,7 @@
+name: dram_cluster_dma
+type: data_mover
+functions:
+  load_cluster_f16: {source: copy, element_type: f16, dimensions: [L]}
+performance:
+  load_cluster_f16:
+  - {latency: '60', volume: 2 * L, throughput: '64'}

@@ -1,8 +1,0 @@
-name: single_core
-memories:
-  L1:
-processors:
-  vector_lane:
-    definition: vector_lane.yaml
-    inputs: {data: "L1"}
-    outputs: {result: "L1"}

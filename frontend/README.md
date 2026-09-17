@@ -9,13 +9,13 @@ Inspect an example package, translate it to core JSON, or export it to ADL MLIR:
 
 ```bash
 cargo run -p mlar-frontend --example inspect_arch -- \
-  frontend/examples/declarative/single-core
+  frontend/examples/declarative/dual-noc-mesh
 cargo run -p mlar-frontend --bin translate -- \
-  frontend/examples/declarative/single-core /tmp/single-core.json
+  frontend/examples/declarative/dual-noc-mesh /tmp/dual-noc-mesh.json
 cargo run -p mlar-frontend --bin export_platform -- \
-  frontend/examples/declarative/single-core /tmp/single-core.mlir
+  frontend/examples/declarative/dual-noc-mesh /tmp/dual-noc-mesh.mlir
 cargo run -p mlar-frontend --bin emit_processors -- \
-  frontend/examples/declarative/single-core /tmp/single-core-processors
+  frontend/examples/declarative/dual-noc-mesh /tmp/dual-noc-mesh-processors
 ```
 
 The inspect example and ADL export require the `adl-opt` and `loom-opt`

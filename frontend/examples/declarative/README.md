@@ -1,27 +1,25 @@
-# Declarative Architecture Examples
+# Declarative accelerator examples
 
-YAML/template and native-MLIR packages using the layout documented in
-[TEMPLATE.md](../../../TEMPLATE.md):
+These packages mirror the four core Rust accelerator examples:
 
-- `single-core`: four-bank L1 and guarded throughput/expression costs;
-- `cache-hierarchy`: two-level cluster/core memory and transfers;
-- `mesh-torus`: DRAM/L1 compute and DMA with an affine torus;
-- `heterogeneous-lanes`: template operands bound to GCRAM and RRAM inputs;
-- `dual-noc-mesh`: an 8×8 mesh whose template matmuls bind distinct SRAM and
-  RRAM ports by memory name (`lhs: L1_S`, `rhs: L1_R`), with explicit
-  DRAM→SRAM/RRAM, SRAM→RRAM, and SRAM→DRAM paths;
-- `shared-link-mesh`: one `link_dma` definition placed under four names
-  with different affine endpoint relations.
+- `dual-noc-mesh`: one banked L1 array per tile, matrix/vector engines, NoC0
+  ingress and collectives, and NoC1 egress;
+- `staged-heterogeneous-accelerator`: GCRAM/RRAM movers feeding a shared staging
+  SRAM and a matrix engine;
+- `hierarchical-tensor-accelerator`: DRAM, cluster SRAM, and grouped
+  `PE_SRAM[cluster][pe]` storage with explicit distribute/collect routes;
+- `spatial-pipeline-accelerator`: matrix, activation, and reduction engines with
+  a physical intermediate buffer between each stage.
 
-Inspect packages or export supported selections. `cache-hierarchy` loads and
-evaluates, but its partial L1 selections cannot export through current ADL:
+Inspect a lowerable package with:
 
 ```bash
-cargo run -p mlar-frontend --example inspect_arch -- frontend/examples/declarative/mesh-torus
-cargo run -p mlar-frontend --bin export_platform -- frontend/examples/declarative/mesh-torus
+cargo run -p mlar-frontend --example inspect_arch -- \
+  frontend/examples/declarative/spatial-pipeline-accelerator
 ```
 
-Direct core constructions of all five packages, with native processor MLIR and
-performance YAML using the shared core loader, live in [the root examples directory](../../../../examples/README.md).
-Tests compare architecture, function-interface, and performance contracts and
-validate both supported ADL exports.
+The hierarchical package loads, evaluates, and translates to core JSON. Its
+cluster-subtree selections intentionally remain unsupported by ADL export.
+Shared resources may declare `dimensions` to instantiate one exclusive resource
+per accelerator coordinate. Native functions use positional `@input_N` and
+`@output_N` bindings; aliases in `chip.yaml` distinguish repeated-memory ports.

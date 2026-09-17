@@ -1,8 +1,0 @@
-memories:
-  DRAM:
-    capacity: 268435456
-    word_size: 4096
-  L1:
-    capacity: 262144
-    word_size: 64
-    banking: 8

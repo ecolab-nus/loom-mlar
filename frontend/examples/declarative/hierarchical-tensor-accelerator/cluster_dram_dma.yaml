@@ -1,0 +1,7 @@
+name: cluster_dram_dma
+type: data_mover
+functions:
+  store_result_f16: {source: copy, element_type: f16, dimensions: [L]}
+performance:
+  store_result_f16:
+  - {latency: '60', volume: 2 * L, throughput: '64'}

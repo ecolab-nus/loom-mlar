@@ -2,13 +2,7 @@ memories:
   DRAM:
     capacity: 1610612736
     word_size: 8192
-  L1_S:
+  L1:
     capacity: 1398784
     word_size: 16
     banking: 16
-    technology: sram
-  L1_R:
-    capacity: 1398784
-    word_size: 16
-    banking: 16
-    technology: rram

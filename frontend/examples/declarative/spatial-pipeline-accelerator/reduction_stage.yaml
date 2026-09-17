@@ -1,0 +1,7 @@
+name: reduction_stage
+type: compute
+functions:
+  pipeline_reduce_f16: {source: reduce_last_sum, element_type: f16, dimensions: [P, R]}
+performance:
+  pipeline_reduce_f16:
+  - {expression: 4 + (P * R + 63) / 64}

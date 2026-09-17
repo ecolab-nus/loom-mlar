@@ -1,4 +1,0 @@
-writeback_dram:
-  - latency: "100"
-    volume: "L * 2"
-    throughput: "32"

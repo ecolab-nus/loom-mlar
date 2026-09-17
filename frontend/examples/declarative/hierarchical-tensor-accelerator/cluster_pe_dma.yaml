@@ -1,0 +1,7 @@
+name: cluster_pe_dma
+type: data_mover
+functions:
+  distribute_tile_f16: {source: copy, element_type: f16, dimensions: [L]}
+performance:
+  distribute_tile_f16:
+  - {latency: '10', volume: 2 * L, throughput: '128'}

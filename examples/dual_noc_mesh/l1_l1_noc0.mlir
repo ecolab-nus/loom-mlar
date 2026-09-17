@@ -1,9 +1,8 @@
 module @processor {
-  func.func @l1_gather(%src: memref<?x?xf16>, %dst: memref<?x?x?xf16>) {
+  func.func @l1_gather_f16(%src: memref<?x?xf16>, %dst: memref<?x?x?xf16>) {
+    %B = loom.sym @B : index
     %M = loom.sym @M : index
     %N = loom.sym @N : index
-    %B = loom.sym @B : index
-    %effective_bandwidth = loom.sym @effective_bandwidth : index
     %gather_x = loom.sym @gather_x : index
     %gather_y = loom.sym @gather_y : index
     loom.bind_shape %src, [%M, %N] : memref<?x?xf16>

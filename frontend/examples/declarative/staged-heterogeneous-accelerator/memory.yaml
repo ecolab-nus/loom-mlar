@@ -1,0 +1,17 @@
+memories:
+  GCRAM:
+    technology: gcram
+    capacity: 16777216
+    word_size: 16
+  RRAM:
+    technology: rram
+    capacity: 16777216
+    word_size: 16
+  STAGE:
+    technology: sram
+    capacity: 65536
+    word_size: 16
+  OUTPUT:
+    technology: sram
+    capacity: 1048576
+    word_size: 16

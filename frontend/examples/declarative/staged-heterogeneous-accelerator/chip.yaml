@@ -1,0 +1,43 @@
+name: staged_heterogeneous_accelerator
+dimensions:
+  x: 2
+  y: 2
+memories:
+  GCRAM: [x, y]
+  RRAM: [x, y]
+  STAGE: [x, y]
+  OUTPUT: [x, y]
+resources:
+- name: noc0
+  dimensions: [x, y]
+- name: noc1
+  dimensions: [x, y]
+- name: stage_port
+  dimensions: [x, y]
+- name: matrix
+  dimensions: [x, y]
+processors:
+  gcram_to_stage:
+    definition: gcram_to_stage.yaml
+    domain: [x, y]
+    inputs: {gcram: "GCRAM[x, y]"}
+    outputs: {stage: "STAGE[x, y]"}
+    resources: [noc0, stage_port]
+  rram_to_stage:
+    definition: rram_to_stage.yaml
+    domain: [x, y]
+    inputs: {rram: "RRAM[x, y]"}
+    outputs: {stage: "STAGE[x, y]"}
+    resources: [noc1, stage_port]
+  matrix_lane:
+    definition: matrix_lane.yaml
+    domain: [x, y]
+    inputs: {stage_a: "STAGE[x, y]", stage_b: "STAGE[x, y]"}
+    outputs: {output: "OUTPUT[x, y]"}
+    resources: [stage_port, matrix]
+scopes:
+- name: tile
+  dimensions: [x, y]
+  memories: [GCRAM, RRAM, STAGE, OUTPUT]
+  processors: [gcram_to_stage, rram_to_stage, matrix_lane]
+  resources: [noc0, noc1, stage_port, matrix]

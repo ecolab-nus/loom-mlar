@@ -71,7 +71,7 @@ pub struct ChipYaml {
     #[serde(default)]
     processors: ProcessorPlacementsYaml,
     #[serde(default)]
-    resources: Vec<ResourceYaml>,
+    resources: Vec<SharedResourceYaml>,
     #[serde(default)]
     networks: Vec<NetworkYaml>,
     #[serde(default)]
@@ -270,6 +270,16 @@ where
     }
 
     deserializer.deserialize_any(NamedPortsVisitor)
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SharedResourceYaml {
+    name: String,
+    #[serde(default)]
+    capacity: Option<u64>,
+    #[serde(default)]
+    dimensions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -528,7 +538,27 @@ impl ChipYaml {
             builder = builder.place_memory_levels(name, definition, levels);
         }
         for resource in &self.resources {
-            builder = builder.resource(resource.build());
+            let indices = resource
+                .dimensions
+                .iter()
+                .map(|name| {
+                    concrete_dimensions
+                        .get(name)
+                        .copied()
+                        .map(|extent| mlar_rust::Axis::new(name, extent))
+                        .ok_or_else(|| {
+                            ArchLoadError::Invalid(format!(
+                                "resource '{}' uses unknown dimension '{}'",
+                                resource.name, name
+                            ))
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let definition = ResourceYaml {
+                name: resource.name.clone(),
+                capacity: resource.capacity,
+            };
+            builder = builder.resource(definition.build().indexed(indices));
         }
         for network in &self.networks {
             let network = network.build(&concrete_dimensions, &bindings, &builder)?;

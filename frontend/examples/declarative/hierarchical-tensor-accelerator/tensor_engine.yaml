@@ -1,0 +1,13 @@
+name: tensor_engine
+type: compute
+functions:
+  tensor_matmul_f16:
+    source: matmul_accumulate
+    element_type: f16
+    dimensions: [M, N, K]
+    bindings: {lhs: lhs, rhs: rhs, out: out}
+resources:
+- name: tensor_pipeline
+performance:
+  tensor_matmul_f16:
+  - {latency: '6', volume: 2 * M * N * K, throughput: '256'}

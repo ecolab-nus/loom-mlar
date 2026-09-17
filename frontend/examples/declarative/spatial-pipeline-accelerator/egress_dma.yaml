@@ -1,0 +1,7 @@
+name: egress_dma
+type: data_mover
+functions:
+  store_output_f16: {source: copy, element_type: f16, dimensions: [L]}
+performance:
+  store_output_f16:
+  - {expression: 30 + (2 * L + 63) / 64}

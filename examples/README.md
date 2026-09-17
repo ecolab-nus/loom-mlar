@@ -1,33 +1,22 @@
-# Core Rust examples
+# Accelerator examples
 
-Each directory is one runnable example. Its `main.rs` constructs the architecture
-through `mlar-rust`. Where present, `processors.rs` loads the accompanying native
-processor `.mlir`. `single_core` and `mesh_torus` load adjacent `.perf.yaml` files
-with `ProcessorDefinition::from_mlir_source_with_perf_yaml`; the other examples
-construct performance models with the Rust API. Architecture construction uses
-Rust throughout. See the [performance YAML format](../docs/perf-yaml.md).
+The public examples are four architecture-scale accelerator models. Each has a
+matching package under `frontend/examples/declarative/`; parity tests compare
+their canonical architecture and performance contracts.
 
-| Example | Purpose |
+| Example | Architectural point |
 |---|---|
-| [flat_native](flat_native/main.rs) | Minimal construction with inline MLIR and a Rust performance model |
-| [single_core](single_core/main.rs) | Compute lane with banked L1 memory |
-| [cache_hierarchy](cache_hierarchy/main.rs) | Cluster/core memory hierarchy and transfers |
-| [mesh_torus](mesh_torus/main.rs) | Affine torus with explicit network topology |
-| [dual_noc_mesh](dual_noc_mesh/main.rs) | Compute mesh with two shared NoC resources |
-| [shared_link_mesh](shared_link_mesh/main.rs) | Multiple directional placements of one mover definition |
-| [staged_heterogeneous_mesh](staged_heterogeneous_mesh/README.md) | Heterogeneous memories, explicit staging routes, and validated ADL export |
+| [dual_noc_mesh](dual_noc_mesh/main.rs) | An 8×8 matrix/vector mesh with one banked L1 per tile, NoC0 ingress/collectives, and NoC1 egress |
+| [staged_heterogeneous_accelerator](staged_heterogeneous_accelerator/README.md) | GCRAM and RRAM sources staged through a shared SRAM before matrix compute |
+| [hierarchical_tensor_accelerator](hierarchical_tensor_accelerator/main.rs) | DRAM → cluster SRAM → hierarchical PE SRAM with tensor engines and explicit result return paths |
+| [spatial_pipeline_accelerator](spatial_pipeline_accelerator/main.rs) | Matmul, activation, and reduction stages connected by distinct intermediate SRAMs |
 
-Run from the repository root:
+Run one from the repository root:
 
 ```bash
-cargo run -p mlar-rust --example single_core
+cargo run -p mlar-rust --example dual_noc_mesh
 ```
 
-Replace `single_core` with any directory name above. Export requires `adl-opt`
-and `loom-opt`; see [installation](../docs/installation.md).
-
-Declarative architecture packages live in
-[`frontend/examples/declarative/`](../frontend/examples/declarative/README.md).
-Integration tests compare the five corresponding architectures and supported
-exports. The frontend cache-hierarchy package can load and evaluate, but its
-partial hierarchical selections currently cannot export through ADL.
+The dual-NoC, staged, and spatial examples export ADL. The hierarchical example
+prints canonical JSON because its cluster-subtree memory selections are not yet
+representable by the ADL exporter.

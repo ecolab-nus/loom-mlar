@@ -1,0 +1,6 @@
+memories:
+  DRAM: {capacity: 268435456, word_size: 4096}
+  INPUT: {capacity: 2097152, word_size: 64, banking: 8}
+  MATMUL_OUT: {capacity: 1048576, word_size: 64, banking: 8}
+  ACTIVATION_OUT: {capacity: 1048576, word_size: 64, banking: 8}
+  OUTPUT: {capacity: 262144, word_size: 32, banking: 4}
