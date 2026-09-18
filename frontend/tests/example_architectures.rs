@@ -164,6 +164,68 @@ fn dual_noc_uses_one_memory_kind_and_two_fabrics() {
 }
 
 #[test]
+fn dual_noc_compute_catalog_preserves_main_performance() {
+    let architecture = mlar_frontend::load_arch(example_dir("dual-noc-mesh")).unwrap();
+    let main_mesh = mlar_frontend::load_arch(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/processors"),
+    )
+    .unwrap();
+    let templates = mlar_frontend::registered_templates().collect::<Vec<_>>();
+    for (lane, count) in [("matrix_lane", 7), ("vector_lane", 12)] {
+        let definition = architecture.processor_definition(lane).unwrap();
+        assert_eq!(definition.operations().len(), count);
+        let yaml: serde_yaml::Value = serde_yaml::from_str(
+            &std::fs::read_to_string(example_dir("dual-noc-mesh").join(format!("{lane}.yaml")))
+                .unwrap(),
+        )
+        .unwrap();
+        for operation in definition.operations() {
+            let name = operation.func.name.as_str();
+            let source = yaml["functions"][name]["source"].as_str().unwrap();
+            if matches!(name, "relu_f16" | "vec_max1_f16") {
+                assert_eq!(source, name);
+            } else {
+                assert!(templates.contains(&source), "{name} should use a template");
+            }
+            if name != "relu_f16" {
+                let main_name = match name {
+                    "matmul_f16" => "matmul_SS_f16",
+                    "batch_matmul_f16" => "batch_matmul_SS_f16",
+                    _ => name,
+                };
+                let reference = main_mesh.get_function(main_name).unwrap();
+                let mut actual = serde_json::to_value(&operation.perf).unwrap();
+                let mut expected = serde_json::to_value(&reference.perf).unwrap();
+                normalize_authored_sources(&mut actual);
+                normalize_authored_sources(&mut expected);
+                assert_eq!(actual, expected, "{name}: main performance differs");
+            } else {
+                let expected = mlar_rust::FuncPerfModel::builder()
+                    .symbols(["L"])
+                    .simple_time_cost(
+                        mlar_rust::Expr::Const(2),
+                        mlar_rust::Expr::sym("L"),
+                        mlar_rust::Expr::Const(128),
+                    )
+                    .build();
+                assert_eq!(
+                    serde_json::to_value(&operation.perf).unwrap(),
+                    serde_json::to_value(expected).unwrap(),
+                );
+            }
+            evaluate(
+                &Schedule::Func {
+                    func: operation.func.clone(),
+                    scenarios: None,
+                },
+                &architecture,
+            )
+            .unwrap_or_else(|error| panic!("{name} should evaluate: {error}"));
+        }
+    }
+}
+
+#[test]
 fn hierarchical_accelerator_preserves_cluster_and_pe_levels() {
     let architecture =
         mlar_frontend::load_arch(example_dir("hierarchical-tensor-accelerator")).unwrap();

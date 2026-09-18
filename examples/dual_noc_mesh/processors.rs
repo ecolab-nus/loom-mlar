@@ -1,6 +1,4 @@
-use mlar_rust::{
-    ConstraintExpr, Expr, FuncPerfModel, ProcessorDefinition, ProcessorType, Resource, TimeCost,
-};
+use mlar_rust::{Expr, FuncPerfModel, ProcessorDefinition, ProcessorType, Resource};
 
 fn mover(
     name: &str,
@@ -82,40 +80,20 @@ pub fn l1_l1_noc0() -> Result<ProcessorDefinition, String> {
 }
 
 pub fn matrix_lane() -> Result<ProcessorDefinition, String> {
-    Ok(ProcessorDefinition::from_mlir_source(
+    Ok(ProcessorDefinition::from_mlir_source_with_perf_yaml(
         "matrix_lane",
         include_str!("matrix_lane.mlir"),
-        [(
-            "matmul_f16",
-            FuncPerfModel::builder()
-                .symbols(["K", "M", "N"])
-                .scenario_with_constraints(
-                    ConstraintExpr::parse("M >= 16 && N >= 16 && K >= 16")
-                        .map_err(|error| error.to_string())?,
-                    TimeCost::throughput(
-                        Expr::Const(8),
-                        Expr::parse("2 * M * N * K").map_err(|error| error.to_string())?,
-                        Expr::Const(512),
-                    ),
-                )
-                .build(),
-        )],
+        include_str!("matrix_lane.perf.yaml"),
     )?
     .with_type(ProcessorType::Compute)
     .with_resources(vec![Resource::exclusive("matrix_pipeline")]))
 }
 
 pub fn vector_lane() -> Result<ProcessorDefinition, String> {
-    Ok(ProcessorDefinition::from_mlir_source(
+    Ok(ProcessorDefinition::from_mlir_source_with_perf_yaml(
         "vector_lane",
         include_str!("vector_lane.mlir"),
-        [(
-            "relu_f16",
-            FuncPerfModel::builder()
-                .symbols(["L"])
-                .simple_time_cost(Expr::Const(2), Expr::sym("L"), Expr::Const(128))
-                .build(),
-        )],
+        include_str!("vector_lane.perf.yaml"),
     )?
     .with_type(ProcessorType::Compute)
     .with_resources(vec![Resource::exclusive("vector_pipeline")]))

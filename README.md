@@ -30,20 +30,19 @@ let architecture = Architecture::builder("example")
 ```
 
 Processor definitions combine native MLIR with a performance model. Connections
-map processor inputs and outputs to memory selections. See
-[`examples/flat_native/main.rs`](examples/flat_native/main.rs) for a complete small
-example and [`examples/`](examples/README.md) for larger architectures.
+map processor inputs and outputs to memory selections. See the four
+[accelerator examples](examples/README.md).
 
 Run the examples and core tests from the repository root:
 
 ```bash
-cargo run -p mlar-rust --example flat_native
 cargo run -p mlar-rust --example dual_noc_mesh
-cargo run -p mlar-rust --example staged_heterogeneous_mesh
+cargo run -p mlar-rust --example staged_heterogeneous_accelerator
+cargo run -p mlar-rust --example spatial_pipeline_accelerator
 cargo test -p mlar-rust --test 2d_mesh
 ```
 
-The [staged heterogeneous mesh](examples/staged_heterogeneous_mesh/README.md)
+The [staged heterogeneous accelerator](examples/staged_heterogeneous_accelerator/README.md)
 demonstrates GCRAM and RRAM inputs copied into a much smaller shared staging
 SRAM before matrix compute, with a distinct SRAM output region.
 
