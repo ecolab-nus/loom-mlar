@@ -6,7 +6,7 @@ module @processor {
     loom.bind_shape %dram_dst, [%M, %N] : memref<?x?xf16>
     loom.bind_mem %l1_src, @src : memref<?x?xf16>
     loom.bind_mem %dram_dst, @dst : memref<?x?xf16>
-    loom.copy %l1_src, %dram_dst src_mem_space @src dst_mem_space @dst, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
+    loom.copy %l1_src, %dram_dst src_mem_space @src : 0 dst_mem_space @dst : 0, area: [1, 1] : memref<?x?xf16> to memref<?x?xf16>
     return
   }
 }

@@ -36,9 +36,6 @@ pub struct MlirFuncDetails {
     /// Memref argument types from the function signature, normalized and keyed by argument name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memref_arg_types: Vec<(String, String)>,
-    /// Optional named memory technology requirements.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub memref_memory_requirements: Vec<(String, String)>,
     /// Tensor operands used as outputs (from `outs(...)`), without `%`.
     pub output_tensors: Vec<String>,
     /// Memref operands inferred as copy sources (e.g. `memref.copy %src, %dst`), without `%`.
@@ -418,7 +415,6 @@ impl MlirFunc {
                 tensor_args,
                 memref_args,
                 memref_arg_types,
-                memref_memory_requirements: Vec::new(),
                 output_tensors,
                 source_memrefs,
                 target_memrefs,

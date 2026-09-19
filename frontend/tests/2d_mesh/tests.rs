@@ -6,8 +6,9 @@ use std::process::{Command, Stdio};
 
 use mlar_rust::arch::EndpointIndex;
 use mlar_rust::{
-    AdlExportError, Architecture, Expr, MemoryDefinition, PerfScenario, Resource, Schedule, Sym,
-    architecture_to_mlir, evaluate, generate_evaluator_binary,
+    AdlExportError, Architecture, Axis, Expr, MemoryDefinition, MemoryTechnology, PerfScenario,
+    ProcessorTarget, Resource, Schedule, Sym, architecture_to_mlir, evaluate,
+    generate_evaluator_binary,
 };
 
 #[path = "../../../tests/2d_mesh/arch.rs"]
@@ -59,14 +60,31 @@ fn build_imperative() -> Architecture {
         .axis("x", 8)
         .axis("y", 8)
         .memory_definition(MemoryDefinition::new("DRAM", 1_610_612_736, 8192))
-        .memory_definition(MemoryDefinition::new("L1", 1_398_784, 16).with_banking(16))
+        .memory_definition(
+            MemoryDefinition::new("L1_R", 1_398_784, 16)
+                .with_banking(16)
+                .with_technology(MemoryTechnology::new("rram", 1)),
+        )
+        .memory_definition(
+            MemoryDefinition::new("L1_S", 1_398_784, 16)
+                .with_banking(16)
+                .with_technology(MemoryTechnology::new("sram", 0)),
+        )
         .place_memory("DRAM", ["dram_channel"])
-        .place_memory("L1", ["x", "y"])
+        .place_memory("L1_R", ["x", "y"])
+        .place_memory("L1_S", ["x", "y"])
         .resource(Resource::exclusive("noc0"))
         .resource(Resource::exclusive("noc1"))
+        .resource(
+            Resource::exclusive("matrix_lane").indexed(vec![Axis::new("x", 8), Axis::new("y", 8)]),
+        )
         .processor_source_dir(processor_dir())
         .processors([
             "matrix_lane",
+            "matrix_lane_ss",
+            "matrix_lane_sr",
+            "matrix_lane_rs",
+            "matrix_lane_rr",
             "vector_lane",
             "dram_l1_noc0",
             "l1_l1_noc0",
@@ -74,29 +92,82 @@ fn build_imperative() -> Architecture {
         ])
         .connect(
             "matrix_lane",
-            Connection::parse_named(["x", "y"], [("data", "L1[x, y]")], [("result", "L1[x, y]")])
-                .unwrap(),
+            Connection::parse_named(
+                ["x", "y"],
+                [("data", "L1_S[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap()
+            .with_resources(["matrix_lane"]),
+        )
+        .connect(
+            "matrix_lane_ss",
+            Connection::parse_named(
+                ["x", "y"],
+                [("lhs", "L1_S[x, y]"), ("rhs", "L1_S[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap()
+            .with_resources(["matrix_lane"]),
+        )
+        .connect(
+            "matrix_lane_sr",
+            Connection::parse_named(
+                ["x", "y"],
+                [("lhs", "L1_S[x, y]"), ("rhs", "L1_R[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap()
+            .with_resources(["matrix_lane"]),
+        )
+        .connect(
+            "matrix_lane_rs",
+            Connection::parse_named(
+                ["x", "y"],
+                [("lhs", "L1_R[x, y]"), ("rhs", "L1_S[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap()
+            .with_resources(["matrix_lane"]),
+        )
+        .connect(
+            "matrix_lane_rr",
+            Connection::parse_named(
+                ["x", "y"],
+                [("lhs", "L1_R[x, y]"), ("rhs", "L1_R[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap()
+            .with_resources(["matrix_lane"]),
         )
         .connect(
             "vector_lane",
-            Connection::parse_named(["x", "y"], [("data", "L1[x, y]")], [("result", "L1[x, y]")])
-                .unwrap(),
+            Connection::parse_named(
+                ["x", "y"],
+                [("data", "L1_S[x, y]")],
+                [("result", "L1_S[x, y]")],
+            )
+            .unwrap(),
         )
         .connect(
             "dram_l1_noc0",
-            Connection::parse_named([], [("src", "DRAM[:]")], [("dst", "L1[:, :]")])
-                .unwrap()
-                .with_resources(["noc0"]),
+            Connection::parse_named(
+                [],
+                [("src", "DRAM[:]")],
+                [("dst_s", "L1_S[:, :]"), ("dst_r", "L1_R[:, :]")],
+            )
+            .unwrap()
+            .with_resources(["noc0"]),
         )
         .connect(
             "l1_l1_noc0",
-            Connection::parse_named([], [("src", "L1[:, :]")], [("dst", "L1[:, :]")])
+            Connection::parse_named([], [("src", "L1_S[:, :]")], [("dst", "L1_S[:, :]")])
                 .unwrap()
                 .with_resources(["noc0"]),
         )
         .connect(
             "l1_dram_noc1",
-            Connection::parse_named([], [("src", "L1[:, :]")], [("dst", "DRAM[:]")])
+            Connection::parse_named([], [("src", "L1_S[:, :]")], [("dst", "DRAM[:]")])
                 .unwrap()
                 .with_resources(["noc1"]),
         )
@@ -146,24 +217,64 @@ fn normalize_processor_contracts(value: &mut serde_json::Value) {
     for definition in value["processor_definitions"].as_array_mut().unwrap() {
         definition.as_object_mut().unwrap().remove("source");
         let functions = definition["functions"].as_array_mut().unwrap();
+        for operation in functions.iter_mut() {
+            normalize_memref_names(&mut operation["func"]["mlir_details"]);
+        }
         functions.sort_by_key(|operation| operation["func"]["name"].as_str().unwrap().to_string());
     }
 }
 
+fn normalize_memref_names(details: &mut serde_json::Value) {
+    let Some(object) = details.as_object_mut() else {
+        return;
+    };
+    let names = object
+        .get("memref_args")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(index, name)| (name.as_str().unwrap().to_string(), format!("arg{index}")))
+        .collect::<BTreeMap<_, _>>();
+    fn rename(value: &mut serde_json::Value, names: &BTreeMap<String, String>) {
+        match value {
+            serde_json::Value::String(name) => {
+                if let Some(canonical) = names.get(name) {
+                    *name = canonical.clone();
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    rename(value, names);
+                }
+            }
+            serde_json::Value::Object(fields) => {
+                for value in fields.values_mut() {
+                    rename(value, names);
+                }
+            }
+            _ => {}
+        }
+    }
+    rename(details, &names);
+}
+
 #[test]
-fn recreates_the_pre_redesign_2d_mesh_architecture() {
+fn loads_the_heterogeneous_2d_mesh_architecture() {
     let architecture = load();
     assert_eq!(architecture.name(), "system");
 
     let dram = architecture.memory("DRAM").expect("DRAM array");
-    let l1 = architecture.memory("L1").expect("L1 array");
+    let l1_s = architecture.memory("L1_S").expect("L1_S array");
+    let l1_r = architecture.memory("L1_R").expect("L1_R array");
     assert_eq!(dram.instances(), 8);
-    assert_eq!(l1.instances(), 64);
+    assert_eq!(l1_s.instances(), 64);
+    assert_eq!(l1_r.instances(), 64);
     assert_eq!(
         architecture.memory_definition(dram).unwrap().capacity,
         1_610_612_736
     );
-    let l1_definition = architecture.memory_definition(l1).unwrap();
+    let l1_definition = architecture.memory_definition(l1_s).unwrap();
     assert_eq!(l1_definition.capacity, 1_398_784);
     assert_eq!(l1_definition.word_size, 16);
     assert_eq!(l1_definition.banking.as_ref().unwrap().banks, 16);
@@ -177,17 +288,18 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
         .first()
         .expect("one output")
         .clone();
-    assert_eq!(mesh_wide.endpoint.memory, "L1");
+    assert_eq!(mesh_wide.endpoint.memory, "L1_S");
     assert_eq!(
         mesh_wide.endpoint.indices,
         [EndpointIndex::All, EndpointIndex::All]
     );
 
-    assert_eq!(architecture.processor_definitions().len(), 5);
-    assert_eq!(architecture.processors().len(), 5);
+    assert_eq!(architecture.processor_definitions().len(), 9);
+    assert_eq!(architecture.processors().len(), 9);
     for processor in architecture.processors() {
         let expected_instances = match processor.definition_name() {
-            "matrix_lane" | "vector_lane" => 64,
+            "matrix_lane" | "matrix_lane_ss" | "matrix_lane_sr" | "matrix_lane_rs"
+            | "matrix_lane_rr" | "vector_lane" => 64,
             "dram_l1_noc0" | "l1_l1_noc0" | "l1_dram_noc1" => 1,
             other => panic!("unexpected processor {other}"),
         };
@@ -214,7 +326,7 @@ fn recreates_the_pre_redesign_2d_mesh_architecture() {
 }
 
 #[test]
-fn resolved_sources_preserve_the_full_golden_processor_catalog() {
+fn resolved_sources_preserve_the_processor_catalog() {
     let architecture = load();
     let mut functions = architecture
         .processor_definitions()
@@ -224,14 +336,14 @@ fn resolved_sources_preserve_the_full_golden_processor_catalog() {
         .collect::<Vec<_>>();
     functions.sort();
     let mut expected = vec![
-        "matmul_SS_f16",
-        "matmul_SR_f16",
-        "matmul_RS_f16",
-        "matmul_RR_f16",
-        "batch_matmul_SS_f16",
-        "batch_matmul_SR_f16",
-        "batch_matmul_RS_f16",
-        "batch_matmul_RR_f16",
+        "matmul_f16",
+        "matmul_f16",
+        "matmul_f16",
+        "matmul_f16",
+        "batch_matmul_f16",
+        "batch_matmul_f16",
+        "batch_matmul_f16",
+        "batch_matmul_f16",
         "vec_vsum_f16",
         "vec_vmax_f16",
         "vec_max1_f16",
@@ -260,7 +372,86 @@ fn resolved_sources_preserve_the_full_golden_processor_catalog() {
 }
 
 #[test]
-fn declarative_imperative_and_pre_redesign_golden_agree() {
+fn shared_matmul_source_specializes_into_four_capabilities() {
+    let authored = mlar_rust::mlir::MlirModule::from_mlir(
+        processor_dir()
+            .join("matrix_ops.mlir")
+            .display()
+            .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        authored
+            .functions
+            .iter()
+            .map(|function| function.name.as_str())
+            .collect::<Vec<_>>(),
+        ["matmul_f16", "batch_matmul_f16"]
+    );
+
+    let architecture = load();
+    for (name, lhs_kind, rhs_kind, scenarios) in [
+        ("matrix_lane_ss", None, None, 2),
+        ("matrix_lane_sr", None, Some(1), 1),
+        ("matrix_lane_rs", Some(1), None, 1),
+        ("matrix_lane_rr", Some(1), Some(1), 1),
+    ] {
+        let definition = architecture.processor_definition(name).unwrap();
+        let function = definition.get_function("matmul_f16").unwrap();
+        assert_eq!(function.perf.scenarios.len(), scenarios);
+        let types = function
+            .func
+            .mlir_details
+            .as_ref()
+            .unwrap()
+            .memref_arg_types
+            .iter()
+            .map(|(_, ty)| ty.as_str())
+            .collect::<Vec<_>>();
+        let expected = |kind| match kind {
+            Some(kind) => format!("memref<?x?xf16,{kind}>"),
+            None => "memref<?x?xf16>".to_string(),
+        };
+        assert_eq!(
+            types,
+            [expected(lhs_kind), expected(rhs_kind), expected(None)]
+        );
+        assert!(
+            architecture
+                .processor_array(name)
+                .unwrap()
+                .resources()
+                .iter()
+                .any(|resource| resource.name() == "matrix_lane")
+        );
+    }
+}
+
+#[test]
+fn emitted_matmul_capabilities_retain_shared_source_provenance() {
+    let output =
+        std::env::temp_dir().join(format!("mlar-matrix-specialization-{}", std::process::id()));
+    if output.exists() {
+        std::fs::remove_dir_all(&output).unwrap();
+    }
+    mlar_frontend::emit_processor_sources(processor_dir(), &output).unwrap();
+    let manifest = std::fs::read_to_string(output.join("manifest.yaml")).unwrap();
+    assert_eq!(manifest.matches("path: matrix_ops.mlir").count(), 8);
+    assert!(
+        std::fs::read_to_string(output.join("matrix_lane_sr.mlir"))
+            .unwrap()
+            .contains("%arg1: memref<?x?xf16, 1>")
+    );
+    assert!(
+        std::fs::read_to_string(output.join("matrix_lane_rs.mlir"))
+            .unwrap()
+            .contains("%arg0: memref<?x?xf16, 1>")
+    );
+    std::fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
+fn declarative_and_imperative_memory_resolution_agree() {
     let declarative = load();
     let imperative = build_imperative();
     assert_eq!(
@@ -271,11 +462,6 @@ fn declarative_imperative_and_pre_redesign_golden_agree() {
 
     let declarative_mlir =
         architecture_to_mlir(&declarative).expect("declarative 2D mesh should export");
-    std::fs::write(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/2d_mesh/2d_mesh_torus.mlir"),
-        &declarative_mlir,
-    )
-    .expect("write tracked native core ADL fixture");
     let imperative_mlir =
         architecture_to_mlir(&imperative).expect("imperative 2D mesh should export");
     assert_eq!(
@@ -283,21 +469,9 @@ fn declarative_imperative_and_pre_redesign_golden_agree() {
         "declarative and imperative exports differ"
     );
 
-    let golden = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/golden/test_golden_ref.mlir"),
-    )
-    .expect("pre-redesign MLIR golden");
-
-    let golden_contract = adl_contract(&golden);
     assert_eq!(
         adl_contract(&declarative_mlir),
-        golden_contract,
-        "declarative export differs from the pre-redesign contract"
-    );
-    assert_eq!(
-        adl_contract(&imperative_mlir),
-        adl_contract(&golden),
-        "imperative export differs from the pre-redesign contract"
+        adl_contract(&imperative_mlir)
     );
 }
 
@@ -305,19 +479,22 @@ fn declarative_imperative_and_pre_redesign_golden_agree() {
 fn schedule_uses_the_restored_processor_performance_models() {
     let architecture = load();
     let function = architecture
-        .get_function("matmul_SS_f16")
-        .expect("golden matmul function")
+        .processor_definition("matrix_lane_ss")
+        .unwrap()
+        .get_function("matmul_f16")
+        .expect("SS matmul function")
         .func
         .clone();
     let evaluated = evaluate(
-        &Schedule::Func {
+        &Schedule::PlacedFunc {
             func: function,
+            target: ProcessorTarget::array("matrix_lane_ss"),
             scenarios: None,
         },
         &architecture,
     )
     .expect("schedule should evaluate");
-    let Schedule::Func {
+    let Schedule::PlacedFunc {
         scenarios: Some(scenarios),
         ..
     } = evaluated
@@ -430,12 +607,15 @@ fn test_generate_system_evaluator_binary() {
     assert!(binary.is_file(), "no binary at {binary:?}");
 
     let function = architecture
-        .get_function("matmul_SS_f16")
-        .expect("golden matmul function")
+        .processor_definition("matrix_lane_ss")
+        .unwrap()
+        .get_function("matmul_f16")
+        .expect("SS matmul function")
         .func
         .clone();
-    let schedule = Schedule::Func {
+    let schedule = Schedule::PlacedFunc {
         func: function,
+        target: ProcessorTarget::array("matrix_lane_ss"),
         scenarios: None,
     };
 

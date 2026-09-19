@@ -274,12 +274,22 @@ functions:
 ```
 
 Native functions use the placement's input and output port names in
-`loom.bind_mem`. They must be
+`loom.bind_mem`. Leave every frontend-authored memref memory space unspecified;
+the connection's memory technology supplies it during loading. Likewise, name
+`loom.copy` endpoints but omit their numeric kinds. They must be
 self-contained: helper calls, globals, module-level aliases, and source-name
 aliases are rejected. Files may contain several functions; only requested ones
 are composed into a processor. Duplicate definitions, malformed discovered
 files, and native functions named after any registered template in the table
 above are directory-wide errors.
+
+One native function may be referenced by several processor definitions. Each
+definition is specialized from its own connection and retains its own
+performance model. Initial specialization covers argument memrefs used directly
+by Loom annotations, copies/gathers, `memref.copy`, `memref.dim`, and Linalg
+operations. Memref-producing operations, memref results, calls, and
+control-flow-carried memrefs are rejected until their propagation semantics are
+defined.
 
 Inspect the placement-resolved modules and source provenance outside the package:
 

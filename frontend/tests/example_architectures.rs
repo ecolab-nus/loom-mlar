@@ -75,6 +75,23 @@ fn lowerable_accelerators_export_adl() {
 }
 
 #[test]
+fn staged_native_spaces_follow_stage_and_output_connections() {
+    let architecture =
+        mlar_frontend::load_arch(example_dir("staged-heterogeneous-accelerator")).unwrap();
+    let source = architecture
+        .processor_definition("matrix_lane")
+        .unwrap()
+        .source();
+    assert_eq!(source.matches("memref<?x?xf16, 2>").count(), 8);
+    assert_eq!(source.matches("memref<?x?xf32, 2>").count(), 4);
+
+    let exported = architecture_to_mlir_unchecked(&architecture).unwrap();
+    assert!(exported.contains("loom.bind_mem %arg0, @mem_STAGE_instance"));
+    assert!(exported.contains("loom.bind_mem %arg1, @mem_STAGE_instance"));
+    assert!(exported.contains("loom.bind_mem %arg2, @mem_OUTPUT_instance"));
+}
+
+#[test]
 fn core_and_frontend_examples_match() {
     for (name, core) in [
         ("dual-noc-mesh", core_dual_noc_mesh::build().unwrap()),
@@ -188,12 +205,14 @@ fn dual_noc_compute_catalog_preserves_main_performance() {
                 assert!(templates.contains(&source), "{name} should use a template");
             }
             if name != "relu_f16" {
-                let main_name = match name {
-                    "matmul_f16" => "matmul_SS_f16",
-                    "batch_matmul_f16" => "batch_matmul_SS_f16",
-                    _ => name,
+                let reference = match name {
+                    "matmul_f16" | "batch_matmul_f16" => main_mesh
+                        .processor_definition("matrix_lane_ss")
+                        .unwrap()
+                        .get_function(name)
+                        .unwrap(),
+                    _ => main_mesh.get_function(name).unwrap(),
                 };
-                let reference = main_mesh.get_function(main_name).unwrap();
                 let mut actual = serde_json::to_value(&operation.perf).unwrap();
                 let mut expected = serde_json::to_value(&reference.perf).unwrap();
                 normalize_authored_sources(&mut actual);

@@ -32,7 +32,7 @@ fn export_2d_mesh_visualization_yaml() {
     assert!(document.components.iter().any(
         |component| matches!(component, VisualizationComponent::Memory { name, .. } if name == "DRAM")
     ));
-    assert_eq!(document.components.len(), 11);
+    assert_eq!(document.components.len(), 16);
     for resource_name in ["matrix_lane", "vector_lane", "noc0", "noc1"] {
         let matching = document
             .components

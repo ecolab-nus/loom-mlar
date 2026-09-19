@@ -103,6 +103,21 @@ fn named_operand_ports_bind_distinct_connected_technologies() {
 }
 
 #[test]
+fn one_native_source_specializes_per_connection() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/native-specialization");
+    let architecture = mlar_frontend::load_arch(dir).unwrap();
+    let sr = architecture.processor_definition("lane").unwrap();
+    let rs = architecture.processor_definition("lane__1").unwrap();
+    assert!(sr.source().contains("memref<?xf16, 1>"));
+    assert!(rs.source().contains("%arg0: memref<?xf16, 1>"));
+    assert_ne!(sr.source(), rs.source());
+    assert_eq!(
+        serde_json::to_value(&sr.operations()[0].perf).unwrap(),
+        serde_json::to_value(&rs.operations()[0].perf).unwrap()
+    );
+}
+
+#[test]
 fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
     let dir = fixture_dir();
     let descriptive = mlar_frontend::archs::load_arch(&dir).expect("fixture should load");

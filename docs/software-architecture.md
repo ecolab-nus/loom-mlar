@@ -22,8 +22,10 @@ Loading and linking:
 2. indexes native functions, rejects reserved-name collisions, and resolves each
    declared function to a template or same-named native function;
 3. validates placement domains, hierarchical index groups, and endpoint mappings;
-4. resolves template operand bindings against named connected ports; and
-5. creates one processor array per named placement.
+4. resolves template and native operand bindings against named connected ports;
+5. specializes space-free native memrefs with the connected memories' technology
+   kinds through `loom-opt`; and
+6. creates one processor array per named placement.
 
 Authoring rejects unknown fields and duplicate mapping names. Performance
 symbols must be declared by the function interface or explicitly; network cost
@@ -61,13 +63,22 @@ loom-dataflow hardware discovery requires exactly one scale. The hierarchical
 tensor accelerator's partial PE-SRAM routes therefore load/evaluate but cannot
 currently export.
 
-Native `loom.bind_mem` regions name logical connection ports such as `@lhs`,
+Frontend native `loom.bind_mem` regions name logical connection ports such as `@lhs`,
 `@rhs`, and `@result`. Core and frontend connections map those names explicitly
 to memory endpoints; there is no positional or memory-name fallback. Multiple
-operands may share a port. Templates infer a binding only when the relevant side has one port. Identical resolved
+operands may share a port. Frontend native memref types omit memory spaces, and
+native `loom.copy` operations omit endpoint kinds; `loom-opt` derives both from
+the resolved ports. Explicit authored spaces, including zero, are rejected.
+Core native MLIR is already resolved and retains explicit spaces. Templates infer a binding only when the relevant side has one port. Identical resolved
 definitions reuse one core definition; differing memory-space-specialized bodies
 receive a suffix. Broadcast and gather require explicit two-dimensional extents;
 copy uses `[1, 1]`.
+
+The memory kind classifies a technology and does not identify a physical memory.
+Residency remains explicit in the connection endpoint. Reusing one native
+function in several processor definitions models connection-selected
+capabilities such as SS/SR/RS/RR while keeping their performance records and
+shared resources separate.
 
 ## ABI and visualization
 

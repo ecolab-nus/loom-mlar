@@ -1,4 +1,4 @@
-use crate::native::{NativeFunction, NativeSourceIndex, compose_module};
+use crate::native::{NativeFunction, NativeSourceIndex, compose_module, specialize_memory_spaces};
 use crate::templates::{self, FunctionSpec, ResolvedPort};
 use crate::{ProcessorYaml, selection::MemoryEndpoint};
 use mlar_rust::{
@@ -22,6 +22,7 @@ pub struct ProcessorDefinition {
     pub(crate) functions: Vec<OperationModel>,
     pub(crate) resources: Vec<Resource>,
     pub(crate) providers: Option<Vec<(String, FunctionProvider)>>,
+    pub(crate) authored_native: bool,
 }
 impl ProcessorDefinition {
     pub fn new(
@@ -36,6 +37,7 @@ impl ProcessorDefinition {
             processor_type: None,
             resources: vec![],
             providers: None,
+            authored_native: true,
         }
     }
     pub fn name(&self) -> &str {
@@ -77,12 +79,14 @@ impl ProcessorDefinition {
                         templates::emit(name, spec, inputs, outputs)
                     }
                     FunctionProvider::Native(function) => {
-                        validate_native_bindings(name, &function.block, inputs, outputs)?;
-                        Ok(function.block.clone())
+                        specialize_native_function(name, function, inputs, outputs)
                     }
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             compose_module(blocks)
+        } else if self.authored_native && !self.source.trim().is_empty() {
+            validate_native_module_bindings(&self.source, inputs, outputs)?;
+            specialize_memory_spaces(&self.source, resolved_kinds(inputs, outputs)?)?
         } else {
             self.source.clone()
         };
@@ -141,6 +145,55 @@ fn validate_native_bindings(
     }
     Ok(())
 }
+
+fn specialize_native_function(
+    function_name: &str,
+    function: &NativeFunction,
+    inputs: &[ResolvedPort],
+    outputs: &[ResolvedPort],
+) -> Result<String, String> {
+    validate_native_bindings(function_name, &function.block, inputs, outputs)?;
+    let source = compose_module([function.block.clone()]);
+    let specialized = specialize_memory_spaces(&source, resolved_kinds(inputs, outputs)?)
+        .map_err(|error| format!("{}: {error}", function.path.display()))?;
+    extract_specialized_block(function_name, &specialized)
+}
+
+fn validate_native_module_bindings(
+    source: &str,
+    inputs: &[ResolvedPort],
+    outputs: &[ResolvedPort],
+) -> Result<(), String> {
+    let module = mlar_rust::mlir::MlirModule::from_mlir_source(source)?;
+    for function in &module.functions {
+        let block = crate::native::extract_function(source, &function.name)?;
+        validate_native_bindings(&function.name, &block, inputs, outputs)?;
+    }
+    Ok(())
+}
+
+fn resolved_kinds(
+    inputs: &[ResolvedPort],
+    outputs: &[ResolvedPort],
+) -> Result<Vec<(String, u64)>, String> {
+    let mut kinds = BTreeMap::new();
+    for port in inputs.iter().chain(outputs) {
+        let kind = port.space.unwrap_or(0);
+        if let Some(previous) = kinds.insert(port.name.clone(), kind)
+            && previous != kind
+        {
+            return Err(format!(
+                "port '{}' is used with conflicting memory kinds {previous} and {kind}",
+                port.name
+            ));
+        }
+    }
+    Ok(kinds.into_iter().collect())
+}
+
+fn extract_specialized_block(function_name: &str, source: &str) -> Result<String, String> {
+    crate::native::extract_function(source, function_name)
+}
 impl From<mlar_rust::ProcessorDefinition> for ProcessorDefinition {
     fn from(def: mlar_rust::ProcessorDefinition) -> Self {
         Self {
@@ -150,6 +203,7 @@ impl From<mlar_rust::ProcessorDefinition> for ProcessorDefinition {
             resources: def.resources().to_vec(),
             processor_type: def.processor_type().cloned(),
             providers: None,
+            authored_native: false,
         }
     }
 }

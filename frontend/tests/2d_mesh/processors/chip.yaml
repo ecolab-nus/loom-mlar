@@ -6,33 +6,61 @@ dimensions:
   y: 8
 memories:
   DRAM: [dram_channel]
-  L1: [x, y]
+  L1_S: [x, y]
+  L1_R: [x, y]
 resources:
 - name: noc0
 - name: noc1
+- name: matrix_lane
+  dimensions: [x, y]
 processors:
   matrix_lane:
     definition: matrix_lane.yaml
     domain: [x, y]
-    inputs: {data: "L1[x, y]"}
-    outputs: {result: "L1[x, y]"}
+    inputs: {data: "L1_S[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
+    resources: [matrix_lane]
+  matrix_lane_ss:
+    definition: matrix_lane_ss.yaml
+    domain: [x, y]
+    inputs: {lhs: "L1_S[x, y]", rhs: "L1_S[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
+    resources: [matrix_lane]
+  matrix_lane_sr:
+    definition: matrix_lane_sr.yaml
+    domain: [x, y]
+    inputs: {lhs: "L1_S[x, y]", rhs: "L1_R[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
+    resources: [matrix_lane]
+  matrix_lane_rs:
+    definition: matrix_lane_rs.yaml
+    domain: [x, y]
+    inputs: {lhs: "L1_R[x, y]", rhs: "L1_S[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
+    resources: [matrix_lane]
+  matrix_lane_rr:
+    definition: matrix_lane_rr.yaml
+    domain: [x, y]
+    inputs: {lhs: "L1_R[x, y]", rhs: "L1_R[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
+    resources: [matrix_lane]
   vector_lane:
     definition: vector_lane.yaml
     domain: [x, y]
-    inputs: {data: "L1[x, y]"}
-    outputs: {result: "L1[x, y]"}
+    inputs: {data: "L1_S[x, y]"}
+    outputs: {result: "L1_S[x, y]"}
   dram_l1_noc0:
     definition: dram_l1_noc0.yaml
     inputs: {src: "DRAM[:]"}
-    outputs: {dst: "L1[:, :]"}
+    outputs: {dst_s: "L1_S[:, :]", dst_r: "L1_R[:, :]"}
     resources: [noc0]
   l1_l1_noc0:
     definition: l1_l1_noc0.yaml
-    inputs: {src: "L1[:, :]"}
-    outputs: {dst: "L1[:, :]"}
+    inputs: {src: "L1_S[:, :]"}
+    outputs: {dst: "L1_S[:, :]"}
     resources: [noc0]
   l1_dram_noc1:
     definition: l1_dram_noc1.yaml
-    inputs: {src: "L1[:, :]"}
+    inputs: {src: "L1_S[:, :]"}
     outputs: {dst: "DRAM[:]"}
     resources: [noc1]

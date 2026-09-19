@@ -30,6 +30,12 @@ Cargo emits a warning. `architecture_to_mlir` then returns
 the real validators can use `mlir_validators_available()` to skip. Build the
 sibling ADL and loom-dataflow projects to enable those checks.
 
+Loading frontend packages that contain handwritten native MLIR also requires a
+compatible `loom-opt`. The frontend runs `loom-specialize-memory-spaces` while
+resolving each connection. It checks the standard sibling build path and then
+`PATH`; set `MLAR_LOOM_OPT` to an explicit executable when needed. Template-only
+packages and already-resolved core architectures do not run this pass.
+
 The first tool validates the generated architecture-only ADL module. The second
 validates the complete module after processor functionality using the Loom
 dialect has been appended.
@@ -43,7 +49,7 @@ cargo test --workspace -- --nocapture
 Some 2D mesh tests generate files for inspection and visualization:
 
 ```bash
-cargo test -p mlar-frontend --test 2d_mesh declarative_imperative_and_pre_redesign_golden_agree
+cargo test -p mlar-frontend --test 2d_mesh declarative_and_imperative_memory_resolution_agree
 cargo test -p mlar-frontend --test visualization_export_test
 ```
 

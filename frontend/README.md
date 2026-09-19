@@ -18,9 +18,9 @@ cargo run -p mlar-frontend --bin emit_processors -- \
   frontend/examples/declarative/dual-noc-mesh /tmp/dual-noc-mesh-processors
 ```
 
-The inspect example and ADL export require the `adl-opt` and `loom-opt`
-validators described in the [installation guide](../docs/installation.md);
-JSON translation does not.
+Packages with native MLIR require `loom-opt` during loading to resolve memref
+spaces from their connected memory technologies. Checked ADL export additionally
+requires `adl-opt`. See the [installation guide](../docs/installation.md).
 
 `emit_processors` creates one final processor module per resolved core
 definition and a `manifest.yaml` that records each function's template or native

@@ -961,6 +961,7 @@ impl ProcessorYaml {
             functions,
             resources: self.resources.iter().map(ResourceYaml::build).collect(),
             providers: Some(providers),
+            authored_native: true,
         })
     }
 }

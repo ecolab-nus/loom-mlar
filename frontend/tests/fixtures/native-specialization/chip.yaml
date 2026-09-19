@@ -1,0 +1,14 @@
+name: native_specialization
+memory: memory.yaml
+memories:
+  S:
+  R:
+processors:
+  lane_sr:
+    definition: lane.yaml
+    inputs: {lhs: S, rhs: R}
+    outputs: {result: S}
+  lane_rs:
+    definition: lane.yaml
+    inputs: {lhs: R, rhs: S}
+    outputs: {result: S}

@@ -52,9 +52,9 @@ components:
     total_size_bytes: 12884901888
   total_size_bytes: 12884901888
 - kind: memory
-  id: memory-l1-a464c4f759f583b5
+  id: memory-l1-r-9706fe4d241eeca4
   scope: scope-domain-x-y-815c0f464b44fe51
-  name: L1
+  name: L1_R
   dimensions:
   - name: x
     size:
@@ -70,7 +70,7 @@ components:
       constant: 16
   region:
     kind: array
-    name: L1_banks
+    name: L1_R_banks
     dimensions:
     - name: bank
       size:
@@ -78,7 +78,44 @@ components:
         constant: 16
     element:
       kind: bank
-      name: L1_bank
+      name: L1_R_bank
+      capacity:
+        text: '87424'
+        constant: 87424
+      block_size:
+        text: '16'
+        constant: 16
+      total_size_bytes: 87424
+    total_size_bytes: 1398784
+  total_size_bytes: 1398784
+- kind: memory
+  id: memory-l1-s-9706ff4d241eee57
+  scope: scope-domain-x-y-815c0f464b44fe51
+  name: L1_S
+  dimensions:
+  - name: x
+    size:
+      text: '8'
+      constant: 8
+  - name: y
+    size:
+      text: '8'
+      constant: 8
+  - name: bank
+    size:
+      text: '16'
+      constant: 16
+  region:
+    kind: array
+    name: L1_S_banks
+    dimensions:
+    - name: bank
+      size:
+        text: '16'
+        constant: 16
+    element:
+      kind: bank
+      name: L1_S_bank
       capacity:
         text: '87424'
         constant: 87424
@@ -118,19 +155,43 @@ components:
   name: matrix_lane
   effect: transform
   functions:
-  - matmul_SS_f16
-  - matmul_SR_f16
-  - matmul_RS_f16
-  - matmul_RR_f16
-  - batch_matmul_SS_f16
-  - batch_matmul_SR_f16
-  - batch_matmul_RS_f16
-  - batch_matmul_RR_f16
   - vec_vsum_f16
   - vec_vmax_f16
   - vec_max1_f16
   - elementwise_add_f16
   - elementwise_mul_f16
+- kind: processor
+  id: processor-matrix-lane-rr-88f921f8bad0029e
+  scope: scope-domain-x-y-815c0f464b44fe51
+  name: matrix_lane_rr
+  effect: transform
+  functions:
+  - matmul_f16
+  - batch_matmul_f16
+- kind: processor
+  id: processor-matrix-lane-rs-88f922f8bad00451
+  scope: scope-domain-x-y-815c0f464b44fe51
+  name: matrix_lane_rs
+  effect: transform
+  functions:
+  - matmul_f16
+  - batch_matmul_f16
+- kind: processor
+  id: processor-matrix-lane-sr-88fc23f8bad23bdb
+  scope: scope-domain-x-y-815c0f464b44fe51
+  name: matrix_lane_sr
+  effect: transform
+  functions:
+  - matmul_f16
+  - batch_matmul_f16
+- kind: processor
+  id: processor-matrix-lane-ss-88fc22f8bad23a28
+  scope: scope-domain-x-y-815c0f464b44fe51
+  name: matrix_lane_ss
+  effect: transform
+  functions:
+  - matmul_f16
+  - batch_matmul_f16
 - kind: processor
   id: processor-vector-lane-52cd1aa1beaaae6f
   scope: scope-domain-x-y-815c0f464b44fe51
@@ -149,7 +210,7 @@ components:
   - vec_select_f16
   - vec_log_f16
 - kind: resource
-  id: resource-resource-matrix-lane-matrix-lane-10fdf591681e5cd9
+  id: resource-resource-matrix-lane-c0e027b8d1fbbbaf
   scope: scope-domain-x-y-815c0f464b44fe51
   name: matrix_lane
   resource_kind: exclusive
@@ -178,55 +239,130 @@ relationships:
   source: processor-l1-dram-noc1-daa6f141005795f1
   target: memory-dram-2697ba8d51c5c016
   label: write
-- id: relationship-memory-l1-a464c4f759f583b5-3321f794417da4e5
+- id: relationship-memory-l1-r-9706fe4d241eeca4-ad6e18cd707553de
   kind: write
   source: processor-dram-l1-noc0-d14d0b09b7d7ee80
-  target: memory-l1-a464c4f759f583b5
+  target: memory-l1-r-9706fe4d241eeca4
   label: write
-- id: relationship-memory-l1-a464c4f759f583b5-55248cbab72c3c43
+- id: relationship-memory-l1-s-9706ff4d241eee57-3a3220b2346e8338
+  kind: write
+  source: processor-matrix-lane-rr-88f921f8bad0029e
+  target: memory-l1-s-9706ff4d241eee57
+  label: write
+- id: relationship-memory-l1-s-9706ff4d241eee57-4cb5fc463736a816
+  kind: write
+  source: processor-matrix-lane-rs-88f922f8bad00451
+  target: memory-l1-s-9706ff4d241eee57
+  label: write
+- id: relationship-memory-l1-s-9706ff4d241eee57-5fcde51a20c14212
+  kind: write
+  source: processor-matrix-lane-sr-88fc23f8bad23bdb
+  target: memory-l1-s-9706ff4d241eee57
+  label: write
+- id: relationship-memory-l1-s-9706ff4d241eee57-8df88b35d66615fb
   kind: write
   source: processor-vector-lane-52cd1aa1beaaae6f
-  target: memory-l1-a464c4f759f583b5
+  target: memory-l1-s-9706ff4d241eee57
   label: write
-- id: relationship-memory-l1-a464c4f759f583b5-df7b7643a4440707
+- id: relationship-memory-l1-s-9706ff4d241eee57-9003af47ced19597
   kind: write
-  source: processor-l1-l1-noc0-810b79b511260c8f
-  target: memory-l1-a464c4f759f583b5
+  source: processor-matrix-lane-ss-88fc22f8bad23a28
+  target: memory-l1-s-9706ff4d241eee57
   label: write
-- id: relationship-memory-l1-a464c4f759f583b5-e5071710f3507eb2
+- id: relationship-memory-l1-s-9706ff4d241eee57-bf440d7e21c0caf5
+  kind: write
+  source: processor-dram-l1-noc0-d14d0b09b7d7ee80
+  target: memory-l1-s-9706ff4d241eee57
+  label: write
+- id: relationship-memory-l1-s-9706ff4d241eee57-ef052bcf8ece3c72
   kind: write
   source: processor-matrix-lane-f9d9090fa01456c1
-  target: memory-l1-a464c4f759f583b5
+  target: memory-l1-s-9706ff4d241eee57
+  label: write
+- id: relationship-memory-l1-s-9706ff4d241eee57-f4666a8260802c27
+  kind: write
+  source: processor-l1-l1-noc0-810b79b511260c8f
+  target: memory-l1-s-9706ff4d241eee57
   label: write
 - id: relationship-processor-dram-l1-noc0-d14d0b09b7d7ee80-4f72cf3db1c3bce8
   kind: read
   source: memory-dram-2697ba8d51c5c016
   target: processor-dram-l1-noc0-d14d0b09b7d7ee80
   label: read
-- id: relationship-processor-l1-dram-noc1-daa6f141005795f1-924ca30c087605ee
+- id: relationship-processor-l1-dram-noc1-daa6f141005795f1-9a4255b1ca3e319e
   kind: read
-  source: memory-l1-a464c4f759f583b5
+  source: memory-l1-s-9706ff4d241eee57
   target: processor-l1-dram-noc1-daa6f141005795f1
   label: read
-- id: relationship-processor-l1-l1-noc0-810b79b511260c8f-c2d12efbc92bccc8
+- id: relationship-processor-l1-l1-noc0-810b79b511260c8f-dbaa013bf5f4e518
   kind: read
-  source: memory-l1-a464c4f759f583b5
+  source: memory-l1-s-9706ff4d241eee57
   target: processor-l1-l1-noc0-810b79b511260c8f
   label: read
-- id: relationship-processor-matrix-lane-f9d9090fa01456c1-a40ba2b2b40c93e3
+- id: relationship-processor-matrix-lane-f9d9090fa01456c1-bb521d2d45437273
   kind: read
-  source: memory-l1-a464c4f759f583b5
+  source: memory-l1-s-9706ff4d241eee57
   target: processor-matrix-lane-f9d9090fa01456c1
   label: read
-- id: relationship-processor-vector-lane-52cd1aa1beaaae6f-5a3296714e569ba8
+- id: relationship-processor-matrix-lane-rr-88f921f8bad0029e-a20d2ccdb0fe08c6
   kind: read
-  source: memory-l1-a464c4f759f583b5
+  source: memory-l1-r-9706fe4d241eeca4
+  target: processor-matrix-lane-rr-88f921f8bad0029e
+  label: read
+- id: relationship-processor-matrix-lane-rs-88f922f8bad00451-8e37edbc11795664
+  kind: read
+  source: memory-l1-r-9706fe4d241eeca4
+  target: processor-matrix-lane-rs-88f922f8bad00451
+  label: read
+- id: relationship-processor-matrix-lane-rs-88f922f8bad00451-d65fc989946cb69f
+  kind: read
+  source: memory-l1-s-9706ff4d241eee57
+  target: processor-matrix-lane-rs-88f922f8bad00451
+  label: read
+- id: relationship-processor-matrix-lane-sr-88fc23f8bad23bdb-3f6ce4c19a9bcb0c
+  kind: read
+  source: memory-l1-r-9706fe4d241eeca4
+  target: processor-matrix-lane-sr-88fc23f8bad23bdb
+  label: read
+- id: relationship-processor-matrix-lane-sr-88fc23f8bad23bdb-e53b2bdf119c5bb7
+  kind: read
+  source: memory-l1-s-9706ff4d241eee57
+  target: processor-matrix-lane-sr-88fc23f8bad23bdb
+  label: read
+- id: relationship-processor-matrix-lane-ss-88fc22f8bad23a28-f27ebf1ce1abafb4
+  kind: read
+  source: memory-l1-s-9706ff4d241eee57
+  target: processor-matrix-lane-ss-88fc22f8bad23a28
+  label: read
+- id: relationship-processor-vector-lane-52cd1aa1beaaae6f-1e237bdf1b8b8b78
+  kind: read
+  source: memory-l1-s-9706ff4d241eee57
   target: processor-vector-lane-52cd1aa1beaaae6f
   label: read
-- id: relationship-resource-resource-matrix-lane-matrix-lane-10fdf591681e5cd9-1fdbc57cda651d1a
+- id: relationship-resource-resource-matrix-lane-c0e027b8d1fbbbaf-69b155fd4320689d
+  kind: requires
+  source: processor-matrix-lane-rs-88f922f8bad00451
+  target: resource-resource-matrix-lane-c0e027b8d1fbbbaf
+  label: requires
+- id: relationship-resource-resource-matrix-lane-c0e027b8d1fbbbaf-828262269b81a694
+  kind: requires
+  source: processor-matrix-lane-ss-88fc22f8bad23a28
+  target: resource-resource-matrix-lane-c0e027b8d1fbbbaf
+  label: requires
+- id: relationship-resource-resource-matrix-lane-c0e027b8d1fbbbaf-91aec504b8cb8333
   kind: requires
   source: processor-matrix-lane-f9d9090fa01456c1
-  target: resource-resource-matrix-lane-matrix-lane-10fdf591681e5cd9
+  target: resource-resource-matrix-lane-c0e027b8d1fbbbaf
+  label: requires
+- id: relationship-resource-resource-matrix-lane-c0e027b8d1fbbbaf-b86f8aaa2649955b
+  kind: requires
+  source: processor-matrix-lane-rr-88f921f8bad0029e
+  target: resource-resource-matrix-lane-c0e027b8d1fbbbaf
+  label: requires
+- id: relationship-resource-resource-matrix-lane-c0e027b8d1fbbbaf-c6e419f44cc80e4d
+  kind: requires
+  source: processor-matrix-lane-sr-88fc23f8bad23bdb
+  target: resource-resource-matrix-lane-c0e027b8d1fbbbaf
   label: requires
 - id: relationship-resource-resource-noc0-6c81b8fcf0b1cf0d-b300281edd93c262
   kind: requires

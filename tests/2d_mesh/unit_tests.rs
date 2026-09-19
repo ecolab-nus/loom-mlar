@@ -48,7 +48,7 @@ fn mlir_module_ref_from_mlir_records_single_module_and_functions() {
 
 #[test]
 fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
-    let module = MlirModule::from_mlir("tests/2d_mesh/processors/matrix_lane.mlir").unwrap();
+    let module = MlirModule::from_mlir("tests/2d_mesh/processors/matrix_lane_ss.mlir").unwrap();
     let function = module
         .functions
         .iter()

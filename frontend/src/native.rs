@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use crate::templates;
 
@@ -30,6 +33,8 @@ impl NativeSourceIndex {
             let blocks = extract_self_contained_functions(&source)
                 .map_err(|error| format!("{}: {error}", path.display()))?;
             for block in blocks {
+                reject_authored_memory_spaces(&block)
+                    .map_err(|error| format!("{}: {error}", path.display()))?;
                 let module_source = format!("module @processor {{\n{block}\n}}\n");
                 let module = mlar_rust::mlir::MlirModule::from_mlir_source(&module_source)
                     .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -89,6 +94,139 @@ pub(crate) fn compose_module(blocks: impl IntoIterator<Item = String>) -> String
     source
 }
 
+pub(crate) fn specialize_memory_spaces(
+    source: &str,
+    ports: impl IntoIterator<Item = (String, u64)>,
+) -> Result<String, String> {
+    reject_authored_memory_spaces(source)?;
+    let bindings = ports
+        .into_iter()
+        .map(|(port, kind)| format!("binding={port}={kind}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let pass = format!("--loom-specialize-memory-spaces={bindings}");
+    let program = loom_opt_program();
+    let mut child = Command::new(&program)
+        .arg("--mlir-print-local-scope")
+        .arg("--mlir-use-nameloc-as-prefix")
+        .arg(pass)
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "failed to run loom-opt memory-space specialization ('{}'): {error}; build loom-dataflow or set MLAR_LOOM_OPT",
+                PathBuf::from(&program).display()
+            )
+        })?;
+    let mut stdin = child.stdin.take().expect("loom-opt stdin is piped");
+    let input = source.to_string();
+    let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for loom-opt: {error}"))?;
+    let write_result = writer
+        .join()
+        .map_err(|_| "loom-opt stdin writer panicked".to_string())?;
+    if !output.status.success() {
+        return Err(format!(
+            "loom-opt memory-space specialization failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    write_result.map_err(|error| format!("failed to write native MLIR to loom-opt: {error}"))?;
+    String::from_utf8(output.stdout)
+        .map_err(|error| format!("loom-opt produced non-UTF-8 output: {error}"))
+}
+
+fn reject_authored_memory_spaces(source: &str) -> Result<(), String> {
+    let clean = mask_comments_and_strings(source)?;
+    let mut cursor = 0;
+    while let Some(offset) = clean[cursor..].find("memref<") {
+        let start = cursor + offset + "memref".len();
+        let end =
+            matching_angle(&clean, start).ok_or_else(|| "unterminated memref type".to_string())?;
+        let parameters = split_type_parameters(&clean[start + 1..end]);
+        let has_memory_space = match parameters.as_slice() {
+            [_] => false,
+            [_, optional] => !is_memref_layout(optional),
+            [_, _, ..] => true,
+            [] => false,
+        };
+        if has_memory_space {
+            return Err(
+                "frontend native MLIR must omit memref memory spaces; they are derived from loom.bind_mem ports"
+                    .into(),
+            );
+        }
+        cursor = end + 1;
+    }
+    Ok(())
+}
+
+fn matching_angle(source: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (offset, ch) in source[open..].char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_type_parameters(source: &str) -> Vec<&str> {
+    let mut parameters = Vec::new();
+    let mut start = 0;
+    let mut depths = [0usize; 4];
+    for (index, ch) in source.char_indices() {
+        match ch {
+            '<' => depths[0] += 1,
+            '>' => depths[0] = depths[0].saturating_sub(1),
+            '[' => depths[1] += 1,
+            ']' => depths[1] = depths[1].saturating_sub(1),
+            '(' => depths[2] += 1,
+            ')' => depths[2] = depths[2].saturating_sub(1),
+            '{' => depths[3] += 1,
+            '}' => depths[3] = depths[3].saturating_sub(1),
+            ',' if depths == [0; 4] => {
+                parameters.push(source[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parameters.push(source[start..].trim());
+    parameters
+}
+
+fn is_memref_layout(parameter: &str) -> bool {
+    parameter.starts_with("strided<")
+        || parameter.starts_with("affine_map<")
+        || parameter == "identity"
+}
+
+fn loom_opt_program() -> OsString {
+    if let Some(path) = std::env::var_os("MLAR_LOOM_OPT") {
+        return path;
+    }
+    let sibling = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../loom-dataflow/build/tool/loom-opt/loom-opt");
+    if sibling.is_file() {
+        sibling.into_os_string()
+    } else {
+        "loom-opt".into()
+    }
+}
+
 fn extract_self_contained_functions(source: &str) -> Result<Vec<String>, String> {
     let clean = mask_comments_and_strings(source)?;
     let module = find_token(&clean, "module", 0)
@@ -144,6 +282,21 @@ fn extract_self_contained_functions(source: &str) -> Result<Vec<String>, String>
         );
     }
     Ok(blocks)
+}
+
+pub(crate) fn extract_function(source: &str, name: &str) -> Result<String, String> {
+    for block in extract_self_contained_functions(source)? {
+        let module =
+            mlar_rust::mlir::MlirModule::from_mlir_source(&compose_module([block.clone()]))?;
+        if module
+            .functions
+            .first()
+            .is_some_and(|function| function.name == name)
+        {
+            return Ok(block);
+        }
+    }
+    Err(format!("specialized MLIR is missing function '{name}'"))
 }
 
 fn reject_external_dependencies(function: &str) -> Result<(), String> {
@@ -300,7 +453,9 @@ fn brace_depth(source: &str, start: usize, end: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_self_contained_functions;
+    use super::{
+        extract_self_contained_functions, reject_authored_memory_spaces, specialize_memory_spaces,
+    };
 
     #[test]
     fn ignores_markers_and_braces_in_comments_and_strings() {
@@ -324,5 +479,92 @@ module @processor {
         assert!(extract_self_contained_functions(alias).is_err());
         let call = "module { func.func @f() { func.call @g() : () -> () return } }";
         assert!(extract_self_contained_functions(call).is_err());
+    }
+
+    #[test]
+    fn rejects_explicit_spaces_but_accepts_layouts() {
+        for space in ["0", "7", "#gpu.address_space<workgroup>"] {
+            let source = format!("func.func @f(%a: memref<?xf16, {space}>) {{ return }}");
+            assert!(reject_authored_memory_spaces(&source).is_err(), "{space}");
+        }
+        assert!(
+            reject_authored_memory_spaces(
+                "func.func @f(%a: memref<?xf16, strided<[?], offset: ?>>) { return }"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn specializes_arguments_and_copy_kinds_from_ports() {
+        let source = r#"
+module @processor {
+  func.func @copy(%src: memref<?xf16>, %dst: memref<?xf16>) {
+    loom.bind_mem %src, @source : memref<?xf16>
+    loom.bind_mem %dst, @destination : memref<?xf16>
+    loom.copy %src, %dst src_mem_space @source dst_mem_space @destination,
+      area : [1, 1] : memref<?xf16> to memref<?xf16>
+    return
+  }
+}
+"#;
+        let specialized =
+            specialize_memory_spaces(source, [("source".into(), 3), ("destination".into(), 7)])
+                .unwrap();
+        assert!(specialized.contains("memref<?xf16, 3>"));
+        assert!(specialized.contains("memref<?xf16, 7>"));
+        assert!(specialized.contains("src_mem_space @source : 3"));
+        assert!(specialized.contains("dst_mem_space @destination : 7"));
+    }
+
+    #[test]
+    fn specialization_rejects_inconsistent_copy_ports_and_memref_producers() {
+        let inconsistent = r#"
+module @processor {
+  func.func @copy(%src: memref<?xf16>, %dst: memref<?xf16>) {
+    loom.bind_mem %src, @source : memref<?xf16>
+    loom.bind_mem %dst, @destination : memref<?xf16>
+    loom.copy %src, %dst src_mem_space @source dst_mem_space @source,
+      area : [1, 1] : memref<?xf16> to memref<?xf16>
+    return
+  }
+}
+"#;
+        let error = specialize_memory_spaces(
+            inconsistent,
+            [("source".into(), 3), ("destination".into(), 7)],
+        )
+        .unwrap_err();
+        assert!(error.contains("endpoint ports must match"), "{error}");
+
+        let allocation = r#"
+module @processor {
+  func.func @alloc(%src: memref<?xf16>) {
+    loom.bind_mem %src, @source : memref<?xf16>
+    %local = memref.alloc() : memref<4xf16>
+    return
+  }
+}
+"#;
+        let error = specialize_memory_spaces(allocation, [("source".into(), 3)]).unwrap_err();
+        assert!(error.contains("memref-producing operations"), "{error}");
+
+        let missing = "module { func.func @f(%arg: memref<?xf16>) { return } }";
+        let error = specialize_memory_spaces(missing, [("source".into(), 3)]).unwrap_err();
+        assert!(error.contains("has no loom.bind_mem"), "{error}");
+
+        let conflicting = r#"
+module @processor {
+  func.func @f(%arg: memref<?xf16>) {
+    loom.bind_mem %arg, @first : memref<?xf16>
+    loom.bind_mem %arg, @second : memref<?xf16>
+    return
+  }
+}
+"#;
+        let error =
+            specialize_memory_spaces(conflicting, [("first".into(), 3), ("second".into(), 7)])
+                .unwrap_err();
+        assert!(error.contains("conflicting loom.bind_mem ports"), "{error}");
     }
 }

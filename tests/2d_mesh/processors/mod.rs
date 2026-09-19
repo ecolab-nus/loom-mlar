@@ -6,9 +6,46 @@ pub fn matrix_lane() -> Result<ProcessorDefinition, String> {
         include_str!("matrix_lane.mlir"),
         include_str!("matrix_lane.perf.yaml"),
     )?
-    .with_type(ProcessorType::Compute)
-    .with_resources(vec![Resource::exclusive("matrix_lane")]))
+    .with_type(ProcessorType::Compute))
 }
+
+macro_rules! matrix_definition {
+    ($function:ident, $name:literal, $mlir:literal, $perf:literal) => {
+        pub fn $function() -> Result<ProcessorDefinition, String> {
+            Ok(ProcessorDefinition::from_mlir_source_with_perf_yaml(
+                $name,
+                include_str!($mlir),
+                include_str!($perf),
+            )?
+            .with_type(ProcessorType::Compute))
+        }
+    };
+}
+
+matrix_definition!(
+    matrix_lane_ss,
+    "matrix_lane_ss",
+    "matrix_lane_ss.mlir",
+    "matrix_lane_ss.perf.yaml"
+);
+matrix_definition!(
+    matrix_lane_sr,
+    "matrix_lane_sr",
+    "matrix_lane_sr.mlir",
+    "matrix_lane_sr.perf.yaml"
+);
+matrix_definition!(
+    matrix_lane_rs,
+    "matrix_lane_rs",
+    "matrix_lane_rs.mlir",
+    "matrix_lane_rs.perf.yaml"
+);
+matrix_definition!(
+    matrix_lane_rr,
+    "matrix_lane_rr",
+    "matrix_lane_rr.mlir",
+    "matrix_lane_rr.perf.yaml"
+);
 
 pub fn vector_lane() -> Result<ProcessorDefinition, String> {
     Ok(ProcessorDefinition::from_mlir_source_with_perf_yaml(

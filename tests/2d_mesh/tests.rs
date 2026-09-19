@@ -8,7 +8,7 @@ use mlar_rust::*;
 use crate::arch::{scaled_mesh_torus, single_core};
 
 const VEC_LANE_MLIR: &str = "tests/2d_mesh/processors/vector_lane.mlir";
-const MATRIX_LANE_MLIR: &str = "tests/2d_mesh/processors/matrix_lane.mlir";
+const MATRIX_LANE_SS_MLIR: &str = "tests/2d_mesh/processors/matrix_lane_ss.mlir";
 const DRAM_L1_NOC0_MLIR: &str = "tests/2d_mesh/processors/dram_l1_noc0.mlir";
 const SCHEDULE_DIR: &str = "tests/2d_mesh/schedules";
 
@@ -58,6 +58,9 @@ fn node_scenarios(schedule: &Schedule) -> &[PerfScenario] {
         Schedule::Func {
             scenarios: Some(s), ..
         }
+        | Schedule::PlacedFunc {
+            scenarios: Some(s), ..
+        }
         | Schedule::Sequential {
             scenarios: Some(s), ..
         }
@@ -93,13 +96,13 @@ fn test_2d_mesh_torus_perf_models() {
                 == Some(&ProcessorType::Compute)
         })
         .collect::<Vec<_>>();
-    assert_eq!(compute.len(), 2);
+    assert_eq!(compute.len(), 6);
     assert_eq!(
         compute
             .iter()
             .map(|array| array.instances(&mesh).len())
             .sum::<usize>(),
-        128
+        384
     );
     for array in compute {
         let definition = mesh.processor_definition(array.definition_name()).unwrap();
@@ -114,62 +117,55 @@ fn test_2d_mesh_torus_perf_models() {
         );
     }
 
-    let mat_module = MlirModule::from_mlir(MATRIX_LANE_MLIR).unwrap();
-    assert_eq!(mat_module.path.as_deref(), Some(MATRIX_LANE_MLIR));
+    let mat_module = MlirModule::from_mlir(MATRIX_LANE_SS_MLIR).unwrap();
+    assert_eq!(mat_module.path.as_deref(), Some(MATRIX_LANE_SS_MLIR));
     assert_eq!(mat_module.module_name.as_deref(), Some("processor"));
-    let matrix_mlir = fs::read_to_string(MATRIX_LANE_MLIR).unwrap();
-    let matrix_lane = mesh.processor_definition("matrix_lane").unwrap();
-    for (name, a_is_rram, b_is_rram) in [
-        ("matmul_SS_f16", false, false),
-        ("matmul_SR_f16", false, true),
-        ("matmul_RS_f16", true, false),
-        ("matmul_RR_f16", true, true),
-        ("batch_matmul_SS_f16", false, false),
-        ("batch_matmul_SR_f16", false, true),
-        ("batch_matmul_RS_f16", true, false),
-        ("batch_matmul_RR_f16", true, true),
+    for (definition_name, a_is_rram, b_is_rram) in [
+        ("matrix_lane_ss", false, false),
+        ("matrix_lane_sr", false, true),
+        ("matrix_lane_rs", true, false),
+        ("matrix_lane_rr", true, true),
     ] {
-        assert!(
-            mat_module
-                .functions
-                .iter()
-                .any(|function| function.name == name)
-        );
-        let text = mlir_function_text(&matrix_mlir, name);
-        let rank = if name.starts_with("batch_") {
-            "?x?x?"
-        } else {
-            "?x?"
-        };
-        let a_type = format!(
-            "%A: memref<{rank}xf16{}>",
-            if a_is_rram { ", 1" } else { "" }
-        );
-        let b_type = format!(
-            "%B{}: memref<{rank}xf16{}>",
-            if name.starts_with("batch_") {
-                "mat"
+        let definition = mesh.processor_definition(definition_name).unwrap();
+        let matrix_mlir = definition.source();
+        for name in ["matmul_f16", "batch_matmul_f16"] {
+            let text = mlir_function_text(matrix_mlir, name);
+            let rank = if name.starts_with("batch_") {
+                "?x?x?"
             } else {
-                ""
-            },
-            if b_is_rram { ", 1" } else { "" }
-        );
-        assert!(text.contains(&a_type), "{name}: {a_type}");
-        assert!(text.contains(&b_type), "{name}: {b_type}");
-        assert!(text.contains(&format!("%C: memref<{rank}xf16>")));
-        let model = matrix_lane.get_function(name).unwrap();
-        let (latency, _, throughput) = throughput_parts(&model.perf.scenarios[0].time_cost);
-        if a_is_rram || b_is_rram {
-            assert_eq!(latency.eval_const(), Some(888));
-            assert_eq!(throughput.eval_const(), Some(888));
-        } else {
-            assert_eq!(model.perf.scenarios.len(), 2);
-            assert_eq!(throughput.eval_const(), Some(716));
+                "?x?"
+            };
+            let a_type = format!(
+                "%A: memref<{rank}xf16{}>",
+                if a_is_rram { ", 1" } else { "" }
+            );
+            let b_type = format!(
+                "%B{}: memref<{rank}xf16{}>",
+                if name.starts_with("batch_") {
+                    "mat"
+                } else {
+                    ""
+                },
+                if b_is_rram { ", 1" } else { "" }
+            );
+            assert!(text.contains(&a_type), "{definition_name}: {a_type}");
+            assert!(text.contains(&b_type), "{definition_name}: {b_type}");
+            assert!(text.contains(&format!("%C: memref<{rank}xf16>")));
+            let model = definition.get_function(name).unwrap();
+            let (latency, _, throughput) = throughput_parts(&model.perf.scenarios[0].time_cost);
+            if a_is_rram || b_is_rram {
+                assert_eq!(latency.eval_const(), Some(888));
+                assert_eq!(throughput.eval_const(), Some(888));
+            } else {
+                assert_eq!(model.perf.scenarios.len(), 2);
+                assert_eq!(throughput.eval_const(), Some(716));
+            }
         }
     }
+    let misc_module = MlirModule::from_mlir("tests/2d_mesh/processors/matrix_lane.mlir").unwrap();
     for prefix in ["vec_vsum_", "vec_vmax_", "vec_max1_"] {
         assert!(
-            mat_module
+            misc_module
                 .functions
                 .iter()
                 .any(|function| function.name.starts_with(prefix))
@@ -178,7 +174,7 @@ fn test_2d_mesh_torus_perf_models() {
     let matmul_details = mat_module
         .functions
         .iter()
-        .find(|function| function.name == "matmul_SS_f16")
+        .find(|function| function.name == "matmul_f16")
         .unwrap()
         .mlir_details
         .as_ref()
@@ -220,7 +216,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("A", "data"), ("B", "data"), ("C", "result")],
+        [("A", "lhs"), ("B", "rhs"), ("C", "result")],
     );
 
     let vec_module = MlirModule::from_mlir(VEC_LANE_MLIR).unwrap();
@@ -265,10 +261,10 @@ fn test_2d_mesh_torus_perf_models() {
     let noc0 = mesh.processor_definition("dram_l1_noc0").unwrap();
     let copy_mlir = fs::read_to_string(DRAM_L1_NOC0_MLIR).unwrap();
     for (name, expected_dst_kind) in [
-        ("dram_to_l1_S_f16", "dst_mem_space @dst,"),
-        ("dram_to_l1_S_bcst", "dst_mem_space @dst,"),
-        ("dram_to_l1_R_f16", "dst_mem_space @dst : 1,"),
-        ("dram_to_l1_R_bcst", "dst_mem_space @dst : 1,"),
+        ("dram_to_l1_S_f16", "dst_mem_space @dst_s : 0,"),
+        ("dram_to_l1_S_bcst", "dst_mem_space @dst_s : 0,"),
+        ("dram_to_l1_R_f16", "dst_mem_space @dst_r : 1,"),
+        ("dram_to_l1_R_bcst", "dst_mem_space @dst_r : 1,"),
     ] {
         assert!(noc0.get_function(name).is_some());
         assert!(
@@ -380,7 +376,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("dram_src", "src"), ("l1_dst", "dst")]
+        [("dram_src", "src"), ("l1_dst", "dst_s")]
     );
 }
 
@@ -390,10 +386,10 @@ fn test_2d_mesh_torus() {
     assert_eq!(mesh.name(), "system");
     assert!(mesh.memory("DRAM").is_some());
     assert!(mesh.networks().is_empty());
-    assert_eq!(mesh.memories().len(), 2);
-    assert_eq!(mesh.processors().len(), 5);
+    assert_eq!(mesh.memories().len(), 3);
+    assert_eq!(mesh.processors().len(), 9);
     assert_eq!(
-        mesh.memory("L1")
+        mesh.memory("L1_S")
             .unwrap()
             .axes()
             .iter()
@@ -401,7 +397,14 @@ fn test_2d_mesh_torus() {
             .collect::<Vec<_>>(),
         ["x", "y"]
     );
-    for name in ["matrix_lane", "vector_lane"] {
+    for name in [
+        "matrix_lane",
+        "matrix_lane_ss",
+        "matrix_lane_sr",
+        "matrix_lane_rs",
+        "matrix_lane_rr",
+        "vector_lane",
+    ] {
         assert_eq!(
             mesh.processor_array(name).unwrap().instances(&mesh).len(),
             64
@@ -988,8 +991,8 @@ fn test_export_2d_mesh_torus_mlir() {
     let mlir = architecture_to_mlir(&mesh).expect("MLIR export and validation should succeed");
 
     let out_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2d_mesh/2d_mesh_torus.mlir");
-    assert_eq!(mlir, include_str!("2d_mesh_torus.mlir"));
     fs::write(out_path, &mlir).expect("Failed to write MLIR file");
+    assert_eq!(mlir, include_str!("2d_mesh_torus.mlir"));
 }
 
 #[test]

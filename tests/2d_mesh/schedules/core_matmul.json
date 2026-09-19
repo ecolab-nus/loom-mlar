@@ -1,7 +1,7 @@
 {
-  "Func": {
+  "PlacedFunc": {
     "func": {
-      "name": "matmul_SS_f16",
+      "name": "matmul_f16",
       "symbols": ["M", "N", "K"],
       "op_label": "example.matmul",
       "sym_map": {
@@ -11,6 +11,7 @@
           ["K", { "Sym": "BK" }]
         ]
       }
-    }
+    },
+    "target": {"array": "matrix_lane_ss"}
   }
 }

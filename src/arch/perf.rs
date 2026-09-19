@@ -415,7 +415,6 @@ mod tests {
                 tensor_args: vec!["a".into(), "out".into()],
                 memref_args: vec![],
                 memref_arg_types: vec![],
-                memref_memory_requirements: vec![],
                 output_tensors: vec!["out".into()],
                 source_memrefs: vec![],
                 target_memrefs: vec![],
