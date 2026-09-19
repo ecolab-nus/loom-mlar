@@ -21,9 +21,9 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
             MemoryDefinition::new("CLUSTER_SRAM", 4 * 1024 * 1024, 64).with_banking(8),
         )
         .memory_definition(MemoryDefinition::new("PE_SRAM", 256 * 1024, 32).with_banking(4))
-        .place_memory("DRAM", ["dram_channel"])
-        .place_memory("CLUSTER_SRAM", ["cluster"])
-        .place_memory("PE_SRAM", ["cluster", "pe"])
+        .place_memory("DRAM", mlar_rust::MemoryDomain::DRAM, ["dram_channel"])
+        .place_memory("CLUSTER_SRAM", mlar_rust::MemoryDomain::L1, ["cluster"])
+        .place_memory("PE_SRAM", mlar_rust::MemoryDomain::L1, ["cluster", "pe"])
         .resource(Resource::exclusive("dram_fabric"))
         .resource(Resource::exclusive("cluster_fabric").indexed(vec![Axis::new("cluster", 2)]))
         .resource(

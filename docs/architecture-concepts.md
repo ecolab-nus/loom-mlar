@@ -3,10 +3,11 @@
 The canonical architecture is flat and indexed. Symbolic dimensions and memory
 geometry are resolved while loading; the resulting `Architecture` is concrete.
 
-- A `MemoryDefinition` describes capacity, word size, optional banks, and an
-  optional technology. It names no axes and is reusable across chips.
-- A `MemoryArray` places a definition over ordered `axes: Vec<Axis>`. Axes are
-  independent dimensions; flat storage remains multidimensional.
+- A `MemoryDefinition` describes capacity, word size, and optional banks. It
+  names no axes and is reusable across chips.
+- A `MemoryArray` places a definition over ordered `axes: Vec<Axis>` and owns a
+  `(MemoryDomain, kind)` identity. Axes are independent dimensions; flat
+  storage remains multidimensional.
 - A `ProcessorDefinition` owns native MLIR, operations, performance models, and resources.
 - A `ProcessorArray` is one connection-specific instantiation of a definition.
 - A `Connection` retains symbolic endpoints and an explicit ordered domain.
@@ -40,8 +41,9 @@ requirement beyond full-rank selectors. See [the package template](../TEMPLATE.m
 
 Frontend template `bindings` select a named input or output port; omitting a
 binding is valid only when that side has one port.
-Declarative technologies receive numeric kinds in first-appearance order in
-`memory.yaml`; catalog order is therefore ABI-significant.
+Each chip memory placement explicitly declares `domain: DRAM` or `domain: L1`.
+Kinds start at zero independently in each domain and follow sorted placed-array
+names, so catalog and placement ordering do not affect identity.
 
 Free connection variables must be declared chip dimensions. Non-modular
 out-of-bounds mappings are absent from the generated instances. `mod` wraps using

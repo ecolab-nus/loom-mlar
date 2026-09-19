@@ -23,6 +23,9 @@ functions:
     bindings: {input: lhs, out: result}
   vec_max1_f16:
     source: vec_max1_f16
+    element_type: f16
+    dimensions: [L]
+    bindings: {lhs: lhs, rhs: rhs, result: result}
   elementwise_add_f16:
     source: elementwise_add
     element_type: f16

@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 use super::axis::Axis;
 use super::memory::{
-    EndpointIndex, MemoryArray, MemoryDefinition, MemoryEndpoint,
+    EndpointIndex, MemoryArray, MemoryDefinition, MemoryDomain, MemoryEndpoint, MemoryIdentity,
     validate_axes as validate_memory_axes, validate_selection, validate_static_bank,
 };
 use super::network::NetworkTopology;
@@ -272,6 +272,7 @@ impl Architecture {
             self.memories.iter().map(|memory| memory.name.as_str()),
             "memory",
         )?;
+        validate_memory_identities(&self.memories)?;
         validate_unique(
             self.processor_definitions
                 .iter()
@@ -414,7 +415,7 @@ pub struct ArchitectureBuilder {
     name: String,
     dimensions: Vec<Axis>,
     memory_definitions: Vec<MemoryDefinition>,
-    placements: Vec<(String, String, Vec<String>)>,
+    placements: Vec<(String, String, MemoryDomain, Vec<String>)>,
     processor_definitions: Vec<ProcessorDefinition>,
     connections: Vec<(String, String, Connection)>,
     resources: Vec<Resource>,
@@ -451,10 +452,11 @@ impl ArchitectureBuilder {
     pub fn place_memory(
         self,
         definition: impl Into<String>,
+        domain: MemoryDomain,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let definition = definition.into();
-        self.place_memory_as(definition.clone(), definition, dimensions)
+        self.place_memory_as(definition.clone(), definition, domain, dimensions)
     }
 
     /// Place a definition under `name` over ordered axes over `dimensions`.
@@ -462,12 +464,14 @@ impl ArchitectureBuilder {
         self,
         name: impl Into<String>,
         definition: impl Into<String>,
+        domain: MemoryDomain,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let mut builder = self;
         builder.placements.push((
             name.into(),
             definition.into(),
+            domain,
             dimensions.into_iter().map(Into::into).collect(),
         ));
         builder
@@ -543,7 +547,7 @@ impl ArchitectureBuilder {
             "processor definition",
         )?;
         validate_unique(
-            self.placements.iter().map(|(name, _, _)| name.as_str()),
+            self.placements.iter().map(|(name, _, _, _)| name.as_str()),
             "memory placement",
         )?;
 
@@ -553,7 +557,10 @@ impl ArchitectureBuilder {
             .map(|dimension| (dimension.name.as_str(), dimension.clone()))
             .collect::<BTreeMap<_, _>>();
         let mut memories = Vec::new();
-        for (name, definition_name, placement) in &self.placements {
+        let mut kinds = BTreeMap::<MemoryDomain, u64>::new();
+        let mut placements = self.placements.iter().collect::<Vec<_>>();
+        placements.sort_by(|left, right| left.0.cmp(&right.0));
+        for (name, definition_name, domain, placement) in placements {
             let definition = self
                 .memory_definitions
                 .iter()
@@ -578,7 +585,10 @@ impl ArchitectureBuilder {
                         })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let memory = MemoryArray::new(name, definition_name, axes);
+            let kind = kinds.entry(*domain).or_default();
+            let identity = MemoryIdentity::new(*domain, *kind);
+            *kind += 1;
+            let memory = MemoryArray::new(name, definition_name, identity, axes);
             validate_memory_axes(&memory).map_err(ArchitectureError::Invalid)?;
             memories.push(memory);
         }
@@ -759,29 +769,25 @@ fn validate_memory_definitions(definitions: &[MemoryDefinition]) -> Result<(), A
             .map(|definition| definition.name.as_str()),
         "memory definition",
     )?;
-    let mut kinds_by_name = BTreeMap::new();
-    let mut names_by_kind = BTreeMap::new();
     for definition in definitions {
         definition.validate().map_err(ArchitectureError::Invalid)?;
-        let Some(technology) = &definition.technology else {
-            continue;
-        };
-        if let Some(kind) = kinds_by_name.insert(&technology.name, technology.kind)
-            && kind != technology.kind
-        {
+    }
+    Ok(())
+}
+
+fn validate_memory_identities(memories: &[MemoryArray]) -> Result<(), ArchitectureError> {
+    let mut sorted = memories.iter().collect::<Vec<_>>();
+    sorted.sort_by(|left, right| left.name.cmp(&right.name));
+    let mut expected = BTreeMap::<MemoryDomain, u64>::new();
+    for memory in sorted {
+        let next = expected.entry(memory.identity.domain).or_default();
+        if memory.identity.kind != *next {
             return Err(ArchitectureError::Invalid(format!(
-                "memory technology '{}' uses both kind {kind} and kind {}",
-                technology.name, technology.kind
+                "memory '{}' has {:?} kind {}, expected {} from canonical name order",
+                memory.name, memory.identity.domain, memory.identity.kind, *next
             )));
         }
-        if let Some(name) = names_by_kind.insert(technology.kind, &technology.name)
-            && name != &technology.name
-        {
-            return Err(ArchitectureError::Invalid(format!(
-                "memory technology kind {} is shared by '{}' and '{}'",
-                technology.kind, name, technology.name
-            )));
-        }
+        *next += 1;
     }
     Ok(())
 }
@@ -1110,15 +1116,20 @@ fn validate_processor_ports(
                             function.func.name
                         ))
                     })?;
-                if !ports.contains(binding.region.as_str()) {
-                    let reason = if other_ports.contains(binding.region.as_str()) {
+                let port = definition
+                    .memory_bindings
+                    .get(&binding.region)
+                    .map(String::as_str)
+                    .unwrap_or(binding.region.as_str());
+                if !ports.contains(port) {
+                    let reason = if other_ports.contains(port) {
                         "is declared on the wrong side"
                     } else {
                         "is not declared by the connection"
                     };
                     return Err(ArchitectureError::Invalid(format!(
-                        "MLIR function '{}' binds {side} '%{memref}' to '@{}', which {reason}",
-                        function.func.name, binding.region
+                        "MLIR function '{}' binds {side} '%{memref}' role '@{}' to port '{port}', which {reason}",
+                        function.func.name, binding.region,
                     )));
                 }
             }

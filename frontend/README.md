@@ -57,7 +57,6 @@ memories:
     capacity: 262144
     word_size: 64
     banking: 4
-    technology: sram
 ```
 
 ### `chip.yaml`
@@ -73,7 +72,7 @@ dimensions:
   y: 4
 
 memories:
-  L1: [x, y]
+  L1: {domain: L1, axes: [x, y]}
 
 processors:
   vector_lane:
@@ -153,8 +152,11 @@ broadcast.
 Native `.mlir` files are discovered directly beside the YAML. A native source
 name must equal the exposed function name. Functions use the placement's named
 input and output ports in `loom.bind_mem` and must be self-contained within
-one `func.func`. Native MLIR memory spaces remain explicitly authored; the
-frontend does not specialize or rewrite native function types.
+one `func.func`. Keep `element_type` and `dimensions`/`symbols` in the function
+YAML as checked interface metadata; their combined symbol set must match the
+native MLIR. For mixed-precision functions, `element_type` names the primary
+type and only needs to occur in the memref interface. Memref memory spaces are
+omitted in frontend-authored MLIR and specialized from the resolved ports.
 
 ## Parameters and generation
 

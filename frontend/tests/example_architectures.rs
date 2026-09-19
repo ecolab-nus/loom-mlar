@@ -75,7 +75,7 @@ fn lowerable_accelerators_export_adl() {
 }
 
 #[test]
-fn staged_native_spaces_follow_stage_and_output_connections() {
+fn staged_native_spaces_follow_stage_and_sram_connections() {
     let architecture =
         mlar_frontend::load_arch(example_dir("staged-heterogeneous-accelerator")).unwrap();
     let source = architecture
@@ -83,12 +83,15 @@ fn staged_native_spaces_follow_stage_and_output_connections() {
         .unwrap()
         .source();
     assert_eq!(source.matches("memref<?x?xf16, 2>").count(), 8);
-    assert_eq!(source.matches("memref<?x?xf32, 2>").count(), 4);
+    assert_eq!(source.matches("memref<?x?xf32, 1>").count(), 4);
 
     let exported = architecture_to_mlir_unchecked(&architecture).unwrap();
     assert!(exported.contains("loom.bind_mem %arg0, @mem_STAGE_instance"));
     assert!(exported.contains("loom.bind_mem %arg1, @mem_STAGE_instance"));
-    assert!(exported.contains("loom.bind_mem %arg2, @mem_OUTPUT_instance"));
+    assert!(exported.contains("loom.bind_mem %arg2, @mem_SRAM_instance"));
+    assert!(exported.contains("src_mem_space @mem_DRAM : 0 dst_mem_space @mem_SRAM : 1"));
+    assert!(exported.contains("src_mem_space @mem_RRAM : 0 dst_mem_space @mem_DRAM : 0"));
+    assert!(!exported.contains("@mem_DRAM : 0 dst_mem_space @mem_STAGE"));
 }
 
 #[test]
@@ -151,7 +154,7 @@ fn normalize_authored_sources(value: &mut serde_json::Value) {
 }
 
 #[test]
-fn dual_noc_uses_one_memory_kind_and_two_fabrics() {
+fn dual_noc_uses_domain_local_memory_kinds_and_two_fabrics() {
     let architecture = mlar_frontend::load_arch(example_dir("dual-noc-mesh")).unwrap();
     assert!(architecture.memory("L1").is_some());
     assert!(architecture.memory("L1_S").is_none());
@@ -172,11 +175,13 @@ fn dual_noc_uses_one_memory_kind_and_two_fabrics() {
             .count(),
         1
     );
-    assert!(
-        architecture
-            .memory_definitions()
-            .iter()
-            .all(|memory| memory.technology.is_none())
+    assert_eq!(
+        architecture.memory("DRAM").unwrap().identity(),
+        mlar_rust::MemoryIdentity::new(mlar_rust::MemoryDomain::DRAM, 0)
+    );
+    assert_eq!(
+        architecture.memory("L1").unwrap().identity(),
+        mlar_rust::MemoryIdentity::new(mlar_rust::MemoryDomain::L1, 0)
     );
 }
 

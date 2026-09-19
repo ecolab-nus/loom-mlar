@@ -1,0 +1,7 @@
+name: dram_to_sram
+type: data_mover
+functions:
+  dram_to_sram_f16: {source: copy, element_type: f16, dimensions: [M, N]}
+performance:
+  dram_to_sram_f16:
+  - {latency: '40', volume: 2 * M * N, throughput: '128'}

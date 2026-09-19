@@ -4,8 +4,8 @@ These packages mirror the four core Rust accelerator examples:
 
 - `dual-noc-mesh`: one banked L1 array per tile, matrix/vector engines, NoC0
   ingress and collectives, and NoC1 egress;
-- `staged-heterogeneous-accelerator`: GCRAM/RRAM movers feeding a shared staging
-  SRAM and a matrix engine;
+- `staged-heterogeneous-accelerator`: backing DRAM with bidirectional SRAM/RRAM
+  movers, both feeding a staging memory and matrix engine;
 - `hierarchical-tensor-accelerator`: DRAM, cluster SRAM, and grouped
   `PE_SRAM[cluster][pe]` storage with explicit distribute/collect routes;
 - `spatial-pipeline-accelerator`: matrix, activation, and reduction engines with

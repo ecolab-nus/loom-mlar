@@ -1,8 +1,8 @@
 name: system
 memories:
-  GCRAM:
-  RRAM:
-  OUTPUT:
+  GCRAM: {domain: L1}
+  RRAM: {domain: L1}
+  OUTPUT: {domain: L1}
 processors:
   matrix_lane:
     definition: matrix_lane.yaml

@@ -1,6 +1,5 @@
 use mlar_rust::{
-    Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint,
-    MemoryTechnology, Resource,
+    Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint, Resource,
 };
 
 #[path = "processors/mod.rs"]
@@ -12,19 +11,11 @@ pub fn scaled_mesh_torus() -> Architecture {
         .axis("x", 8)
         .axis("y", 8)
         .memory_definition(MemoryDefinition::new("DRAM", 1_610_612_736, 8_192))
-        .memory_definition(
-            MemoryDefinition::new("L1_R", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("rram", 1)),
-        )
-        .memory_definition(
-            MemoryDefinition::new("L1_S", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("sram", 0)),
-        )
-        .place_memory("DRAM", ["dram_channel"])
-        .place_memory("L1_R", ["x", "y"])
-        .place_memory("L1_S", ["x", "y"])
+        .memory_definition(MemoryDefinition::new("L1_R", 1_398_784, 16).with_banking(16))
+        .memory_definition(MemoryDefinition::new("L1_S", 1_398_784, 16).with_banking(16))
+        .place_memory("DRAM", mlar_rust::MemoryDomain::DRAM, ["dram_channel"])
+        .place_memory("L1_R", mlar_rust::MemoryDomain::L1, ["x", "y"])
+        .place_memory("L1_S", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .resource(Resource::exclusive("noc0"))
         .resource(Resource::exclusive("noc1"))
         .resource(
@@ -127,18 +118,10 @@ pub fn scaled_mesh_torus() -> Architecture {
 
 pub fn single_core() -> Architecture {
     Architecture::builder("core")
-        .memory_definition(
-            MemoryDefinition::new("L1_R", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("rram", 1)),
-        )
-        .memory_definition(
-            MemoryDefinition::new("L1_S", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("sram", 0)),
-        )
-        .place_memory("L1_R", Vec::<String>::new())
-        .place_memory("L1_S", Vec::<String>::new())
+        .memory_definition(MemoryDefinition::new("L1_R", 1_398_784, 16).with_banking(16))
+        .memory_definition(MemoryDefinition::new("L1_S", 1_398_784, 16).with_banking(16))
+        .place_memory("L1_R", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .place_memory("L1_S", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .resource(Resource::exclusive("matrix_lane"))
         .processor_definition(processors::matrix_lane().unwrap())
         .processor_definition(processors::matrix_lane_ss().unwrap())

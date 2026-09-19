@@ -136,21 +136,16 @@ fn test_2d_mesh_torus_perf_models() {
                 "?x?"
             };
             let a_type = format!(
-                "%A: memref<{rank}xf16{}>",
-                if a_is_rram { ", 1" } else { "" }
+                "%arg0: memref<{rank}xf16{}>",
+                if a_is_rram { "" } else { ", 1" }
             );
             let b_type = format!(
-                "%B{}: memref<{rank}xf16{}>",
-                if name.starts_with("batch_") {
-                    "mat"
-                } else {
-                    ""
-                },
-                if b_is_rram { ", 1" } else { "" }
+                "%arg1: memref<{rank}xf16{}>",
+                if b_is_rram { "" } else { ", 1" }
             );
             assert!(text.contains(&a_type), "{definition_name}: {a_type}");
             assert!(text.contains(&b_type), "{definition_name}: {b_type}");
-            assert!(text.contains(&format!("%C: memref<{rank}xf16>")));
+            assert!(text.contains(&format!("%arg2: memref<{rank}xf16, 1>")));
             let model = definition.get_function(name).unwrap();
             let (latency, _, throughput) = throughput_parts(&model.perf.scenarios[0].time_cost);
             if a_is_rram || b_is_rram {
@@ -180,21 +175,21 @@ fn test_2d_mesh_torus_perf_models() {
         .as_ref()
         .unwrap();
     assert!(matmul_details.tensor_args.is_empty());
-    assert_eq!(matmul_details.memref_args, ["A", "B", "C"]);
+    assert_eq!(matmul_details.memref_args, ["arg0", "arg1", "arg2"]);
     assert_eq!(
         matmul_details
             .memref_symbol_bindings
             .iter()
-            .filter(|binding| binding.memref != "C")
+            .filter(|binding| binding.memref != "arg2")
             .cloned()
             .collect::<Vec<_>>(),
         vec![
             MlirMemrefSymbolBinding {
-                memref: "A".into(),
+                memref: "arg0".into(),
                 symbols: Sym::from_names(["M", "K"])
             },
             MlirMemrefSymbolBinding {
-                memref: "B".into(),
+                memref: "arg1".into(),
                 symbols: Sym::from_names(["K", "N"])
             },
         ]
@@ -204,7 +199,7 @@ fn test_2d_mesh_torus_perf_models() {
         matmul_details
             .memref_symbol_bindings
             .iter()
-            .find(|binding| binding.memref == "C")
+            .find(|binding| binding.memref == "arg2")
             .unwrap()
             .symbols,
         Sym::from_names(["M", "N"])
@@ -216,7 +211,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("A", "lhs"), ("B", "rhs"), ("C", "result")],
+        [("arg0", "lhs"), ("arg1", "rhs"), ("arg2", "result")],
     );
 
     let vec_module = MlirModule::from_mlir(VEC_LANE_MLIR).unwrap();
@@ -261,10 +256,10 @@ fn test_2d_mesh_torus_perf_models() {
     let noc0 = mesh.processor_definition("dram_l1_noc0").unwrap();
     let copy_mlir = fs::read_to_string(DRAM_L1_NOC0_MLIR).unwrap();
     for (name, expected_dst_kind) in [
-        ("dram_to_l1_S_f16", "dst_mem_space @dst_s : 0,"),
-        ("dram_to_l1_S_bcst", "dst_mem_space @dst_s : 0,"),
-        ("dram_to_l1_R_f16", "dst_mem_space @dst_r : 1,"),
-        ("dram_to_l1_R_bcst", "dst_mem_space @dst_r : 1,"),
+        ("dram_to_l1_S_f16", "dst_mem_space @dst_s : 1,"),
+        ("dram_to_l1_S_bcst", "dst_mem_space @dst_s : 1,"),
+        ("dram_to_l1_R_f16", "dst_mem_space @dst_r : 0,"),
+        ("dram_to_l1_R_bcst", "dst_mem_space @dst_r : 0,"),
     ] {
         assert!(noc0.get_function(name).is_some());
         assert!(
@@ -330,7 +325,7 @@ fn test_2d_mesh_torus_perf_models() {
         assert!(gather.func.symbols.contains(&symbol));
     }
     let details = gather.func.mlir_details.as_ref().unwrap();
-    assert_eq!(details.memref_args, ["l1_src", "l1_dst"]);
+    assert_eq!(details.memref_args, ["arg0", "arg1"]);
     assert_eq!(
         details.memref_symbol_bindings[0].symbols,
         Sym::from_names(["M", "N"])
@@ -354,14 +349,14 @@ fn test_2d_mesh_torus_perf_models() {
         .mlir_details
         .as_ref()
         .unwrap();
-    assert_eq!(details.memref_args, ["dram_src", "l1_dst"]);
-    assert_eq!(details.source_memrefs, ["dram_src"]);
-    assert_eq!(details.target_memrefs, ["l1_dst"]);
+    assert_eq!(details.memref_args, ["arg0", "arg1"]);
+    assert_eq!(details.source_memrefs, ["arg0"]);
+    assert_eq!(details.target_memrefs, ["arg1"]);
     assert!(details.tensor_args.is_empty());
     assert!(details.tensor_symbol_bindings.is_empty());
     assert_eq!(details.memref_symbol_bindings.len(), 2);
-    assert_eq!(details.memref_symbol_bindings[0].memref, "dram_src");
-    assert_eq!(details.memref_symbol_bindings[1].memref, "l1_dst");
+    assert_eq!(details.memref_symbol_bindings[0].memref, "arg0");
+    assert_eq!(details.memref_symbol_bindings[1].memref, "arg1");
     assert_eq!(
         details.memref_symbol_bindings[0].symbols,
         Sym::from_names(["M", "N"])
@@ -376,7 +371,7 @@ fn test_2d_mesh_torus_perf_models() {
             .iter()
             .map(|binding| (binding.memref.as_str(), binding.region.as_str()))
             .collect::<Vec<_>>(),
-        [("dram_src", "src"), ("l1_dst", "dst_s")]
+        [("arg0", "src"), ("arg1", "dst_s")]
     );
 }
 

@@ -12,9 +12,9 @@ dimensions:
   x: X
   y: "Y * 2"
 memories:
-  DRAM: [channel]
-  L1: [x, y]
-  L2: [lx, ly]
+  DRAM: {domain: DRAM, axes: [channel]}
+  L1: {domain: L1, axes: [x, y]}
+  L2: {domain: L1, axes: [lx, ly]}
 networks:
   - name: torus
     dimensions: [x, y]

@@ -6,8 +6,8 @@ use std::path::Path;
 use mlar_frontend::{ChipYaml, ProcessorYaml};
 use mlar_rust::arch::{EndpointIndex, ProcessorSelectionError};
 use mlar_rust::{
-    AdlExportError, Architecture, Axis, Banking, MemoryDefinition, MemoryTechnology,
-    ProcessorSelector, ProcessorType, ResolvedEndpointIndex, architecture_to_mlir,
+    AdlExportError, Architecture, Axis, Banking, MemoryDefinition, ProcessorSelector,
+    ProcessorType, ResolvedEndpointIndex, architecture_to_mlir,
 };
 
 #[test]
@@ -16,7 +16,7 @@ fn chip_yaml_uses_named_processor_placements() {
         r#"
 name: syntax
 memories:
-  L1: [x]
+  L1: {domain: L1, axes: [x]}
 processors:
   lane:
     definition: lane.yaml
@@ -48,7 +48,7 @@ fn fixture_dir() -> std::path::PathBuf {
 }
 
 #[test]
-fn named_operand_ports_bind_distinct_connected_technologies() {
+fn named_operand_ports_bind_distinct_connected_memories() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typed-memory");
     let architecture = mlar_frontend::archs::load_arch(&dir).expect("typed-memory fixture");
     assert_eq!(
@@ -75,16 +75,18 @@ fn named_operand_ports_bind_distinct_connected_technologies() {
         .and_then(|yaml| yaml.build_definition(dir.join("mixed_lane.yaml")))
         .unwrap();
     let named = mlar_frontend::ArchitectureBuilder::new("named")
-        .memory_definition(
-            MemoryDefinition::new("cache_a", 1024, 16)
-                .with_technology(MemoryTechnology::new("gcram", 0)),
+        .memory_definition(MemoryDefinition::new("cache_a", 1024, 16))
+        .memory_definition(MemoryDefinition::new("cache_b", 1024, 16))
+        .place_memory(
+            "cache_a",
+            mlar_rust::MemoryDomain::L1,
+            std::iter::empty::<&str>(),
         )
-        .memory_definition(
-            MemoryDefinition::new("cache_b", 1024, 16)
-                .with_technology(MemoryTechnology::new("gcram", 0)),
+        .place_memory(
+            "cache_b",
+            mlar_rust::MemoryDomain::L1,
+            std::iter::empty::<&str>(),
         )
-        .place_memory("cache_a", std::iter::empty::<&str>())
-        .place_memory("cache_b", std::iter::empty::<&str>())
         .processor_definition(definition)
         .connect(
             "mixed_lane",
@@ -96,7 +98,7 @@ fn named_operand_ports_bind_distinct_connected_technologies() {
             .unwrap(),
         )
         .build()
-        .expect("named ports do not depend on technology uniqueness");
+        .expect("named ports bind placed memories directly");
     let mlir = architecture_to_mlir(&named).unwrap();
     assert!(mlir.contains("loom.bind_mem %lhs, @mem_cache_b"));
     assert!(mlir.contains("loom.bind_mem %rhs, @mem_cache_a"));
@@ -111,6 +113,10 @@ fn one_native_source_specializes_per_connection() {
     assert!(sr.source().contains("memref<?xf16, 1>"));
     assert!(rs.source().contains("%arg0: memref<?xf16, 1>"));
     assert_ne!(sr.source(), rs.source());
+    assert_eq!(sr.memory_bindings()["op1"], "rhs");
+    let exported = mlar_rust::architecture_to_mlir_unchecked(&architecture).unwrap();
+    assert!(exported.contains("loom.bind_mem %arg0, @mem_R"));
+    assert!(!exported.contains("@op1"));
     assert_eq!(
         serde_json::to_value(&sr.operations()[0].perf).unwrap(),
         serde_json::to_value(&rs.operations()[0].perf).unwrap()
@@ -160,9 +166,9 @@ fn descriptive_and_imperative_architectures_are_canonical_equivalents() {
         .memory_definition(MemoryDefinition::new("DRAM", 1_073_741_824, 64))
         .memory_definition(MemoryDefinition::new("L1", 65_536, 16).with_banking(8))
         .memory_definition(MemoryDefinition::new("L2", 1_048_576, 64).with_banking(8))
-        .place_memory("DRAM", ["channel"])
-        .place_memory("L1", ["x", "y"])
-        .place_memory("L2", ["lx", "ly"])
+        .place_memory("DRAM", mlar_rust::MemoryDomain::DRAM, ["channel"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
+        .place_memory("L2", mlar_rust::MemoryDomain::L1, ["lx", "ly"])
         .processor_definition(matrix)
         .processor_definition(dma)
         .connect(
@@ -233,7 +239,7 @@ fn non_modular_out_of_bounds_points_are_dropped() {
     let architecture = mlar_frontend::ArchitectureBuilder::new("drop_test")
         .axis("x", 4)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory("L1", ["x"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
         .processor_definition(dma)
         .connect(
             "dma",
@@ -308,12 +314,14 @@ fn processor_array_selection_is_uniform_for_all_subset_and_point_queries() {
 }
 
 #[test]
-fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
+fn placements_and_memory_points_enumerate_in_declaration_order() {
     let architecture = mlar_frontend::archs::load_arch(fixture_dir()).unwrap();
 
     assert_eq!(
         architecture
-            .processors_of("dma")
+            .processors()
+            .iter()
+            .filter(|processor| processor.definition_name().starts_with("dma"))
             .map(|processor| processor.name())
             .collect::<Vec<_>>(),
         ["l1_to_l2", "east_dma", "dram_to_l1"]
@@ -332,8 +340,8 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
     let shared = mlar_frontend::ArchitectureBuilder::new("shared_definition")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 4096, 64))
-        .place_memory_as("l1_a", "L1", ["x"])
-        .place_memory_as("l1_b", "L1", ["x"])
+        .place_memory_as("l1_a", "L1", mlar_rust::MemoryDomain::L1, ["x"])
+        .place_memory_as("l1_b", "L1", mlar_rust::MemoryDomain::L1, ["x"])
         .build()
         .unwrap();
     assert_eq!(
@@ -344,10 +352,18 @@ fn definition_placements_and_memory_points_enumerate_in_declaration_order() {
         ["l1_a", "l1_b"]
     );
     assert_eq!(shared.memories_of("l1_a").count(), 0);
+    assert_eq!(
+        shared.memory("l1_a").unwrap().identity(),
+        mlar_rust::MemoryIdentity::new(mlar_rust::MemoryDomain::L1, 0)
+    );
+    assert_eq!(
+        shared.memory("l1_b").unwrap().identity(),
+        mlar_rust::MemoryIdentity::new(mlar_rust::MemoryDomain::L1, 1)
+    );
 
     let scalar = mlar_frontend::ArchitectureBuilder::new("scalar")
         .memory_definition(MemoryDefinition::new("regs", 256, 4))
-        .place_memory("regs", Vec::<String>::new())
+        .place_memory("regs", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .build()
         .unwrap();
     assert_eq!(
@@ -363,7 +379,6 @@ fn memory_and_endpoint_validation_is_strict() {
             name: "bad_word".into(),
             capacity: 65,
             word_size: 16,
-            technology: None,
             banking: None,
         }
         .validate()
@@ -374,7 +389,6 @@ fn memory_and_endpoint_validation_is_strict() {
             name: "bad_banks".into(),
             capacity: 64,
             word_size: 16,
-            technology: None,
             banking: Some(Banking::new(8)),
         }
         .validate()
@@ -384,7 +398,7 @@ fn memory_and_endpoint_validation_is_strict() {
     let error = mlar_frontend::ArchitectureBuilder::new("arity")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory("L1", ["x"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
         .processor_definition(
             ProcessorYaml::from_file(fixture_dir().join("dma.yaml"))
                 .and_then(|yaml| yaml.build_definition(fixture_dir().join("dma.yaml")))
@@ -397,6 +411,62 @@ fn memory_and_endpoint_validation_is_strict() {
         .build()
         .expect_err("wrong group arity must fail");
     assert!(error.to_string().contains("expects 1"));
+}
+
+#[test]
+fn memory_kinds_are_name_stable_within_each_domain() {
+    let build = |reverse| {
+        let builder = mlar_frontend::ArchitectureBuilder::new("kinds")
+            .memory_definition(MemoryDefinition::new("shared", 1024, 16));
+        if reverse {
+            builder
+                .place_memory_as(
+                    "z_local",
+                    "shared",
+                    mlar_rust::MemoryDomain::L1,
+                    Vec::<String>::new(),
+                )
+                .place_memory_as(
+                    "a_local",
+                    "shared",
+                    mlar_rust::MemoryDomain::L1,
+                    Vec::<String>::new(),
+                )
+                .place_memory_as(
+                    "dram",
+                    "shared",
+                    mlar_rust::MemoryDomain::DRAM,
+                    Vec::<String>::new(),
+                )
+        } else {
+            builder
+                .place_memory_as(
+                    "dram",
+                    "shared",
+                    mlar_rust::MemoryDomain::DRAM,
+                    Vec::<String>::new(),
+                )
+                .place_memory_as(
+                    "a_local",
+                    "shared",
+                    mlar_rust::MemoryDomain::L1,
+                    Vec::<String>::new(),
+                )
+                .place_memory_as(
+                    "z_local",
+                    "shared",
+                    mlar_rust::MemoryDomain::L1,
+                    Vec::<String>::new(),
+                )
+        }
+        .build()
+        .unwrap()
+    };
+    for architecture in [build(false), build(true)] {
+        assert_eq!(architecture.memory("dram").unwrap().kind(), 0);
+        assert_eq!(architecture.memory("a_local").unwrap().kind(), 0);
+        assert_eq!(architecture.memory("z_local").unwrap().kind(), 1);
+    }
 }
 
 #[test]
@@ -479,7 +549,7 @@ fn memory_selections_target_placed_memory_names() {
         .axis("x", 2)
         .axis("y", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory_as("local_l1", "L1", ["x", "y"])
+        .place_memory_as("local_l1", "L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
@@ -495,7 +565,12 @@ fn connection_domain_order_and_resolved_regions_are_explicit() {
         .axis("x", 2)
         .axis("y", 3)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["y".into()]])
+        .place_memory_levels(
+            "L1",
+            "L1",
+            mlar_rust::MemoryDomain::L1,
+            vec![vec!["x".into()], vec!["y".into()]],
+        )
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect_as(
             "replicated_lane",
@@ -526,7 +601,7 @@ fn endpoint_variables_must_be_declared_in_the_connection_domain() {
     let error = mlar_frontend::ArchitectureBuilder::new("domain")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory("L1", ["x"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
         .connect(
             "lane",
@@ -576,6 +651,7 @@ fn nested_memory_levels_emit_one_axis_named_array_each() {
         .place_memory_levels(
             "L1",
             "L1",
+            mlar_rust::MemoryDomain::L1,
             vec![vec!["cluster".into()], vec!["core".into()]],
         )
         .processor_definition(ProcessorDefinition::new("lane", "", Vec::new()))
@@ -615,7 +691,7 @@ fn flat_dimension_slices_are_valid_but_not_lowerable_as_whole_levels() {
         .axis("cluster", 2)
         .axis("core", 4)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory("L1", ["cluster", "core"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["cluster", "core"])
         .processor_definition(
             ProcessorDefinition::new("dma", "", Vec::new()).with_type(ProcessorType::DataMover),
         )
@@ -636,7 +712,12 @@ fn a_level_may_not_repeat_an_axis() {
     let error = mlar_frontend::ArchitectureBuilder::new("repeat")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["x".into()]])
+        .place_memory_levels(
+            "L1",
+            "L1",
+            mlar_rust::MemoryDomain::L1,
+            vec![vec!["x".into()], vec!["x".into()]],
+        )
         .build()
         .expect_err("an axis may index a memory only once");
 

@@ -57,18 +57,18 @@ fn mlir_func_ref_from_mlir_extracts_symbols_tensors_and_bindings() {
     let details = function.mlir_details.as_ref().unwrap();
     assert_eq!(function.symbols, Sym::from_names(["M", "K", "N"]));
     assert!(details.tensor_args.is_empty());
-    assert_eq!(details.memref_args, ["A", "B", "C"]);
+    assert_eq!(details.memref_args, ["arg0", "arg1", "arg2"]);
     assert!(details.output_tensors.is_empty());
-    assert_eq!(details.source_memrefs, ["A", "B"]);
-    assert_eq!(details.target_memrefs, ["C"]);
+    assert_eq!(details.source_memrefs, ["arg0", "arg1"]);
+    assert_eq!(details.target_memrefs, ["arg2"]);
     assert_eq!(details.mem_region_bindings.len(), 3);
     assert!(!details.linalg_ops.is_empty());
     assert!(details.tensor_symbol_bindings.is_empty());
     assert_eq!(details.memref_symbol_bindings.len(), 3);
     for (binding, (name, symbols)) in details.memref_symbol_bindings.iter().zip([
-        ("A", Sym::from_names(["M", "K"])),
-        ("B", Sym::from_names(["K", "N"])),
-        ("C", Sym::from_names(["M", "N"])),
+        ("arg0", Sym::from_names(["M", "K"])),
+        ("arg1", Sym::from_names(["K", "N"])),
+        ("arg2", Sym::from_names(["M", "N"])),
     ]) {
         assert_eq!(binding.memref, name);
         assert_eq!(binding.symbols, symbols);

@@ -1,10 +1,10 @@
 name: dram_l1_noc0
 type: data_mover
 functions:
-  dram_to_l1_S_f16: {source: dram_to_l1_S_f16}
-  dram_to_l1_S_bcst: {source: dram_to_l1_S_bcst}
-  dram_to_l1_R_f16: {source: dram_to_l1_R_f16}
-  dram_to_l1_R_bcst: {source: dram_to_l1_R_bcst}
+  dram_to_l1_S_f16: {source: dram_to_l1_S_f16, bindings: {src: src, dst_s: dst_s}}
+  dram_to_l1_S_bcst: {source: dram_to_l1_S_bcst, bindings: {src: src, dst_s: dst_s}}
+  dram_to_l1_R_f16: {source: dram_to_l1_R_f16, bindings: {src: src, dst_r: dst_r}}
+  dram_to_l1_R_bcst: {source: dram_to_l1_R_bcst, bindings: {src: src, dst_r: dst_r}}
 performance:
   dram_to_l1_S_f16:
   - latency: '454'

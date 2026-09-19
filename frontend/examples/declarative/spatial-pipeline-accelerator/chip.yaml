@@ -3,11 +3,11 @@ dimensions:
   dram_channel: 2
   pipeline: 2
 memories:
-  DRAM: [dram_channel]
-  INPUT: [pipeline]
-  MATMUL_OUT: [pipeline]
-  ACTIVATION_OUT: [pipeline]
-  OUTPUT: [pipeline]
+  DRAM: {domain: DRAM, axes: [dram_channel]}
+  INPUT: {domain: L1, axes: [pipeline]}
+  MATMUL_OUT: {domain: L1, axes: [pipeline]}
+  ACTIVATION_OUT: {domain: L1, axes: [pipeline]}
+  OUTPUT: {domain: L1, axes: [pipeline]}
 resources:
 - {name: ingress_link, dimensions: [pipeline]}
 - {name: matrix_stage, dimensions: [pipeline]}
@@ -45,9 +45,3 @@ processors:
     inputs: {src: "OUTPUT[pipeline]"}
     outputs: {dst: "DRAM[:]"}
     resources: [egress_link]
-scopes:
-- name: pipeline
-  dimensions: [pipeline]
-  memories: [INPUT, MATMUL_OUT, ACTIVATION_OUT, OUTPUT]
-  processors: [ingress_dma, matrix_stage, activation_stage, reduction_stage, egress_dma]
-  resources: [ingress_link, matrix_stage, activation_stage, reduction_stage, egress_link]

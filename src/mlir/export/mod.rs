@@ -410,6 +410,7 @@ fn raw_mlir_memory_symbols(
             "input",
             &details.source_memrefs,
             &details.mem_region_bindings,
+            definition.memory_bindings(),
             inputs,
             &mut mappings,
         )?;
@@ -418,6 +419,7 @@ fn raw_mlir_memory_symbols(
             "output",
             &details.target_memrefs,
             &details.mem_region_bindings,
+            definition.memory_bindings(),
             outputs,
             &mut mappings,
         )?;
@@ -430,6 +432,7 @@ fn bind_raw_mlir_side(
     side: &str,
     memrefs: &[String],
     bindings: &[crate::mlir::MlirMemRegionBinding],
+    role_bindings: &BTreeMap<String, String>,
     ports: &[(String, String)],
     mappings: &mut BTreeMap<String, String>,
 ) -> Result<(), String> {
@@ -455,13 +458,14 @@ fn bind_raw_mlir_side(
     let assignments = regions
         .into_iter()
         .map(|region| {
+            let port = role_bindings.get(&region).unwrap_or(&region);
             ports
                 .iter()
-                .find(|(name, _)| name == &region)
+                .find(|(name, _)| name == port)
                 .map(|(_, handle)| (region.clone(), handle.clone()))
                 .ok_or_else(|| {
                     format!(
-                        "MLIR function '{function}' binds {side} memory '@{region}', but the connection has no {side} port named '{region}'"
+                        "MLIR function '{function}' binds {side} memory role '@{region}' to port '{port}', but the connection has no such {side} port"
                     )
                 })
         })

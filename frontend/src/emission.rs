@@ -49,7 +49,7 @@ pub fn emit_processor_sources(
                     FunctionProvider::Template(spec) => SourceRecord::Template {
                         name: spec.source.clone(),
                     },
-                    FunctionProvider::Native(native) => SourceRecord::Native {
+                    FunctionProvider::Native(native, _) => SourceRecord::Native {
                         path: native
                             .path
                             .strip_prefix(package_dir)

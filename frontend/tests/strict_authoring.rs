@@ -142,7 +142,7 @@ fn network_symbols_and_interface_axes_are_checked() {
         mlar_frontend::ArchitectureBuilder::new("network")
             .axis("x", 2)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-            .place_memory("L1", ["x"])
+            .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
     };
     let error = builder()
         .network(network())
@@ -180,7 +180,7 @@ fn canonical_objects_reject_unknown_fields_and_invalid_affine_nodes() {
     let architecture = mlar_frontend::ArchitectureBuilder::new("canonical")
         .axis("x", 2)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-        .place_memory("L1", ["x"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
         .processor_definition(ProcessorDefinition::new("lane", "", vec![]))
         .connect(
             "lane",
@@ -238,7 +238,7 @@ fn malformed_expressions_unknown_references_and_bad_groups_fail() {
         let result = mlar_frontend::ArchitectureBuilder::new("bad")
             .axis("x", 2)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-            .place_memory("L1", ["x"])
+            .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x"])
             .processor_definition(ProcessorDefinition::new("lane", "", vec![]))
             .connect("lane", Connection::parse(["x"], [endpoint], []).unwrap())
             .build();

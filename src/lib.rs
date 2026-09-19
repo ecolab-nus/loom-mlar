@@ -10,11 +10,11 @@ pub use abi::{arch_query, evaluator};
 // Common core model surface. Derived/query types remain under `arch`.
 pub use arch::{
     AdlExportError, Architecture, ArchitectureBuilder, ArchitectureError, Axis, Banking,
-    Connection, EndpointIndex, FuncPerfModel, MemoryArray, MemoryDefinition, MemoryEndpoint,
-    MemoryLocation, MemoryPort, MemoryTechnology, NetworkInterface, NetworkLink, NetworkTopology,
-    OperationModel, PerfScenario, PerfYamlError, PerformanceYaml, ProcessorDefinition,
-    ProcessorSelector, ProcessorType, ResolvedEndpointIndex, Resource, Scope, TimeCost,
-    architecture_to_mlir, architecture_to_mlir_unchecked, mlir_validators_available,
+    Connection, EndpointIndex, FuncPerfModel, MemoryArray, MemoryDefinition, MemoryDomain,
+    MemoryEndpoint, MemoryIdentity, MemoryLocation, MemoryPort, NetworkInterface, NetworkLink,
+    NetworkTopology, OperationModel, PerfScenario, PerfYamlError, PerformanceYaml,
+    ProcessorDefinition, ProcessorSelector, ProcessorType, ResolvedEndpointIndex, Resource, Scope,
+    TimeCost, architecture_to_mlir, architecture_to_mlir_unchecked, mlir_validators_available,
 };
 
 // Re-export commonly used math types

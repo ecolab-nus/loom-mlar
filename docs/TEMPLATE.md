@@ -24,7 +24,6 @@ memories:
   DRAM:
     capacity: 1073741824
     word_size: 64
-    technology: dram
 
   L1:
     capacity: 65536
@@ -37,8 +36,9 @@ unit. Both must be positive, and capacity must be divisible by
 `word_size * banks`. Banks are selected explicitly, for example
 `L1[x, y].bank[b]`. Replication lives in `chip.yaml`, not here.
 
-Technology names are opaque. The loader assigns their numeric kinds in
-first-appearance order, so reordering the catalog can change exported ABI data.
+Storage identity belongs to chip placement, not the reusable definition.
+Placements declare `domain: DRAM` or `domain: L1`; kinds are assigned by sorted
+array name independently within each domain.
 
 ## Chip composition
 
@@ -54,8 +54,8 @@ dimensions:
   y: 4
 
 memories:
-  DRAM: [channel]
-  L1: [x, y]
+  DRAM: {domain: DRAM, axes: [channel]}
+  L1: {domain: L1, axes: [x, y]}
 
 resources:
   - name: global_lock
@@ -75,12 +75,12 @@ processors:
     resources: [global_lock]
 ```
 
-A single-instance placement omits `domain`, and a memory placed without
-replication is a bare key:
+A single-instance memory placement omits `axes`, but still declares its storage
+domain:
 
 ```yaml
 memories:
-  L1:
+  L1: {domain: L1}
 processors:
   vector_lane:
     definition: vector_lane.yaml
@@ -95,8 +95,8 @@ below. Grouping is syntax sugar and lowers to one ordered flat core axis list:
 
 ```yaml
 memories:
-  L1: [x, y]              # one 2-d array over x and y
-  L2: [cluster, [core]]   # per-cluster array holding per-core arrays
+  L1: {domain: L1, axes: [x, y]}
+  L2: {domain: L1, axes: [cluster, [core]]}
 ```
 
 A nested list must be last in its level, and there may be at most one. All
@@ -131,6 +131,7 @@ A detailed placement can name a different definition:
 memories:
   scratch:
     definition: L1
+    domain: L1
     axes: [x, y]
 ```
 
@@ -251,37 +252,45 @@ bindings:
 The corresponding placement declares the aliases and their endpoints:
 
 ```yaml
-inputs: {activations: GCRAM, weights: RRAM}
-outputs: {result: OUTPUT}
+inputs: {activations: SRAM, weights: RRAM}
+outputs: {result: SRAM}
 ```
 
 Names must be unique within each side; repeated memory names in a list require
 explicit aliases. Input and output sides may share a name. Alias maps replace
-memory-derived names; there is no fallback lookup by memory name or technology.
+memory-derived names; there is no fallback lookup by memory name.
 Template-generated and native MLIR use these names directly in `loom.bind_mem`.
 
 An omitted binding is inferred only when that side has exactly one port. Port
-names have no technology semantics. The connected memory's `technology`
-supplies the native numeric memory-space kind; different memories may share a
-technology and therefore a kind without becoming the same memory.
+names have no storage semantics. The connected placed array supplies its
+domain-local numeric kind.
 
 For operations outside the registry, put ordinary native MLIR in any `.mlir`
 file directly beside the processor YAML and name it from `functions`:
 
 ```yaml
 functions:
-  vector_reduce: {source: vector_reduce}
+  vector_reduce:
+    source: vector_reduce
+    element_type: f16
+    dimensions: [M, N]
+    bindings: {op1: data, result: result}
 ```
 
-Native functions use the placement's input and output port names in
-`loom.bind_mem`. Leave every frontend-authored memref memory space unspecified;
-the connection's memory technology supplies it during loading. Likewise, name
+Native functions use role names such as `@op1`, `@op2`, and `@result` in
+`loom.bind_mem`; `bindings` maps those roles to placement ports. Leave every
+frontend-authored memref memory space unspecified; the connected placed array
+supplies it during loading. Likewise, name
 `loom.copy` endpoints but omit their numeric kinds. They must be
 self-contained: helper calls, globals, module-level aliases, and source-name
 aliases are rejected. Files may contain several functions; only requested ones
 are composed into a processor. Duplicate definitions, malformed discovered
 files, and native functions named after any registered template in the table
 above are directory-wide errors.
+
+For native functions, `dimensions` plus `symbols` are checked against the MLIR
+symbol declarations. `element_type` must occur in a memref argument; native
+MLIR remains authoritative for complete and mixed-precision signatures.
 
 One native function may be referenced by several processor definitions. Each
 definition is specialized from its own connection and retains its own
@@ -353,7 +362,7 @@ let architecture = ArchitectureBuilder::new("example")
     .memory_definition(
         MemoryDefinition::new("L1", 65_536, 16).with_banking(8),
     )
-    .place_memory("L1", ["x", "y"])
+    .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
     .processor_source_dir("path/to/package")
     .processor("matrix_lane")
     .connect("matrix_lane", connection)

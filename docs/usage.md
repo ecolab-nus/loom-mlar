@@ -40,7 +40,7 @@ unverified.
 Both optional frontend loaders return the same concrete core `Architecture`.
 Core `Architecture::builder` accepts explicit records and native processor MLIR;
 `mlar_frontend::ArchitectureBuilder` adds package loading and bracket syntax. See [Architecture Semantics](architecture-concepts.md)
-for memory technologies and linking rules.
+for memory domains, kinds, and linking rules.
 
 ## Direct core input
 
@@ -132,12 +132,11 @@ the same function mapping under `performance`.
 Template performance symbols come from `dimensions` and explicit `symbols`.
 Native performance symbols come from `loom.bind_shape` and declarations such as
 `%bandwidth = loom.sym @bandwidth : index`.
-Frontend native memrefs must omit memory spaces. Each `loom.bind_mem` symbol is
-resolved through the processor placement, and the connected memory technology
-sets the final integer space. A memory without a technology uses effective kind
-zero. Nonzero integers are catalog-assigned technology classes, not memory
-identities; two physical memories with one technology intentionally share a
-kind. The resolved MLIR emitted by `emit_processors` contains concrete spaces.
+Frontend native memrefs must omit memory spaces. Each `loom.bind_mem` role is
+resolved through processor YAML `bindings` to a placement port and then to a
+placed memory. The placed memory's domain-local kind sets the final integer
+space. Kinds start at zero independently in DRAM and L1 and follow sorted array
+names. The resolved MLIR emitted by `emit_processors` contains concrete spaces.
 Unknown fields, duplicate declarations, unresolved references, and malformed
 expressions are errors. See [performance YAML](perf-yaml.md) for symbol scope.
 

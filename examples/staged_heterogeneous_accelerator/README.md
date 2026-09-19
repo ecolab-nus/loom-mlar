@@ -1,9 +1,10 @@
 # Staged heterogeneous accelerator
 
-This example models a 2x2 accelerator array with 16 MiB GCRAM, 16 MiB RRAM, a 64 KiB
-staging SRAM, and a distinct 1 MiB output SRAM per tile. GCRAM and RRAM use
-separate movers/NoCs but share an exclusive staging port. The matrix lane reads
-both inputs from STAGE and writes f32 output to OUTPUT.
+This example models a 2x2 accelerator array with channelized backing DRAM,
+16 MiB SRAM and RRAM choices per tile, and a 64 KiB staging memory. Separate
+movers provide `DRAM ↔ SRAM` and `DRAM ↔ RRAM`; SRAM and RRAM can feed STAGE,
+but STAGE has no direct DRAM route. The matrix lane reads both inputs from STAGE
+and writes its f32 result back to SRAM.
 
 `main.rs` builds the architecture and exports ADL through `architecture_to_mlir`,
 which validates it with `adl-opt` and `loom-opt`. `processors.rs` loads the
@@ -15,7 +16,9 @@ cargo test -p mlar-rust --test staged_heterogeneous_accelerator
 ```
 
 The regression tests check memory capacities, processor routes, and validated
-ADL export with one replicated tile scale and all four physical memories.
+ADL export with one replicated tile scale and all four physical memories. The
+transfer rates are illustrative authored processor models, not memory metadata
+or hardware calibration.
 The checked export requires both native validators; see
 [installation](../../docs/installation.md).
 

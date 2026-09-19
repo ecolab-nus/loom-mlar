@@ -1,7 +1,9 @@
 name: lane
 type: compute
 functions:
-  add: {source: add}
+  add:
+    source: add
+    bindings: {op1: rhs, op2: lhs, result: result}
 performance:
   add:
   - expression: L

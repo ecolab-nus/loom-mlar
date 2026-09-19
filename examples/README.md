@@ -7,7 +7,7 @@ their canonical architecture and performance contracts.
 | Example | Architectural point |
 |---|---|
 | [dual_noc_mesh](dual_noc_mesh/main.rs) | An 8×8 matrix/vector mesh with one banked L1 per tile, NoC0 ingress/collectives, and NoC1 egress |
-| [staged_heterogeneous_accelerator](staged_heterogeneous_accelerator/README.md) | GCRAM and RRAM sources staged through a shared SRAM before matrix compute |
+| [staged_heterogeneous_accelerator](staged_heterogeneous_accelerator/README.md) | Backing DRAM and SRAM/RRAM L1 sources staged before matrix compute |
 | [hierarchical_tensor_accelerator](hierarchical_tensor_accelerator/main.rs) | DRAM → cluster SRAM → hierarchical PE SRAM with tensor engines and explicit result return paths |
 | [spatial_pipeline_accelerator](spatial_pipeline_accelerator/main.rs) | Matmul, activation, and reduction stages connected by distinct intermediate SRAMs |
 

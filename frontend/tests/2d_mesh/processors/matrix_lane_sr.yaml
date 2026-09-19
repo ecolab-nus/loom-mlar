@@ -1,8 +1,8 @@
 name: matrix_lane_sr
 type: compute
 functions:
-  matmul_f16: {source: matmul_f16}
-  batch_matmul_f16: {source: batch_matmul_f16}
+  matmul_f16: {source: matmul_f16, bindings: {lhs: lhs, rhs: rhs, result: result}}
+  batch_matmul_f16: {source: batch_matmul_f16, bindings: {lhs: lhs, rhs: rhs, result: result}}
 performance:
   matmul_f16:
   - constraint: M >= 32 && N >= 32 && K >= 32

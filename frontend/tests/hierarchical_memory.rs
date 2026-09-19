@@ -23,6 +23,7 @@ fn architecture(endpoints: &[&str]) -> Result<Architecture, ArchitectureError> {
         .place_memory_levels(
             "L1",
             "L1",
+            mlar_rust::MemoryDomain::L1,
             vec![vec!["x".into(), "y".into()], vec!["core".into()]],
         )
         .processor_definition(
@@ -208,7 +209,12 @@ fn network_interfaces_use_the_same_hierarchical_validation() {
             .axis("x", 2)
             .axis("core", 4)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-            .place_memory_levels("L1", "L1", vec![vec!["x".into()], vec!["core".into()]])
+            .place_memory_levels(
+                "L1",
+                "L1",
+                mlar_rust::MemoryDomain::L1,
+                vec![vec!["x".into()], vec!["core".into()]],
+            )
             .network(
                 NetworkTopology::new("noc", vec![]).with_interface(NetworkInterface::new(
                     "port",

@@ -5,25 +5,22 @@ use serde::{Deserialize, Serialize};
 use super::axis::{Axis, axis_points};
 use crate::math::AffineExpr;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum MemoryDomain {
+    DRAM,
+    L1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MemoryTechnology {
-    pub name: String,
+pub struct MemoryIdentity {
+    pub domain: MemoryDomain,
     pub kind: u64,
 }
 
-impl MemoryTechnology {
-    pub fn new(name: impl Into<String>, kind: u64) -> Self {
-        Self {
-            name: name.into(),
-            kind,
-        }
-    }
-}
-
-impl std::fmt::Display for MemoryTechnology {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.name)
+impl MemoryIdentity {
+    pub fn new(domain: MemoryDomain, kind: u64) -> Self {
+        Self { domain, kind }
     }
 }
 
@@ -40,7 +37,7 @@ impl Banking {
     }
 }
 
-/// Reusable memory kind from `memory.yaml`.
+/// Reusable memory definition from `memory.yaml`.
 ///
 /// `capacity` is bytes per logical instance, not per bank.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,8 +46,6 @@ pub struct MemoryDefinition {
     pub name: String,
     pub capacity: u64,
     pub word_size: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub technology: Option<MemoryTechnology>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banking: Option<Banking>,
 }
@@ -61,18 +56,12 @@ impl MemoryDefinition {
             name: name.into(),
             capacity,
             word_size,
-            technology: None,
             banking: None,
         }
     }
 
     pub fn with_banking(mut self, banks: u64) -> Self {
         self.banking = Some(Banking::new(banks));
-        self
-    }
-
-    pub fn with_technology(mut self, technology: MemoryTechnology) -> Self {
-        self.technology = Some(technology);
         self
     }
 
@@ -90,18 +79,6 @@ impl MemoryDefinition {
             return Err(format!(
                 "memory '{}' capacity {} is not divisible by word_size {}",
                 self.name, self.capacity, self.word_size
-            ));
-        }
-        if let Some(technology) = &self.technology
-            && (technology.name.is_empty()
-                || !technology
-                    .name
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || character == '_'))
-        {
-            return Err(format!(
-                "memory '{}' has invalid technology name '{}'",
-                self.name, technology.name
             ));
         }
         if let Some(banking) = &self.banking {
@@ -132,15 +109,22 @@ impl MemoryDefinition {
 pub struct MemoryArray {
     pub(crate) name: String,
     pub(crate) definition: String,
+    pub(crate) identity: MemoryIdentity,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) axes: Vec<Axis>,
 }
 
 impl MemoryArray {
-    pub fn new(name: impl Into<String>, definition: impl Into<String>, axes: Vec<Axis>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        definition: impl Into<String>,
+        identity: MemoryIdentity,
+        axes: Vec<Axis>,
+    ) -> Self {
         Self {
             name: name.into(),
             definition: definition.into(),
+            identity,
             axes,
         }
     }
@@ -164,6 +148,18 @@ impl MemoryArray {
 
     pub fn definition_name(&self) -> &str {
         &self.definition
+    }
+
+    pub fn identity(&self) -> MemoryIdentity {
+        self.identity
+    }
+
+    pub fn memory_domain(&self) -> MemoryDomain {
+        self.identity.domain
+    }
+
+    pub fn kind(&self) -> u64 {
+        self.identity.kind
     }
 
     pub fn axes(&self) -> &[Axis] {

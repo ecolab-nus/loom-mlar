@@ -1,9 +1,7 @@
 memories:
   S:
-    technology: sram
     capacity: 1024
     word_size: 16
   R:
-    technology: rram
     capacity: 1024
     word_size: 16

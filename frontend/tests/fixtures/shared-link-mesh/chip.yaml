@@ -4,7 +4,7 @@ dimensions:
   x: 4
   y: 4
 memories:
-  L1: [x, y]
+  L1: {domain: L1, axes: [x, y]}
 resources:
 - name: x_links
 - name: y_links

@@ -1,8 +1,8 @@
 name: native_specialization
 memory: memory.yaml
 memories:
-  S:
-  R:
+  S: {domain: L1}
+  R: {domain: L1}
 processors:
   lane_sr:
     definition: lane.yaml

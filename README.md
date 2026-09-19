@@ -17,13 +17,13 @@ There are two ways to construct the same `mlar_rust::Architecture`:
 Build an architecture with `Architecture::builder`:
 
 ```rust
-use mlar_rust::{Architecture, MemoryDefinition};
+use mlar_rust::{Architecture, MemoryDefinition, MemoryDomain};
 
 let architecture = Architecture::builder("example")
     .axis("x", 4)
     .axis("y", 4)
     .memory_definition(MemoryDefinition::new("L1", 65_536, 16).with_banking(8))
-    .place_memory("L1", ["x", "y"])
+    .place_memory("L1", MemoryDomain::L1, ["x", "y"])
     // Add processor definitions and connect their memory endpoints here.
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -43,8 +43,8 @@ cargo test -p mlar-rust --test 2d_mesh
 ```
 
 The [staged heterogeneous accelerator](examples/staged_heterogeneous_accelerator/README.md)
-demonstrates GCRAM and RRAM inputs copied into a much smaller shared staging
-SRAM before matrix compute, with a distinct SRAM output region.
+demonstrates backing DRAM, SRAM/RRAM L1 choices, a smaller staging memory, and
+matrix output returned to SRAM.
 
 ## Use the frontend syntax
 

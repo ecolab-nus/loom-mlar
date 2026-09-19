@@ -1025,7 +1025,7 @@ mod tests {
     fn exports_stable_normalized_document() {
         let architecture = Architecture::builder("core")
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-            .place_memory("L1", std::iter::empty::<&str>())
+            .place_memory("L1", crate::MemoryDomain::L1, std::iter::empty::<&str>())
             .processor_definition(
                 ProcessorDefinition::new("lane", "", Vec::new()).with_type(ProcessorType::Compute),
             )
@@ -1093,7 +1093,7 @@ mod tests {
         let architecture = Architecture::builder("system")
             .axis("x", 4)
             .memory_definition(MemoryDefinition::new("L1", 1024, 16))
-            .place_memory("L1", ["x"])
+            .place_memory("L1", crate::MemoryDomain::L1, ["x"])
             .network(network)
             .build()
             .unwrap();

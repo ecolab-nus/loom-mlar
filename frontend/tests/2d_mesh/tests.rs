@@ -6,9 +6,8 @@ use std::process::{Command, Stdio};
 
 use mlar_rust::arch::EndpointIndex;
 use mlar_rust::{
-    AdlExportError, Architecture, Axis, Expr, MemoryDefinition, MemoryTechnology, PerfScenario,
-    ProcessorTarget, Resource, Schedule, Sym, architecture_to_mlir, evaluate,
-    generate_evaluator_binary,
+    AdlExportError, Architecture, Axis, Expr, MemoryDefinition, PerfScenario, ProcessorTarget,
+    Resource, Schedule, Sym, architecture_to_mlir, evaluate, generate_evaluator_binary,
 };
 
 #[path = "../../../tests/2d_mesh/arch.rs"]
@@ -60,19 +59,11 @@ fn build_imperative() -> Architecture {
         .axis("x", 8)
         .axis("y", 8)
         .memory_definition(MemoryDefinition::new("DRAM", 1_610_612_736, 8192))
-        .memory_definition(
-            MemoryDefinition::new("L1_R", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("rram", 1)),
-        )
-        .memory_definition(
-            MemoryDefinition::new("L1_S", 1_398_784, 16)
-                .with_banking(16)
-                .with_technology(MemoryTechnology::new("sram", 0)),
-        )
-        .place_memory("DRAM", ["dram_channel"])
-        .place_memory("L1_R", ["x", "y"])
-        .place_memory("L1_S", ["x", "y"])
+        .memory_definition(MemoryDefinition::new("L1_R", 1_398_784, 16).with_banking(16))
+        .memory_definition(MemoryDefinition::new("L1_S", 1_398_784, 16).with_banking(16))
+        .place_memory("DRAM", mlar_rust::MemoryDomain::DRAM, ["dram_channel"])
+        .place_memory("L1_R", mlar_rust::MemoryDomain::L1, ["x", "y"])
+        .place_memory("L1_S", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .resource(Resource::exclusive("noc0"))
         .resource(Resource::exclusive("noc1"))
         .resource(
@@ -390,11 +381,11 @@ fn shared_matmul_source_specializes_into_four_capabilities() {
     );
 
     let architecture = load();
-    for (name, lhs_kind, rhs_kind, scenarios) in [
-        ("matrix_lane_ss", None, None, 2),
-        ("matrix_lane_sr", None, Some(1), 1),
-        ("matrix_lane_rs", Some(1), None, 1),
-        ("matrix_lane_rr", Some(1), Some(1), 1),
+    for (name, lhs_kind, rhs_kind, output_kind, scenarios) in [
+        ("matrix_lane_ss", Some(1), Some(1), Some(1), 2),
+        ("matrix_lane_sr", Some(1), None, Some(1), 1),
+        ("matrix_lane_rs", None, Some(1), Some(1), 1),
+        ("matrix_lane_rr", None, None, Some(1), 1),
     ] {
         let definition = architecture.processor_definition(name).unwrap();
         let function = definition.get_function("matmul_f16").unwrap();
@@ -414,7 +405,11 @@ fn shared_matmul_source_specializes_into_four_capabilities() {
         };
         assert_eq!(
             types,
-            [expected(lhs_kind), expected(rhs_kind), expected(None)]
+            [
+                expected(lhs_kind),
+                expected(rhs_kind),
+                expected(output_kind)
+            ]
         );
         assert!(
             architecture
@@ -440,12 +435,12 @@ fn emitted_matmul_capabilities_retain_shared_source_provenance() {
     assert!(
         std::fs::read_to_string(output.join("matrix_lane_sr.mlir"))
             .unwrap()
-            .contains("%arg1: memref<?x?xf16, 1>")
+            .contains("%arg0: memref<?x?xf16, 1>")
     );
     assert!(
         std::fs::read_to_string(output.join("matrix_lane_rs.mlir"))
             .unwrap()
-            .contains("%arg0: memref<?x?xf16, 1>")
+            .contains("%arg1: memref<?x?xf16, 1>")
     );
     std::fs::remove_dir_all(output).unwrap();
 }

@@ -1,6 +1,5 @@
 use mlar_rust::{
     Architecture, Axis, Connection, EndpointIndex, MemoryDefinition, MemoryEndpoint, Resource,
-    Scope,
 };
 use std::error::Error;
 
@@ -16,11 +15,11 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
         .memory_definition(MemoryDefinition::new("MATMUL_OUT", 1024 * 1024, 64).with_banking(8))
         .memory_definition(MemoryDefinition::new("ACTIVATION_OUT", 1024 * 1024, 64).with_banking(8))
         .memory_definition(MemoryDefinition::new("OUTPUT", 256 * 1024, 32).with_banking(4))
-        .place_memory("DRAM", ["dram_channel"])
-        .place_memory("INPUT", ["pipeline"])
-        .place_memory("MATMUL_OUT", ["pipeline"])
-        .place_memory("ACTIVATION_OUT", ["pipeline"])
-        .place_memory("OUTPUT", ["pipeline"])
+        .place_memory("DRAM", mlar_rust::MemoryDomain::DRAM, ["dram_channel"])
+        .place_memory("INPUT", mlar_rust::MemoryDomain::L1, ["pipeline"])
+        .place_memory("MATMUL_OUT", mlar_rust::MemoryDomain::L1, ["pipeline"])
+        .place_memory("ACTIVATION_OUT", mlar_rust::MemoryDomain::L1, ["pipeline"])
+        .place_memory("OUTPUT", mlar_rust::MemoryDomain::L1, ["pipeline"])
         .resource(indexed("ingress_link"))
         .resource(indexed("matrix_stage"))
         .resource(indexed("activation_stage"))
@@ -66,24 +65,6 @@ pub fn build() -> Result<Architecture, Box<dyn Error>> {
                 .input("src", "OUTPUT")
                 .output("dst", MemoryEndpoint::new("DRAM", vec![EndpointIndex::All]))
                 .with_resources(["egress_link"]),
-        )
-        .scope(
-            Scope::new("pipeline", ["pipeline"])
-                .with_memories(["INPUT", "MATMUL_OUT", "ACTIVATION_OUT", "OUTPUT"])
-                .with_processors([
-                    "ingress_dma",
-                    "matrix_stage",
-                    "activation_stage",
-                    "reduction_stage",
-                    "egress_dma",
-                ])
-                .with_resources([
-                    "ingress_link",
-                    "matrix_stage",
-                    "activation_stage",
-                    "reduction_stage",
-                    "egress_link",
-                ]),
         )
         .build()?)
 }

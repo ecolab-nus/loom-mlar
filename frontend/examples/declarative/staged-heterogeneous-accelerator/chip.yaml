@@ -1,26 +1,45 @@
 name: staged_heterogeneous_accelerator
 dimensions:
+  dram_channel: 8
   x: 2
   y: 2
 memories:
-  GCRAM: [x, y]
-  RRAM: [x, y]
-  STAGE: [x, y]
-  OUTPUT: [x, y]
+  DRAM: {domain: DRAM, axes: [dram_channel]}
+  SRAM: {domain: L1, axes: [x, y]}
+  RRAM: {domain: L1, axes: [x, y]}
+  STAGE: {domain: L1, axes: [x, y]}
 resources:
 - name: noc0
-  dimensions: [x, y]
 - name: noc1
-  dimensions: [x, y]
 - name: stage_port
   dimensions: [x, y]
 - name: matrix
   dimensions: [x, y]
 processors:
-  gcram_to_stage:
-    definition: gcram_to_stage.yaml
+  dram_to_sram:
+    definition: dram_to_sram.yaml
+    inputs: {src: "DRAM[:]"}
+    outputs: {dst: "SRAM[:, :]"}
+    resources: [noc0]
+  sram_to_dram:
+    definition: sram_to_dram.yaml
+    inputs: {src: "SRAM[:, :]"}
+    outputs: {dst: "DRAM[:]"}
+    resources: [noc1]
+  dram_to_rram:
+    definition: dram_to_rram.yaml
+    inputs: {src: "DRAM[:]"}
+    outputs: {dst: "RRAM[:, :]"}
+    resources: [noc0]
+  rram_to_dram:
+    definition: rram_to_dram.yaml
+    inputs: {src: "RRAM[:, :]"}
+    outputs: {dst: "DRAM[:]"}
+    resources: [noc1]
+  sram_to_stage:
+    definition: sram_to_stage.yaml
     domain: [x, y]
-    inputs: {gcram: "GCRAM[x, y]"}
+    inputs: {sram: "SRAM[x, y]"}
     outputs: {stage: "STAGE[x, y]"}
     resources: [noc0, stage_port]
   rram_to_stage:
@@ -33,11 +52,5 @@ processors:
     definition: matrix_lane.yaml
     domain: [x, y]
     inputs: {stage_a: "STAGE[x, y]", stage_b: "STAGE[x, y]"}
-    outputs: {result: "OUTPUT[x, y]"}
+    outputs: {result: "SRAM[x, y]"}
     resources: [stage_port, matrix]
-scopes:
-- name: tile
-  dimensions: [x, y]
-  memories: [GCRAM, RRAM, STAGE, OUTPUT]
-  processors: [gcram_to_stage, rram_to_stage, matrix_lane]
-  resources: [noc0, noc1, stage_port, matrix]

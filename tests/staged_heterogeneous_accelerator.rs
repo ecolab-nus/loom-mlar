@@ -31,11 +31,11 @@ fn staged_accelerator_exports_one_scale_and_all_physical_memories() {
         (aggregate, instance)
     };
     let handles =
-        ["GCRAM", "RRAM", "STAGE", "OUTPUT"].map(|name| memory_handles(&format!("mem_{name}")));
-    let leaves = handles.map(|(_, instance)| instance);
-    for leaf in leaves {
+        ["DRAM", "RRAM", "SRAM", "STAGE"].map(|name| memory_handles(&format!("mem_{name}")));
+    for (_, leaf) in &handles[1..] {
         assert!(element.contains(leaf), "{element}");
     }
+    assert!(!element.contains(handles[0].1), "{element}");
     let root = mlir
         .lines()
         .find(|line| line.contains("adl.arch.compose \"arch_staged_heterogeneous_accelerator\""))
@@ -55,19 +55,25 @@ fn staged_accelerator_exports_one_scale_and_all_physical_memories() {
             .count(),
         1
     );
-    assert!(mlir.contains("loom.bind_mem %C, @mem_OUTPUT_instance"));
-    assert!(mlir.contains("src_mem_space @mem_GCRAM_instance dst_mem_space @mem_STAGE_instance"));
+    assert!(mlir.contains("loom.bind_mem %C, @mem_SRAM_instance"));
+    assert!(mlir.contains("src_mem_space @mem_SRAM_instance dst_mem_space @mem_STAGE_instance"));
     assert!(mlir.contains("src_mem_space @mem_RRAM_instance dst_mem_space @mem_STAGE_instance"));
+    assert!(mlir.contains("src_mem_space @mem_DRAM dst_mem_space @mem_SRAM"));
+    assert!(mlir.contains("src_mem_space @mem_SRAM dst_mem_space @mem_DRAM"));
+    assert!(mlir.contains("src_mem_space @mem_DRAM dst_mem_space @mem_RRAM"));
+    assert!(mlir.contains("src_mem_space @mem_RRAM dst_mem_space @mem_DRAM"));
+    assert!(!mlir.contains("src_mem_space @mem_DRAM dst_mem_space @mem_STAGE"));
+    assert!(!mlir.contains("src_mem_space @mem_STAGE dst_mem_space @mem_DRAM"));
 }
 
 #[test]
 fn staged_accelerator_preserves_memory_capacities() {
     let architecture = example::build().unwrap();
     for (memory, capacity) in [
-        ("GCRAM", example::GCRAM_CAPACITY),
+        ("DRAM", example::DRAM_CAPACITY),
         ("RRAM", example::RRAM_CAPACITY),
+        ("SRAM", example::SRAM_CAPACITY),
         ("STAGE", example::STAGE_CAPACITY),
-        ("OUTPUT", example::OUTPUT_CAPACITY),
     ] {
         let array = architecture.memory(memory).unwrap();
         assert_eq!(
@@ -78,7 +84,7 @@ fn staged_accelerator_preserves_memory_capacities() {
 }
 
 #[test]
-fn processor_routes_keep_stage_and_output_physically_distinct() {
+fn processor_routes_stage_inputs_and_return_output_to_sram() {
     let architecture = example::build().unwrap();
     let matrix = architecture.processor_array("matrix_lane").unwrap();
     assert_eq!(
@@ -90,6 +96,6 @@ fn processor_routes_keep_stage_and_output_physically_distinct() {
             .collect::<Vec<_>>(),
         ["STAGE", "STAGE"]
     );
-    assert_eq!(matrix.connection().outputs[0].endpoint.memory, "OUTPUT");
+    assert_eq!(matrix.connection().outputs[0].endpoint.memory, "SRAM");
     assert_eq!(matrix.connection().resources, ["stage_port", "matrix"]);
 }

@@ -64,7 +64,7 @@ fn explicit_network_and_scope_survive_canonical_construction() {
         .axis("x", 4)
         .axis("y", 4)
         .memory_definition(memory_definition())
-        .place_memory("L1", ["x", "y"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition("lane", "op", 1))
         .connect("lane", connection("L1[x, y]", "L1[x, y]"))
         .network(network)
@@ -104,7 +104,7 @@ fn placed_schedule_disambiguates_duplicate_function_implementations() {
         .axis("x", 2)
         .axis("y", 1)
         .memory_definition(memory_definition())
-        .place_memory("L1", ["x", "y"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition("fast", "op", 3))
         .processor_definition(definition("slow", "op", 9))
         .connect("fast", connection("L1[x, y]", "L1[x, y]"))
@@ -145,7 +145,7 @@ fn parallel_schedule_uses_the_slowest_child_cost() {
         .axis("x", 2)
         .axis("y", 1)
         .memory_definition(memory_definition())
-        .place_memory("L1", ["x", "y"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition("left", "left_op", 3))
         .processor_definition(definition("right", "right_op", 9))
         .connect("left", connection("L1[x, y]", "L1[x, y]"))
@@ -203,7 +203,7 @@ module @lane {
         .axis("x", 1)
         .axis("y", 1)
         .memory_definition(memory_definition())
-        .place_memory("L1", ["x", "y"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition.with_type(mlar_rust::ProcessorType::Compute))
         .connect(
             "lane",
@@ -246,7 +246,7 @@ module @lane {
         .with_type(mlar_rust::ProcessorType::DataMover);
     let error = Architecture::builder("named_ports")
         .memory_definition(memory_definition())
-        .place_memory("L1", Vec::<String>::new())
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .processor_definition(definition)
         .connect(
             "lane",
@@ -265,8 +265,8 @@ fn one_port_name_cannot_hide_two_memory_endpoints() {
     let error = Architecture::builder("ambiguous_port")
         .memory_definition(MemoryDefinition::new("A", 1024, 16))
         .memory_definition(MemoryDefinition::new("B", 1024, 16))
-        .place_memory("A", Vec::<String>::new())
-        .place_memory("B", Vec::<String>::new())
+        .place_memory("A", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .place_memory("B", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .processor_definition(
             ProcessorDefinition::new("lane", "", Vec::new())
                 .with_type(mlar_rust::ProcessorType::Compute),

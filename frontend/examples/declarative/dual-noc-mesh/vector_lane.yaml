@@ -47,6 +47,8 @@ functions:
     dimensions: [L]
   relu_f16:
     source: relu_f16
+    element_type: f16
+    dimensions: [L]
 resources:
 - name: vector_pipeline
 performance:

@@ -2,8 +2,8 @@ use crate::native::{NativeFunction, NativeSourceIndex, compose_module, specializ
 use crate::templates::{self, FunctionSpec, ResolvedPort};
 use crate::{ProcessorYaml, selection::MemoryEndpoint};
 use mlar_rust::{
-    Architecture, ArchitectureError, MemoryDefinition, NetworkTopology, OperationModel,
-    ProcessorType, Resource, Scope,
+    Architecture, ArchitectureError, MemoryDefinition, MemoryDomain, NetworkTopology,
+    OperationModel, ProcessorType, Resource, Scope,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub(crate) enum FunctionProvider {
     Template(FunctionSpec),
-    Native(NativeFunction),
+    Native(NativeFunction, BTreeMap<String, String>),
 }
 
 #[derive(Clone, Debug)]
@@ -72,24 +72,33 @@ impl ProcessorDefinition {
         outputs: &[ResolvedPort],
     ) -> Result<mlar_rust::ProcessorDefinition, String> {
         let source = if let Some(providers) = &self.providers {
+            let mut memory_bindings = BTreeMap::new();
             let blocks = providers
                 .iter()
                 .map(|(name, provider)| match provider {
                     FunctionProvider::Template(spec) => {
                         templates::emit(name, spec, inputs, outputs)
                     }
-                    FunctionProvider::Native(function) => {
-                        specialize_native_function(name, function, inputs, outputs)
+                    FunctionProvider::Native(function, bindings) => {
+                        specialize_native_function(name, function, bindings, inputs, outputs)
+                            .and_then(|(block, resolved)| {
+                                merge_memory_bindings(&mut memory_bindings, resolved)?;
+                                Ok(block)
+                            })
                     }
                 })
                 .collect::<Result<Vec<_>, String>>()?;
-            compose_module(blocks)
+            (compose_module(blocks), memory_bindings)
         } else if self.authored_native && !self.source.trim().is_empty() {
             validate_native_module_bindings(&self.source, inputs, outputs)?;
-            specialize_memory_spaces(&self.source, resolved_kinds(inputs, outputs)?)?
+            (
+                specialize_memory_spaces(&self.source, port_kinds(inputs, outputs)?)?,
+                BTreeMap::new(),
+            )
         } else {
-            self.source.clone()
+            (self.source.clone(), BTreeMap::new())
         };
+        let (source, memory_bindings) = source;
         let mut definition = if source.trim().is_empty() {
             mlar_rust::ProcessorDefinition::new(&self.name, source, self.functions.clone())
         } else {
@@ -101,7 +110,8 @@ impl ProcessorDefinition {
                     .map(|op| (op.func.name.clone(), op.perf.clone())),
             )?
         }
-        .with_resources(self.resources.clone());
+        .with_resources(self.resources.clone())
+        .with_memory_bindings(memory_bindings);
         if let Some(kind) = &self.processor_type {
             definition = definition.with_type(kind.clone());
         }
@@ -149,14 +159,124 @@ fn validate_native_bindings(
 fn specialize_native_function(
     function_name: &str,
     function: &NativeFunction,
+    bindings: &BTreeMap<String, String>,
     inputs: &[ResolvedPort],
     outputs: &[ResolvedPort],
-) -> Result<String, String> {
-    validate_native_bindings(function_name, &function.block, inputs, outputs)?;
+) -> Result<(String, BTreeMap<String, String>), String> {
+    let resolved =
+        resolve_native_bindings(function_name, &function.block, bindings, inputs, outputs)?;
     let source = compose_module([function.block.clone()]);
-    let specialized = specialize_memory_spaces(&source, resolved_kinds(inputs, outputs)?)
+    let kinds = resolved
+        .iter()
+        .map(|(role, port)| {
+            inputs
+                .iter()
+                .chain(outputs)
+                .find(|candidate| candidate.name == *port)
+                .map(|candidate| {
+                    candidate
+                        .space
+                        .map(|kind| (role.clone(), kind))
+                        .ok_or_else(|| format!("native role '{role}' has no resolved memory kind"))
+                })
+                .ok_or_else(|| format!("native role '{role}' resolved to unknown port '{port}'"))
+                .and_then(|result| result)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let specialized = specialize_memory_spaces(&source, kinds)
         .map_err(|error| format!("{}: {error}", function.path.display()))?;
-    extract_specialized_block(function_name, &specialized)
+    Ok((
+        extract_specialized_block(function_name, &specialized)?,
+        resolved,
+    ))
+}
+
+fn resolve_native_bindings(
+    function_name: &str,
+    block: &str,
+    authored: &BTreeMap<String, String>,
+    inputs: &[ResolvedPort],
+    outputs: &[ResolvedPort],
+) -> Result<BTreeMap<String, String>, String> {
+    let source = compose_module([block.to_string()]);
+    let module = mlar_rust::mlir::MlirModule::from_mlir_source(&source)?;
+    let details = module
+        .functions
+        .first()
+        .and_then(|function| function.mlir_details.as_ref())
+        .ok_or_else(|| format!("native function '{function_name}' has no parsed interface"))?;
+    let roles = details
+        .mem_region_bindings
+        .iter()
+        .map(|binding| binding.region.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    for role in authored.keys() {
+        if !roles.contains(role.as_str()) {
+            return Err(format!(
+                "native function '{function_name}' has binding for unknown memory role '{role}'"
+            ));
+        }
+    }
+    let mut resolved = BTreeMap::new();
+    for binding in &details.mem_region_bindings {
+        let is_input = details.source_memrefs.contains(&binding.memref);
+        let is_output = details.target_memrefs.contains(&binding.memref);
+        let (side, ports) = if is_input && !is_output {
+            ("input", inputs)
+        } else if is_output && !is_input {
+            ("output", outputs)
+        } else {
+            return Err(format!(
+                "native function '{function_name}' has ambiguous memory direction for '{}'",
+                binding.memref
+            ));
+        };
+        let port = if let Some(port) = authored.get(&binding.region) {
+            port.clone()
+        } else if ports.len() == 1 {
+            ports[0].name.clone()
+        } else {
+            return Err(format!(
+                "native function '{function_name}' memory role '{}' needs an explicit {side} binding because the connection has {} {side} ports",
+                binding.region,
+                ports.len()
+            ));
+        };
+        if !ports.iter().any(|candidate| candidate.name == port) {
+            return Err(format!(
+                "native function '{function_name}' binds {side} role '{}' to unknown {side} port '{port}'",
+                binding.region
+            ));
+        }
+        if let Some(previous) = resolved.insert(binding.region.clone(), port.clone())
+            && previous != port
+        {
+            return Err(format!(
+                "native function '{function_name}' memory role '{}' has conflicting port bindings",
+                binding.region
+            ));
+        }
+    }
+    Ok(resolved)
+}
+
+fn merge_memory_bindings(
+    target: &mut BTreeMap<String, String>,
+    bindings: BTreeMap<String, String>,
+) -> Result<(), String> {
+    for (role, port) in bindings {
+        if role == port {
+            continue;
+        }
+        if let Some(previous) = target.insert(role.clone(), port.clone())
+            && previous != port
+        {
+            return Err(format!(
+                "native memory role '{role}' maps to both ports '{previous}' and '{port}' in one processor definition"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_native_module_bindings(
@@ -172,13 +292,15 @@ fn validate_native_module_bindings(
     Ok(())
 }
 
-fn resolved_kinds(
+fn port_kinds(
     inputs: &[ResolvedPort],
     outputs: &[ResolvedPort],
 ) -> Result<Vec<(String, u64)>, String> {
     let mut kinds = BTreeMap::new();
     for port in inputs.iter().chain(outputs) {
-        let kind = port.space.unwrap_or(0);
+        let kind = port
+            .space
+            .ok_or_else(|| format!("port '{}' has no resolved memory kind", port.name))?;
         if let Some(previous) = kinds.insert(port.name.clone(), kind)
             && previous != kind
         {
@@ -308,7 +430,7 @@ impl Connection {
 /// Authoring context; normalizes memory selections and resolves processor sources.
 pub struct ArchitectureBuilder {
     core: mlar_rust::ArchitectureBuilder,
-    memories: BTreeMap<String, (String, Vec<Vec<String>>)>,
+    memories: BTreeMap<String, (String, MemoryDomain, Vec<Vec<String>>)>,
     memory_definitions: BTreeMap<String, MemoryDefinition>,
     definitions: Vec<ProcessorDefinition>,
     connections: Vec<(String, String, Connection)>,
@@ -343,21 +465,24 @@ impl ArchitectureBuilder {
     pub fn place_memory(
         self,
         definition: impl Into<String>,
+        domain: MemoryDomain,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let name = definition.into();
-        self.place_memory_as(name.clone(), name, dimensions)
+        self.place_memory_as(name.clone(), name, domain, dimensions)
     }
     pub fn place_memory_as(
         self,
         name: impl Into<String>,
         definition: impl Into<String>,
+        domain: MemoryDomain,
         dimensions: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let axes = dimensions.into_iter().map(Into::into).collect::<Vec<_>>();
         self.place_memory_levels(
             name,
             definition,
+            domain,
             if axes.is_empty() { vec![] } else { vec![axes] },
         )
     }
@@ -365,6 +490,7 @@ impl ArchitectureBuilder {
         mut self,
         name: impl Into<String>,
         definition: impl Into<String>,
+        domain: MemoryDomain,
         levels: Vec<Vec<String>>,
     ) -> Self {
         let name = name.into();
@@ -373,10 +499,10 @@ impl ArchitectureBuilder {
             self.errors
                 .push(format!("memory '{name}' has an empty axis level"));
         }
-        self.core = self
-            .core
-            .place_memory_as(&name, &definition, levels.iter().flatten().cloned());
-        self.memories.insert(name, (definition, levels));
+        self.core =
+            self.core
+                .place_memory_as(&name, &definition, domain, levels.iter().flatten().cloned());
+        self.memories.insert(name, (definition, domain, levels));
         self
     }
     pub fn processor_definition(mut self, def: impl Into<ProcessorDefinition>) -> Self {
@@ -453,7 +579,7 @@ impl ArchitectureBuilder {
         &self,
         endpoint: &MemoryEndpoint,
     ) -> Result<mlar_rust::arch::MemoryEndpoint, String> {
-        let (_, levels) = self
+        let (_, _, levels) = self
             .memories
             .get(&endpoint.memory)
             .ok_or_else(|| format!("unknown memory '{}'", endpoint.memory))?;
@@ -463,17 +589,22 @@ impl ArchitectureBuilder {
         &self,
         endpoint: &mlar_rust::arch::MemoryEndpoint,
     ) -> Result<Option<u64>, String> {
-        let (definition, _) = self
+        let (_, domain, _) = self
             .memories
             .get(&endpoint.memory)
             .ok_or_else(|| format!("unknown memory '{}'", endpoint.memory))?;
-        Ok(self
-            .memory_definitions
-            .get(definition)
-            .ok_or_else(|| format!("unknown memory definition '{definition}'"))?
-            .technology
-            .as_ref()
-            .map(|technology| technology.kind))
+        let mut names = self
+            .memories
+            .iter()
+            .filter(|(_, (_, candidate_domain, _))| candidate_domain == domain)
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+            .iter()
+            .position(|name| *name == endpoint.memory)
+            .map(|kind| Some(kind as u64))
+            .ok_or_else(|| format!("unknown memory '{}'", endpoint.memory))
     }
     pub fn build(self) -> Result<Architecture, ArchitectureError> {
         self.translate().map_err(ArchitectureError::Invalid)

@@ -14,7 +14,8 @@ pub use crate::mlir::{
 pub use architecture::{Architecture, ArchitectureBuilder, ArchitectureError};
 pub use axis::{Axis, EndpointParseError};
 pub use memory::{
-    Banking, EndpointIndex, MemoryArray, MemoryDefinition, MemoryEndpoint, MemoryTechnology,
+    Banking, EndpointIndex, MemoryArray, MemoryDefinition, MemoryDomain, MemoryEndpoint,
+    MemoryIdentity,
 };
 pub use network::{NetworkEdge, NetworkInterface, NetworkLink, NetworkTopology};
 pub use perf::{FuncPerfModel, FuncPerfModelBuilder, PerfScenario, TimeCost};

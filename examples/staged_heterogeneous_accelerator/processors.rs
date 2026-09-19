@@ -1,12 +1,72 @@
 use mlar_rust::{Expr, FuncPerfModel, PerfScenario, ProcessorDefinition, ProcessorType};
 
-pub fn gcram_to_stage() -> Result<ProcessorDefinition, String> {
+fn mover(
+    name: &str,
+    source: &str,
+    function: &'static str,
+    throughput: i64,
+) -> Result<ProcessorDefinition, String> {
     Ok(ProcessorDefinition::from_mlir_source(
-        "gcram_to_stage",
-        include_str!("gcram_to_stage.mlir"),
+        name,
+        source,
+        [(
+            function,
+            FuncPerfModel::builder()
+                .symbols(["M", "N"])
+                .simple_time_cost(
+                    Expr::Const(40),
+                    Expr::parse("2 * M * N").map_err(|error| error.to_string())?,
+                    Expr::Const(throughput),
+                )
+                .build(),
+        )],
+    )?
+    .with_type(ProcessorType::DataMover))
+}
+
+pub fn dram_to_sram() -> Result<ProcessorDefinition, String> {
+    mover(
+        "dram_to_sram",
+        include_str!("dram_to_sram.mlir"),
+        "dram_to_sram_f16",
+        128,
+    )
+}
+
+pub fn sram_to_dram() -> Result<ProcessorDefinition, String> {
+    mover(
+        "sram_to_dram",
+        include_str!("sram_to_dram.mlir"),
+        "sram_to_dram_f16",
+        128,
+    )
+}
+
+pub fn dram_to_rram() -> Result<ProcessorDefinition, String> {
+    mover(
+        "dram_to_rram",
+        include_str!("dram_to_rram.mlir"),
+        "dram_to_rram_f16",
+        64,
+    )
+}
+
+pub fn rram_to_dram() -> Result<ProcessorDefinition, String> {
+    mover(
+        "rram_to_dram",
+        include_str!("rram_to_dram.mlir"),
+        "rram_to_dram_f16",
+        64,
+    )
+}
+
+pub fn sram_to_stage() -> Result<ProcessorDefinition, String> {
+    Ok(ProcessorDefinition::from_mlir_source(
+        "sram_to_stage",
+        include_str!("sram_to_stage.mlir"),
         [
             (
-                "load_gcram_f16",
+                "load_sram_f16",
                 FuncPerfModel::builder()
                     .symbols(["K", "M"])
                     .scenario(PerfScenario::new(
@@ -16,7 +76,7 @@ pub fn gcram_to_stage() -> Result<ProcessorDefinition, String> {
                     .build(),
             ),
             (
-                "load_gcram_f16_broadcast",
+                "load_sram_f16_broadcast",
                 FuncPerfModel::builder()
                     .symbols(["K", "M", "bcst_x", "bcst_y"])
                     .scenario(PerfScenario::new(

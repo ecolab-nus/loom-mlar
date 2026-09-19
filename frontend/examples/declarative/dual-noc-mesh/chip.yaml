@@ -4,8 +4,8 @@ dimensions:
   x: 8
   y: 8
 memories:
-  DRAM: [dram_channel]
-  L1: [x, y]
+  DRAM: {domain: DRAM, axes: [dram_channel]}
+  L1: {domain: L1, axes: [x, y]}
 resources:
 - name: noc0
 - name: noc1

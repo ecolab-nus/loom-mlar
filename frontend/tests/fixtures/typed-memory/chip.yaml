@@ -1,8 +1,8 @@
 name: typed_memory
 memory: memory.yaml
 memories:
-  L1_gcram:
-  L1_rram:
+  L1_gcram: {domain: L1}
+  L1_rram: {domain: L1}
 processors:
   mixed_lane:
     definition: mixed_lane.yaml

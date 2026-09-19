@@ -13,7 +13,7 @@ fn build(
         .axis("cluster", 2)
         .axis("core", 3)
         .memory_definition(MemoryDefinition::new("L1", 1024, 16).with_banking(2))
-        .place_memory("L1", ["cluster", "core"])
+        .place_memory("L1", mlar_rust::MemoryDomain::L1, ["cluster", "core"])
         .processor_definition(ProcessorDefinition::new("lane", "", vec![]))
         .connect(
             "lane",
@@ -63,7 +63,7 @@ fn full_rank_column_and_bank_select_every_parent() {
 fn whole_selection_is_explicit_and_rank_zero_has_one_instance() {
     let architecture = Architecture::builder("scalar")
         .memory_definition(MemoryDefinition::new("M", 64, 16))
-        .place_memory("M", Vec::<String>::new())
+        .place_memory("M", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .build()
         .unwrap();
     let memory = architecture.memory("M").unwrap();

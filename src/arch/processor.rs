@@ -53,6 +53,8 @@ pub struct ProcessorDefinition {
     pub(crate) functions: Vec<OperationModel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) resources: Vec<Resource>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) memory_bindings: BTreeMap<String, String>,
 }
 
 impl ProcessorDefinition {
@@ -67,6 +69,7 @@ impl ProcessorDefinition {
             source: source.into(),
             functions,
             resources: Vec::new(),
+            memory_bindings: BTreeMap::new(),
         }
     }
 
@@ -110,6 +113,7 @@ impl ProcessorDefinition {
             source,
             functions,
             resources: Vec::new(),
+            memory_bindings: BTreeMap::new(),
         })
     }
 
@@ -166,8 +170,17 @@ impl ProcessorDefinition {
         &self.resources
     }
 
+    pub fn memory_bindings(&self) -> &BTreeMap<String, String> {
+        &self.memory_bindings
+    }
+
     pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
         self.resources = resources;
+        self
+    }
+
+    pub fn with_memory_bindings(mut self, bindings: BTreeMap<String, String>) -> Self {
+        self.memory_bindings = bindings;
         self
     }
 

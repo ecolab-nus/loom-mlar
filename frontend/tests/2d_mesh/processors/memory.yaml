@@ -3,12 +3,10 @@ memories:
     capacity: 1610612736
     word_size: 8192
   L1_S:
-    technology: sram
     capacity: 1398784
     word_size: 16
     banking: 16
   L1_R:
-    technology: rram
     capacity: 1398784
     word_size: 16
     banking: 16

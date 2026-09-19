@@ -43,9 +43,14 @@ fn hierarchy_and_flat_authoring_produce_identical_canonical_selections() {
             .memory_definition(MemoryDefinition::new("M", 1024, 16).with_banking(2))
             .processor_definition(ProcessorDefinition::new("lane", "", vec![]));
         let builder = if hierarchy {
-            builder.place_memory_levels("M", "M", vec![vec!["cluster".into()], vec!["core".into()]])
+            builder.place_memory_levels(
+                "M",
+                "M",
+                mlar_rust::MemoryDomain::L1,
+                vec![vec!["cluster".into()], vec!["core".into()]],
+            )
         } else {
-            builder.place_memory("M", ["cluster", "core"])
+            builder.place_memory("M", mlar_rust::MemoryDomain::L1, ["cluster", "core"])
         };
         builder
             .connect(
@@ -94,7 +99,7 @@ performance:
         .axis("x", 2)
         .axis("y", 3)
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
-        .place_memory("M", ["x", "y"])
+        .place_memory("M", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition(&yaml).unwrap())
         .connect_as(
             "whole",
@@ -134,7 +139,7 @@ performance:
     );
     let error = ArchitectureBuilder::new("ambiguous")
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
-        .place_memory("M", Vec::<String>::new())
+        .place_memory("M", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .processor_definition(definition(&yaml).unwrap())
         .connect(
             "lane",
@@ -163,7 +168,7 @@ fn named_bindings_reject_unknown_ports_and_side_mismatches() {
         let definition = definition(&yaml).unwrap();
         let error = ArchitectureBuilder::new("bad_binding")
             .memory_definition(MemoryDefinition::new("M", 1024, 16))
-            .place_memory("M", Vec::<String>::new())
+            .place_memory("M", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
             .processor_definition(definition)
             .connect(
                 "lane",
@@ -173,6 +178,158 @@ fn named_bindings_reject_unknown_ports_and_side_mismatches() {
             .unwrap_err();
         assert!(error.to_string().contains(expected), "{error}");
     }
+}
+
+#[test]
+fn native_bindings_validate_roles_sides_and_ambiguity() {
+    let native = r#"
+module @processor {
+  func.func @native_add(%a: memref<?xf16>, %b: memref<?xf16>, %out: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %a, [%L] : memref<?xf16>
+    loom.bind_shape %b, [%L] : memref<?xf16>
+    loom.bind_shape %out, [%L] : memref<?xf16>
+    loom.bind_mem %a, @op1 : memref<?xf16>
+    loom.bind_mem %b, @op2 : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
+    linalg.add ins(%a, %b : memref<?xf16>, memref<?xf16>) outs(%out : memref<?xf16>)
+    return
+  }
+}
+"#;
+    for (bindings, expected) in [
+        ("result: result", "needs an explicit input binding"),
+        (
+            "op1: result\n      op2: right\n      result: result",
+            "unknown input port 'result'",
+        ),
+        (
+            "missing_role: left\n      op1: left\n      op2: right\n      result: result",
+            "unknown memory role 'missing_role'",
+        ),
+    ] {
+        let package = Package::new();
+        package.write("native.mlir", native);
+        let yaml = package.write(
+            "lane.yaml",
+            &format!(
+                "functions:\n  native_add:\n    source: native_add\n    bindings:\n      {bindings}\nperformance:\n  native_add: [{{expression: L}}]\n"
+            ),
+        );
+        let error = ArchitectureBuilder::new("bad_native_binding")
+            .memory_definition(MemoryDefinition::new("M", 1024, 16))
+            .place_memory("M", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+            .processor_definition(definition(&yaml).unwrap())
+            .connect(
+                "lane",
+                Connection::parse_named([], [("left", "M"), ("right", "M")], [("result", "M")])
+                    .unwrap(),
+            )
+            .build()
+            .unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+}
+
+#[test]
+fn native_roles_may_share_one_port() {
+    let package = Package::new();
+    package.write(
+        "native.mlir",
+        r#"
+module @processor {
+  func.func @native_add(%a: memref<?xf16>, %b: memref<?xf16>, %out: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %a, [%L] : memref<?xf16>
+    loom.bind_shape %b, [%L] : memref<?xf16>
+    loom.bind_shape %out, [%L] : memref<?xf16>
+    loom.bind_mem %a, @op1 : memref<?xf16>
+    loom.bind_mem %b, @op2 : memref<?xf16>
+    loom.bind_mem %out, @result : memref<?xf16>
+    linalg.add ins(%a, %b : memref<?xf16>, memref<?xf16>) outs(%out : memref<?xf16>)
+    return
+  }
+}
+
+"#,
+    );
+    let yaml = package.write(
+        "lane.yaml",
+        "type: compute\nfunctions:\n  native_add:\n    source: native_add\n    bindings: {op1: data, op2: data, result: result}\nperformance:\n  native_add: [{expression: L}]\n",
+    );
+    let architecture = ArchitectureBuilder::new("shared_native_port")
+        .memory_definition(MemoryDefinition::new("A", 1024, 16))
+        .memory_definition(MemoryDefinition::new("B", 1024, 16))
+        .place_memory("A", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .place_memory("B", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .processor_definition(definition(&yaml).unwrap())
+        .connect(
+            "lane",
+            Connection::parse_named([], [("data", "A")], [("result", "B")]).unwrap(),
+        )
+        .build()
+        .unwrap();
+    let definition = architecture.processor_definition("lane").unwrap();
+    assert_eq!(definition.memory_bindings()["op1"], "data");
+    assert_eq!(definition.memory_bindings()["op2"], "data");
+    let exported = mlar_rust::architecture_to_mlir_unchecked(&architecture).unwrap();
+    assert_eq!(exported.matches("@mem_A").count(), 2);
+    assert!(exported.contains("@mem_B"));
+}
+
+#[test]
+fn native_copy_and_gather_roles_specialize_and_export_through_yaml_ports() {
+    let package = Package::new();
+    package.write(
+        "copy.mlir",
+        r#"
+module @processor {
+  func.func @copy_native(%src: memref<?xf16>, %dst: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %src, [%L] : memref<?xf16>
+    loom.bind_shape %dst, [%L] : memref<?xf16>
+    loom.bind_mem %src, @op1 : memref<?xf16>
+    loom.bind_mem %dst, @result : memref<?xf16>
+    loom.copy %src, %dst src_mem_space @op1 dst_mem_space @result, area: [1] : memref<?xf16> to memref<?xf16>
+    return
+  }
+  func.func @gather_native(%src: memref<?x?xf16>, %dst: memref<?x?x?xf16>) {
+    %B = loom.sym @B : index
+    %M = loom.sym @M : index
+    %N = loom.sym @N : index
+    loom.bind_shape %src, [%M, %N] : memref<?x?xf16>
+    loom.bind_shape %dst, [%B, %M, %N] : memref<?x?x?xf16>
+    loom.bind_mem %src, @op1 : memref<?x?xf16>
+    loom.bind_mem %dst, @result : memref<?x?x?xf16>
+    loom.gather %src, %dst src_mem_space @op1 dst_mem_space @result area: [1, 1] : memref<?x?xf16> to memref<?x?x?xf16>
+    return
+  }
+}
+"#,
+    );
+    let yaml = package.write(
+        "mover.yaml",
+        "type: data_mover\nfunctions:\n  copy_native:\n    source: copy_native\n    bindings: {op1: source, result: destination}\n  gather_native:\n    source: gather_native\n    bindings: {op1: source, result: destination}\nperformance:\n  copy_native: [{expression: L}]\n  gather_native: [{expression: B * M * N}]\n",
+    );
+    let architecture = ArchitectureBuilder::new("native_copy")
+        .memory_definition(MemoryDefinition::new("A", 1024, 16))
+        .memory_definition(MemoryDefinition::new("B", 1024, 16))
+        .place_memory("A", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .place_memory("B", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
+        .processor_definition(definition(&yaml).unwrap())
+        .connect(
+            "mover",
+            Connection::parse_named([], [("source", "A")], [("destination", "B")]).unwrap(),
+        )
+        .build()
+        .unwrap();
+    let source = architecture.processor_definition("mover").unwrap().source();
+    assert!(source.contains("src_mem_space @op1 : 0"));
+    assert!(source.contains("dst_mem_space @result : 1"));
+    assert!(source.contains("loom.gather"));
+    let exported = mlar_rust::architecture_to_mlir_unchecked(&architecture).unwrap();
+    assert!(exported.contains("src_mem_space @mem_A : 0"));
+    assert!(exported.contains("dst_mem_space @mem_B : 1"));
 }
 
 #[test]
@@ -212,7 +369,7 @@ performance:
     );
     let architecture = ArchitectureBuilder::new("mixed")
         .memory_definition(MemoryDefinition::new("M", 1024, 16))
-        .place_memory("M", Vec::<String>::new())
+        .place_memory("M", mlar_rust::MemoryDomain::L1, Vec::<String>::new())
         .processor_definition(definition(&yaml).unwrap())
         .connect(
             "lane",
@@ -272,7 +429,7 @@ fn native_sources_reject_reserved_names_aliases_and_external_dependencies() {
 }
 
 #[test]
-fn discovery_rejects_duplicates_malformed_files_and_native_template_fields() {
+fn discovery_rejects_duplicates_malformed_files_and_invalid_native_metadata() {
     let duplicate = Package::new();
     duplicate.write("a.mlir", "module { func.func @native() { return } }");
     duplicate.write("b.mlir", "module { func.func @native() { return } }");
@@ -301,17 +458,39 @@ fn discovery_rejects_duplicates_malformed_files_and_native_template_fields() {
     );
 
     let fields = Package::new();
-    fields.write("native.mlir", "module { func.func @native() { return } }");
+    fields.write(
+        "native.mlir",
+        r#"module {
+  func.func @native(%arg: memref<?xf16>) {
+    %L = loom.sym @L : index
+    loom.bind_shape %arg, [%L] : memref<?xf16>
+    return
+  }
+}
+"#,
+    );
     let yaml = fields.write(
         "lane.yaml",
-        "functions:\n  native: {source: native, element_type: f16}\nperformance:\n  native: [{expression: '1'}]\n",
+        "functions:\n  native: {source: native, element_type: f32, dimensions: [M]}\nperformance:\n  native: [{expression: '1'}]\n",
     );
+    let error = definition(&yaml).unwrap_err().to_string();
     assert!(
-        definition(&yaml)
-            .unwrap_err()
-            .to_string()
-            .contains("template parameters")
+        error.contains("do not match native MLIR symbols"),
+        "{error}"
     );
+
+    let yaml = fields.write(
+        "lane.yaml",
+        "functions:\n  native: {source: native, element_type: f32, dimensions: [L]}\nperformance:\n  native: [{expression: L}]\n",
+    );
+    let error = definition(&yaml).unwrap_err().to_string();
+    assert!(error.contains("does not occur"), "{error}");
+
+    let yaml = fields.write(
+        "lane.yaml",
+        "functions:\n  native: {source: native, element_type: f16, dimensions: [L]}\nperformance:\n  native: [{expression: L}]\n",
+    );
+    definition(&yaml).unwrap();
 }
 
 #[test]
@@ -345,7 +524,7 @@ fn resolved_processor_emission_writes_mlir_and_provenance_outside_package() {
     let package = Package::new();
     package.write(
         "chip.yaml",
-        "name: emit\nmemories: {M: null}\nprocessors:\n  lane:\n    definition: lane.yaml\n    inputs: {data: M}\n    outputs: {result: M}\n",
+        "name: emit\nmemories: {M: {domain: L1}}\nprocessors:\n  lane:\n    definition: lane.yaml\n    inputs: {data: M}\n    outputs: {result: M}\n",
     );
     package.write(
         "memory.yaml",

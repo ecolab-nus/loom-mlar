@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -15,7 +15,7 @@ use mlar_rust::Architecture;
 use mlar_rust::arch::network::{NetworkInterface, NetworkLink, NetworkTopology};
 use mlar_rust::arch::resource::Resource;
 use mlar_rust::arch::scope::Scope;
-use mlar_rust::arch::{Banking, MemoryDefinition, MemoryTechnology};
+use mlar_rust::arch::{Banking, MemoryDefinition, MemoryDomain};
 use mlar_rust::math::{AffineMap, Expr, Sym};
 use mlar_rust::{OperationModel, ProcessorType};
 
@@ -142,25 +142,47 @@ enum MemoryPlacementYaml {
     Single,
     Direct(Vec<AxisSpecYaml>),
     Detailed {
-        definition: String,
+        #[serde(default)]
+        definition: Option<String>,
+        domain: MemoryDomain,
         #[serde(default)]
         axes: Vec<AxisSpecYaml>,
     },
 }
 
 impl MemoryPlacementYaml {
-    fn resolve(&self, name: &str) -> Result<(String, Vec<Vec<String>>), ArchLoadError> {
-        let (definition, specs) = match self {
-            Self::Single => (name.to_string(), [].as_slice()),
-            Self::Direct(specs) => (name.to_string(), specs.as_slice()),
-            Self::Detailed { definition, axes } => (definition.clone(), axes.as_slice()),
+    fn resolve(
+        &self,
+        name: &str,
+    ) -> Result<(String, MemoryDomain, Vec<Vec<String>>), ArchLoadError> {
+        let (definition, domain, specs) = match self {
+            Self::Single => {
+                return Err(ArchLoadError::Invalid(format!(
+                    "memory placement '{name}' must declare `domain: DRAM` or `domain: L1`"
+                )));
+            }
+            Self::Direct(specs) => {
+                let _ = specs;
+                return Err(ArchLoadError::Invalid(format!(
+                    "memory placement '{name}' must declare `domain: DRAM` or `domain: L1`"
+                )));
+            }
+            Self::Detailed {
+                definition,
+                domain,
+                axes,
+            } => (
+                definition.clone().unwrap_or_else(|| name.to_string()),
+                *domain,
+                axes.as_slice(),
+            ),
         };
         let levels = if specs.is_empty() {
             Vec::new()
         } else {
             AxisSpecYaml::levels(specs, name)?
         };
-        Ok((definition, levels))
+        Ok((definition, domain, levels))
     }
 }
 
@@ -384,8 +406,6 @@ struct MemoryDefinitionYaml {
     capacity: ScalarExprYaml,
     word_size: ScalarExprYaml,
     #[serde(default)]
-    technology: Option<String>,
-    #[serde(default)]
     banking: Option<BankingYaml>,
 }
 
@@ -534,8 +554,8 @@ impl ChipYaml {
             builder = builder.axis(name, *size);
         }
         for (name, placement) in &self.memories {
-            let (definition, levels) = placement.resolve(name)?;
-            builder = builder.place_memory_levels(name, definition, levels);
+            let (definition, domain, levels) = placement.resolve(name)?;
+            builder = builder.place_memory_levels(name, definition, domain, levels);
         }
         for resource in &self.resources {
             let indices = resource
@@ -751,15 +771,6 @@ impl MemoryCatalogYaml {
         substitutions: &[(Sym, Expr)],
     ) -> Result<Vec<MemoryDefinition>, ArchLoadError> {
         let MemoryCatalogYaml { memories } = self;
-        let mut technology_kinds = BTreeMap::<String, u64>::new();
-        for (_, memory) in &memories.0 {
-            if let Some(technology) = &memory.technology {
-                let next_kind = technology_kinds.len() as u64;
-                technology_kinds
-                    .entry(technology.clone())
-                    .or_insert(next_kind);
-            }
-        }
         let mut definitions = memories
             .0
             .into_iter()
@@ -785,25 +796,10 @@ impl MemoryCatalogYaml {
                             .map(|banks| Banking { banks })
                     })
                     .transpose()?;
-                let technology = memory
-                    .technology
-                    .map(|technology| {
-                        technology_kinds
-                            .get(&technology)
-                            .copied()
-                            .map(|kind| MemoryTechnology::new(&technology, kind))
-                            .ok_or_else(|| {
-                                ArchLoadError::Invalid(format!(
-                                    "memory '{name}' references unknown technology '{technology}'"
-                                ))
-                            })
-                    })
-                    .transpose()?;
                 Ok(MemoryDefinition {
                     name,
                     capacity,
                     word_size,
-                    technology,
                     banking,
                 })
             })
@@ -893,9 +889,9 @@ impl ProcessorYaml {
                 blocks.push(block);
                 FunctionProvider::Template(function.clone())
             } else {
-                if has_template_parameters(function) {
+                if function.extent.is_some() {
                     return Err(ArchLoadError::Invalid(format!(
-                        "{} function '{exposed_name}' supplies template parameters to native source '{}'",
+                        "{} function '{exposed_name}' supplies template-only `extent` to native source '{}'",
                         processor_yaml_path.display(),
                         function.source
                     )));
@@ -915,7 +911,7 @@ impl ProcessorYaml {
                     ))
                 })?;
                 blocks.push(native.block.clone());
-                FunctionProvider::Native(native.clone())
+                FunctionProvider::Native(native.clone(), function.bindings.clone())
             };
             providers.push((exposed_name.clone(), provider));
         }
@@ -923,6 +919,16 @@ impl ProcessorYaml {
         let module = mlar_rust::mlir::MlirModule::from_mlir_source(&source).map_err(|error| {
             ArchLoadError::Invalid(format!("{}: {error}", processor_yaml_path.display()))
         })?;
+        for ((exposed_name, function), parsed) in self.functions.iter().zip(&module.functions) {
+            if !templates::is_registered(&function.source) {
+                validate_native_metadata(exposed_name, function, parsed).map_err(|error| {
+                    ArchLoadError::Invalid(format!(
+                        "{} function '{exposed_name}': {error}",
+                        processor_yaml_path.display()
+                    ))
+                })?;
+            }
+        }
         let spec = self.performance.as_ref().ok_or_else(|| {
             ArchLoadError::Invalid(format!(
                 "{} must define `performance`",
@@ -966,12 +972,61 @@ impl ProcessorYaml {
     }
 }
 
-fn has_template_parameters(function: &FunctionSpec) -> bool {
-    function.element_type.is_some()
-        || !function.dimensions.is_empty()
-        || !function.symbols.is_empty()
-        || !function.bindings.is_empty()
-        || function.extent.is_some()
+fn validate_native_metadata(
+    _name: &str,
+    spec: &FunctionSpec,
+    function: &mlar_rust::mlir::MlirFunc,
+) -> Result<(), String> {
+    if !spec.dimensions.is_empty() || !spec.symbols.is_empty() {
+        let declared = spec
+            .dimensions
+            .iter()
+            .chain(&spec.symbols)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if declared.len() != spec.dimensions.len() + spec.symbols.len() {
+            return Err("`dimensions` and `symbols` contain a duplicate name".into());
+        }
+        let native = function
+            .symbols
+            .iter()
+            .map(|symbol| symbol.0.clone())
+            .collect::<BTreeSet<_>>();
+        if declared != native {
+            return Err(format!(
+                "declared dimensions/symbols {declared:?} do not match native MLIR symbols {native:?}"
+            ));
+        }
+    }
+
+    if let Some(element_type) = &spec.element_type {
+        let types = function
+            .mlir_details
+            .as_ref()
+            .into_iter()
+            .flat_map(|details| &details.memref_arg_types)
+            .map(|(_, ty)| ty);
+        if !types
+            .into_iter()
+            .any(|ty| memref_has_element_type(ty, element_type))
+        {
+            return Err(format!(
+                "element type '{element_type}' does not occur in the native MLIR memref arguments"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn memref_has_element_type(memref: &str, element_type: &str) -> bool {
+    let Some(body) = memref
+        .strip_prefix("memref<")
+        .and_then(|body| body.strip_suffix('>'))
+    else {
+        return false;
+    };
+    let shape_and_element = body.split(',').next().unwrap_or(body).trim();
+    shape_and_element == element_type || shape_and_element.ends_with(&format!("x{element_type}"))
 }
 
 impl ProcessorPlacementYaml {
@@ -1011,9 +1066,8 @@ fn read_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, ArchLoadErr
 
 #[cfg(test)]
 mod tests {
-    use super::{MemoryCatalogYaml, ProcessorPlacementYaml};
+    use super::{MemoryCatalogYaml, MemoryDomain, ProcessorPlacementYaml};
     use crate::selection::MemoryEndpoint;
-    use mlar_rust::MemoryTechnology;
     use mlar_rust::{Expr, Sym};
 
     #[test]
@@ -1047,12 +1101,12 @@ outputs: {result: "L2[x floordiv 2, y floordiv 2]"}
     }
 
     #[test]
-    fn a_bare_placement_and_an_absent_domain_mean_one_instance() {
+    fn an_explicit_domain_and_absent_axes_mean_one_instance() {
         let chip: super::ChipYaml = serde_yaml::from_str(
             r#"
 name: single
 memories:
-  L1:
+  L1: {domain: L1}
 processors:
   lane:
     definition: lane.yaml
@@ -1062,8 +1116,9 @@ processors:
         )
         .expect("chip should deserialize");
 
-        let (definition, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
+        let (definition, domain, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
         assert_eq!(definition, "L1");
+        assert_eq!(domain, MemoryDomain::L1);
         assert!(levels.is_empty());
         assert!(chip.processors.0[0].1.domain.is_empty());
     }
@@ -1074,20 +1129,20 @@ processors:
             r#"
 name: nested
 memories:
-  L1: [cluster, [core]]
-  L2: [x, y]
+  L1: {domain: L1, axes: [cluster, [core]]}
+  L2: {domain: L1, axes: [x, y]}
 "#,
         )
         .expect("chip should deserialize");
 
-        let (definition, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
+        let (definition, _, levels) = chip.memories["L1"].resolve("L1").expect("L1 levels");
         assert_eq!(definition, "L1");
         assert_eq!(
             levels,
             vec![vec!["cluster".to_string()], vec!["core".to_string()]]
         );
 
-        let (_, flat) = chip.memories["L2"].resolve("L2").expect("L2 levels");
+        let (_, _, flat) = chip.memories["L2"].resolve("L2").expect("L2 levels");
         assert_eq!(flat, vec![vec!["x".to_string(), "y".to_string()]]);
     }
 
@@ -1097,7 +1152,7 @@ memories:
             r#"
 name: bad
 memories:
-  L1: [cluster, [core], extra]
+  L1: {domain: L1, axes: [cluster, [core], extra]}
 "#,
         )
         .expect("chip should deserialize");
@@ -1192,7 +1247,6 @@ processors:
             r#"
 memories:
   L1:
-    technology: custom_local
     capacity: "X * 256"
     word_size: 16
     banking: X
@@ -1208,48 +1262,21 @@ memories:
             .find(|definition| definition.name == "L1")
             .unwrap();
         assert_eq!(l1.capacity, 1024);
-        assert_eq!(
-            l1.technology,
-            Some(MemoryTechnology::new("custom_local", 0))
-        );
         assert_eq!(l1.banking.as_ref().unwrap().banks, 4);
     }
 
     #[test]
-    fn memory_technology_kinds_follow_first_catalog_appearance() {
-        let catalog: MemoryCatalogYaml = serde_yaml::from_str(
+    fn memory_catalog_rejects_technology_identity() {
+        let error = serde_yaml::from_str::<MemoryCatalogYaml>(
             r#"
 memories:
   cache_a:
     technology: gcram
     capacity: 1024
     word_size: 16
-  weights:
-    technology: rram
-    capacity: 2048
-    word_size: 16
-  cache_b:
-    technology: gcram
-    capacity: 4096
-    word_size: 16
 "#,
         )
-        .expect("ordered memory catalog");
-        let definitions = catalog
-            .build(&Default::default(), &[])
-            .expect("memory catalog should build");
-
-        let technology = |name: &str| {
-            definitions
-                .iter()
-                .find(|definition| definition.name == name)
-                .unwrap()
-                .technology
-                .clone()
-                .unwrap()
-        };
-        assert_eq!(technology("cache_a"), MemoryTechnology::new("gcram", 0));
-        assert_eq!(technology("weights"), MemoryTechnology::new("rram", 1));
-        assert_eq!(technology("cache_b"), MemoryTechnology::new("gcram", 0));
+        .expect_err("technology no longer defines memory identity");
+        assert!(error.to_string().contains("technology"));
     }
 }

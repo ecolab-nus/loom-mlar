@@ -4,9 +4,9 @@ dimensions:
   cluster: 2
   pe: 4
 memories:
-  DRAM: [dram_channel]
-  CLUSTER_SRAM: [cluster]
-  PE_SRAM: [cluster, [pe]]
+  DRAM: {domain: DRAM, axes: [dram_channel]}
+  CLUSTER_SRAM: {domain: L1, axes: [cluster]}
+  PE_SRAM: {domain: L1, axes: [cluster, [pe]]}
 resources:
 - name: dram_fabric
 - name: cluster_fabric

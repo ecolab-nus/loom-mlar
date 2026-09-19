@@ -23,8 +23,8 @@ Loading and linking:
    declared function to a template or same-named native function;
 3. validates placement domains, hierarchical index groups, and endpoint mappings;
 4. resolves template and native operand bindings against named connected ports;
-5. specializes space-free native memrefs with the connected memories' technology
-   kinds through `loom-opt`; and
+5. specializes space-free native memrefs with the connected placed arrays'
+   domain-local kinds through `loom-opt`; and
 6. creates one processor array per named placement.
 
 Authoring rejects unknown fields and duplicate mapping names. Performance
@@ -42,9 +42,9 @@ Checked export validates all processor arrays and the emitted MLIR. A missing or
 incompatible processor type returns `AdlExportError`. The exported top-level
 symbol is `@arch_system`; this does not alter the runtime architecture name.
 
-The frontend assigns technology kinds in catalog first-appearance order.
-Core retains explicit numeric kinds. A template operand's explicit connection
-named port selects the connected memory and its numeric technology kind.
+The frontend assigns kinds independently within the DRAM and L1 domains using
+sorted placed-array names. Core retains each array's `(domain, kind)` identity.
+A template operand's named port selects the connected array and its kind.
 Endpoint lists derive port names from memory names; alias maps supply explicit
 names for reuse or multiple selections of one memory. Template bindings are
 strings resolved on the operand's declared input/output side, with no fallback
@@ -63,10 +63,10 @@ loom-dataflow hardware discovery requires exactly one scale. The hierarchical
 tensor accelerator's partial PE-SRAM routes therefore load/evaluate but cannot
 currently export.
 
-Frontend native `loom.bind_mem` regions name logical connection ports such as `@lhs`,
-`@rhs`, and `@result`. Core and frontend connections map those names explicitly
-to memory endpoints; there is no positional or memory-name fallback. Multiple
-operands may share a port. Frontend native memref types omit memory spaces, and
+Frontend native `loom.bind_mem` regions name memory roles. Processor YAML
+`bindings` maps each role to a named connection port; omission is allowed only
+when that side has one port. Multiple roles may share a port. Frontend native
+memref types omit memory spaces, and
 native `loom.copy` operations omit endpoint kinds; `loom-opt` derives both from
 the resolved ports. Explicit authored spaces, including zero, are rejected.
 Core native MLIR is already resolved and retains explicit spaces. Templates infer a binding only when the relevant side has one port. Identical resolved
@@ -74,8 +74,8 @@ definitions reuse one core definition; differing memory-space-specialized bodies
 receive a suffix. Broadcast and gather require explicit two-dimensional extents;
 copy uses `[1, 1]`.
 
-The memory kind classifies a technology and does not identify a physical memory.
-Residency remains explicit in the connection endpoint. Reusing one native
+The full memory identity is `(domain, kind)`. Residency remains explicit in the
+connection endpoint; the kind alone does not select a performance model. Reusing one native
 function in several processor definitions models connection-selected
 capabilities such as SS/SR/RS/RR while keeping their performance records and
 shared resources separate.
