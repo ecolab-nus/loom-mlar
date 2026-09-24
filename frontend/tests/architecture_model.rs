@@ -113,10 +113,20 @@ fn one_native_source_specializes_per_connection() {
     assert!(sr.source().contains("memref<?xf16, 1>"));
     assert!(rs.source().contains("%arg0: memref<?xf16, 1>"));
     assert_ne!(sr.source(), rs.source());
+    assert_eq!(sr.definition_family(), "lane");
+    assert_eq!(rs.definition_family(), "lane");
     assert_eq!(sr.memory_bindings()["op1"], "rhs");
     let exported = mlar_rust::architecture_to_mlir_unchecked(&architecture).unwrap();
     assert!(exported.contains("loom.bind_mem %arg0, @mem_R"));
     assert!(!exported.contains("@op1"));
+    assert!(
+        exported
+            .contains("mlar.processor_array = \"lane_sr\", mlar.processor_definition = \"lane\"")
+    );
+    assert!(
+        exported
+            .contains("mlar.processor_array = \"lane_rs\", mlar.processor_definition = \"lane\"")
+    );
     assert_eq!(
         serde_json::to_value(&sr.operations()[0].perf).unwrap(),
         serde_json::to_value(&rs.operations()[0].perf).unwrap()

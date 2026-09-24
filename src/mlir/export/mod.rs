@@ -301,12 +301,18 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
             })
             .collect::<Result<Vec<_>, _>>()?;
         let module_name = prefixed("proc", &processor.name);
-        let module = lower_processor_source(definition, &module_name, &inputs, &outputs).map_err(
-            |reason| AdlExportError::SourceLowering {
-                processor: processor.name.clone(),
-                reason,
-            },
-        )?;
+        let module = lower_processor_source(
+            definition,
+            &processor.name,
+            &processor.axes,
+            &module_name,
+            &inputs,
+            &outputs,
+        )
+        .map_err(|reason| AdlExportError::SourceLowering {
+            processor: processor.name.clone(),
+            reason,
+        })?;
         modules.push(module);
 
         let route = match (
@@ -380,16 +386,24 @@ fn emit_architecture_mlir(architecture: &Architecture) -> Result<GeneratedMlir, 
 
 fn lower_processor_source(
     definition: &ProcessorDefinition,
+    processor_array: &str,
+    processor_domain: &[Axis],
     module_name: &str,
     inputs: &[(String, String)],
     outputs: &[(String, String)],
 ) -> Result<String, String> {
+    if definition.source.trim().is_empty() {
+        return Ok(String::new());
+    }
     let memory_symbols = raw_mlir_memory_symbols(definition, inputs, outputs)?;
-    Ok(rewrite_raw_mlir_module(
+    rewrite_raw_mlir_module(
         &definition.source,
         module_name,
+        processor_array,
+        definition.definition_family(),
+        processor_domain,
         &memory_symbols,
-    ))
+    )
 }
 
 fn raw_mlir_memory_symbols(
@@ -485,33 +499,308 @@ fn bind_raw_mlir_side(
 fn rewrite_raw_mlir_module(
     source: &str,
     module_name: &str,
+    processor_array: &str,
+    processor_definition: &str,
+    processor_domain: &[Axis],
     memory_symbols: &BTreeMap<String, String>,
-) -> String {
-    let mut output = String::with_capacity(source.len());
-    let mut module_rewritten = false;
-    for line in source.lines() {
-        let mut line = line.to_string();
-        if !module_rewritten {
-            let trimmed = line.trim_start();
-            if let Some(rest) = trimmed.strip_prefix("module @") {
-                let end = rest
-                    .find(|character: char| character.is_whitespace() || character == '{')
-                    .unwrap_or(rest.len());
-                let old = &rest[..end];
-                line = line.replacen(&format!("@{old}"), &format!("@{module_name}"), 1);
-                module_rewritten = true;
+) -> Result<String, String> {
+    let header = parse_module_header(source)?;
+    let expected = [
+        (
+            "mlar.processor_array",
+            format!("\"{}\"", escape_mlir_string(processor_array)),
+        ),
+        (
+            "mlar.processor_definition",
+            format!("\"{}\"", escape_mlir_string(processor_definition)),
+        ),
+        (
+            "mlar.processor_domain",
+            format!(
+                "[{}]",
+                processor_domain
+                    .iter()
+                    .map(|axis| format!("\"{}\"", escape_mlir_string(axis.name())))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ),
+    ];
+
+    let mut insertion = String::new();
+    if let Some((open, close)) = header.attributes {
+        let attributes = &source[open + 1..close];
+        let entries = top_level_entries(attributes)?;
+        let mut missing = Vec::new();
+        for (name, value) in &expected {
+            match entries.iter().find(|(existing, _)| existing == name) {
+                Some((_, existing)) if normalize_mlir(existing)? == normalize_mlir(value)? => {}
+                Some((_, existing)) => {
+                    return Err(format!(
+                        "module attribute '{name}' conflicts with generated value: found '{}', expected '{}'",
+                        existing.trim(),
+                        value
+                    ));
+                }
+                None => missing.push(format!("{name} = {value}")),
             }
         }
-        for (authored, exported) in memory_symbols {
-            line = replace_symbol(&line, authored, exported);
+        if !missing.is_empty() {
+            if !attributes.trim().is_empty() {
+                insertion.push_str(", ");
+            }
+            insertion.push_str(&missing.join(", "));
         }
-        output.push_str(&line);
-        output.push('\n');
+    } else {
+        insertion = format!(
+            " attributes {{{}}} ",
+            expected
+                .iter()
+                .map(|(name, value)| format!("{name} = {value}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
-    if !source.ends_with('\n') {
-        output.pop();
+
+    let insertion_at = header
+        .attributes
+        .map_or(header.body_open, |(_, close)| close);
+    let mut output = String::with_capacity(source.len() + insertion.len());
+    output.push_str(&source[..header.name_start]);
+    output.push_str(module_name);
+    output.push_str(&source[header.name_end..insertion_at]);
+    output.push_str(&insertion);
+    output.push_str(&source[insertion_at..]);
+    for (authored, exported) in memory_symbols {
+        output = replace_symbol(&output, authored, exported);
     }
-    output
+    Ok(output)
+}
+
+struct ModuleHeader {
+    name_start: usize,
+    name_end: usize,
+    attributes: Option<(usize, usize)>,
+    body_open: usize,
+}
+
+fn parse_module_header(source: &str) -> Result<ModuleHeader, String> {
+    let mut cursor = skip_trivia(source, 0)?;
+    if !source[cursor..].starts_with("module")
+        || source[cursor + "module".len()..]
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        return Err("processor source must begin with a module operation".into());
+    }
+    cursor = skip_trivia(source, cursor + "module".len())?;
+    if source.as_bytes().get(cursor) != Some(&b'@') {
+        return Err("processor module must have a symbol name".into());
+    }
+    let name_start = cursor + 1;
+    let name_end = scan_symbol(source, name_start)?;
+    cursor = skip_trivia(source, name_end)?;
+
+    let mut attributes = None;
+    if source[cursor..].starts_with("attributes") {
+        cursor = skip_trivia(source, cursor + "attributes".len())?;
+        if source.as_bytes().get(cursor) != Some(&b'{') {
+            return Err("module attributes must be a dictionary".into());
+        }
+        let close = matching_delimiter(source, cursor, b'{', b'}')?;
+        attributes = Some((cursor, close));
+        cursor = skip_trivia(source, close + 1)?;
+    }
+    if source.as_bytes().get(cursor) != Some(&b'{') {
+        return Err("processor module body is missing its opening brace".into());
+    }
+    Ok(ModuleHeader {
+        name_start,
+        name_end,
+        attributes,
+        body_open: cursor,
+    })
+}
+
+fn scan_symbol(source: &str, start: usize) -> Result<usize, String> {
+    if source.as_bytes().get(start) == Some(&b'"') {
+        return scan_string(source, start);
+    }
+    let end = source[start..]
+        .find(|character: char| character.is_whitespace() || character == '{')
+        .map_or(source.len(), |offset| start + offset);
+    (end > start)
+        .then_some(end)
+        .ok_or_else(|| "processor module has an empty symbol name".into())
+}
+
+fn scan_string(source: &str, start: usize) -> Result<usize, String> {
+    let bytes = source.as_bytes();
+    let mut cursor = start + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'\\' => cursor += 2,
+            b'"' => return Ok(cursor + 1),
+            _ => cursor += 1,
+        }
+    }
+    Err("unterminated string in module header".into())
+}
+
+fn skip_trivia(source: &str, mut cursor: usize) -> Result<usize, String> {
+    let bytes = source.as_bytes();
+    loop {
+        while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        if source[cursor..].starts_with("//") {
+            cursor = source[cursor..]
+                .find('\n')
+                .map_or(source.len(), |offset| cursor + offset + 1);
+        } else if source[cursor..].starts_with("/*") {
+            let end = source[cursor + 2..]
+                .find("*/")
+                .ok_or_else(|| "unterminated block comment in module header".to_string())?;
+            cursor += end + 4;
+        } else {
+            return Ok(cursor);
+        }
+    }
+}
+
+fn matching_delimiter(source: &str, start: usize, open: u8, close: u8) -> Result<usize, String> {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut cursor = start;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"' {
+            cursor = scan_string(source, cursor)?;
+            continue;
+        }
+        if source[cursor..].starts_with("//") || source[cursor..].starts_with("/*") {
+            cursor = skip_trivia(source, cursor)?;
+            continue;
+        }
+        if bytes[cursor] == open {
+            depth += 1;
+        } else if bytes[cursor] == close {
+            depth -= 1;
+            if depth == 0 {
+                return Ok(cursor);
+            }
+        }
+        cursor += 1;
+    }
+    Err("unterminated delimiter in module header".into())
+}
+
+fn top_level_entries(dictionary: &str) -> Result<Vec<(String, String)>, String> {
+    let mut result = Vec::new();
+    let mut start = 0usize;
+    let mut cursor = 0usize;
+    let mut nesting = Vec::new();
+    while cursor <= dictionary.len() {
+        if cursor == dictionary.len()
+            || (dictionary.as_bytes()[cursor] == b',' && nesting.is_empty())
+        {
+            let entry = dictionary[start..cursor].trim();
+            if !entry.is_empty() {
+                let entry = &entry[skip_trivia(entry, 0)?..];
+                if entry.is_empty() {
+                    start = cursor + 1;
+                    cursor += 1;
+                    continue;
+                }
+                let equal = find_top_level_equal(entry)?;
+                result.push((
+                    entry[..equal].trim().to_string(),
+                    entry[equal + 1..].to_string(),
+                ));
+            }
+            start = cursor + 1;
+            cursor += 1;
+            continue;
+        }
+        let byte = dictionary.as_bytes()[cursor];
+        if byte == b'"' {
+            cursor = scan_string(dictionary, cursor)?;
+            continue;
+        }
+        if dictionary[cursor..].starts_with("//") || dictionary[cursor..].starts_with("/*") {
+            cursor = skip_trivia(dictionary, cursor)?;
+            continue;
+        }
+        match byte {
+            b'{' | b'[' | b'(' | b'<' => nesting.push(byte),
+            b'}' | b']' | b')' | b'>' => {
+                nesting
+                    .pop()
+                    .ok_or_else(|| "unbalanced module attribute".to_string())?;
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    Ok(result)
+}
+
+fn find_top_level_equal(entry: &str) -> Result<usize, String> {
+    let mut nesting = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < entry.len() {
+        let byte = entry.as_bytes()[cursor];
+        if byte == b'"' {
+            cursor = scan_string(entry, cursor)?;
+            continue;
+        }
+        match byte {
+            b'{' | b'[' | b'(' | b'<' => nesting.push(byte),
+            b'}' | b']' | b')' | b'>' => {
+                nesting.pop();
+            }
+            b'=' if nesting.is_empty() => return Ok(cursor),
+            _ => {}
+        }
+        cursor += 1;
+    }
+    Err(format!(
+        "module attribute '{}' is missing '='",
+        entry.trim()
+    ))
+}
+
+fn normalize_mlir(value: &str) -> Result<String, String> {
+    let mut output = String::new();
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        if value.as_bytes()[cursor] == b'"' {
+            let end = scan_string(value, cursor)?;
+            output.push_str(&value[cursor..end]);
+            cursor = end;
+        } else if value[cursor..].starts_with("//") || value[cursor..].starts_with("/*") {
+            cursor = skip_trivia(value, cursor)?;
+        } else {
+            let character = value[cursor..].chars().next().unwrap();
+            if !character.is_whitespace() {
+                output.push(character);
+            }
+            cursor += character.len_utf8();
+        }
+    }
+    Ok(output)
+}
+
+fn escape_mlir_string(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'"' => "\\22".to_string(),
+            b'\\' => "\\5C".to_string(),
+            0x20..=0x7e => (byte as char).to_string(),
+            _ => format!("\\{byte:02X}"),
+        })
+        .collect()
 }
 
 fn replace_symbol(line: &str, authored: &str, exported: &str) -> String {
@@ -606,10 +895,10 @@ fn endpoint_memory_symbol(
     endpoint: &MemoryEndpoint,
 ) -> Result<String, AdlExportError> {
     let memory = endpoint_base_memory(architecture, endpoint);
-    let prefix = endpoint_selection_prefix(architecture, endpoint)?;
+    endpoint_selection_prefix(architecture, endpoint)?;
     emitter
         .memory_handle_symbol
-        .get(&(memory.to_string(), prefix))
+        .get(&(memory.to_string(), 0))
         .cloned()
         .ok_or_else(|| AdlExportError::InvalidConnection {
             processor: "<export>".into(),
@@ -1119,6 +1408,58 @@ fn indent(text: &str, spaces: usize) -> String {
     text.lines()
         .map(|line| format!("{prefix}{line}\n"))
         .collect()
+}
+
+#[cfg(test)]
+mod module_metadata_tests {
+    use super::{Axis, rewrite_raw_mlir_module};
+    use std::collections::BTreeMap;
+
+    fn rewrite(source: &str) -> Result<String, String> {
+        rewrite_raw_mlir_module(
+            source,
+            "proc_lane",
+            "lane\"zero",
+            "lane\\family",
+            &[Axis::new("x", 2), Axis::new("y", 3)],
+            &BTreeMap::new(),
+        )
+    }
+
+    #[test]
+    fn merges_multiline_module_attributes_and_preserves_comments() {
+        let source = concat!(
+            "// authored header\n",
+            "module @old\n",
+            "attributes {\n",
+            "  unrelated = {nested = [1, 2]}, // keep me\n",
+            "  note = \"a { brace }, comma\"\n",
+            "}\n",
+            "{\n}\n",
+        );
+        let rewritten = rewrite(source).unwrap();
+        assert!(rewritten.starts_with("// authored header\nmodule @proc_lane\n"));
+        assert!(rewritten.contains("unrelated = {nested = [1, 2]}, // keep me"));
+        assert!(rewritten.contains("mlar.processor_array = \"lane\\22zero\""));
+        assert!(rewritten.contains("mlar.processor_definition = \"lane\\5Cfamily\""));
+        assert!(rewritten.contains("mlar.processor_domain = [\"x\", \"y\"]"));
+        assert!(!rewritten.contains("attributes attributes"));
+    }
+
+    #[test]
+    fn repeated_rewrite_is_idempotent() {
+        let once = rewrite("module @old {\n}\n").unwrap();
+        let twice = rewrite(&once).unwrap();
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn conflicting_reserved_metadata_is_rejected() {
+        let error = rewrite("module @old attributes {mlar.processor_array = \"other\"} {\n}\n")
+            .unwrap_err();
+        assert!(error.contains("mlar.processor_array"));
+        assert!(error.contains("conflicts"));
+    }
 }
 
 #[cfg(test)]

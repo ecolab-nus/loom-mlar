@@ -205,7 +205,15 @@ module @lane {
         .memory_definition(memory_definition())
         .place_memory("L1", mlar_rust::MemoryDomain::L1, ["x", "y"])
         .processor_definition(definition.with_type(mlar_rust::ProcessorType::Compute))
-        .connect(
+        .connect_as(
+            "lane_a",
+            "lane",
+            Connection::new(["x", "y"])
+                .input("input", "L1")
+                .output("result", "L1"),
+        )
+        .connect_as(
+            "lane_b",
             "lane",
             Connection::new(["x", "y"])
                 .input("input", "L1")
@@ -213,12 +221,19 @@ module @lane {
         )
         .build()
         .expect("raw MLIR architecture should build");
-    let lane = architecture.processor_array("lane").unwrap();
+    let lane = architecture.processor_array("lane_a").unwrap();
     assert_eq!(lane.connection().inputs[0].name, "input");
     assert_eq!(lane.connection().inputs[0].endpoint.indices.len(), 2);
     let exported = mlar_rust::architecture_to_mlir(&architecture)
         .expect("raw MLIR architecture should export");
-    assert!(exported.contains("module @proc_lane"));
+    assert!(exported.contains("module @proc_lane_a"));
+    assert!(exported.contains("module @proc_lane_b"));
+    assert!(exported.contains(
+        "mlar.processor_array = \"lane_a\", mlar.processor_definition = \"lane\", mlar.processor_domain = [\"x\", \"y\"]"
+    ));
+    assert!(exported.contains(
+        "mlar.processor_array = \"lane_b\", mlar.processor_definition = \"lane\", mlar.processor_domain = [\"x\", \"y\"]"
+    ));
     assert!(exported.contains("loom.bind_mem %src, @mem_L1"));
 }
 

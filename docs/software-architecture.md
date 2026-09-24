@@ -41,6 +41,17 @@ array. Processor `type` affects export, not runtime validation.
 Checked export validates all processor arrays and the emitted MLIR. A missing or
 incompatible processor type returns `AdlExportError`. The exported top-level
 symbol is `@arch_system`; this does not alter the runtime architecture name.
+Each specialized native processor module carries `mlar.processor_array`,
+`mlar.processor_definition`, and ordered `mlar.processor_domain` attributes.
+Loom uses `(definition, function)` as the implementation-family identity and
+the array name as the exact placement. Native `loom.bind_mem` annotations use
+the base placed-memory symbol even for pointwise routes; the ADL processor route
+still uses the appropriate leaf handle.
+
+When the frontend specializes one authored definition for different connection
+memory kinds, the canonical definitions keep distinct names and bodies but
+retain the authored definition as `definition_family`. Export uses that family
+provenance, so only those explicitly related specializations are alternatives.
 
 The frontend assigns kinds independently within the DRAM and L1 domains using
 sorted placed-array names. Core retains each array's `(domain, kind)` identity.

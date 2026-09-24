@@ -12,13 +12,13 @@ fn staged_accelerator_exports_one_scale_and_all_physical_memories() {
     assert_eq!(mlir.matches("adl.arch.scale").count(), 1);
     let scale = mlir
         .lines()
-        .find(|line| line.contains("adl.arch.scale \"arch_tile\""))
+        .find(|line| line.contains("adl.arch.scale \"arch_x_y\""))
         .unwrap();
     assert!(!scale.contains("mem_region"));
 
     let element = mlir
         .lines()
-        .find(|line| line.contains("adl.arch.compose \"arch_tile_element\""))
+        .find(|line| line.contains("adl.arch.compose \"arch_x_y_element\""))
         .unwrap();
     let memory_handles = |symbol: &str| {
         let line = mlir
@@ -45,19 +45,11 @@ fn staged_accelerator_exports_one_scale_and_all_physical_memories() {
         assert!(root.contains(aggregate), "{root}");
     }
 
-    assert_eq!(
-        mlir.matches("loom.bind_mem %A, @mem_STAGE_instance")
-            .count(),
-        1
-    );
-    assert_eq!(
-        mlir.matches("loom.bind_mem %B, @mem_STAGE_instance")
-            .count(),
-        1
-    );
-    assert!(mlir.contains("loom.bind_mem %C, @mem_SRAM_instance"));
-    assert!(mlir.contains("src_mem_space @mem_SRAM_instance dst_mem_space @mem_STAGE_instance"));
-    assert!(mlir.contains("src_mem_space @mem_RRAM_instance dst_mem_space @mem_STAGE_instance"));
+    assert_eq!(mlir.matches("loom.bind_mem %A, @mem_STAGE").count(), 1);
+    assert_eq!(mlir.matches("loom.bind_mem %B, @mem_STAGE").count(), 1);
+    assert!(mlir.contains("loom.bind_mem %C, @mem_SRAM"));
+    assert!(mlir.contains("src_mem_space @mem_SRAM dst_mem_space @mem_STAGE"));
+    assert!(mlir.contains("src_mem_space @mem_RRAM dst_mem_space @mem_STAGE"));
     assert!(mlir.contains("src_mem_space @mem_DRAM dst_mem_space @mem_SRAM"));
     assert!(mlir.contains("src_mem_space @mem_SRAM dst_mem_space @mem_DRAM"));
     assert!(mlir.contains("src_mem_space @mem_DRAM dst_mem_space @mem_RRAM"));

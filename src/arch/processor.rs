@@ -47,6 +47,8 @@ impl OperationModel {
 pub struct ProcessorDefinition {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) definition_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) processor_type: Option<ProcessorType>,
     /// Native processor MLIR, embedded in canonical artifacts.
     pub(crate) source: String,
@@ -65,6 +67,7 @@ impl ProcessorDefinition {
     ) -> Self {
         Self {
             name: name.into(),
+            definition_family: None,
             processor_type: None,
             source: source.into(),
             functions,
@@ -109,6 +112,7 @@ impl ProcessorDefinition {
         }
         Ok(Self {
             name: name.into(),
+            definition_family: None,
             processor_type: None,
             source,
             functions,
@@ -150,8 +154,17 @@ impl ProcessorDefinition {
         self
     }
 
+    pub fn with_definition_family(mut self, name: impl Into<String>) -> Self {
+        self.definition_family = Some(name.into());
+        self
+    }
+
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn definition_family(&self) -> &str {
+        self.definition_family.as_deref().unwrap_or(&self.name)
     }
 
     pub fn processor_type(&self) -> Option<&ProcessorType> {
@@ -191,6 +204,12 @@ impl ProcessorDefinition {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.definition_family.as_deref() == Some("") {
+            return Err(format!(
+                "processor definition '{}' has an empty definition family",
+                self.name
+            ));
+        }
         let mut names = BTreeSet::new();
         for function in &self.functions {
             if !names.insert(&function.func.name) {

@@ -676,11 +676,13 @@ impl ArchitectureBuilder {
                 } else {
                     format!("{definition}__{index}")
                 };
-                canonical.push((
-                    fingerprint,
-                    canonical_name.clone(),
-                    lowered.with_name(&canonical_name),
-                ));
+                let lowered = lowered.with_name(&canonical_name);
+                let lowered = if canonical_name == *definition {
+                    lowered
+                } else {
+                    lowered.with_definition_family(definition)
+                };
+                canonical.push((fingerprint, canonical_name.clone(), lowered));
                 canonical_name
             };
             let mut connection = mlar_rust::Connection::new(authored.domain.clone());

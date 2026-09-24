@@ -86,9 +86,9 @@ fn staged_native_spaces_follow_stage_and_sram_connections() {
     assert_eq!(source.matches("memref<?x?xf32, 1>").count(), 4);
 
     let exported = architecture_to_mlir_unchecked(&architecture).unwrap();
-    assert!(exported.contains("loom.bind_mem %arg0, @mem_STAGE_instance"));
-    assert!(exported.contains("loom.bind_mem %arg1, @mem_STAGE_instance"));
-    assert!(exported.contains("loom.bind_mem %arg2, @mem_SRAM_instance"));
+    assert!(exported.contains("loom.bind_mem %arg0, @mem_STAGE"));
+    assert!(exported.contains("loom.bind_mem %arg1, @mem_STAGE"));
+    assert!(exported.contains("loom.bind_mem %arg2, @mem_SRAM"));
     assert!(exported.contains("src_mem_space @mem_DRAM : 0 dst_mem_space @mem_SRAM : 1"));
     assert!(exported.contains("src_mem_space @mem_RRAM : 0 dst_mem_space @mem_DRAM : 0"));
     assert!(!exported.contains("@mem_DRAM : 0 dst_mem_space @mem_STAGE"));

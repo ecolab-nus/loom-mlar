@@ -29,14 +29,14 @@ module @arch_system {
   %27 = adl.arch.scale "arch_x_y", [%1, %2] of %26
   %28 = adl.arch.compose "arch_system", arch[%27, %23, %24, %25], mem[%4, %8, %12]
 
-  module @proc_matrix_lane {
+  module @proc_matrix_lane attributes {mlar.processor_array = "matrix_lane", mlar.processor_definition = "matrix_lane", mlar.processor_domain = ["x", "y"]} {
     func.func @vec_vsum_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?xf16, 1>) {
       %P = loom.sym @P : index
       %R = loom.sym @R : index
       loom.bind_shape %arg0, [%P, %R] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%P] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0)>], iterator_types = ["parallel", "reduction"]} ins(%arg0 : memref<?x?xf16, 1>) outs(%arg1 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %out: f16):
         %native = arith.addf %in, %out : f16
@@ -49,8 +49,8 @@ module @arch_system {
       %R = loom.sym @R : index
       loom.bind_shape %arg0, [%P, %R] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%P] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0)>], iterator_types = ["parallel", "reduction"]} ins(%arg0 : memref<?x?xf16, 1>) outs(%arg1 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %out: f16):
         %native = arith.maximumf %in, %out : f16
@@ -63,9 +63,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.cmpf ogt, %in, %in_0 : f16
@@ -80,9 +80,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%M, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.add ins(%arg0, %arg1 : memref<?x?xf16, 1>, memref<?x?xf16, 1>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
@@ -92,15 +92,15 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%M, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.mul ins(%arg0, %arg1 : memref<?x?xf16, 1>, memref<?x?xf16, 1>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
   }
 
-  module @proc_matrix_lane_ss {
+  module @proc_matrix_lane_ss attributes {mlar.processor_array = "matrix_lane_ss", mlar.processor_definition = "matrix_lane_ss", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16, 1>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -108,9 +108,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %K] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%K, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.matmul ins(%arg0, %arg1 : memref<?x?xf16, 1>, memref<?x?xf16, 1>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
@@ -122,15 +122,15 @@ module @arch_system {
       loom.bind_shape %arg0, [%B, %M, %K] : memref<?x?x?xf16, 1>
       loom.bind_shape %arg1, [%B, %K, %N] : memref<?x?x?xf16, 1>
       loom.bind_shape %arg2, [%B, %M, %N] : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?x?xf16, 1>
       linalg.batch_matmul ins(%arg0, %arg1 : memref<?x?x?xf16, 1>, memref<?x?x?xf16, 1>) outs(%arg2 : memref<?x?x?xf16, 1>)
       return
     }
   }
 
-  module @proc_matrix_lane_sr {
+  module @proc_matrix_lane_sr attributes {mlar.processor_array = "matrix_lane_sr", mlar.processor_definition = "matrix_lane_sr", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -138,9 +138,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %K] : memref<?x?xf16, 1>
       loom.bind_shape %arg1, [%K, %N] : memref<?x?xf16>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_R_instance : memref<?x?xf16>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_R : memref<?x?xf16>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.matmul ins(%arg0, %arg1 : memref<?x?xf16, 1>, memref<?x?xf16>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
@@ -152,15 +152,15 @@ module @arch_system {
       loom.bind_shape %arg0, [%B, %M, %K] : memref<?x?x?xf16, 1>
       loom.bind_shape %arg1, [%B, %K, %N] : memref<?x?x?xf16>
       loom.bind_shape %arg2, [%B, %M, %N] : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_R_instance : memref<?x?x?xf16>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_R : memref<?x?x?xf16>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?x?xf16, 1>
       linalg.batch_matmul ins(%arg0, %arg1 : memref<?x?x?xf16, 1>, memref<?x?x?xf16>) outs(%arg2 : memref<?x?x?xf16, 1>)
       return
     }
   }
 
-  module @proc_matrix_lane_rs {
+  module @proc_matrix_lane_rs attributes {mlar.processor_array = "matrix_lane_rs", mlar.processor_definition = "matrix_lane_rs", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16, 1>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -168,9 +168,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %K] : memref<?x?xf16>
       loom.bind_shape %arg1, [%K, %N] : memref<?x?xf16, 1>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_R_instance : memref<?x?xf16>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_R : memref<?x?xf16>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.matmul ins(%arg0, %arg1 : memref<?x?xf16>, memref<?x?xf16, 1>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
@@ -182,15 +182,15 @@ module @arch_system {
       loom.bind_shape %arg0, [%B, %M, %K] : memref<?x?x?xf16>
       loom.bind_shape %arg1, [%B, %K, %N] : memref<?x?x?xf16, 1>
       loom.bind_shape %arg2, [%B, %M, %N] : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_R_instance : memref<?x?x?xf16>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_R : memref<?x?x?xf16>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?x?xf16, 1>
       linalg.batch_matmul ins(%arg0, %arg1 : memref<?x?x?xf16>, memref<?x?x?xf16, 1>) outs(%arg2 : memref<?x?x?xf16, 1>)
       return
     }
   }
 
-  module @proc_matrix_lane_rr {
+  module @proc_matrix_lane_rr attributes {mlar.processor_array = "matrix_lane_rr", mlar.processor_definition = "matrix_lane_rr", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -198,9 +198,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%M, %K] : memref<?x?xf16>
       loom.bind_shape %arg1, [%K, %N] : memref<?x?xf16>
       loom.bind_shape %arg2, [%M, %N] : memref<?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_R_instance : memref<?x?xf16>
-      loom.bind_mem %arg1, @mem_L1_R_instance : memref<?x?xf16>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_R : memref<?x?xf16>
+      loom.bind_mem %arg1, @mem_L1_R : memref<?x?xf16>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?xf16, 1>
       linalg.matmul ins(%arg0, %arg1 : memref<?x?xf16>, memref<?x?xf16>) outs(%arg2 : memref<?x?xf16, 1>)
       return
     }
@@ -212,23 +212,23 @@ module @arch_system {
       loom.bind_shape %arg0, [%B, %M, %K] : memref<?x?x?xf16>
       loom.bind_shape %arg1, [%B, %K, %N] : memref<?x?x?xf16>
       loom.bind_shape %arg2, [%B, %M, %N] : memref<?x?x?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_R_instance : memref<?x?x?xf16>
-      loom.bind_mem %arg1, @mem_L1_R_instance : memref<?x?x?xf16>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?x?x?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_R : memref<?x?x?xf16>
+      loom.bind_mem %arg1, @mem_L1_R : memref<?x?x?xf16>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?x?x?xf16, 1>
       linalg.batch_matmul ins(%arg0, %arg1 : memref<?x?x?xf16>, memref<?x?x?xf16>) outs(%arg2 : memref<?x?x?xf16, 1>)
       return
     }
   }
 
-  module @proc_vector_lane {
+  module @proc_vector_lane attributes {mlar.processor_array = "vector_lane", mlar.processor_definition = "vector_lane", mlar.processor_domain = ["x", "y"]} {
     func.func @vec_max_f16(%arg0: memref<?xf16, 1>, %arg1: memref<?xf16, 1>, %arg2: memref<?xf16, 1>) {
       %L = loom.sym @L : index
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.maximumf %in, %in_0 : f16
@@ -240,8 +240,8 @@ module @arch_system {
       %L = loom.sym @L : index
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0 : memref<?xf16, 1>) outs(%arg1 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %out: f16):
         %native = math.exp %in : f16
@@ -252,8 +252,8 @@ module @arch_system {
     func.func @vec_sum_f16(%arg0: memref<?xf16, 1>, %arg1: memref<f16, 1>) {
       %L = loom.sym @L : index
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<f16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<f16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>], iterator_types = ["reduction"]} ins(%arg0 : memref<?xf16, 1>) outs(%arg1 : memref<f16, 1>) {
       ^bb0(%in: f16, %out: f16):
         %native = arith.addf %in, %out : f16
@@ -266,9 +266,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.addf %in, %in_0 : f16
@@ -281,9 +281,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.mulf %in, %in_0 : f16
@@ -296,9 +296,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.divf %in, %in_0 : f16
@@ -311,9 +311,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = arith.subf %in, %in_0 : f16
@@ -326,9 +326,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %native = math.powf %in, %in_0 : f16
@@ -341,9 +341,9 @@ module @arch_system {
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xi1, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xi1, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xi1, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1 : memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg2 : memref<?xi1, 1>) {
       ^bb0(%in: f16, %in_0: f16, %out: i1):
         %native = arith.cmpf ogt, %in, %in_0 : f16
@@ -357,10 +357,10 @@ module @arch_system {
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg2, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg3, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xi1, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg2, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg3, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xi1, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg2, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg3, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0, %arg1, %arg2 : memref<?xi1, 1>, memref<?xf16, 1>, memref<?xf16, 1>) outs(%arg3 : memref<?xf16, 1>) {
       ^bb0(%in: i1, %in_0: f16, %in_1: f16, %out: f16):
         %native = arith.select %in, %in_0, %in_1 : f16
@@ -372,8 +372,8 @@ module @arch_system {
       %L = loom.sym @L : index
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
       loom.bind_shape %arg1, [%L] : memref<?xf16, 1>
-      loom.bind_mem %arg0, @mem_L1_S_instance : memref<?xf16, 1>
-      loom.bind_mem %arg1, @mem_L1_S_instance : memref<?xf16, 1>
+      loom.bind_mem %arg0, @mem_L1_S : memref<?xf16, 1>
+      loom.bind_mem %arg1, @mem_L1_S : memref<?xf16, 1>
       linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%arg0 : memref<?xf16, 1>) outs(%arg1 : memref<?xf16, 1>) {
       ^bb0(%in: f16, %out: f16):
         %native = math.log %in : f16
@@ -383,7 +383,7 @@ module @arch_system {
     }
   }
 
-  module @proc_dram_l1_noc0 {
+  module @proc_dram_l1_noc0 attributes {mlar.processor_array = "dram_l1_noc0", mlar.processor_definition = "dram_l1_noc0", mlar.processor_domain = []} {
     func.func @dram_to_l1_S_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index
@@ -434,7 +434,7 @@ module @arch_system {
     }
   }
 
-  module @proc_l1_l1_noc0 {
+  module @proc_l1_l1_noc0 attributes {mlar.processor_array = "l1_l1_noc0", mlar.processor_definition = "l1_l1_noc0", mlar.processor_domain = []} {
     func.func @l1_gather(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?x?xf16, 1>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index
@@ -451,7 +451,7 @@ module @arch_system {
     }
   }
 
-  module @proc_l1_dram_noc1 {
+  module @proc_l1_dram_noc1 attributes {mlar.processor_array = "l1_dram_noc1", mlar.processor_definition = "l1_dram_noc1", mlar.processor_domain = []} {
     func.func @l1_to_dram_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index
