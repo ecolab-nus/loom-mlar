@@ -977,15 +977,15 @@ fn validate_native_metadata(
     spec: &FunctionSpec,
     function: &mlar_rust::mlir::MlirFunc,
 ) -> Result<(), String> {
-    if !spec.dimensions.is_empty() || !spec.symbols.is_empty() {
+    if !spec.dimensions.is_empty() || !spec.other_symbols.is_empty() {
         let declared = spec
             .dimensions
             .iter()
-            .chain(&spec.symbols)
+            .chain(&spec.other_symbols)
             .cloned()
             .collect::<BTreeSet<_>>();
-        if declared.len() != spec.dimensions.len() + spec.symbols.len() {
-            return Err("`dimensions` and `symbols` contain a duplicate name".into());
+        if declared.len() != spec.dimensions.len() + spec.other_symbols.len() {
+            return Err("`dimensions` and `other_symbols` contain a duplicate name".into());
         }
         let native = function
             .symbols
@@ -994,7 +994,7 @@ fn validate_native_metadata(
             .collect::<BTreeSet<_>>();
         if declared != native {
             return Err(format!(
-                "declared dimensions/symbols {declared:?} do not match native MLIR symbols {native:?}"
+                "declared dimensions/other_symbols {declared:?} do not match native MLIR symbols {native:?}"
             ));
         }
     }

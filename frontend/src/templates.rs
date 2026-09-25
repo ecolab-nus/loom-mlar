@@ -10,7 +10,7 @@ pub(crate) struct FunctionSpec {
     #[serde(default)]
     pub dimensions: Vec<String>,
     #[serde(default)]
-    pub symbols: Vec<String>,
+    pub other_symbols: Vec<String>,
     #[serde(default, deserialize_with = "crate::yaml::unique_map")]
     pub bindings: BTreeMap<String, String>,
     #[serde(default)]
@@ -195,7 +195,8 @@ fn emit_impl(
     }
 
     let mut declared = BTreeSet::new();
-    for name in spec.dimensions.iter().chain(&spec.symbols) {
+    let mut symbols = Vec::new();
+    for name in spec.dimensions.iter().chain(&spec.other_symbols) {
         validate_identifier(name, "symbol")?;
         if !declared.insert(name.as_str()) {
             return Err(format!(
@@ -203,6 +204,8 @@ fn emit_impl(
             ));
         }
     }
+
+    symbols.extend(spec.dimensions.iter().chain(&spec.other_symbols));
 
     let extent = match kind {
         TemplateKind::Broadcast | TemplateKind::Gather => {
@@ -216,7 +219,15 @@ fn emit_impl(
                     spec.source
                 ));
             }
-            Some(format_extent(extent, &declared)?)
+            let formatted = format_extent(extent)?;
+            for entry in extent {
+                if let Extent::Symbol(name) = entry
+                    && declared.insert(name.as_str())
+                {
+                    symbols.push(name);
+                }
+            }
+            Some(formatted)
         }
         _ if spec.extent.is_some() => {
             return Err(format!(
@@ -280,7 +291,7 @@ fn emit_impl(
             .join(", "),
     );
     out.push_str(") {\n");
-    for symbol in spec.dimensions.iter().chain(&spec.symbols) {
+    for symbol in symbols {
         out.push_str(&format!("    %{symbol} = loom.sym @{symbol} : index\n"));
     }
     for operand in &rendered {
@@ -631,7 +642,7 @@ fn resolve_binding(
     })
 }
 
-fn format_extent(extent: &[Extent], declared: &BTreeSet<&str>) -> Result<String, String> {
+fn format_extent(extent: &[Extent]) -> Result<String, String> {
     extent
         .iter()
         .map(|entry| match entry {
@@ -641,11 +652,6 @@ fn format_extent(extent: &[Extent], declared: &BTreeSet<&str>) -> Result<String,
             }
             Extent::Symbol(name) => {
                 validate_identifier(name, "extent symbol")?;
-                if !declared.contains(name.as_str()) {
-                    return Err(format!(
-                        "extent symbol '{name}' must appear in `dimensions` or `symbols`"
-                    ));
-                }
                 Ok(format!("%{name}"))
             }
         })
@@ -780,7 +786,7 @@ mod tests {
             .contains("extent")
         );
         let spec: FunctionSpec = serde_yaml::from_str(
-            "source: broadcast\nelement_type: f16\ndimensions: [L]\nsymbols: [X, Y]\nextent: [X, Y]\n",
+            "source: broadcast\nelement_type: f16\ndimensions: [L]\nextent: [X, Y]\n",
         )
         .unwrap();
         assert!(
@@ -793,6 +799,36 @@ mod tests {
             .unwrap()
             .contains("area: [%X, %Y]")
         );
+    }
+
+    #[test]
+    fn extent_symbols_are_declared_once_and_constants_are_not_symbols() {
+        for (extent, area, expected) in [
+            ("[X, Y]", "%X, %Y", vec!["L", "bandwidth", "X", "Y"]),
+            ("[L, L]", "%L, %L", vec!["L", "bandwidth"]),
+            ("[X, 1]", "%X, 1", vec!["L", "bandwidth", "X"]),
+            ("[2, 1]", "2, 1", vec!["L", "bandwidth"]),
+        ] {
+            let spec: FunctionSpec = serde_yaml::from_str(&format!(
+                "source: broadcast\nelement_type: f16\ndimensions: [L]\nother_symbols: [bandwidth]\nextent: {extent}\n"
+            ))
+            .unwrap();
+            let source = emit(
+                "send",
+                &spec,
+                &ports(&[("src", None)]),
+                &ports(&[("dst", None)]),
+            )
+            .unwrap();
+            assert!(source.contains(&format!("area: [{area}]")));
+            assert_eq!(source.matches("loom.sym @").count(), expected.len());
+            for name in expected {
+                assert_eq!(
+                    source.matches(&format!("loom.sym @{name} : index")).count(),
+                    1
+                );
+            }
+        }
     }
 
     #[test]
@@ -811,7 +847,7 @@ mod tests {
         assert!(copy.contains("area: [1, 1]"));
 
         let gather: FunctionSpec = serde_yaml::from_str(
-            "source: gather\nelement_type: f16\ndimensions: [B, M, N]\nsymbols: [X, Y]\nextent: [X, Y]\n",
+            "source: gather\nelement_type: f16\ndimensions: [B, M, N]\nextent: [X, Y]\n",
         )
         .unwrap();
         let gather = emit(

@@ -97,6 +97,11 @@ Memory endpoints use positional selectors:
 A bare ranked memory is rejected unless every memory axis has a same-named
 processor-domain axis. Use explicit `:` selectors when selecting an array.
 
+Flat `[cluster, core]` and nested `[cluster, [core]]` memory axes lower to the
+same core array; nesting only groups endpoint indices. It introduces no shared
+memory or additional connectivity or performance boundary. See
+[memory levels](../docs/TEMPLATE.md#memory-levels) for equivalent selectors.
+
 Nested memory placement uses nested lists. For `L2: [cluster, [core]]`, select
 a cluster with `L2[cluster]`, a leaf with `L2[cluster][core]`, or the same core
 across clusters with `L2[:][core]`. Endpoint expressions support `+`, `-`,
@@ -152,7 +157,7 @@ broadcast.
 Native `.mlir` files are discovered directly beside the YAML. A native source
 name must equal the exposed function name. Functions use the placement's named
 input and output ports in `loom.bind_mem` and must be self-contained within
-one `func.func`. Keep `element_type` and `dimensions`/`symbols` in the function
+one `func.func`. Keep `element_type` and `dimensions`/`other_symbols` in the function
 YAML as checked interface metadata; their combined symbol set must match the
 native MLIR. For mixed-precision functions, `element_type` names the primary
 type and only needs to occur in the memref interface. Memref memory spaces are

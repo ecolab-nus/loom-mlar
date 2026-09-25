@@ -99,6 +99,23 @@ memories:
   L2: {domain: L1, axes: [cluster, [core]]}
 ```
 
+`[cluster, core]` and `[cluster, [core]]` describe the same memory instances
+when the remaining declarations and connections are equivalent. For example,
+4 clusters and 8 cores produce 32 instances of the same memory definition in
+either form. Nesting changes endpoint syntax, not hardware topology: it adds no
+cluster-shared memory, interconnect, latency, or bandwidth boundary. Model those
+explicitly with memories, connections, networks, and performance models.
+
+| Selection | Flat `[cluster, core]` | Nested `[cluster, [core]]` |
+| --- | --- | --- |
+| One memory instance | `M[c, k]` | `M[c][k]` |
+| All cores in cluster `c` | `M[c, :]` | `M[c]` or `M[c][:]` |
+| Core coordinate `k` across clusters | `M[:, k]` | `M[:][k]` |
+| Entire array | `M[:, :]` | `M[:][:]` |
+
+A bare `M` selects pointwise using matching processor-domain axes; it does not
+select the entire ranked array. Use explicit `:` selectors for that.
+
 A nested list must be last in its level, and there may be at most one. All
 elements of a level share the same child structure.
 
@@ -106,7 +123,7 @@ Each endpoint bracket group indexes one level, with one selector per dimension:
 
 | Endpoint | Selection |
 | --- | --- |
-| `L1` or `L1[:, :]` | The whole flat 2-d array |
+| `L1[:, :]` | The whole flat 2-d array |
 | `L1[x, y]` | One logical memory |
 | `L1[:, y]` | All x coordinates at one y coordinate |
 | `L2[cluster]` | The whole core array of one cluster |
@@ -221,8 +238,9 @@ Templates support `f16` and have these positional contracts:
 | `broadcast` | `[D...]` | `src` to `dst` using `loom.copy`; requires `extent: [X, Y]` |
 | `gather` | `[B, D...]` | `src[D...]` to `dst[B,D...]`; requires `extent: [X, Y]` |
 
-Extent entries are positive integers or names declared in `dimensions` or
-`symbols`. X and Y remain separate even when one is 1. A constant extent is an
+Extent entries are positive integers or symbol names. Symbolic entries declare
+themselves and may reuse shape symbols; they need no `other_symbols` entry.
+X and Y remain separate even when one is 1. A constant extent is an
 exact native match; symbolic entries describe a variable capability.
 
 Endpoint lists name each port after its memory:
@@ -288,7 +306,7 @@ are composed into a processor. Duplicate definitions, malformed discovered
 files, and native functions named after any registered template in the table
 above are directory-wide errors.
 
-For native functions, `dimensions` plus `symbols` are checked against the MLIR
+For native functions, `dimensions` plus `other_symbols` are checked against the MLIR
 symbol declarations. `element_type` must occur in a memref argument; native
 MLIR remains authoritative for complete and mixed-precision signatures.
 

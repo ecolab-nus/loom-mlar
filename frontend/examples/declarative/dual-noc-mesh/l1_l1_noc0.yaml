@@ -5,7 +5,6 @@ functions:
     source: gather
     element_type: f16
     dimensions: [B, M, N]
-    symbols: [gather_x, gather_y]
     extent: [gather_x, gather_y]
 performance:
   l1_gather_f16:

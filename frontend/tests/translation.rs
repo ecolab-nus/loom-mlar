@@ -88,11 +88,10 @@ functions:
     source: broadcast
     element_type: f16
     dimensions: [L]
-    symbols: [copies_x, copies_y]
     extent: [copies_x, copies_y]
 performance:
   send:
-  - expression: L
+  - expression: L * copies_x * copies_y
 "#,
     );
     let architecture = ArchitectureBuilder::new("contexts")

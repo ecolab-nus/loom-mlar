@@ -9,7 +9,6 @@ functions:
     source: broadcast
     element_type: f16
     dimensions: [M, N]
-    symbols: [bcst_x, bcst_y]
     extent: [bcst_x, bcst_y]
 performance:
   dram_to_l1_f16:

@@ -88,7 +88,9 @@ symbol available to performance expressions. It has no built-in bandwidth
 semantics. The SSA name and symbol name must match, and declarations cannot
 repeat shape symbols or other declarations. Symbolic collective extents use
 the same declaration scope. In frontend templates, `dimensions` declares shape
-symbols and `symbols` declares the rest.
+symbols, `extent` introduces its symbolic entries, and `other_symbols` declares
+additional inputs. Extent names can reuse shape symbols or repeat across axes;
+each symbol is emitted once.
 
 In Rust, use `MlirFunc::with_symbols` or `FuncPerfModel::builder().symbols(...)`
 for additional symbols. Performance builders do not infer declarations from

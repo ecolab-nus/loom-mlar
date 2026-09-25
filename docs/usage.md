@@ -129,7 +129,8 @@ Frontend processor YAML maps each exposed function to a registered template or
 a same-named native function discovered from adjacent `.mlir` files. It embeds
 the same function mapping under `performance`.
 
-Template performance symbols come from `dimensions` and explicit `symbols`.
+Template performance symbols come from `dimensions`, symbolic `extent` entries,
+and explicit `other_symbols`.
 Native performance symbols come from `loom.bind_shape` and declarations such as
 `%bandwidth = loom.sym @bandwidth : index`.
 Frontend native memrefs must omit memory spaces. Each `loom.bind_mem` role is
