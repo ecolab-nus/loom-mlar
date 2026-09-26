@@ -1296,6 +1296,9 @@ impl Emitter {
             .as_ref()
             .map_or(1, |banking| banking.banks);
         let blocks = definition.capacity / definition.word_size / bank_count;
+        // The op carrying the memory's own symbol also carries its domain.
+        let domain = format!("domain = \"{:?}\"", memory.memory_domain());
+        let names_memory_at_bank = memory.rank() == 0 && bank_count == 1;
 
         let instance_symbol = if memory.rank() == 0 {
             name.to_string()
@@ -1310,9 +1313,14 @@ impl Emitter {
             memory.bank_symbol()
         };
         let bank = self.next_ssa();
+        let bank_domain = if names_memory_at_bank {
+            format!("{domain}, ")
+        } else {
+            String::new()
+        };
         writeln!(
             self.body,
-            "{bank} = adl.memory.bank \"{}\", {{bsize = {}, nblk = {blocks}}}",
+            "{bank} = adl.memory.bank \"{}\", {{bsize = {}, {bank_domain}nblk = {blocks}}}",
             prefixed("mem", &bank_symbol),
             definition.word_size
         )
@@ -1322,9 +1330,14 @@ impl Emitter {
         if bank_count > 1 {
             let bank_dimension = self.emit_dimension(&memory.bank_symbol(), bank_count);
             let array = self.next_ssa();
+            let array_domain = if memory.rank() == 0 {
+                format!(" {{{domain}}}")
+            } else {
+                String::new()
+            };
             writeln!(
                 self.body,
-                "{array} = adl.memory.array \"{}\", [{bank_dimension}] of {current}",
+                "{array} = adl.memory.array \"{}\", [{bank_dimension}] of {current}{array_domain}",
                 prefixed("mem", &instance_symbol)
             )
             .unwrap();
@@ -1341,7 +1354,7 @@ impl Emitter {
             let array = self.next_ssa();
             writeln!(
                 self.body,
-                "{array} = adl.memory.array \"{}\", [{}] of {current}",
+                "{array} = adl.memory.array \"{}\", [{}] of {current} {{{domain}}}",
                 prefixed("mem", name),
                 dimensions.join(", ")
             )

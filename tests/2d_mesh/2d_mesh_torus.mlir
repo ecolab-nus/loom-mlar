@@ -3,15 +3,15 @@ module @arch_system {
   %1 = adl.spatial_dim "dim_x", 8
   %2 = adl.spatial_dim "dim_y", 8
   %3 = adl.memory.bank "mem_DRAM_instance", {bsize = 8192, nblk = 196608}
-  %4 = adl.memory.array "mem_DRAM", [%0] of %3
+  %4 = adl.memory.array "mem_DRAM", [%0] of %3 {domain = "DRAM"}
   %5 = adl.memory.bank "mem_L1_R_bank", {bsize = 16, nblk = 5464}
   %6 = adl.spatial_dim "dim_L1_R_bank", 16
   %7 = adl.memory.array "mem_L1_R_instance", [%6] of %5
-  %8 = adl.memory.array "mem_L1_R", [%1, %2] of %7
+  %8 = adl.memory.array "mem_L1_R", [%1, %2] of %7 {domain = "L1"}
   %9 = adl.memory.bank "mem_L1_S_bank", {bsize = 16, nblk = 5464}
   %10 = adl.spatial_dim "dim_L1_S_bank", 16
   %11 = adl.memory.array "mem_L1_S_instance", [%10] of %9
-  %12 = adl.memory.array "mem_L1_S", [%1, %2] of %11
+  %12 = adl.memory.array "mem_L1_S", [%1, %2] of %11 {domain = "L1"}
   %13 = adl.resource.exclusive "res_noc0"
   %14 = adl.resource.exclusive "res_noc1"
   %15 = adl.resource.exclusive "res_matrix_lane"
@@ -29,7 +29,7 @@ module @arch_system {
   %27 = adl.arch.scale "arch_x_y", [%1, %2] of %26
   %28 = adl.arch.compose "arch_system", arch[%27, %23, %24, %25], mem[%4, %8, %12]
 
-  module @proc_matrix_lane attributes {mlar.processor_array = "matrix_lane", mlar.processor_definition = "matrix_lane", mlar.processor_domain = ["x", "y"]} {
+  module @proc_matrix_lane  attributes {mlar.processor_array = "matrix_lane", mlar.processor_definition = "matrix_lane", mlar.processor_domain = ["x", "y"]} {
     func.func @vec_vsum_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?xf16, 1>) {
       %P = loom.sym @P : index
       %R = loom.sym @R : index
@@ -100,7 +100,7 @@ module @arch_system {
     }
   }
 
-  module @proc_matrix_lane_ss attributes {mlar.processor_array = "matrix_lane_ss", mlar.processor_definition = "matrix_lane_ss", mlar.processor_domain = ["x", "y"]} {
+  module @proc_matrix_lane_ss  attributes {mlar.processor_array = "matrix_lane_ss", mlar.processor_definition = "matrix_lane_ss", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16, 1>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -130,7 +130,7 @@ module @arch_system {
     }
   }
 
-  module @proc_matrix_lane_sr attributes {mlar.processor_array = "matrix_lane_sr", mlar.processor_definition = "matrix_lane_sr", mlar.processor_domain = ["x", "y"]} {
+  module @proc_matrix_lane_sr  attributes {mlar.processor_array = "matrix_lane_sr", mlar.processor_definition = "matrix_lane_sr", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -160,7 +160,7 @@ module @arch_system {
     }
   }
 
-  module @proc_matrix_lane_rs attributes {mlar.processor_array = "matrix_lane_rs", mlar.processor_definition = "matrix_lane_rs", mlar.processor_domain = ["x", "y"]} {
+  module @proc_matrix_lane_rs  attributes {mlar.processor_array = "matrix_lane_rs", mlar.processor_definition = "matrix_lane_rs", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16, 1>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -190,7 +190,7 @@ module @arch_system {
     }
   }
 
-  module @proc_matrix_lane_rr attributes {mlar.processor_array = "matrix_lane_rr", mlar.processor_definition = "matrix_lane_rr", mlar.processor_domain = ["x", "y"]} {
+  module @proc_matrix_lane_rr  attributes {mlar.processor_array = "matrix_lane_rr", mlar.processor_definition = "matrix_lane_rr", mlar.processor_domain = ["x", "y"]} {
     func.func @matmul_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16>, %arg2: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %K = loom.sym @K : index
@@ -220,7 +220,7 @@ module @arch_system {
     }
   }
 
-  module @proc_vector_lane attributes {mlar.processor_array = "vector_lane", mlar.processor_definition = "vector_lane", mlar.processor_domain = ["x", "y"]} {
+  module @proc_vector_lane  attributes {mlar.processor_array = "vector_lane", mlar.processor_definition = "vector_lane", mlar.processor_domain = ["x", "y"]} {
     func.func @vec_max_f16(%arg0: memref<?xf16, 1>, %arg1: memref<?xf16, 1>, %arg2: memref<?xf16, 1>) {
       %L = loom.sym @L : index
       loom.bind_shape %arg0, [%L] : memref<?xf16, 1>
@@ -383,7 +383,7 @@ module @arch_system {
     }
   }
 
-  module @proc_dram_l1_noc0 attributes {mlar.processor_array = "dram_l1_noc0", mlar.processor_definition = "dram_l1_noc0", mlar.processor_domain = []} {
+  module @proc_dram_l1_noc0  attributes {mlar.processor_array = "dram_l1_noc0", mlar.processor_definition = "dram_l1_noc0", mlar.processor_domain = []} {
     func.func @dram_to_l1_S_f16(%arg0: memref<?x?xf16>, %arg1: memref<?x?xf16, 1>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index
@@ -434,7 +434,7 @@ module @arch_system {
     }
   }
 
-  module @proc_l1_l1_noc0 attributes {mlar.processor_array = "l1_l1_noc0", mlar.processor_definition = "l1_l1_noc0", mlar.processor_domain = []} {
+  module @proc_l1_l1_noc0  attributes {mlar.processor_array = "l1_l1_noc0", mlar.processor_definition = "l1_l1_noc0", mlar.processor_domain = []} {
     func.func @l1_gather(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?x?xf16, 1>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index
@@ -451,7 +451,7 @@ module @arch_system {
     }
   }
 
-  module @proc_l1_dram_noc1 attributes {mlar.processor_array = "l1_dram_noc1", mlar.processor_definition = "l1_dram_noc1", mlar.processor_domain = []} {
+  module @proc_l1_dram_noc1  attributes {mlar.processor_array = "l1_dram_noc1", mlar.processor_definition = "l1_dram_noc1", mlar.processor_domain = []} {
     func.func @l1_to_dram_f16(%arg0: memref<?x?xf16, 1>, %arg1: memref<?x?xf16>) {
       %M = loom.sym @M : index
       %N = loom.sym @N : index

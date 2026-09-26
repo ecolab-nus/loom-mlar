@@ -27,7 +27,7 @@ fn staged_accelerator_exports_one_scale_and_all_physical_memories() {
             .unwrap()
             .trim();
         let aggregate = line.split(" = ").next().unwrap();
-        let instance = line.split(" of ").nth(1).unwrap();
+        let instance = line.split(" of ").nth(1).unwrap().split_whitespace().next().unwrap();
         (aggregate, instance)
     };
     let handles =
