@@ -1,0 +1,69 @@
+name: vector_lane
+type: compute
+functions:
+  vec_max_f16: {source: vec_max_f16}
+  vec_exp_f16: {source: vec_exp_f16}
+  vec_sum_f16: {source: vec_sum_f16}
+  vec_add_f16: {source: vec_add_f16}
+  vec_mul_f16: {source: vec_mul_f16}
+  vec_div_f16: {source: vec_div_f16}
+  vec_sub_f16: {source: vec_sub_f16}
+  vec_powf_f16: {source: vec_powf_f16}
+  vec_cmpf_ogt_f16: {source: vec_cmpf_ogt_f16}
+  vec_select_f16: {source: vec_select_f16}
+  vec_log_f16: {source: vec_log_f16}
+  transpose_f16: {source: transpose_f16}
+resources:
+- name: vector_lane
+performance:
+  # SFPU ops: n150 single-tile microbenchmarks (2026-10-13): latency = pack + sync (75, once per call),
+  # per tile = rest of the single-tile time (copies + op), floored at the isolated op cost. add/sub/mul/sum: verified matrix-lane
+  # FPU rates (tt-metal runs binary eltwise on the FPU; vector-lane add measured 296 cyc/tile is the slower path).
+  transpose_f16:            # one vector pass over B*M*N (HW folds it into matmul unpack: conservative)
+  - latency: '1'
+    volume: B * M * N
+    throughput: '1024'
+  vec_max_f16:                     # n150 single tile 330.6 cyc; per tile max(total - pack/sync 75, op alone 285.8); legacy 8/cyc
+  - latency: '75'
+    volume: L * 286
+    throughput: '1024'
+  vec_exp_f16:                     # n150 single tile 155.7 cyc; per tile max(total - pack/sync 75, op alone 126.9); legacy 7/cyc
+  - latency: '75'
+    volume: L * 127
+    throughput: '1024'
+  vec_sum_f16:                     # full reduce on the FPU, as matrix_lane vec_vsum; was 1024
+  - latency: '1'
+    volume: L
+    throughput: '128'
+  vec_add_f16:                     # FPU eltwise incl. unpack/pack, = matrix_lane elementwise_add_f16; was 1024
+  - latency: '1'
+    volume: L
+    throughput: '43'
+  vec_mul_f16:                     # FPU mul at HiFi2: add pass 23.8 + 1 extra multiplier pass 14.8 cyc/tile (HiFi4 measured 68.3); legacy 1024
+  - latency: '1'
+    volume: L * 39
+    throughput: '1024'
+  vec_div_f16:                     # n150 single tile 1270.0 cyc; per tile max(total - pack/sync 75, op alone 1173.5); legacy 6/cyc
+  - latency: '75'
+    volume: L * 1195
+    throughput: '1024'
+  vec_sub_f16:                     # FPU ELWSUB runs at the ELWADD rate (tt-isa-documentation); was 4
+  - latency: '1'
+    volume: L
+    throughput: '43'
+  vec_powf_f16:                     # n150 single tile 3591.0 cyc; per tile max(total - pack/sync 75, op alone 3507.3); legacy 7/cyc
+  - latency: '75'
+    volume: L * 3516
+    throughput: '1024'
+  vec_cmpf_ogt_f16:                     # n150 single tile 619.3 cyc; per tile max(total - pack/sync 75, op alone 538.3); legacy 8/cyc
+  - latency: '75'
+    volume: L * 544
+    throughput: '1024'
+  vec_select_f16:                     # n150 single tile 478.1 cyc; per tile max(total - pack/sync 75, op alone 392.1); legacy 8/cyc
+  - latency: '75'
+    volume: L * 403
+    throughput: '1024'
+  vec_log_f16:                     # n150 single tile 738.9 cyc; per tile max(total - pack/sync 75, op alone 702.9); legacy 7/cyc
+  - latency: '75'
+    volume: L * 703
+    throughput: '1024'

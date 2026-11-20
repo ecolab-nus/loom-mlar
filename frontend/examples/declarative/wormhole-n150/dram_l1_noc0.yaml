@@ -1,0 +1,14 @@
+name: dram_l1_noc0
+type: data_mover
+functions:
+  dram_to_l1_S_f16: {source: dram_to_l1_S_f16, bindings: {src: src, dst_s: dst_s}}
+  dram_to_l1_S_bcst: {source: dram_to_l1_S_bcst, bindings: {src: src, dst_s: dst_s}}
+performance:
+  dram_to_l1_S_f16:                # 0.8 t = 250 B/cycle aggregate (tt-metal LLM decode 239-261 GB/s @12 Gbps)
+  - latency: '454'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: (625 / 2)
+  dram_to_l1_S_bcst:               # t/10 = 20 B/cycle per row multicast (noc_bw NoC0: 161.7 GB/s over 8 rows)
+  - latency: '344'
+    volume: M * N * 2 * effective_bandwidth
+    throughput: '200'

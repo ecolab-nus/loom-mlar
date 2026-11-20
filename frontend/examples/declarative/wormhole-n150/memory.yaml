@@ -1,0 +1,8 @@
+memories:
+  DRAM:
+    capacity: 1610612736
+    word_size: 8192
+  L1_S:
+    capacity: 1393152  # tt-metal 6024ed4 unreserved 1393312, rounded down to word_size x banks (README)
+    word_size: 16
+    banking: 16

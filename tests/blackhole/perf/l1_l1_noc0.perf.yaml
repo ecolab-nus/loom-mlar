@@ -1,0 +1,4 @@
+l1_gather:
+- latency: '400'
+  volume: B * M * N * 2 * effective_bandwidth
+  throughput: '650'

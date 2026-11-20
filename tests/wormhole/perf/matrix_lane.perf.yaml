@@ -1,0 +1,20 @@
+vec_vsum_f16:
+- latency: '1'
+  volume: P * R
+  throughput: '128'
+vec_vmax_f16:
+- latency: '1'
+  volume: P * R
+  throughput: '128'
+vec_max1_f16:
+- latency: '1'
+  volume: L
+  throughput: '128'
+elementwise_add_f16:
+- latency: '10'
+  volume: M * N
+  throughput: '43'
+elementwise_mul_f16:
+- latency: '10'
+  volume: M * N
+  throughput: '15'

@@ -23,6 +23,7 @@ const EXAMPLES: &[&str] = &[
     "staged-heterogeneous-accelerator",
     "hierarchical-tensor-accelerator",
     "spatial-pipeline-accelerator",
+    "wormhole-n150",
 ];
 
 fn example_dir(name: &str) -> PathBuf {
@@ -62,6 +63,7 @@ fn lowerable_accelerators_export_adl() {
         "dual-noc-mesh",
         "staged-heterogeneous-accelerator",
         "spatial-pipeline-accelerator",
+        "wormhole-n150",
     ] {
         let architecture = mlar_frontend::load_arch(example_dir(name)).unwrap();
         let unchecked = architecture_to_mlir_unchecked(&architecture).unwrap();

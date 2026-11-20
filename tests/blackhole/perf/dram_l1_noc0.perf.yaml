@@ -1,0 +1,8 @@
+dram_to_l1_S_f16:
+- latency: '400'
+  volume: M * N * 2 * effective_bandwidth
+  throughput: '210'
+dram_to_l1_S_bcst:
+- latency: '500'
+  volume: M * N * 2 * effective_bandwidth
+  throughput: '210'

@@ -52,3 +52,5 @@ Thumbs.db
 
 frontend/tests/2d_mesh/bin/*
 !frontend/tests/2d_mesh/bin/.gitkeep
+tests/*/bin/*
+!tests/*/bin/.gitkeep

@@ -1,6 +1,6 @@
 # Declarative accelerator examples
 
-These packages mirror the four core Rust accelerator examples:
+The first four packages mirror the core Rust accelerator examples:
 
 - `dual-noc-mesh`: one banked L1 array per tile, matrix/vector engines, NoC0
   ingress and collectives, and NoC1 egress;
@@ -10,6 +10,8 @@ These packages mirror the four core Rust accelerator examples:
   `PE_SRAM[cluster][pe]` storage with explicit distribute/collect routes;
 - `spatial-pipeline-accelerator`: matrix, activation, and reduction engines with
   a physical intermediate buffer between each stage.
+- `wormhole-n150`: the dual-NoC mesh with rates measured on a Wormhole n150
+  (see its README).
 
 Supported operations use the registered templates. Native MLIR is retained for
 dual-NoC ReLU (no registered template), `vec_max1_f16` (compare-and-select
